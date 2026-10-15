@@ -30,6 +30,7 @@ const (
 	PaymentMethodCreem        = "creem"
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
+	PaymentMethodWechat       = "wxpay"
 	PaymentMethodBalance      = "balance"
 )
 
@@ -39,6 +40,7 @@ const (
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
+	PaymentProviderWechat       = "wechat"
 	PaymentProviderBalance      = "balance"
 )
 
@@ -478,15 +480,22 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			return common.NewMessage("Order is not pending payment and cannot be completed")
 		}
 
-		// 计算应充值额度：
+		// 计算应充值额度。amount 的单位按渠道而异，必须逐渠道区分：
 		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
-		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
+		// - Creem 与微信：下单时就把额度写进了 Amount（见各自的下单处与 Recharge* 入账），
+		//   该值已是额度，再乘 QuotaPerUnit 会放大 QuotaPerUnit 倍
+		// - 其余订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		var quotaErr error
-		if topUp.PaymentProvider == PaymentProviderStripe {
+		switch topUp.PaymentProvider {
+		case PaymentProviderStripe:
 			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 				decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
-		} else {
+		case PaymentProviderCreem, PaymentProviderWechat:
+			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
+				decimal.NewFromInt(topUp.Amount),
+			)
+		default:
 			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 				decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
@@ -652,6 +661,85 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 	}
 
 	return nil
+}
+
+// RechargeWechat settles a paid WeChat Native order. The order row already
+// carries the exact quota to credit (Amount), computed when the order was
+// created, so settlement never depends on today's exchange rate.
+func RechargeWechat(tradeNo string, callerIp string) (err error) {
+	if tradeNo == "" {
+		return errors.New("payment order number not provided")
+	}
+
+	var quotaToAdd int
+	topUp := &TopUp{}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return errors.New("top-up order not found")
+		}
+		if topUp.PaymentProvider != PaymentProviderWechat {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil // 幂等：重复回调不再入账
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return errors.New("invalid top-up order status")
+		}
+		quotaToAdd = int(topUp.Amount)
+		if quotaToAdd <= 0 {
+			return ErrInvalidTopUpQuota
+		}
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+	})
+
+	if err != nil {
+		common.SysError(common.LogText("wechat topup failed: %s", err.Error()))
+		return errors.New("top-up failed")
+	}
+	if quotaToAdd == 0 {
+		return nil
+	}
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, common.LogText("wechat topup"))
+	RecordTopupLog(topUp.UserId, common.NewMessage("{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{"provider": "WeChat Pay", "quota": logger.FormatQuota(quotaToAdd), "amount": fmt.Sprintf("%.2f", topUp.Money)}), callerIp, topUp.PaymentMethod, PaymentMethodWechat)
+	return nil
+}
+
+// FindTopUpByTradeNo returns an order without changing it, for status polling.
+func FindTopUpByTradeNo(tradeNo string) (*TopUp, error) {
+	topUp := &TopUp{}
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+	if err := DB.Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+		return nil, err
+	}
+	return topUp, nil
+}
+
+// ListPendingWechatTopUps returns WeChat orders that are still pending and
+// older than the given age, so reconciliation can ask WeChat for their real
+// state. A notification that never arrived leaves an order stuck otherwise.
+func ListPendingWechatTopUps(olderThanSeconds int64, limit int) ([]*TopUp, error) {
+	orders := make([]*TopUp, 0)
+	cutoff := common.GetTimestamp() - olderThanSeconds
+	err := DB.Where(
+		"payment_provider = ? AND status = ? AND create_time <= ?",
+		PaymentProviderWechat, common.TopUpStatusPending, cutoff,
+	).Order("id asc").Limit(limit).Find(&orders).Error
+	return orders, err
 }
 
 func RechargeWaffoPancake(tradeNo string) (err error) {

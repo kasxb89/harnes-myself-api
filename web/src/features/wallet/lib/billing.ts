@@ -17,9 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusBadgeProps } from '@/components/status-badge'
+import {
+  formatCurrencyFromUSD,
+  formatQuotaWithCurrency,
+  type CurrencyFormatOptions,
+} from '@/lib/currency'
 import { formatTimestampToDate } from '@/lib/format'
 
-import type { TopupStatus } from '../types'
+import type { TopupRecord, TopupStatus } from '../types'
 
 // ============================================================================
 // Billing Utility Functions
@@ -81,4 +86,29 @@ export function getPaymentMethodName(
  */
 export function formatTimestamp(timestamp: number): string {
   return formatTimestampToDate(timestamp)
+}
+
+/**
+ * Providers that write the credited quota into `amount` at order creation.
+ *
+ * Every other provider writes a USD figure there and multiplies it by
+ * QuotaPerUnit when the order is credited, so a record's `amount` cannot be
+ * turned into money without knowing which group it belongs to.
+ */
+const QUOTA_AMOUNT_PROVIDERS = new Set(['creem', 'wechat'])
+
+/**
+ * Format a top-up record's `amount` as money, in the unit its provider uses.
+ *
+ * Reading every record as USD inflates the credit-amount column of a quota-unit
+ * provider by QuotaPerUnit, so the two groups are formatted differently.
+ */
+export function formatTopUpAmount(
+  record: Pick<TopupRecord, 'amount' | 'payment_provider'>,
+  options?: CurrencyFormatOptions
+): string {
+  const isQuota = QUOTA_AMOUNT_PROVIDERS.has(record.payment_provider ?? '')
+  return isQuota
+    ? formatQuotaWithCurrency(record.amount, options)
+    : formatCurrencyFromUSD(record.amount, options)
 }

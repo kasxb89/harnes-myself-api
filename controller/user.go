@@ -201,16 +201,23 @@ func writeLoginResponse(c *gin.Context, user *model.User, bundle *service.AuthBu
 	service.WriteRefreshCookie(c, bundle.RefreshToken)
 	setAuthNoStore(c)
 	recordLoginAudit(user, c)
+	data := gin.H{
+		"access_token":      bundle.AccessToken,
+		"token_type":        bundle.TokenType,
+		"access_expires_at": bundle.AccessExpiresAt,
+		"session":           bundle.Session,
+		"user":              buildSelfUserData(user),
+	}
+	// Phone sign-in additionally returns a relay credential owned by this
+	// account; other login methods leave it absent.
+	if relayKey := c.GetString("relay_key"); relayKey != "" {
+		data["relay_key"] = relayKey
+		data["relay_key_id"] = c.GetInt("relay_key_id")
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "",
 		"success": true,
-		"data": gin.H{
-			"access_token":      bundle.AccessToken,
-			"token_type":        bundle.TokenType,
-			"access_expires_at": bundle.AccessExpiresAt,
-			"session":           bundle.Session,
-			"user":              buildSelfUserData(user),
-		},
+		"data":    data,
 	})
 }
 
@@ -503,6 +510,7 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,
+		"phone_e164":        user.PhoneE164,
 		"github_id":         user.GitHubId,
 		"discord_id":        user.DiscordId,
 		"oidc_id":           user.OidcId,
@@ -996,6 +1004,33 @@ func DeleteSelf(c *gin.Context) {
 	})
 }
 
+// normalizePhoneE164 keeps the phone column NULL when no phone is supplied and
+// otherwise stores a single canonical shape: trimmed, with a leading plus for
+// bare digit strings. NULL (not the empty string) is what the unique index
+// relies on to allow many accounts without a phone.
+func normalizePhoneE164(raw *string) *string {
+	if raw == nil {
+		return nil
+	}
+	phone := strings.TrimSpace(*raw)
+	if phone == "" {
+		return nil
+	}
+	if !strings.HasPrefix(phone, "+") {
+		allDigits := true
+		for _, r := range phone {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			phone = "+" + phone
+		}
+	}
+	return &phone
+}
+
 func CreateUser(c *gin.Context) {
 	var user model.User
 	err := common.DecodeJson(c.Request.Body, &user)
@@ -1035,6 +1070,7 @@ func CreateUser(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Role:        user.Role, // 保持管理员设置的角色
+		PhoneE164:   normalizePhoneE164(user.PhoneE164),
 	}
 	authzTouched := false
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {

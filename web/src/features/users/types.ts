@@ -36,6 +36,8 @@ export const userSchema = z.object({
   id: z.number(),
   username: z.string(),
   display_name: z.string(),
+  // 手机号（E.164）；没有手机号的账号（root/历史用户）为 null
+  phone_e164: z.string().nullable().optional(),
   password: z.string().optional(),
   github_id: z.string().optional(),
   oidc_id: z.string().optional(),

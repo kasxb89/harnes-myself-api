@@ -257,7 +257,11 @@ export interface TopupRecord {
   id: number
   /** User ID */
   user_id: number
-  /** Topup amount (quota) */
+  /**
+   * Topup amount. Its unit depends on the provider: Creem and WeChat store the
+   * credited quota, every other provider stores a USD figure that is multiplied
+   * by QuotaPerUnit on credit. Format it with the provider's unit in mind.
+   */
   amount: number
   /** Payment amount (actual money paid) */
   money: number
@@ -265,6 +269,8 @@ export interface TopupRecord {
   trade_no: string
   /** Payment method type */
   payment_method: string
+  /** Payment provider that settled the order; decides the unit of `amount` */
+  payment_provider?: string
   /** Creation timestamp */
   create_time: number
   /** Completion timestamp */

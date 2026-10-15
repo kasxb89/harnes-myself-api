@@ -86,6 +86,11 @@ type User struct {
 	Role                 int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status               int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
 	Email                string                     `json:"email" gorm:"index" validate:"max=50"`
+	// PhoneE164 is the E.164 phone number this account signs in with. It is
+	// NULL for accounts without a phone (root/legacy users); the unique index
+	// therefore must tolerate many NULLs, which PostgreSQL does natively and
+	// which is why this is a pointer rather than an empty string.
+	PhoneE164            *string                    `json:"phone_e164" gorm:"type:varchar(32);column:phone_e164;uniqueIndex" validate:"omitempty,max=32"`
 	GitHubId             string                     `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId            string                     `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId               string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -455,8 +460,10 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	query := tx.Unscoped().Model(&User{})
 
 	// 构建搜索条件
-	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
-	likeArgs := []any{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
+	// phone_e164 也参与匹配：运营和外部系统常用手机号直接定位账号，
+	// 影子用户名（ys<数字>）对人不友好。
+	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ? OR phone_e164 LIKE ?"
+	likeArgs := []any{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
 
 	// 尝试将关键字转换为整数ID
 	keywordInt, err := strconv.Atoi(keyword)
@@ -530,6 +537,7 @@ func GetSelfUserById(id int) (*User, error) {
 	}
 	err := DB.Model(&User{}).Select([]string{
 		"id", "username", "display_name", "role", "status", "email",
+		"phone_e164",
 		"github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id",
 		"group", "quota", "used_quota", "request_count", "aff_code", "aff_count",
 		"aff_quota", "aff_history", "inviter_id", "linux_do_id", "setting",

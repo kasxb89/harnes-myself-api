@@ -79,12 +79,19 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/register", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Register)
 			userRoute.GET("/login/encryption-key", middleware.DisableCache(), controller.GetPasswordEncryptionKey)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, middleware.TurnstileCheck(), controller.Login)
+			// Phone sign-in: same rate treatment as password login. The code
+			// endpoints carry their own per-number cooldown in the controller.
+			userRoute.POST("/phone/challenge", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.SendPhoneLoginCode)
+			userRoute.POST("/phone/login", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PhoneLogin)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.Verify2FALogin)
 			userRoute.POST("/login/verify", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.VerifyLogin)
 			userRoute.POST("/login/passkey/begin", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.LoginPasskeyBegin)
 			userRoute.POST("/login/passkey/finish", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.LoginPasskeyFinish)
 			userRoute.POST("/passkey/login/begin", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginBegin)
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), middleware.DisableCache(), anonymousRequestBodyLimit, controller.PasskeyLoginFinish)
+			// WeChat Pay calls this endpoint without a session; authenticity comes
+			// from the platform signature over the raw body.
+			userRoute.POST("/wechat/notify", anonymousRequestBodyLimit, controller.WechatPayNotify)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, controller.EpayNotify)
 			userRoute.GET("/epay/notify", controller.EpayNotify)
@@ -120,6 +127,9 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.DELETE("/passkey", middleware.DisableCache(), controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
+				// WeChat Pay Native top-up: request a QR payload, then poll it.
+				selfRoute.POST("/wechat/native", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.RequestWechatNativePay)
+				selfRoute.GET("/wechat/order", middleware.DisableCache(), controller.GetWechatTopUpStatus)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
 				selfRoute.POST("/pay", middleware.CriticalRateLimit(), controller.RequestEpay)
@@ -252,6 +262,13 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.POST("/gc", controller.ForceGC)
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
+		}
+		// Operators can force one WeChat settlement sweep when a payment
+		// notification is believed to be lost.
+		wechatAdminRoute := apiRouter.Group("/wechat")
+		wechatAdminRoute.Use(middleware.RootAuth())
+		{
+			wechatAdminRoute.POST("/reconcile", controller.TriggerWechatReconcile)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())

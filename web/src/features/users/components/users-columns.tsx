@@ -141,6 +141,22 @@ export function useUsersColumns(): ColumnDef<User>[] {
         meta: { mobileTitle: true },
       },
       {
+        accessorKey: 'phone_e164',
+        header: t('Phone'),
+        cell: ({ row }) => {
+          const phone = row.original.phone_e164
+          return phone ? (
+            <LongText className='max-w-[150px] text-sm font-normal'>
+              {phone}
+            </LongText>
+          ) : (
+            <span className='text-muted-foreground text-sm'>-</span>
+          )
+        },
+        size: 150,
+        meta: { mobileOrder: 15 },
+      },
+      {
         accessorKey: 'status',
         header: t('Status'),
         cell: ({ row }) => {

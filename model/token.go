@@ -62,6 +62,51 @@ func (token *Token) Clean() {
 	token.Key = ""
 }
 
+// RelayKeyName is the fixed name of the credential handed to a client at
+// sign-in, so requests are billed to the signed-in account rather than to a
+// shared deployment key.
+const RelayKeyName = "harness"
+
+// EnsureRelayToken returns the account's relay credential, creating it on
+// first use. Repeat calls reuse the existing token, so signing in does not
+// grow the tokens table.
+func EnsureRelayToken(userId int) (string, int, error) {
+	if userId <= 0 {
+		return "", 0, errors.New("invalid user id")
+	}
+	var existing Token
+	err := DB.Where("user_id = ? AND name = ?", userId, RelayKeyName).Order("id asc").First(&existing).Error
+	if err == nil && existing.Key != "" {
+		if existing.Status != common.TokenStatusEnabled {
+			if err := DB.Model(&Token{}).Where("id = ?", existing.Id).
+				Update("status", common.TokenStatusEnabled).Error; err != nil {
+				return "", 0, err
+			}
+			_ = invalidateTokenCacheForMutation(existing.Key)
+		}
+		return existing.Key, existing.Id, nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", 0, err
+	}
+	now := common.GetTimestamp()
+	token := Token{
+		UserId:              userId,
+		Key:                 common.GetRandomString(48),
+		Status:              common.TokenStatusEnabled,
+		Name:                RelayKeyName,
+		CreatedTime:         now,
+		AccessedTime:        now,
+		ExpiredTime:         -1, // never expires
+		UnlimitedQuota:      true,
+		AllowUserQuotaQuery: true,
+	}
+	if err := DB.Create(&token).Error; err != nil {
+		return "", 0, err
+	}
+	return token.Key, token.Id, nil
+}
+
 func MaskTokenKey(key string) string {
 	if key == "" {
 		return ""

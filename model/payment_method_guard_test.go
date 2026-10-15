@@ -353,3 +353,65 @@ func TestRechargeEpayEnforcesFinalWalletQuotaLimit(t *testing.T) {
 		})
 	}
 }
+
+func TestManualCompleteTopUp_CreditsEachProviderInItsOwnAmountUnit(t *testing.T) {
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	testCases := []struct {
+		name            string
+		paymentProvider string
+		amount          int64
+		money           float64
+		expectedQuota   int
+	}{
+		{
+			// WeChat writes the credited quota into Amount: 200 CNY at 500000
+			// quota per USD and a 7.3 rate. Reading it as USD would credit
+			// 500000 times as much.
+			name:            "wechat amount is the credited quota",
+			paymentProvider: PaymentProviderWechat,
+			amount:          13_698_630,
+			money:           200,
+			expectedQuota:   13_698_630,
+		},
+		{
+			name:            "creem amount is the credited quota",
+			paymentProvider: PaymentProviderCreem,
+			amount:          1_000_000,
+			money:           20,
+			expectedQuota:   1_000_000,
+		},
+		{
+			name:            "epay amount is a USD figure",
+			paymentProvider: PaymentProviderEpay,
+			amount:          2,
+			money:           14.6,
+			expectedQuota:   1_000_000,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			truncateTables(t)
+			insertUserForPaymentGuardTest(t, 210, 0)
+			tradeNo := "manual-complete-" + tc.paymentProvider
+			require.NoError(t, DB.Create(&TopUp{
+				UserId:          210,
+				Amount:          tc.amount,
+				Money:           tc.money,
+				TradeNo:         tradeNo,
+				PaymentMethod:   tc.paymentProvider,
+				PaymentProvider: tc.paymentProvider,
+				CreateTime:      common.GetTimestamp(),
+				Status:          common.TopUpStatusPending,
+			}).Error)
+
+			require.NoError(t, ManualCompleteTopUp(tradeNo, "127.0.0.1"))
+
+			assert.Equal(t, tc.expectedQuota, getUserQuotaForPaymentGuardTest(t, 210))
+			assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, tradeNo))
+		})
+	}
+}
