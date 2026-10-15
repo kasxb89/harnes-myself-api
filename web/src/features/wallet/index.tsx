@@ -87,12 +87,25 @@ export function Wallet(props: WalletProps) {
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
-  // Calculate effective exchange rate - when display type is USD, use rate of 1
+  // Calculate effective exchange rate - when display type is USD, use rate of 1.
+  // CNY 展示下档位值本身就是人民币，显示价与实付价都不能再乘汇率（后端也不再乘）。
   const effectiveUsdExchangeRate = useMemo(() => {
+    if (currency?.quotaDisplayType === 'CNY') {
+      return 1
+    }
     return currency?.quotaDisplayType === 'USD'
       ? 1
       : currency?.usdExchangeRate || 1
   }, [currency?.quotaDisplayType, currency?.usdExchangeRate])
+
+  // 实付价同样以展示类型为准：CNY 下 amount 就是人民币，不再乘 Price，与后端
+  // getPayMoney 的 CNY 分支保持一致。其余展示类型沿用 status 里的 Price。
+  const effectivePriceRatio = useMemo(() => {
+    if (currency?.quotaDisplayType === 'CNY') {
+      return 1
+    }
+    return (status?.price as number) || 1
+  }, [currency?.quotaDisplayType, status?.price])
   const {
     amount: paymentAmount,
     calculating,
@@ -332,7 +345,7 @@ export function Wallet(props: WalletProps) {
                   redeeming={redeeming}
                   topupLink={topupInfo?.topup_link}
                   loading={topupLoading}
-                  priceRatio={(status?.price as number) || 1}
+                  priceRatio={effectivePriceRatio}
                   usdExchangeRate={effectiveUsdExchangeRate}
                   onOpenBilling={() => setBillingDialogOpen(true)}
                   creemProducts={topupInfo?.creem_products}

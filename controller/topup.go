@@ -190,7 +190,12 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(operation_setting.Price)
+	// CNY 展示下 amount 本身就是人民币，再乘一次汇率等于重复换算，档位也就永远
+	// 凑不出整数元。其余展示类型（amount 为美元）维持原有的汇率换算。
+	dPrice := decimal.NewFromInt(1)
+	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeCNY {
+		dPrice = decimal.NewFromFloat(operation_setting.Price)
+	}
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
 	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
@@ -221,11 +226,20 @@ func getMinTopup() int64 {
 
 func getTopUpQuota(amount int64) (int, error) {
 	quota := decimal.NewFromInt(amount)
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeTokens:
 		quota = decimal.NewFromInt(quota.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
-	} else {
-		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	case operation_setting.QuotaDisplayTypeCNY:
+		// 与 getPayMoney 对称：CNY 下 amount 是人民币，先按汇率折成美元额度再乘 QuotaPerUnit，
+		// 这样“付多少元”与“到账多少额度”的换算只发生一次。
+		rate := operation_setting.Price
+		if rate <= 0 {
+			rate = 1
+		}
+		quota = quota.Div(decimal.NewFromFloat(rate)).Mul(quotaPerUnit)
+	default:
+		quota = quota.Mul(quotaPerUnit)
 	}
 	return common.WalletQuotaFromDecimalStrict(quota)
 }

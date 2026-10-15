@@ -201,3 +201,25 @@ func TestStripeCreditedQuotaIncludesGroupRatio(t *testing.T) {
 	require.NoError(t, common.UpdateTopupGroupRatioByJSONString(`{"free":0}`))
 	assert.True(t, decimal.NewFromInt(500000).Equal(getStripeCreditedQuota(1, "free")))
 }
+
+func TestCNYTopUpChargesFaceValueAndCreditsAtTheExchangeRate(t *testing.T) {
+	oldQuotaPerUnit := common.QuotaPerUnit
+	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldPrice := operation_setting.Price
+	common.QuotaPerUnit = 500000
+	operation_setting.Price = 7.3
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeCNY
+	t.Cleanup(func() {
+		common.QuotaPerUnit = oldQuotaPerUnit
+		operation_setting.Price = oldPrice
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
+	})
+
+	// CNY 下档位值就是人民币：选 30 元付 30 元，不能再乘一次汇率。
+	assert.Equal(t, 30.0, getPayMoney(30, "default"))
+
+	// 到账额度仍按汇率折成美元额度，所以每个档位买到的价值与改动前一致。
+	quota, err := getTopUpQuota(30)
+	require.NoError(t, err)
+	assert.Equal(t, 2_054_795, quota)
+}
