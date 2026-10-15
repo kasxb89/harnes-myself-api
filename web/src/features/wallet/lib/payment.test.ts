@@ -56,6 +56,7 @@ describe('payment dispatch', () => {
           calls.push('pancake')
           return false
         },
+        wechatNative: async () => false,
       }
     )
 
@@ -76,10 +77,35 @@ describe('payment dispatch', () => {
           return true
         },
         waffoPancake: async () => false,
+        wechatNative: async () => false,
       }
     )
 
     expect(success).toBe(false)
     expect(called).toBe(false)
+  })
+
+  test('routes the in-console WeChat flow away from the gateway path', async () => {
+    const calls: string[] = []
+    const success = await dispatchSelectedPayment(
+      { name: 'WeChat Pay', type: PAYMENT_TYPES.WECHAT_NATIVE },
+      120,
+      null,
+      {
+        regular: async () => {
+          calls.push('regular')
+          return false
+        },
+        waffo: async () => false,
+        waffoPancake: async () => false,
+        wechatNative: async (amount) => {
+          calls.push(`wechatNative:${amount}`)
+          return true
+        },
+      }
+    )
+
+    expect(success).toBe(true)
+    expect(calls).toEqual(['wechatNative:120'])
   })
 })

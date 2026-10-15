@@ -39,6 +39,8 @@ import type {
   WaffoPaymentResponse,
   WaffoPancakePaymentRequest,
   WaffoPancakePaymentResponse,
+  WechatNativeOrderResponse,
+  WechatOrderStatusResponse,
 } from './types'
 
 // ============================================================================
@@ -244,5 +246,27 @@ export async function completeOrder(
   request: CompleteOrderRequest
 ): Promise<ApiResponse> {
   const res = await api.post('/api/user/topup/complete', request)
+  return res.data
+}
+
+/**
+ * Create a WeChat Native order and get the payload the payer scans.
+ */
+export async function createWechatNativeOrder(
+  amount: number
+): Promise<WechatNativeOrderResponse> {
+  const res = await api.post('/api/user/wechat/native', { amount })
+  return res.data
+}
+
+/**
+ * Read one WeChat order's settlement state, for polling after the scan.
+ */
+export async function getWechatOrderStatus(
+  outTradeNo: string
+): Promise<WechatOrderStatusResponse> {
+  const res = await api.get(
+    `/api/user/wechat/order?out_trade_no=${encodeURIComponent(outTradeNo)}`
+  )
   return res.data
 }

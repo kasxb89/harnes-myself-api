@@ -29,6 +29,7 @@ import { BillingHistoryDialog } from './components/dialogs/billing-history-dialo
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
+import { WechatPayDialog } from './components/dialogs/wechat-pay-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
 import { SubscriptionPlansCard } from './components/subscription-plans-card'
 import { WalletStatsCard } from './components/wallet-stats-card'
@@ -41,11 +42,13 @@ import {
   useCreemPayment,
   useWaffoPayment,
   useWaffoPancakePayment,
+  useWechatNativePayment,
 } from './hooks'
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
   dispatchSelectedPayment,
+  isWechatNativePayment,
 } from './lib'
 import type {
   UserWalletData,
@@ -108,6 +111,13 @@ export function Wallet(props: WalletProps) {
   const { processing: waffoProcessing, processWaffoPayment } = useWaffoPayment()
   const { processing: pancakeProcessing, processWaffoPancakePayment } =
     useWaffoPancakePayment()
+  const {
+    processing: wechatNativeProcessing,
+    order: wechatOrder,
+    dialogOpen: wechatDialogOpen,
+    setDialogOpen: setWechatDialogOpen,
+    processWechatNativePayment,
+  } = useWechatNativePayment()
 
   // Fetch and refresh user data
   const fetchUser = useCallback(async () => {
@@ -194,14 +204,21 @@ export function Wallet(props: WalletProps) {
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
 
+    // 微信 Native 的 amount 是人民币元，其余处理器收的是充值单位数——后端各自
+    // 负责换算，所以这里按处理器取不同的口径。
+    const processorAmount = isWechatNativePayment(selectedPaymentMethod.type)
+      ? paymentAmount
+      : topupAmount
+
     const success = await dispatchSelectedPayment(
       selectedPaymentMethod,
-      topupAmount,
+      processorAmount,
       selectedWaffoMethodIndex,
       {
         regular: processPayment,
         waffo: processWaffoPayment,
         waffoPancake: processWaffoPancakePayment,
+        wechatNative: processWechatNativePayment,
       }
     )
 
@@ -360,7 +377,9 @@ export function Wallet(props: WalletProps) {
         paymentAmount={paymentAmount}
         paymentMethod={selectedPaymentMethod}
         calculating={calculating}
-        processing={processing || waffoProcessing || pancakeProcessing}
+        processing={
+          processing || waffoProcessing || pancakeProcessing || wechatNativeProcessing
+        }
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}
       />
@@ -384,6 +403,13 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleCreemConfirm}
         product={selectedCreemProduct}
         processing={creemProcessing}
+      />
+
+      <WechatPayDialog
+        open={wechatDialogOpen}
+        onOpenChange={setWechatDialogOpen}
+        order={wechatOrder}
+        onPaid={fetchUser}
       />
     </>
   )

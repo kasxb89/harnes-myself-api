@@ -7,8 +7,9 @@ import (
 
 // Phone sign-in is an optional, self-contained alternative to password login:
 // the phone number itself is the account identity, so no external account
-// service is required. Real SMS delivery is delegated to an HTTP hook; for
-// local development a fixed-code bypass can be enabled instead.
+// service is required. Delivery goes through the Aliyun SMS sender in sms.go,
+// whose credentials are admin-editable options; for local development a
+// fixed-code bypass can be enabled instead.
 var (
 	// PhoneLoginEnabled turns the phone endpoints on.
 	PhoneLoginEnabled = GetEnvOrDefaultBool("PHONE_LOGIN_ENABLED", false)
@@ -20,10 +21,6 @@ var (
 	// PhoneSmsDevAllowedPhones is a comma-separated E.164 allowlist for the
 	// bypass. The bypass refuses every number when this list is empty.
 	PhoneSmsDevAllowedPhones = strings.TrimSpace(os.Getenv("PHONE_SMS_DEV_ALLOWED_PHONES"))
-	// PhoneSmsWebhookUrl receives {phone, code} as JSON when the bypass is off.
-	PhoneSmsWebhookUrl = strings.TrimSpace(os.Getenv("PHONE_SMS_WEBHOOK_URL"))
-	// PhoneSmsWebhookToken is sent as a bearer token to the webhook, if set.
-	PhoneSmsWebhookToken = strings.TrimSpace(os.Getenv("PHONE_SMS_WEBHOOK_TOKEN"))
 	// PhoneLoginDefaultGroup is the group new phone accounts are created in.
 	PhoneLoginDefaultGroup = GetEnvOrDefaultString("PHONE_LOGIN_DEFAULT_GROUP", "default")
 	// PhoneRegistrationBonusYuan is the one-off credit granted to a phone

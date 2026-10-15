@@ -1,6 +1,9 @@
 package common
 
 import (
+	"crypto/rand"
+	"errors"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +33,27 @@ func GenerateVerificationCode(length int) string {
 		return code
 	}
 	return code[:length]
+}
+
+// GenerateNumericVerificationCode returns a decimal code of the given length.
+//
+// SMS templates carry a numeric `code` placeholder and the provider rejects
+// anything else, so the hex digits of GenerateVerificationCode do not work
+// here. The source is cryptographic rather than math/rand because a code an
+// attacker can predict is a sign-in they can take over.
+func GenerateNumericVerificationCode(length int) (string, error) {
+	if length <= 0 {
+		return "", errors.New("verification code length must be positive")
+	}
+	digits := make([]byte, length)
+	for i := range digits {
+		digit, err := rand.Int(rand.Reader, big.NewInt(10))
+		if err != nil {
+			return "", err
+		}
+		digits[i] = byte('0' + digit.Int64())
+	}
+	return string(digits), nil
 }
 
 func RegisterVerificationCodeWithKey(key string, code string, purpose string) {

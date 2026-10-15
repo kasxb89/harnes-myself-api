@@ -3,6 +3,7 @@ package controller
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
@@ -107,4 +108,14 @@ func isEpayWebhookConfigured() bool {
 
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
+}
+
+// WeChat Native top-up shows on the wallet once compliance is confirmed and the
+// merchant credentials are complete. The order endpoint enforces both again, so
+// this only decides whether the method is offered at all.
+func isWechatTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	return common.WechatPayEnabled && common.WechatPayConfigured()
 }

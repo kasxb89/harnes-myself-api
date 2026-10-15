@@ -371,6 +371,10 @@ export type OperationsSettings = {
   SMTPStartTLSEnabled: boolean
   SMTPInsecureSkipVerify: boolean
   SMTPForceAuthLogin: boolean
+  SmsAliyunAccessKeyId: string
+  SmsAliyunAccessKeySecret: string
+  SmsAliyunSignName: string
+  SmsAliyunTemplateCode: string
   WorkerUrl: string
   WorkerValidKey: string
   WorkerAllowHttpImageRequestEnabled: boolean

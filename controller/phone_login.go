@@ -1,10 +1,7 @@
 package controller
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"regexp"
 	"strings"
 	"sync"
@@ -91,31 +88,7 @@ func deliverPhoneCode(phoneE164 string, code string) error {
 		common.SysLog(common.LogText("phone login development bypass used for %s", phoneE164))
 		return nil
 	}
-	if common.PhoneSmsWebhookUrl == "" {
-		return fmt.Errorf("sms_delivery_not_configured")
-	}
-	payload, err := json.Marshal(map[string]string{"phone_e164": phoneE164, "code": code})
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequest(http.MethodPost, common.PhoneSmsWebhookUrl, bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	if common.PhoneSmsWebhookToken != "" {
-		request.Header.Set("Authorization", "Bearer "+common.PhoneSmsWebhookToken)
-	}
-	client := &http.Client{Timeout: 8 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("sms_webhook_status_%d", response.StatusCode)
-	}
-	return nil
+	return common.SendSmsCode(phoneE164, code)
 }
 
 // SendPhoneLoginCode issues a verification code for phone sign-in.
@@ -146,7 +119,12 @@ func SendPhoneLoginCode(c *gin.Context) {
 		return
 	}
 
-	code := common.GenerateVerificationCode(6)
+	code, err := common.GenerateNumericVerificationCode(6)
+	if err != nil {
+		common.SysError(common.LogText("failed to generate a phone code: %s", err.Error()))
+		common.ApiErrorT(c, "Verification code could not be sent, please try again later")
+		return
+	}
 	if common.PhoneSmsBypassAllows(phone) {
 		code = common.PhoneSmsDevCode
 	}

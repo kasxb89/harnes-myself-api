@@ -7270,6 +7270,21 @@
     "Zhipu": "智谱",
     "Zhipu GLM": "智谱GLM",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Aliyun SMS": "阿里云短信",
+    "AccessKey ID": "AccessKey ID",
+    "AccessKey Secret": "AccessKey Secret",
+    "Enter new secret to update": "输入新的密钥以更新",
+    "Leave blank to keep the existing secret.": "留空则保留现有密钥。",
+    "SMS sign name": "短信签名",
+    "SMS template code": "短信模板 Code",
+    "Save SMS settings": "保存短信设置",
+    "The RAM user the gateway sends verification codes as. Reuse the account whose sign name and template are already approved.": "网关以此 RAM 用户身份发送验证码。请复用签名与模板已审批通过的账号。",
+    "The approved SMS signature the messages are sent under.": "已审批通过的短信签名，短信以该签名下发。",
+    "The approved template, which must carry a numeric code parameter.": "已审批通过的模板，其中必须包含数字类型的 code 参数。",
+    "Scan the QR code with WeChat to complete the top-up": "用微信扫码完成充值",
+    "Top-up succeeded": "充值成功",
+    "This order has expired. Close this dialog and try again.": "该订单已过期，请关闭后重试。",
+    "Expires in {{seconds}}s": "{{seconds}} 秒后过期"
   }
 }

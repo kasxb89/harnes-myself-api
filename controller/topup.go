@@ -26,10 +26,11 @@ import (
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
-	// 获取支付方式
-	payMethods := operation_setting.PayMethods
-	if !complianceConfirmed {
-		payMethods = []map[string]string{}
+	// epay 渠道只在实际可用时列出：否则支付方式列表里会出现点了必然报
+	// 「未配置支付信息」的死按钮。这里复制一份，避免后面的 append 改到包级切片。
+	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods))
+	if isEpayTopUpEnabled() {
+		payMethods = append(payMethods, operation_setting.PayMethods...)
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
@@ -97,12 +98,38 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// 微信支付 Native：不跳外部收银台，下单后在工作台内展示二维码。
+	// 标识刻意不用 model.PaymentMethodWechat（"wxpay"）——前端那个值属于 epay 渠道的
+	// 微信通道，两者混用会把 Native 下单送进 epay 网关。
+	const wechatNativeMethodType = "wechat_native"
+
+	enableWechat := isWechatTopUpEnabled()
+	if enableWechat {
+		hasWechat := false
+		for _, method := range payMethods {
+			if method["type"] == wechatNativeMethodType {
+				hasWechat = true
+				break
+			}
+		}
+
+		if !hasWechat {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "WeChat Pay",
+				"type":      wechatNativeMethodType,
+				"color":     "#07C160",
+				"min_topup": strconv.Itoa(operation_setting.MinTopUp),
+			})
+		}
+	}
+
 	data := gin.H{
 		"enable_online_topup":              isEpayTopUpEnabled(),
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_wechat_topup":              enableWechat,
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,

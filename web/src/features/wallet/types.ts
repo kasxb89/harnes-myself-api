@@ -124,6 +124,8 @@ export interface TopupInfo {
   enable_online_topup: boolean
   /** Whether Stripe topup is enabled */
   enable_stripe_topup: boolean
+  /** Whether the in-console WeChat Native topup is enabled */
+  enable_wechat_topup: boolean
   /** Available payment methods */
   pay_methods: PaymentMethod[]
   /** Minimum topup amount for online topup */
@@ -248,6 +250,33 @@ export interface UserWalletData {
  * Topup record status
  */
 export type TopupStatus = 'success' | 'pending' | 'expired'
+
+/**
+ * One WeChat Native order, as the order route answers it.
+ */
+export interface WechatNativeOrder {
+  out_trade_no: string
+  /** Payload the payer scans; a `weixin://` URL. */
+  code_url: string
+  /** Unix seconds the order stops being payable at. */
+  expires_at: number
+  quota: number
+  amount: number
+}
+
+/**
+ * Settlement state of one WeChat order.
+ */
+export interface WechatOrderStatus {
+  out_trade_no: string
+  status: string
+  quota: number
+  amount: number
+  paid_at: number
+}
+
+export type WechatNativeOrderResponse = ApiResponse<WechatNativeOrder>
+export type WechatOrderStatusResponse = ApiResponse<WechatOrderStatus>
 
 /**
  * Topup billing record

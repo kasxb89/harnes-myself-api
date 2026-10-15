@@ -7270,6 +7270,21 @@
     "Zhipu": "Zhipu",
     "Zhipu GLM": "Zhipu GLM",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Aliyun SMS": "Aliyun SMS",
+    "AccessKey ID": "AccessKey ID",
+    "AccessKey Secret": "AccessKey Secret",
+    "Enter new secret to update": "Enter new secret to update",
+    "Leave blank to keep the existing secret.": "Leave blank to keep the existing secret.",
+    "SMS sign name": "SMS sign name",
+    "SMS template code": "SMS template code",
+    "Save SMS settings": "Save SMS settings",
+    "The RAM user the gateway sends verification codes as. Reuse the account whose sign name and template are already approved.": "The RAM user the gateway sends verification codes as. Reuse the account whose sign name and template are already approved.",
+    "The approved SMS signature the messages are sent under.": "The approved SMS signature the messages are sent under.",
+    "The approved template, which must carry a numeric code parameter.": "The approved template, which must carry a numeric code parameter.",
+    "Scan the QR code with WeChat to complete the top-up": "Scan the QR code with WeChat to complete the top-up",
+    "Top-up succeeded": "Top-up succeeded",
+    "This order has expired. Close this dialog and try again.": "This order has expired. Close this dialog and try again.",
+    "Expires in {{seconds}}s": "Expires in {{seconds}}s"
   }
 }

@@ -36,6 +36,9 @@ export const PAYMENT_TYPES = {
   CREEM: 'creem',
   WAFFO: 'waffo',
   WAFFO_PANCAKE: 'waffo_pancake',
+  // 微信支付 Native：站内扫码，不跳外部收银台。与上面的 WECHAT（epay 渠道的
+  // 微信通道）是两个不同的东西，不能合并。
+  WECHAT_NATIVE: 'wechat_native',
 } as const
 
 /**

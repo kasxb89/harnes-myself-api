@@ -85,6 +85,7 @@ it.each([
           topupInfo={{
             enable_online_topup: true,
             enable_stripe_topup: false,
+            enable_wechat_topup: false,
             pay_methods: [],
             min_topup: 1,
             stripe_min_topup: 1,

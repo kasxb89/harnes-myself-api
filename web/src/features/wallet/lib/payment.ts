@@ -101,6 +101,13 @@ export function isWaffoPayment(paymentType: string): boolean {
 }
 
 /**
+ * Check if payment method is the in-console WeChat Native QR flow
+ */
+export function isWechatNativePayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.WECHAT_NATIVE
+}
+
+/**
  * Check if payment method is Waffo Pancake
  *
  * Pancake is a metered-style payment that goes through a dedicated checkout
@@ -115,6 +122,7 @@ export interface PaymentProcessors {
   regular: (topupAmount: number, paymentType: string) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
   waffoPancake: (topupAmount: number) => Promise<boolean>
+  wechatNative: (topupAmount: number) => Promise<boolean>
 }
 
 export async function dispatchSelectedPayment(
@@ -132,6 +140,10 @@ export async function dispatchSelectedPayment(
 
   if (isWaffoPancakePayment(paymentMethod.type)) {
     return processors.waffoPancake(topupAmount)
+  }
+
+  if (isWechatNativePayment(paymentMethod.type)) {
+    return processors.wechatNative(topupAmount)
   }
 
   return processors.regular(topupAmount, paymentMethod.type)
