@@ -69,6 +69,22 @@ AEAD_AES_256_GCM 解密，并核对支付金额后才放额度，重复通知幂
 
 所有凭据齐备时 `WechatPayConfigured()` 才返回 true，缺任何一项都只会拒绝下单而不会半途失败。
 
+## AI 创作内容管理
+
+管理员侧边栏的「AI 创作管理」（`/creation-content`）分别维护图片与视频的页面文案、分类、创作模板和风格／运镜预设。模板支持中英文提示词、真实封面上传、可选演示视频和排序；编辑弹窗内可直接「发布」或「保存草稿」，已发布模板可直接「转为草稿」，仅服务端保存成功后关闭弹窗。模板提交会一并保存页面中其他有效的修改；若其他必填内容尚未完整，则不提交且保留模板编辑。保存后的已发布内容由产品端动态读取，空清单不会填入示例模板。页面文案、分类与预设仍由页面顶部「保存内容」提交。分类停用时，其下模板不向用户展示。
+
+运营内容保存在 `CREATION_CONTENT_DIR` 指定目录（默认 `data/creation-content`），不修改数据库结构。部署时应持久化并备份整个目录。清单采用版本校验和原子替换；遇到版本冲突，后台会保留当前编辑，重新加载前请复制需要保留的修改。文件按内容哈希去重并永久保留，删除条目不会删除素材文件。
+
+公开读取接口为 `GET /api/creation/content`，素材为 `GET /api/creation/assets/:id`（视频支持 Range）。后台读写接口为 `GET/PUT /api/creation/admin/content`、`POST /api/creation/admin/assets`，沿用管理员浏览器会话保护。图片只允许 PNG、JPEG、WebP，最大 10 MiB；视频只允许 MP4、WebM，最大 100 MiB。素材内容签名由服务端校验，不能填写外部 URL。
+
+## 产品客户端更新
+
+后台「系统设置 → 运维 → 客户端更新」（`/system-settings/operations/desktop-update`）维护客户端更新开关，以及 macOS Apple 芯片、macOS Intel、Windows x64 各自的更新源目录。地址应指向包含 `nightly` 渠道元数据与对应已签名安装包的目录，不能填写单个安装包地址。正式地址使用 HTTPS；HTTP 仅用于本机 loopback 开发。默认关闭更新且地址留空，已有配置可以清空。
+
+配置沿用现有 options 存储和最高管理员权限。公开 `GET /api/status` 的 `data.desktop_update` 仅返回开关、固定的 `nightly` 渠道和三个平台的公开目录地址；不返回签名私钥、令牌或请求头。保存配置不会上传安装包，也不会执行安装。
+
+客户端正式包使用打包时绑定的后台来源读取配置；构建输入为 `DSH_DESKTOP_UPDATE_CONFIG_ORIGIN`。已接入的客户端在下一次检查时使用后台最新设置，未接入此能力的旧客户端需要先分发新版安装包。下载和安装仍执行客户端原有的签名校验与用户确认流程；未配置、停用或读取失败不会被当成“已是最新版本”。
+
 ## 许可证与归属
 
 本项目是 [new-api](https://github.com/QuantumNous/new-api)（作者 **QuantumNous**，AGPL-3.0）

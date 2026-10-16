@@ -25,6 +25,9 @@ var accessTokenExemptRoutes = []string{
 	"GET /api/setup",
 	"POST /api/setup",
 	"GET /api/status",
+	"GET /api/creation/content",
+	"GET /api/creation/assets/:id",
+	"HEAD /api/creation/assets/:id",
 	"GET /api/uptime/status",
 	"GET /api/notice",
 	"GET /api/user-agreement",
@@ -198,5 +201,26 @@ func TestAccessTokenVerificationScopesAreAllListed(t *testing.T) {
 	for _, scope := range scopes {
 		_, listed := service.AccessTokenVerificationScope(scope)
 		assert.True(t, listed, "verification scope %s has no access token rule", scope)
+	}
+}
+
+// Creation operations deliberately offer no PAT grant: operators use the dashboard session.
+func TestCreationContentRoutesHaveExplicitPublicAndSessionBoundaries(t *testing.T) {
+	engine := newAccessTokenScopeTestEngine(t)
+	registered := map[string]bool{}
+	for _, route := range engine.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, key := range []string{"GET /api/creation/content", "GET /api/creation/assets/:id", "HEAD /api/creation/assets/:id"} {
+		require.True(t, registered[key], key)
+		_, declared := middleware.AccessTokenRouteRule(key)
+		assert.False(t, declared, key)
+		assert.Contains(t, accessTokenExemptRoutes, key)
+	}
+	for _, key := range []string{"GET /api/creation/admin/content", "PUT /api/creation/admin/content", "POST /api/creation/admin/assets"} {
+		require.True(t, registered[key], key)
+		rule, declared := middleware.AccessTokenRouteRule(key)
+		require.True(t, declared, key)
+		assert.Equal(t, "session", rule.Kind(), key)
 	}
 }

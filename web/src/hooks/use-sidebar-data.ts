@@ -29,6 +29,7 @@ import {
   MessageSquare,
   PlugZap,
   Radio,
+  Receipt,
   ServerCog,
   Settings,
   ShieldCheck,
@@ -151,6 +152,17 @@ export function useSidebarData(): SidebarData {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
+          },
+          {
+            title: t('AI Creation Management'),
+            url: '/creation-content',
+            icon: LayoutDashboard,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Profit & Upstream Top-ups'),
+            url: '/upstream-topups',
+            icon: Receipt,
           },
           {
             title: t('Subscriptions'),

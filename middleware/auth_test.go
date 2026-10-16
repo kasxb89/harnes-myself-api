@@ -296,8 +296,12 @@ func createMiddlewareScopedToken(t *testing.T, userID int, expiresAt int64, scop
 	return raw, token
 }
 
-func middlewareBearerRequest(router *gin.Engine, path, token string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodGet, path, nil)
+func middlewareBearerRequest(router *gin.Engine, path, token string, methods ...string) *httptest.ResponseRecorder {
+	method := http.MethodGet
+	if len(methods) > 0 && methods[0] != "" {
+		method = methods[0]
+	}
+	request := httptest.NewRequest(method, path, nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -329,10 +333,13 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 	router.GET("/api/undeclared", UserAuth(), ok)
 	router.GET("/api/channel/", AdminAuth(), RequirePermission(authz.ChannelRead), ok)
 	router.GET("/api/pricing", TryUserAuth(), ok)
+	router.GET("/api/creation/admin/content", AdminAuth(), ok)
+	router.PUT("/api/creation/admin/content", AdminAuth(), ok)
+	router.POST("/api/creation/admin/assets", AdminAuth(), ok)
 
 	for _, test := range []struct {
-		name, path, token, code, reason string
-		status                          int
+		name, path, token, code, reason, method string
+		status                                  int
 	}{
 		{name: "granted scope on a never expiring token", path: "/api/user/self", token: profile, status: http.StatusOK},
 		{name: "missing scope", path: "/api/user/self", token: channel, status: http.StatusForbidden, code: "ACCESS_TOKEN_SCOPE_DENIED", reason: "scope_denied"},
@@ -343,9 +350,15 @@ func TestUserAuthAppliesAccessTokenRouteRules(t *testing.T) {
 		{name: "expired token", path: "/api/user/self", token: expired, status: http.StatusUnauthorized, code: "ACCESS_TOKEN_EXPIRED", reason: "expired"},
 		{name: "legacy token before the deadline", path: "/api/user/self", token: legacy, status: http.StatusOK},
 		{name: "legacy token on a session route", path: "/api/user/access_tokens", token: legacy, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		{name: "creation read rejects profile token", method: "GET", path: "/api/creation/admin/content", token: profile, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		{name: "creation read rejects legacy token", method: "GET", path: "/api/creation/admin/content", token: legacy, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		{name: "creation save rejects profile token", method: "PUT", path: "/api/creation/admin/content", token: profile, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		{name: "creation save rejects legacy token", method: "PUT", path: "/api/creation/admin/content", token: legacy, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		{name: "creation upload rejects profile token", method: "POST", path: "/api/creation/admin/assets", token: profile, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
+		{name: "creation upload rejects legacy token", method: "POST", path: "/api/creation/admin/assets", token: legacy, status: http.StatusForbidden, code: "AUTH_SESSION_REQUIRED", reason: "session_required"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			response := middlewareBearerRequest(router, test.path, test.token)
+			response := middlewareBearerRequest(router, test.path, test.token, test.method)
 			assert.Equal(t, test.status, response.Code, response.Body.String())
 			if test.code != "" {
 				assert.Contains(t, response.Body.String(), `"code":"`+test.code+`"`)

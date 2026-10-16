@@ -28,7 +28,9 @@ import { translateServerText } from '@/lib/server-error-message'
 
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
+import { formatLogQuota } from '@/lib/format'
 import { buildQuotaAuditOperation } from './quota-audit-operation'
+import { getLogTypeConfig } from './utils'
 
 export { normalizeTierLabel }
 
@@ -636,4 +638,64 @@ export function renderAuditContent(
   }
   const params = { ...op.params }
   return t(template, params)
+}
+
+/**
+ * Content keys the gateway writes for logs that move money without a model
+ * call. It stores the English source key, which is also the i18n key, so the
+ * kind column reads the first part to tell a recharge from a reward instead of
+ * collapsing them all into the numeric log type.
+ */
+const LOG_KIND_BY_CONTENT_KEY: ReadonlyArray<{
+  fragment: string
+  label: string
+}> = [
+  { fragment: 'sign-up bonus', label: 'Sign-up bonus' },
+  { fragment: 'Invitation code bonus', label: 'Invitation bonus' },
+  { fragment: 'Bonus for inviting a user', label: 'Invitation bonus' },
+  { fragment: 'redemption code', label: 'Redemption code' },
+  { fragment: 'Daily check-in', label: 'Daily check-in' },
+  { fragment: 'Administrator completed the order', label: 'Admin top-up' },
+  { fragment: 'top-up succeeded', label: 'Top-up' },
+]
+
+/**
+ * What a log entry is, for the log table's kind column: the specific reward or
+ * payment when the content names one, otherwise the entry's numeric log type.
+ */
+export function logKindLabel(
+  log: Pick<UsageLog, 'type'>,
+  other: LogOtherData | null | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  const key = other?.content_parts?.[0]?.key
+  if (typeof key === 'string') {
+    const match = LOG_KIND_BY_CONTENT_KEY.find((entry) =>
+      key.includes(entry.fragment)
+    )
+    if (match) return t(match.label)
+  }
+  return t(getLogTypeConfig(log.type).label)
+}
+
+/**
+ * The money a log row moved, for the log table's amount column.
+ *
+ * Top-up, reward, and redemption logs leave the row's own quota at zero and
+ * carry the amount as an already-formatted string in their content params, so
+ * reading the row quota alone shows ¥0 for exactly the rows this column exists
+ * to surface. Consume and refund rows keep the amount in quota.
+ */
+export function logAmountLabel(
+  log: Pick<UsageLog, 'quota'>,
+  other: LogOtherData | null | undefined
+): string {
+  const parts = other?.content_parts
+  if (Array.isArray(parts)) {
+    for (const part of parts) {
+      const quota = part.params?.quota
+      if (typeof quota === 'string' && quota !== '') return quota
+    }
+  }
+  return formatLogQuota(log.quota)
 }

@@ -39,7 +39,7 @@ func TestStatus(c *gin.Context) {
 }
 
 func GetStatus(c *gin.Context) {
-
+	c.Header("Cache-Control", "no-store")
 	cs := console_setting.GetConsoleSetting()
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
 	common.OptionMapRWMutex.RLock()
@@ -49,6 +49,7 @@ func GetStatus(c *gin.Context) {
 
 	data := gin.H{
 		"version":                     common.Version,
+		"desktop_update":              system_setting.GetDesktopUpdateStatus(),
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,

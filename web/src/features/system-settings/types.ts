@@ -283,6 +283,8 @@ export type BillingSettings = {
   'general_setting.quota_display_type': string
   'general_setting.custom_currency_symbol': string
   'general_setting.custom_currency_exchange_rate': number
+  'model_fallback_setting.model_fallback_map': string
+  'model_fallback_setting.model_fallback_max_candidates': number
   DisplayInCurrencyEnabled: boolean
   DisplayTokenStatEnabled: boolean
   ModelPrice: string
@@ -358,6 +360,10 @@ export type BillingSettings = {
 }
 
 export type OperationsSettings = {
+  'desktop_update.enabled': boolean
+  'desktop_update.mac_arm64_url': string
+  'desktop_update.mac_x64_url': string
+  'desktop_update.win_x64_url': string
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean

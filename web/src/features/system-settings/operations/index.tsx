@@ -27,6 +27,10 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
+  'desktop_update.enabled': false,
+  'desktop_update.mac_arm64_url': '',
+  'desktop_update.mac_x64_url': '',
+  'desktop_update.win_x64_url': '',
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,

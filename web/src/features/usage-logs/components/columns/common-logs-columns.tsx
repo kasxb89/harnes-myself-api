@@ -63,6 +63,8 @@ import {
   parseLogOther,
   isViolationFeeLog,
   logTokenName,
+  logKindLabel,
+  logAmountLabel,
   renderAuditContent,
   renderLogContent,
 } from '../../lib/format'
@@ -605,6 +607,34 @@ export function useCommonLogsColumns(
         }
       )
     }
+
+    // 充值、注册赠送、兑换这些行不在 Cost 列里（Cost 只覆盖 0/2/5/6），
+    // 金额此前只作为一段文字挤在 Details 里，这里给它们各自一列。
+    columns.push({
+      id: 'log_kind',
+      header: t('Type'),
+      cell: function LogKindCell({ row }) {
+        const log = row.original
+        return (
+          <span className='whitespace-nowrap'>
+            {logKindLabel(log, parseLogOther(log.other), t)}
+          </span>
+        )
+      },
+    })
+
+    columns.push({
+      id: 'log_amount',
+      header: t('Amount'),
+      cell: function LogAmountCell({ row }) {
+        const log = row.original
+        return (
+          <span className='whitespace-nowrap'>
+            {logAmountLabel(log, parseLogOther(log.other))}
+          </span>
+        )
+      },
+    })
 
     columns.push({
       accessorKey: 'token_name',

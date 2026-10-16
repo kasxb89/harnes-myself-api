@@ -36,24 +36,27 @@ export function useWechatNativePayment() {
   const [order, setOrder] = useState<WechatNativeOrder | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  const processWechatNativePayment = useCallback(async (topupAmount: number) => {
-    try {
-      setProcessing(true)
-      const response = await createWechatNativeOrder(Math.floor(topupAmount))
-      if (!isApiSuccess(response) || !response.data?.code_url) {
-        handleServerError(response, i18next.t('Payment request failed'))
+  const processWechatNativePayment = useCallback(
+    async (topupAmount: number) => {
+      try {
+        setProcessing(true)
+        const response = await createWechatNativeOrder(Math.floor(topupAmount))
+        if (!isApiSuccess(response) || !response.data?.code_url) {
+          handleServerError(response, i18next.t('Payment request failed'))
+          return false
+        }
+        setOrder(response.data)
+        setDialogOpen(true)
+        return true
+      } catch (error) {
+        handleServerError(error, i18next.t('Payment request failed'))
         return false
+      } finally {
+        setProcessing(false)
       }
-      setOrder(response.data)
-      setDialogOpen(true)
-      return true
-    } catch (error) {
-      handleServerError(error, i18next.t('Payment request failed'))
-      return false
-    } finally {
-      setProcessing(false)
-    }
-  }, [])
+    },
+    []
+  )
 
   return {
     processing,

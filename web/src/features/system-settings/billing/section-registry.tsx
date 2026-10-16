@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
+import { ModelFallbackSection } from '../general/model-fallback-section'
 import { PricingSection } from '../general/pricing-section'
 import { QuotaSettingsSection } from '../general/quota-settings-section'
 import { PaymentSettingsSection } from '../integrations/payment-settings-section'
@@ -197,6 +198,24 @@ const BILLING_SECTIONS = [
           enabled: settings['checkin_setting.enabled'],
           minQuota: settings['checkin_setting.min_quota'],
           maxQuota: settings['checkin_setting.max_quota'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'model-fallback',
+    titleKey: 'Model Fallback',
+    build: (settings: BillingSettings) => (
+      <ModelFallbackSection
+        defaultValues={{
+          model_fallback_setting: {
+            model_fallback_map:
+              settings['model_fallback_setting.model_fallback_map'] ?? '',
+            model_fallback_max_candidates:
+              settings[
+                'model_fallback_setting.model_fallback_max_candidates'
+              ] ?? 3,
+          },
         }}
       />
     ),

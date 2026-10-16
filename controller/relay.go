@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -91,7 +92,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if newAPIError != nil {
 			service.RecordRequestPolicyTermination(c, newAPIError)
 			logger.LogError(c, common.LogText("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			// The log above keeps the real failure for operators; the client reads
+			// congestion, because every channel and fallback model this request was
+			// allowed to use has already been tried. An error the client's request
+			// caused keeps its own message.
+			if service.IsUpstreamSideFailure(c, newAPIError) {
+				newAPIError.SetMessage(common.MessageWithRequestId(i18n.T(c, i18n.MsgRelayGroupUpstreamSaturated), requestId))
+			} else {
+				newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -146,23 +155,64 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = relay.RefundFailedRequestBilling(c, relayInfo, newAPIError)
 	}()
 
+	// The models this request may be served by, in order: the one it asked for
+	// first, then the operator's configured fallbacks for it.
+	candidates := append([]string{relayInfo.OriginModelName}, operation_setting.GetModelFallbackCandidates(relayInfo.OriginModelName)...)
+	candidateIndex := 0
 	retryParam := &service.RetryParam{
 		Ctx:         c,
 		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
+		ModelName:   candidates[0],
 		RequestPath: c.Request.URL.Path,
 		Retry:       common.GetPointer(0),
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	// advanceFallback moves the request onto the next configured model when the
+	// failure says the upstream is at fault, and reports whether the attempts
+	// should continue. A pass-through request keeps its model (the original body
+	// is forwarded unchanged), and so does a realtime socket.
+	advanceFallback := func(lastErr *types.NewAPIError) bool {
+		next := candidateIndex + 1
+		if !service.DecideModelFallback(c, lastErr, next, len(candidates)) {
+			return false
+		}
+		if fallbackSuppressed(relayInfo) {
+			logger.LogWarn(c, common.LogText("model fallback to %s is unavailable for this request: pass-through and realtime requests cannot change model", candidates[next]))
+			return false
+		}
+		// Another model is selected from the start of the group order.
+		common.SetContextKey(c, constant.ContextKeyAutoGroupIndex, 0)
+		if fallbackErr := relay.ReprepareFallbackBilling(c, relayInfo, candidates[next]); fallbackErr != nil {
+			logger.LogWarn(c, common.LogText("model fallback to %s skipped: %s", candidates[next], fallbackErr.Error()))
+			candidateIndex = next
+			return false
+		}
+		logger.LogInfo(c, common.LogText("model fallback: %s -> %s (candidate %d/%d)", candidates[candidateIndex], candidates[next], next, len(candidates)-1))
+		service.RequestPolicy(c).AddEvent(service.PolicyEvent{
+			ErrorCode:   string(lastErr.GetErrorCode()),
+			ErrorSource: "upstream",
+			Decision:    service.PolicyDecision{Action: "fallback", Reason: "no_usable_channel", Source: "fallback"},
+			Health:      "unchanged",
+		})
+		candidateIndex = next
+		retryParam.ModelName = candidates[next]
+		*retryParam.Retry = 0
+		relayInfo.LastError = nil
+		return true
+	}
+
+	for {
 		relayInfo.StreamStatus = nil
 		relayInfo.PerformanceBusinessRejection = false
 		relayInfo.PerformanceOutputTokens = 0
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
+			if advanceFallback(channelErr) {
+				continue
+			}
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
 			break
@@ -210,6 +260,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
 		if decision.Action != "retry" {
+			if advanceFallback(newAPIError) {
+				continue
+			}
+			break
+		}
+		// A channel error retries even with an exhausted budget, so the budget is
+		// checked here rather than in the loop condition.
+		retryParam.IncreaseRetry()
+		if retryParam.GetRetry() > common.RetryTimes {
+			if advanceFallback(newAPIError) {
+				continue
+			}
 			break
 		}
 	}
@@ -219,6 +281,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryLogStr := common.LogText("retry: %s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
 	}
+}
+
+// fallbackSuppressed reports whether this request must keep the model it asked
+// for: a pass-through request forwards the original body unchanged, so a new
+// model name would never reach upstream, and a realtime socket cannot switch
+// models mid-stream.
+func fallbackSuppressed(relayInfo *relaycommon.RelayInfo) bool {
+	if relayInfo.RelayFormat == types.RelayFormatOpenAIRealtime {
+		return true
+	}
+	if model_setting.GetGlobalSettings().PassThroughRequestEnabled {
+		return true
+	}
+	return relayInfo.ChannelMeta != nil && relayInfo.ChannelMeta.ChannelSetting.PassThroughBodyEnabled
 }
 
 // CountClaudeTokens implements Anthropic's token-counting utility endpoint.

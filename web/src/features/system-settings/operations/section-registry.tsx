@@ -21,6 +21,7 @@ import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
 import { SmsSettingsSection } from '../integrations/sms-settings-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
+import { DesktopUpdateSection } from '../maintenance/desktop-update-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
@@ -144,6 +145,21 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'desktop-update',
+    titleKey: 'Client updates',
+    build: (settings: OperationsSettings) => (
+      <DesktopUpdateSection
+        defaultValues={{
+          'desktop_update.enabled': settings['desktop_update.enabled'],
+          'desktop_update.mac_arm64_url':
+            settings['desktop_update.mac_arm64_url'],
+          'desktop_update.mac_x64_url': settings['desktop_update.mac_x64_url'],
+          'desktop_update.win_x64_url': settings['desktop_update.win_x64_url'],
         }}
       />
     ),

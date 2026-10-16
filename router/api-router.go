@@ -17,7 +17,7 @@ import (
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
-	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
+	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/creation/assets/"})))
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
@@ -26,6 +26,17 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
+		creationRoute := apiRouter.Group("/creation")
+		{
+			creationRoute.GET("/content", controller.GetCreationContent)
+			creationRoute.GET("/assets/:id", controller.GetCreationAsset)
+			creationRoute.HEAD("/assets/:id", controller.GetCreationAsset)
+			creationAdmin := creationRoute.Group("/admin", middleware.AdminAuth())
+			creationAdmin.GET("/content", controller.GetAdminCreationContent)
+			creationAdmin.PUT("/content", middleware.SessionCookieOriginGuard(), controller.SaveCreationContent)
+			creationAdmin.POST("/assets", middleware.SessionCookieOriginGuard(), controller.UploadCreationAsset)
+		}
+
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
@@ -320,6 +331,15 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				tokenUsageRoute.GET("/", controller.GetTokenUsage)
 			}
+		}
+
+		upstreamTopupRoute := apiRouter.Group("/upstream-topup")
+		upstreamTopupRoute.Use(middleware.AdminAuth())
+		{
+			upstreamTopupRoute.GET("/", controller.GetUpstreamTopups)
+			upstreamTopupRoute.POST("/", controller.AddUpstreamTopup)
+			upstreamTopupRoute.PUT("/:id", controller.UpdateUpstreamTopup)
+			upstreamTopupRoute.DELETE("/:id", controller.DeleteUpstreamTopup)
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")

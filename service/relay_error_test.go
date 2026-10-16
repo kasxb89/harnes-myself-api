@@ -211,3 +211,37 @@ func TestRequestPolicyEventsReachLogAdminInfo(t *testing.T) {
 	AppendRelayLogAdminInfo(untouched, nil, other)
 	assert.NotContains(t, other.Snapshot()["admin_info"], "request_policy", "requests without decisions do not carry an empty record")
 }
+
+func TestDecideModelFallback(t *testing.T) {
+	noChannel := types.NewError(errors.New("no available channel"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	channelFailure := types.NewError(errors.New("no available key"), types.ErrorCodeChannelNoAvailableKey)
+	upstreamServerError := types.NewOpenAIError(errors.New("upstream"), types.ErrorCodeBadResponseStatusCode, http.StatusInternalServerError)
+	upstreamClientError := types.NewOpenAIError(errors.New("bad request"), types.ErrorCodeBadResponseStatusCode, http.StatusBadRequest)
+	oversizedRequest := types.NewErrorWithStatusCode(errors.New("too large"), types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+
+	for _, tc := range []struct {
+		name      string
+		err       *types.NewAPIError
+		candidate int
+		total     int
+		setup     func(*gin.Context)
+		want      bool
+	}{
+		{name: "a model with no usable channel falls back", err: noChannel, candidate: 1, total: 2, want: true},
+		{name: "a channel failure falls back", err: channelFailure, candidate: 1, total: 2, want: true},
+		{name: "an upstream server error falls back", err: upstreamServerError, candidate: 1, total: 2, want: true},
+		{name: "an upstream client error stays put", err: upstreamClientError, candidate: 1, total: 2, want: false},
+		{name: "the deployment's own rejection stays put", err: oversizedRequest, candidate: 1, total: 2, want: false},
+		{name: "the last candidate stays put", err: noChannel, candidate: 2, total: 2, want: false},
+		{name: "a request that produced no error stays put", err: nil, candidate: 1, total: 2, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			if tc.setup != nil {
+				tc.setup(c)
+			}
+			assert.Equal(t, tc.want, DecideModelFallback(c, tc.err, tc.candidate, tc.total))
+		})
+	}
+}

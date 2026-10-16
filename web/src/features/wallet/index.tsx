@@ -391,7 +391,10 @@ export function Wallet(props: WalletProps) {
         paymentMethod={selectedPaymentMethod}
         calculating={calculating}
         processing={
-          processing || waffoProcessing || pancakeProcessing || wechatNativeProcessing
+          processing ||
+          waffoProcessing ||
+          pancakeProcessing ||
+          wechatNativeProcessing
         }
         discountRate={getDiscountRate()}
         usdExchangeRate={effectiveUsdExchangeRate}

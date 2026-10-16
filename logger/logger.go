@@ -151,28 +151,35 @@ func LogQuota(quota int) string {
 
 func FormatQuota(quota int) string {
 	q := float64(quota)
+	var symbol string
+	var amount float64
 	switch operation_setting.GetQuotaDisplayType() {
 	case operation_setting.QuotaDisplayTypeCNY:
-		usd := q / common.QuotaPerUnit
-		cny := usd * operation_setting.USDExchangeRate
-		return fmt.Sprintf("¥%.6f", cny)
+		symbol = "¥"
+		amount = q / common.QuotaPerUnit * operation_setting.USDExchangeRate
 	case operation_setting.QuotaDisplayTypeCustom:
-		usd := q / common.QuotaPerUnit
 		rate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
-		symbol := operation_setting.GetGeneralSetting().CustomCurrencySymbol
-		if symbol == "" {
-			symbol = "¤"
-		}
 		if rate <= 0 {
 			rate = 1
 		}
-		v := usd * rate
-		return fmt.Sprintf("%s%.6f", symbol, v)
+		symbol = operation_setting.GetGeneralSetting().CustomCurrencySymbol
+		if symbol == "" {
+			symbol = "¤"
+		}
+		amount = q / common.QuotaPerUnit * rate
 	case operation_setting.QuotaDisplayTypeTokens:
 		return fmt.Sprintf("%d", quota)
-	default:
-		return fmt.Sprintf("＄%.6f", q/common.QuotaPerUnit)
+	default: // USD
+		symbol = "＄"
+		amount = q / common.QuotaPerUnit
 	}
+	// 金额按两位小数展示：整数配额换不回精确的货币值（1 元 = 68493.15 配额，
+	// 入账取整成 68493），六位小数会把 ¥1.00 显示成 ¥0.999998。
+	// 但非零的小额不能被舍成 0.00，那会丢掉真实差额。
+	if amount != 0 && amount > -0.005 && amount < 0.005 {
+		return fmt.Sprintf("%s%.6f", symbol, amount)
+	}
+	return fmt.Sprintf("%s%.2f", symbol, amount)
 }
 
 // LogJson 仅供测试使用 only for test
