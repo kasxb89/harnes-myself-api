@@ -7296,7 +7296,6 @@
     "Users paid in": "Users paid in",
     "Paid upstream": "Paid upstream",
     "Profit": "Profit",
-    "Record what you actually paid each upstream by hand. Profit is what users paid this deployment minus what it paid upstream; top-ups entered in another currency are listed separately below.": "Record what you actually paid each upstream by hand. Profit is what users paid this deployment minus what it paid upstream; top-ups entered in another currency are listed separately below.",
     "Record a top-up": "Record a top-up",
     "Paid on": "Paid on",
     "Edit a top-up": "Edit a top-up",
@@ -7386,6 +7385,11 @@
     "Invitation bonus": "Thưởng mời",
     "Redemption code": "Mã đổi thưởng",
     "Daily check-in": "Điểm danh hằng ngày",
-    "Admin top-up": "Quản trị viên nạp"
+    "Admin top-up": "Quản trị viên nạp",
+    "User consumption": "Tiêu thụ của người dùng",
+    "Record what you actually paid each upstream by hand. Profit is what users paid in minus what this deployment paid upstream - prepaid balance counts as revenue, so read it next to user consumption. Top-ups entered in another currency are listed separately below.": "Tự nhập số tiền bạn thực trả cho từng nhà cung cấp. Lợi nhuận là số người dùng đã trả trừ số triển khai này đã trả cho nhà cung cấp; số dư trả trước chưa dùng vẫn được tính, hãy đọc kèm mục tiêu thụ của người dùng. Các khoản nạp bằng đơn vị tiền khác được liệt kê riêng bên dưới.",
+    "Consumption trend": "Xu hướng tiêu thụ",
+    "Active users today": "Người dùng hoạt động hôm nay",
+    "Calls today": "Lượt gọi hôm nay"
   }
 }

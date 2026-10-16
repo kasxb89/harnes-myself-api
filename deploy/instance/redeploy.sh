@@ -20,6 +20,13 @@ remote() { ssh -i "$KEY" -o BatchMode=yes "root@$HOST" "$@"; }
 echo "== 1/7 构建前端（产物会被 Go 二进制内嵌）"
 cd "$REPO/web"
 bun run build 2>&1 | tail -2
+# 构建产物自检：第 7 步会读容器实际在跑的那份，两者必须同名，否则说明这次部署没吃上。
+BUILT_INDEX=$(basename "$(ls -t dist/static/js/index.*.js | head -1)")
+if ! grep -q "User consumption" dist/static/js/index.*.js; then
+  echo "  ！构建产物里缺少当前源码的文案（dist 未随源码更新？）—— 中止" >&2
+  exit 1
+fi
+echo "  构建出的 index: $BUILT_INDEX"
 
 echo
 echo "== 2/7 交叉编译（linux/amd64）"

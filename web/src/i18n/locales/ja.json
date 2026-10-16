@@ -7296,7 +7296,6 @@
     "Users paid in": "Users paid in",
     "Paid upstream": "Paid upstream",
     "Profit": "Profit",
-    "Record what you actually paid each upstream by hand. Profit is what users paid this deployment minus what it paid upstream; top-ups entered in another currency are listed separately below.": "Record what you actually paid each upstream by hand. Profit is what users paid this deployment minus what it paid upstream; top-ups entered in another currency are listed separately below.",
     "Record a top-up": "Record a top-up",
     "Paid on": "Paid on",
     "Edit a top-up": "Edit a top-up",
@@ -7386,6 +7385,11 @@
     "Invitation bonus": "招待ボーナス",
     "Redemption code": "引き換えコード",
     "Daily check-in": "デイリーチェックイン",
-    "Admin top-up": "管理者によるチャージ"
+    "Admin top-up": "管理者によるチャージ",
+    "User consumption": "ユーザー消費",
+    "Record what you actually paid each upstream by hand. Profit is what users paid in minus what this deployment paid upstream - prepaid balance counts as revenue, so read it next to user consumption. Top-ups entered in another currency are listed separately below.": "各上流に実際に支払った金額を手入力します。利益はユーザーの支払額から上流への支払額を引いたものです。未消費の前払い残高も含まれるため「ユーザー消費」と併せてご確認ください。他通貨での入金は下に別途表示されます。",
+    "Consumption trend": "消費トレンド",
+    "Active users today": "本日のアクティブユーザー",
+    "Calls today": "本日の呼び出し"
   }
 }

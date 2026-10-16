@@ -3,6 +3,7 @@ package controller
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -58,9 +59,9 @@ func (request *upstreamTopupRequest) normalize() *model.UpstreamTopup {
 	}
 }
 
-// GetUpstreamTopups returns the recorded upstream payments together with the two
-// totals the profit view subtracts: what users paid this deployment, and what it
-// paid upstream.
+// GetUpstreamTopups returns the recorded upstream payments with the three
+// totals the profit view needs: what users paid this deployment, what users
+// actually consumed (all time and today), and what it paid upstream.
 func GetUpstreamTopups(c *gin.Context) {
 	topups, err := model.ListUpstreamTopups()
 	if err != nil {
@@ -77,10 +78,38 @@ func GetUpstreamTopups(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Consumption is the recognised revenue: a prepaid balance is only earned
+	// once the user spends it, so the profit view cannot read top-ups alone.
+	consumed, err := model.SumUsedQuota(0, 0, 0, "", "", "", 0, "")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	consumedToday, err := model.SumUsedQuota(0, todayStart, 0, "", "", "", 0, "")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	activeToday, err := model.CountConsumersSince(todayStart)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	daily, err := model.ConsumptionByDay(14)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, gin.H{
-		"items":       topups,
-		"spent_cents": spent,
-		"received":    received,
+		"items":                topups,
+		"spent_cents":          spent,
+		"received":             received,
+		"consumed_quota":       consumed.Quota,
+		"consumed_quota_today": consumedToday.Quota,
+		"active_users_today":   activeToday,
+		"daily":                daily,
 	})
 }
 

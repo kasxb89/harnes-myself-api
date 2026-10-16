@@ -40,8 +40,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { api } from '@/lib/api'
-import { formatLocalCurrencyAmount } from '@/lib/currency'
+import {
+  formatLocalCurrencyAmount,
+  formatQuotaWithCurrency,
+  type CurrencyFormatOptions,
+} from '@/lib/currency'
 import { handleServerError } from '@/lib/handle-server-error'
+
+import {
+  ConsumptionTrendChart,
+  type DailyConsumptionPoint,
+} from './components/consumption-trend-chart'
 
 /** One hand-entered payment this deployment made to an upstream provider. */
 type UpstreamTopup = {
@@ -59,6 +68,15 @@ type LedgerPayload = {
   spent_cents: Record<string, number>
   /** Received from users, in the deployment's own currency. */
   received: Record<string, number>
+  /** Quota users actually consumed in total. Quota, not money: the deployment's
+   * own rate converts it, so a re-priced deployment still reads correctly. */
+  consumed_quota: number
+  /** Quota users consumed since local midnight. */
+  consumed_quota_today: number
+  /** Users who consumed anything since local midnight. */
+  active_users_today: number
+  /** Consumption per day, oldest first, for the trend chart. */
+  daily: DailyConsumptionPoint[]
 }
 
 const EMPTY_FORM = {
@@ -68,6 +86,13 @@ const EMPTY_FORM = {
   currency: 'CNY',
   paidAt: '',
   note: '',
+}
+
+/** Consumption is reconciled against real payments, so it keeps cents. */
+const MONEY_OPTIONS: CurrencyFormatOptions = {
+  digitsLarge: 2,
+  digitsSmall: 4,
+  abbreviate: false,
 }
 
 function formatCents(cents: number, currency: string): string {
@@ -145,20 +170,47 @@ export function UpstreamTopupsPage() {
     (sum, value) => sum + value,
     0
   )
+  const consumedToday = formatQuotaWithCurrency(
+    ledger.data?.consumed_quota_today ?? 0,
+    MONEY_OPTIONS
+  )
+  const consumedTotal = formatQuotaWithCurrency(
+    ledger.data?.consumed_quota ?? 0,
+    MONEY_OPTIONS
+  )
   const profit = received - spentCny
+  const daily = ledger.data?.daily ?? []
+  // The series is dense and ends today, so its last point is today's row.
+  const callsToday = daily.at(-1)?.calls ?? 0
   const otherCurrencies = Object.entries(ledger.data?.spent_cents ?? {}).filter(
     ([currency]) => currency !== 'CNY'
   )
 
   return (
     <div className='flex flex-col gap-4 p-4'>
-      <div className='grid gap-4 sm:grid-cols-3'>
+      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
         <Card>
           <CardHeader>
             <CardTitle>{t('Users paid in')}</CardTitle>
           </CardHeader>
           <CardContent className='text-2xl font-semibold'>
             {formatLocalCurrencyAmount(received)}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('User consumption')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className='flex items-baseline gap-2'>
+              <span className='text-muted-foreground text-sm'>
+                {t('Today')}
+              </span>
+              <span className='text-2xl font-semibold'>{consumedToday}</span>
+            </div>
+            <p className='text-muted-foreground text-sm'>
+              {t('Total')} {consumedTotal}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -185,10 +237,25 @@ export function UpstreamTopupsPage() {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('Consumption trend')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className='text-muted-foreground mb-3 text-sm'>
+            {t('Active users today')} {ledger.data?.active_users_today ?? 0} ·{' '}
+            {t('Calls today')} {callsToday}
+          </p>
+          <div className='h-[280px]'>
+            <ConsumptionTrendChart points={daily} />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className='flex items-center justify-between'>
         <p className='text-muted-foreground text-sm'>
           {t(
-            'Record what you actually paid each upstream by hand. Profit is what users paid this deployment minus what it paid upstream; top-ups entered in another currency are listed separately below.'
+            'Record what you actually paid each upstream by hand. Profit is what users paid in minus what this deployment paid upstream - prepaid balance counts as revenue, so read it next to user consumption. Top-ups entered in another currency are listed separately below.'
           )}
         </p>
         <Button
@@ -283,7 +350,7 @@ export function UpstreamTopupsPage() {
             onChange={(event) => {
               setForm({
                 ...form,
-                amount: event.target.value.replace(/[^\d.]/g, ''),
+                amount: event.target.value.replaceAll(/[^\d.]/g, ''),
               })
             }}
           />

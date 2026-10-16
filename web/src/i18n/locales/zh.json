@@ -7296,7 +7296,6 @@
     "Users paid in": "用户实付",
     "Paid upstream": "已向上游支付",
     "Profit": "利润",
-    "Record what you actually paid each upstream by hand. Profit is what users paid this deployment minus what it paid upstream; top-ups entered in another currency are listed separately below.": "手工登记你实际付给各上游的钱。利润 = 用户实付 − 已付上游；用其它币种登记的充值单独列在下方。",
     "Record a top-up": "登记一笔充值",
     "Paid on": "支付日期",
     "Edit a top-up": "修改这笔充值",
@@ -7386,6 +7385,11 @@
     "Invitation bonus": "邀请奖励",
     "Redemption code": "兑换码",
     "Daily check-in": "每日签到",
-    "Admin top-up": "管理员补单"
+    "Admin top-up": "管理员补单",
+    "User consumption": "用户消费",
+    "Record what you actually paid each upstream by hand. Profit is what users paid in minus what this deployment paid upstream - prepaid balance counts as revenue, so read it next to user consumption. Top-ups entered in another currency are listed separately below.": "手工登记你实际付给各上游的钱。利润 = 用户实付 − 已付上游；实付里含尚未消耗的预充值，请与「用户消费」对照着看。用其它币种登记的充值单独列在下方。",
+    "Consumption trend": "消费趋势",
+    "Active users today": "今日活跃用户",
+    "Calls today": "今日调用"
   }
 }

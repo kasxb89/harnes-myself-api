@@ -739,6 +739,71 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return stat, nil
 }
 
+// DailyConsumption is one day of consumption on the profit view's trend.
+type DailyConsumption struct {
+	DayStart int64 `json:"day_start"`
+	Quota    int   `json:"quota"`
+	Calls    int   `json:"calls"`
+}
+
+// ConsumptionByDay returns a dense per-day consumption series ending today,
+// oldest first, so the trend chart has no gaps. Buckets are computed in Go
+// rather than with a date function, which keeps the query working on SQLite,
+// MySQL, and PostgreSQL alike; the window bounds how many log rows it reads.
+func ConsumptionByDay(days int) ([]DailyConsumption, error) {
+	series := make([]DailyConsumption, 0, max(days, 0))
+	if days <= 0 {
+		return series, nil
+	}
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	windowStart := today.AddDate(0, 0, -(days - 1)).Unix()
+
+	rows := make([]struct {
+		CreatedAt int64
+		Quota     int
+	}, 0)
+	err := LOG_DB.Table("logs").
+		Select("created_at, quota").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, windowStart).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	buckets := make(map[int64]*DailyConsumption, days)
+	for _, row := range rows {
+		at := time.Unix(row.CreatedAt, 0)
+		key := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, at.Location()).Unix()
+		bucket, ok := buckets[key]
+		if !ok {
+			bucket = &DailyConsumption{DayStart: key}
+			buckets[key] = bucket
+		}
+		bucket.Quota += row.Quota
+		bucket.Calls++
+	}
+	for i := days - 1; i >= 0; i-- {
+		key := today.AddDate(0, 0, -i).Unix()
+		if bucket, ok := buckets[key]; ok {
+			series = append(series, *bucket)
+			continue
+		}
+		series = append(series, DailyConsumption{DayStart: key})
+	}
+	return series, nil
+}
+
+// CountConsumersSince counts the users who consumed anything since a timestamp.
+func CountConsumersSince(startTimestamp int64) (int, error) {
+	var count int64
+	err := LOG_DB.Table("logs").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, startTimestamp).
+		Distinct("user_id").
+		Count(&count).Error
+	return int(count), err
+}
+
 func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
 	if username != "" {
