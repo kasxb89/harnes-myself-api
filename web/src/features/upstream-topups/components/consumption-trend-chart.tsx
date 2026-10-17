@@ -24,15 +24,17 @@ import { formatChartTime } from '@/lib/time'
 import { useChartTheme } from '@/lib/use-chart-theme'
 import { VCHART_OPTION } from '@/lib/vchart'
 
-/** One day of consumption, as the ledger endpoint reports it. */
-export type DailyConsumptionPoint = {
+/** One day of the operations series, as the ledger endpoint reports it. */
+export type DailyOperationsPoint = {
   day_start: number
   quota: number
   calls: number
+  new_users: number
+  topup_money: number
 }
 
 type ConsumptionTrendChartProps = {
-  points: DailyConsumptionPoint[]
+  points: DailyOperationsPoint[]
 }
 
 /**

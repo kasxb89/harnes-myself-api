@@ -17,7 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import {
+  Activity,
+  CircleDollarSign,
+  PiggyBank,
+  Receipt,
+  TrendingUp,
+  UserPlus,
+  Users,
+  Wallet,
+} from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -39,6 +49,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  StatCard,
+  type StatCardDetail,
+} from '@/features/dashboard/components/ui/stat-card'
 import { api } from '@/lib/api'
 import {
   formatLocalCurrencyAmount,
@@ -49,8 +63,9 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import {
   ConsumptionTrendChart,
-  type DailyConsumptionPoint,
+  type DailyOperationsPoint,
 } from './components/consumption-trend-chart'
+import { DailyBarChart } from './components/daily-bar-chart'
 
 /** One hand-entered payment this deployment made to an upstream provider. */
 type UpstreamTopup = {
@@ -60,6 +75,24 @@ type UpstreamTopup = {
   currency: string
   paid_at: number
   note: string
+}
+
+type UserGrowth = {
+  /** Registered accounts, soft-deleted excluded. */
+  total: number
+  /** Accounts created since local midnight. */
+  new_today: number
+  /** Remaining quota across all accounts: prepaid money not yet spent. */
+  balance_quota: number
+}
+
+type TopUpStats = {
+  money_total: number
+  count_total: number
+  users_total: number
+  money_today: number
+  count_today: number
+  users_today: number
 }
 
 type LedgerPayload = {
@@ -75,8 +108,12 @@ type LedgerPayload = {
   consumed_quota_today: number
   /** Users who consumed anything since local midnight. */
   active_users_today: number
-  /** Consumption per day, oldest first, for the trend chart. */
-  daily: DailyConsumptionPoint[]
+  /** Requests served since local midnight. */
+  calls_today: number
+  users: UserGrowth
+  topups: TopUpStats
+  /** Per-day operations, oldest first, for the trend charts. */
+  daily: DailyOperationsPoint[]
 }
 
 const EMPTY_FORM = {
@@ -109,6 +146,26 @@ function dayValue(seconds: number): string {
   const month = `${date.getMonth() + 1}`.padStart(2, '0')
   const day = `${date.getDate()}`.padStart(2, '0')
   return `${date.getFullYear()}-${month}-${day}`
+}
+
+/** Cards share one wrapper so a metric row reads as a single surface. */
+function MetricRow(props: { children: ReactNode }) {
+  return (
+    <div className='bg-background/60 grid grid-cols-2 gap-2.5 rounded-xl border p-3 sm:gap-4 sm:p-4 xl:grid-cols-4'>
+      <div className='contents'>{props.children}</div>
+    </div>
+  )
+}
+
+function SectionHeader(props: { title: string; description: string }) {
+  return (
+    <div className='flex flex-col gap-1'>
+      <h3 className='text-sm font-semibold sm:text-base'>{props.title}</h3>
+      <p className='text-muted-foreground text-xs sm:text-sm'>
+        {props.description}
+      </p>
+    </div>
+  )
 }
 
 export function UpstreamTopupsPage() {
@@ -178,156 +235,274 @@ export function UpstreamTopupsPage() {
     ledger.data?.consumed_quota ?? 0,
     MONEY_OPTIONS
   )
+  const balance = formatQuotaWithCurrency(
+    ledger.data?.users?.balance_quota ?? 0,
+    MONEY_OPTIONS
+  )
   const profit = received - spentCny
   const daily = ledger.data?.daily ?? []
-  // The series is dense and ends today, so its last point is today's row.
-  const callsToday = daily.at(-1)?.calls ?? 0
+  const users = ledger.data?.users
+  const topups = ledger.data?.topups
+  const calls = daily.map((point) => point.calls)
+  const newUsersDaily = daily.map((point) => ({
+    day_start: point.day_start,
+    value: point.new_users,
+  }))
+  const topUpDaily = daily.map((point) => ({
+    day_start: point.day_start,
+    value: point.topup_money,
+  }))
+  const callsInWindow = calls.reduce((sum, value) => sum + value, 0)
+  const payingRate =
+    users && users.total > 0 && topups
+      ? `${((topups.users_total / users.total) * 100).toFixed(0)}%`
+      : '—'
   const otherCurrencies = Object.entries(ledger.data?.spent_cents ?? {}).filter(
     ([currency]) => currency !== 'CNY'
   )
 
+  const detail = (label: string, value: string): StatCardDetail => ({
+    label,
+    value,
+  })
+
   return (
-    <div className='flex flex-col gap-4 p-4'>
-      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('Users paid in')}</CardTitle>
-          </CardHeader>
-          <CardContent className='text-2xl font-semibold'>
-            {formatLocalCurrencyAmount(received)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('User consumption')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className='flex items-baseline gap-2'>
-              <span className='text-muted-foreground text-sm'>
-                {t('Today')}
-              </span>
-              <span className='text-2xl font-semibold'>{consumedToday}</span>
+    <div className='flex flex-col gap-5'>
+      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+        <SectionHeader
+          title={t('Today')}
+          description={t('Live figures since local midnight')}
+        />
+        <div className='mt-4'>
+          <MetricRow>
+            <StatCard
+              title={t('User consumption')}
+              value={consumedToday}
+              description={`${t('Total')} ${consumedTotal}`}
+              icon={Wallet}
+              tone='accent-1'
+              sparklineVariant='line'
+              sparkline={daily.map((point) => point.quota)}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+            <StatCard
+              title={t('Today top-ups')}
+              value={formatLocalCurrencyAmount(topups?.money_today ?? 0)}
+              description={`${t('Top-up count')} ${topups?.count_today ?? 0} · ${t('Top-up users')} ${topups?.users_today ?? 0}`}
+              icon={CircleDollarSign}
+              tone='accent-2'
+              sparkline={topUpDaily.map((point) => point.value)}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+            <StatCard
+              title={t('New users today')}
+              value={users?.new_today ?? 0}
+              description={`${t('Total')} ${users?.total ?? 0}`}
+              icon={UserPlus}
+              tone='accent-3'
+              sparkline={newUsersDaily.map((point) => point.value)}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+            <StatCard
+              title={t('Calls today')}
+              value={ledger.data?.calls_today ?? 0}
+              description={`${t('Active users today')} ${ledger.data?.active_users_today ?? 0}`}
+              icon={Activity}
+              tone='accent-1'
+              sparkline={calls}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+          </MetricRow>
+        </div>
+      </section>
+
+      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+        <SectionHeader
+          title={t('Consumption trend')}
+          description={t('Last 14 days')}
+        />
+        <div className='mt-4 grid gap-4 lg:grid-cols-3'>
+          <div className='flex flex-col gap-2'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {t('Daily consumption')}
+            </span>
+            <div className='h-[220px]'>
+              <ConsumptionTrendChart points={daily} />
             </div>
-            <p className='text-muted-foreground text-sm'>
-              {t('Total')} {consumedTotal}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('Paid upstream')}</CardTitle>
-          </CardHeader>
-          <CardContent className='text-2xl font-semibold'>
-            {formatLocalCurrencyAmount(spentCny)}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('Profit')}</CardTitle>
-          </CardHeader>
-          <CardContent
-            className={
-              profit >= 0
-                ? 'text-2xl font-semibold text-emerald-600'
-                : 'text-2xl font-semibold text-red-600'
-            }
-          >
-            {formatLocalCurrencyAmount(profit)}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+          <div className='flex flex-col gap-2'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {t('Daily top-ups')}
+            </span>
+            <div className='h-[220px]'>
+              <DailyBarChart
+                points={topUpDaily}
+                tickFormat={(value) =>
+                  value >= 100 ? value.toFixed(0) : value.toFixed(2)
+                }
+              />
+            </div>
+          </div>
+          <div className='flex flex-col gap-2'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {t('Daily new users')}
+            </span>
+            <div className='h-[220px]'>
+              <DailyBarChart
+                points={newUsersDaily}
+                tickFormat={(value) => value.toFixed(0)}
+                minInterval={1}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+        <SectionHeader
+          title={t('All time')}
+          description={t('Money, accounts, and margin')}
+        />
+        <div className='mt-4'>
+          <MetricRow>
+            <StatCard
+              title={t('Users paid in')}
+              value={formatLocalCurrencyAmount(received)}
+              description={t('Completed top-ups')}
+              icon={Receipt}
+              tone='accent-2'
+              details={[
+                detail(t('Top-up count'), String(topups?.count_total ?? 0)),
+                detail(t('Top-up users'), String(topups?.users_total ?? 0)),
+              ]}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+            <StatCard
+              title={t('User consumption')}
+              value={consumedTotal}
+              description={t('Recognised once users spend it')}
+              icon={TrendingUp}
+              tone='accent-1'
+              details={[
+                detail(t('Today'), consumedToday),
+                detail(t('Calls in 14 days'), String(callsInWindow)),
+              ]}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+            <StatCard
+              title={t('Users')}
+              value={users?.total ?? 0}
+              description={t('Registered accounts')}
+              icon={Users}
+              tone='accent-3'
+              details={[
+                detail(t('New today'), String(users?.new_today ?? 0)),
+                detail(t('Unused balance'), balance),
+              ]}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+            <StatCard
+              title={t('Profit')}
+              value={formatLocalCurrencyAmount(profit)}
+              description={t('Received minus paid upstream')}
+              icon={PiggyBank}
+              tone={profit >= 0 ? 'accent-3' : 'accent-2'}
+              details={[
+                detail(t('Paid upstream'), formatLocalCurrencyAmount(spentCny)),
+                detail(
+                  t('Paying users'),
+                  `${topups?.users_total ?? 0} · ${payingRate}`
+                ),
+              ]}
+              loading={ledger.isLoading}
+              compactMobile
+            />
+          </MetricRow>
+        </div>
+      </section>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{t('Consumption trend')}</CardTitle>
+        <CardHeader className='flex flex-row items-center justify-between gap-3'>
+          <CardTitle>{t('Upstream top-ups')}</CardTitle>
+          <Button
+            onClick={() => {
+              setForm(EMPTY_FORM)
+              setOpen(true)
+            }}
+          >
+            {t('Record a top-up')}
+          </Button>
         </CardHeader>
         <CardContent>
-          <p className='text-muted-foreground mb-3 text-sm'>
-            {t('Active users today')} {ledger.data?.active_users_today ?? 0} ·{' '}
-            {t('Calls today')} {callsToday}
-          </p>
-          <div className='h-[280px]'>
-            <ConsumptionTrendChart points={daily} />
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('Upstream')}</TableHead>
+                <TableHead>{t('Amount')}</TableHead>
+                <TableHead>{t('Paid on')}</TableHead>
+                <TableHead>{t('Note')}</TableHead>
+                <TableHead className='text-right'>{t('Actions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>{item.upstream}</TableCell>
+                  <TableCell>
+                    {formatCents(item.amount_cents, item.currency)}
+                  </TableCell>
+                  <TableCell>{formatDay(item.paid_at)}</TableCell>
+                  <TableCell>{item.note}</TableCell>
+                  <TableCell className='text-right'>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => {
+                        setForm({
+                          id: item.id,
+                          upstream: item.upstream,
+                          amount: (item.amount_cents / 100).toFixed(2),
+                          currency: item.currency,
+                          paidAt: dayValue(item.paid_at),
+                          note: item.note,
+                        })
+                        setOpen(true)
+                      }}
+                    >
+                      {t('Edit')}
+                    </Button>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => {
+                        remove.mutate(item.id)
+                      }}
+                    >
+                      {t('Delete')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {otherCurrencies.length > 0 && (
+            <p className='text-muted-foreground mt-3 text-sm'>
+              {t('Paid in other currencies')}:{' '}
+              {otherCurrencies
+                .map(([currency, cents]) => formatCents(cents, currency))
+                .join(' · ')}
+            </p>
+          )}
         </CardContent>
       </Card>
-
-      <div className='flex items-center justify-between'>
-        <p className='text-muted-foreground text-sm'>
-          {t(
-            'Record what you actually paid each upstream by hand. Profit is what users paid in minus what this deployment paid upstream - prepaid balance counts as revenue, so read it next to user consumption. Top-ups entered in another currency are listed separately below.'
-          )}
-        </p>
-        <Button
-          onClick={() => {
-            setForm(EMPTY_FORM)
-            setOpen(true)
-          }}
-        >
-          {t('Record a top-up')}
-        </Button>
-      </div>
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('Upstream')}</TableHead>
-            <TableHead>{t('Amount')}</TableHead>
-            <TableHead>{t('Paid on')}</TableHead>
-            <TableHead>{t('Note')}</TableHead>
-            <TableHead className='text-right'>{t('Actions')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell>{item.upstream}</TableCell>
-              <TableCell>
-                {formatCents(item.amount_cents, item.currency)}
-              </TableCell>
-              <TableCell>{formatDay(item.paid_at)}</TableCell>
-              <TableCell>{item.note}</TableCell>
-              <TableCell className='text-right'>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={() => {
-                    setForm({
-                      id: item.id,
-                      upstream: item.upstream,
-                      amount: (item.amount_cents / 100).toFixed(2),
-                      currency: item.currency,
-                      paidAt: dayValue(item.paid_at),
-                      note: item.note,
-                    })
-                    setOpen(true)
-                  }}
-                >
-                  {t('Edit')}
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  onClick={() => {
-                    remove.mutate(item.id)
-                  }}
-                >
-                  {t('Delete')}
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      {otherCurrencies.length > 0 && (
-        <p className='text-muted-foreground text-sm'>
-          {t('Paid in other currencies')}:{' '}
-          {otherCurrencies
-            .map(([currency, cents]) => formatCents(cents, currency))
-            .join(' · ')}
-        </p>
-      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

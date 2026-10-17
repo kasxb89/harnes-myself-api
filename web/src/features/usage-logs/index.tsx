@@ -24,7 +24,10 @@ import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
+import { UpstreamTopupsPage } from '@/features/upstream-topups'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
@@ -41,7 +44,7 @@ import {
 } from './section-registry'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
-const TASK_LOG_SECTIONS = ['drawing', 'task'] as const
+const LOG_SECTIONS = ['common', 'drawing', 'task'] as const
 
 const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   common: {
@@ -52,6 +55,9 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   },
   task: {
     titleKey: 'Task Logs',
+  },
+  operations: {
+    titleKey: 'Operations dashboard',
   },
 }
 
@@ -72,17 +78,26 @@ function UsageLogsContent() {
     setAffinityDialogOpen,
   } = useUsageLogsContext()
   const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
+  const role = useAuthStore((state) => state.auth.user?.role ?? 0)
+  const canViewOperations = role >= ROLE.ADMIN
+  const sectionOrder = useMemo<UsageLogsSectionId[]>(
+    () =>
+      canViewOperations
+        ? [...LOG_SECTIONS, 'operations']
+        : [...LOG_SECTIONS],
+    [canViewOperations]
+  )
   const tabNavGroups = useMemo<NavGroup[]>(
     () => [
       {
-        title: 'Task Logs',
-        items: TASK_LOG_SECTIONS.map((section) => ({
+        title: 'Logs',
+        items: sectionOrder.map((section) => ({
           title: SECTION_META[section].titleKey,
           url: `/usage-logs/${section}`,
         })),
       },
     ],
-    []
+    [sectionOrder]
   )
   const filteredTabGroups = useSidebarConfig(tabNavGroups)
   const visibleSections = useMemo(
@@ -117,10 +132,9 @@ function UsageLogsContent() {
     [setViewScope]
   )
 
-  const pageMeta =
-    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
-  const showTaskSwitcher =
-    activeCategory !== 'common' && visibleSections.length > 1
+  const isOperations = activeCategory === 'operations'
+  const pageMeta = SECTION_META[activeCategory]
+  const showSectionTabs = visibleSections.length > 1
 
   return (
     <>
@@ -129,7 +143,7 @@ function UsageLogsContent() {
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          {canManageScope && (
+          {canManageScope && !isOperations && (
             <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
               <TabsList>
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
@@ -140,7 +154,7 @@ function UsageLogsContent() {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
-            {showTaskSwitcher && (
+            {showSectionTabs && (
               <Tabs value={activeCategory} onValueChange={handleSectionChange}>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
                   {visibleSections.map((section) => (
@@ -151,9 +165,15 @@ function UsageLogsContent() {
                 </TabsList>
               </Tabs>
             )}
-            <div className='min-h-0 flex-1'>
-              <UsageLogsTable logCategory={activeCategory} />
-            </div>
+            {isOperations ? (
+              <div className='min-h-0 flex-1 overflow-y-auto pb-4'>
+                <UpstreamTopupsPage />
+              </div>
+            ) : (
+              <div className='min-h-0 flex-1'>
+                <UsageLogsTable logCategory={activeCategory} />
+              </div>
+            )}
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

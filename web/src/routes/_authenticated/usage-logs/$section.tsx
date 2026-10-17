@@ -24,6 +24,8 @@ import {
   isUsageLogsSectionId,
   USAGE_LOGS_DEFAULT_SECTION,
 } from '@/features/usage-logs/section-registry'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6', '7'] as const
 const logTypeSearchSchema = z
@@ -71,6 +73,13 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         search: { ...search, type: undefined },
         replace: true,
       })
+    }
+    // The operations dashboard reads deployment-wide revenue, so it stays admin-only.
+    if (params.section === 'operations') {
+      const { auth } = useAuthStore.getState()
+      if (!auth.user || auth.user.role < ROLE.ADMIN) {
+        throw redirect({ to: '/403' })
+      }
     }
   },
   validateSearch: usageLogsSearchSchema,

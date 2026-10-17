@@ -97,10 +97,25 @@ func GetUpstreamTopups(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	daily, err := model.ConsumptionByDay(14)
+	users, err := model.GetUserGrowth(todayStart)
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	topupStats, err := model.GetTopUpStats(todayStart)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	daily, err := model.OperationsByDay(14)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	// The series is dense and ends today, so its last point is today's row.
+	callsToday := 0
+	if len(daily) > 0 {
+		callsToday = daily[len(daily)-1].Calls
 	}
 	common.ApiSuccess(c, gin.H{
 		"items":                topups,
@@ -109,6 +124,9 @@ func GetUpstreamTopups(c *gin.Context) {
 		"consumed_quota":       consumed.Quota,
 		"consumed_quota_today": consumedToday.Quota,
 		"active_users_today":   activeToday,
+		"calls_today":          callsToday,
+		"users":                users,
+		"topups":               topupStats,
 		"daily":                daily,
 	})
 }

@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { UpstreamTopupsPage } from '@/features/upstream-topups'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -31,6 +30,10 @@ export const Route = createFileRoute('/_authenticated/upstream-topups/')({
         to: '/403',
       })
     }
+    // The ledger now lives as a section of the usage logs page.
+    throw redirect({
+      to: '/usage-logs/$section',
+      params: { section: 'operations' },
+    })
   },
-  component: UpstreamTopupsPage,
 })

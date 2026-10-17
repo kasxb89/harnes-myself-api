@@ -801,3 +801,42 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 
 	return nil
 }
+
+// TopUpStats summarizes completed user top-ups for the operations view.
+type TopUpStats struct {
+	MoneyTotal float64 `json:"money_total"`
+	CountTotal int64   `json:"count_total"`
+	// UsersTotal counts accounts with at least one completed top-up.
+	UsersTotal int64   `json:"users_total"`
+	MoneyToday float64 `json:"money_today"`
+	CountToday int64   `json:"count_today"`
+	UsersToday int64   `json:"users_today"`
+}
+
+// GetTopUpStats totals completed top-ups, all time and since todayStart. A
+// top-up counts on the day it completed, not the day it was created, because
+// that is when the money arrived.
+func GetTopUpStats(todayStart int64) (TopUpStats, error) {
+	stats := TopUpStats{}
+	if err := DB.Model(&TopUp{}).
+		Where("status = ?", common.TopUpStatusSuccess).
+		Select("COALESCE(SUM(money), 0) AS money_total, COUNT(*) AS count_total, COUNT(DISTINCT user_id) AS users_total").
+		Scan(&stats).Error; err != nil {
+		return stats, err
+	}
+	var today struct {
+		MoneyToday float64
+		CountToday int64
+		UsersToday int64
+	}
+	if err := DB.Model(&TopUp{}).
+		Where("status = ? AND complete_time >= ?", common.TopUpStatusSuccess, todayStart).
+		Select("COALESCE(SUM(money), 0) AS money_today, COUNT(*) AS count_today, COUNT(DISTINCT user_id) AS users_today").
+		Scan(&today).Error; err != nil {
+		return stats, err
+	}
+	stats.MoneyToday = today.MoneyToday
+	stats.CountToday = today.CountToday
+	stats.UsersToday = today.UsersToday
+	return stats, nil
+}

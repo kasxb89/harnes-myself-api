@@ -161,8 +161,9 @@ export function useSidebarData(): SidebarData {
           },
           {
             title: t('Profit & Upstream Top-ups'),
-            url: '/upstream-topups',
+            url: '/usage-logs/operations',
             icon: Receipt,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Subscriptions'),

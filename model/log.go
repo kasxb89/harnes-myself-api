@@ -739,19 +739,23 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return stat, nil
 }
 
-// DailyConsumption is one day of consumption on the profit view's trend.
-type DailyConsumption struct {
-	DayStart int64 `json:"day_start"`
-	Quota    int   `json:"quota"`
-	Calls    int   `json:"calls"`
+// DailyOperations is one day of the operations view: consumption, request
+// volume, new accounts, and money received.
+type DailyOperations struct {
+	DayStart   int64   `json:"day_start"`
+	Quota      int     `json:"quota"`
+	Calls      int     `json:"calls"`
+	NewUsers   int     `json:"new_users"`
+	TopUpMoney float64 `json:"topup_money"`
 }
 
-// ConsumptionByDay returns a dense per-day consumption series ending today,
-// oldest first, so the trend chart has no gaps. Buckets are computed in Go
-// rather than with a date function, which keeps the query working on SQLite,
-// MySQL, and PostgreSQL alike; the window bounds how many log rows it reads.
-func ConsumptionByDay(days int) ([]DailyConsumption, error) {
-	series := make([]DailyConsumption, 0, max(days, 0))
+// OperationsByDay returns a dense per-day operations series ending today,
+// oldest first, so the dashboard charts have no gaps. Buckets are computed in
+// Go rather than with a date function, which keeps the queries working on
+// SQLite, MySQL, and PostgreSQL alike; each window bounds how many rows it
+// reads.
+func OperationsByDay(days int) ([]DailyOperations, error) {
+	series := make([]DailyOperations, 0, max(days, 0))
 	if days <= 0 {
 		return series, nil
 	}
@@ -759,37 +763,66 @@ func ConsumptionByDay(days int) ([]DailyConsumption, error) {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	windowStart := today.AddDate(0, 0, -(days - 1)).Unix()
 
-	rows := make([]struct {
-		CreatedAt int64
-		Quota     int
-	}, 0)
-	err := LOG_DB.Table("logs").
-		Select("created_at, quota").
-		Where("type = ? AND created_at >= ?", LogTypeConsume, windowStart).
-		Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-
-	buckets := make(map[int64]*DailyConsumption, days)
-	for _, row := range rows {
-		at := time.Unix(row.CreatedAt, 0)
+	buckets := make(map[int64]*DailyOperations, days)
+	bucketFor := func(timestamp int64) *DailyOperations {
+		at := time.Unix(timestamp, 0)
 		key := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, at.Location()).Unix()
 		bucket, ok := buckets[key]
 		if !ok {
-			bucket = &DailyConsumption{DayStart: key}
+			bucket = &DailyOperations{DayStart: key}
 			buckets[key] = bucket
 		}
+		return bucket
+	}
+
+	consumption := make([]struct {
+		CreatedAt int64
+		Quota     int
+	}, 0)
+	if err := LOG_DB.Table("logs").
+		Select("created_at, quota").
+		Where("type = ? AND created_at >= ?", LogTypeConsume, windowStart).
+		Find(&consumption).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range consumption {
+		bucket := bucketFor(row.CreatedAt)
 		bucket.Quota += row.Quota
 		bucket.Calls++
 	}
+
+	signups := make([]struct{ CreatedAt int64 }, 0)
+	if err := DB.Model(&User{}).
+		Select("created_at").
+		Where("created_at >= ?", windowStart).
+		Find(&signups).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range signups {
+		bucketFor(row.CreatedAt).NewUsers++
+	}
+
+	topups := make([]struct {
+		CompleteTime int64
+		Money        float64
+	}, 0)
+	if err := DB.Model(&TopUp{}).
+		Select("complete_time, money").
+		Where("status = ? AND complete_time >= ?", common.TopUpStatusSuccess, windowStart).
+		Find(&topups).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range topups {
+		bucketFor(row.CompleteTime).TopUpMoney += row.Money
+	}
+
 	for i := days - 1; i >= 0; i-- {
 		key := today.AddDate(0, 0, -i).Unix()
 		if bucket, ok := buckets[key]; ok {
 			series = append(series, *bucket)
 			continue
 		}
-		series = append(series, DailyConsumption{DayStart: key})
+		series = append(series, DailyOperations{DayStart: key})
 	}
 	return series, nil
 }

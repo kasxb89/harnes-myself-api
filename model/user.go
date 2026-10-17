@@ -77,15 +77,15 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id                   int                        `json:"id"`
-	Username             string                     `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password             string                     `json:"password" gorm:"not null;" validate:"min=8,max=128"`
-	HasPassword          bool                       `json:"-" gorm:"-:all"`
-	OriginalPassword     string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName          string                     `json:"display_name" gorm:"index" validate:"max=20"`
-	Role                 int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status               int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email                string                     `json:"email" gorm:"index" validate:"max=50"`
+	Id               int    `json:"id"`
+	Username         string `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password         string `json:"password" gorm:"not null;" validate:"min=8,max=128"`
+	HasPassword      bool   `json:"-" gorm:"-:all"`
+	OriginalPassword string `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int    `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int    `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string `json:"email" gorm:"index" validate:"max=50"`
 	// PhoneE164 is the E.164 phone number this account signs in with. It is
 	// NULL for accounts without a phone (root/legacy users); the unique index
 	// therefore must tolerate many NULLs, which PostgreSQL does natively and
@@ -1548,4 +1548,37 @@ func RootUserExists() bool {
 		return false
 	}
 	return true
+}
+
+// UserGrowth summarizes the deployment's accounts for the operations view.
+type UserGrowth struct {
+	Total int64 `json:"total"`
+	// NewToday counts accounts created since local midnight.
+	NewToday int64 `json:"new_today"`
+	// BalanceQuota is every account's remaining quota: prepaid money users have
+	// not spent yet, so it is a liability rather than revenue.
+	BalanceQuota int64 `json:"balance_quota"`
+}
+
+// GetUserGrowth counts accounts and sums their remaining quota. Deleted
+// accounts are excluded, matching what the user list shows.
+func GetUserGrowth(todayStart int64) (UserGrowth, error) {
+	growth := UserGrowth{}
+	var totals struct {
+		Total        int64
+		BalanceQuota int64
+	}
+	if err := DB.Model(&User{}).
+		Select("COUNT(*) AS total, COALESCE(SUM(quota), 0) AS balance_quota").
+		Scan(&totals).Error; err != nil {
+		return growth, err
+	}
+	growth.Total = totals.Total
+	growth.BalanceQuota = totals.BalanceQuota
+	if err := DB.Model(&User{}).
+		Where("created_at >= ?", todayStart).
+		Count(&growth.NewToday).Error; err != nil {
+		return growth, err
+	}
+	return growth, nil
 }
