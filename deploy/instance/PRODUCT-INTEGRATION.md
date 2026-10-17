@@ -91,9 +91,39 @@ Content-Type: application/json
 就是 OpenAI 那套请求体。**流式可用** —— `/harness/v1/...` 这条路由单独配了不缓冲。
 
 可用模型现拉：`GET /harness/v1/models`（同样带 `Authorization: Bearer <relay_key>`）。
-当前 `default` 分组下有 22 个模型条目，含 `deepseek-v4-flash`、`deepseek-v4-pro`、`glm-5.1`、
-`glm-5.2`、`kimi-k2.6`、`kimi-k2.7-code`、`qwen3.6-flash`、`qwen3.6-plus`、`qwen3.7-max`、
-`qwen3.7-plus`、`qwen3.8-max`、`ys-1.0`、`gpt-image-2`、`MiniMax-H3` 等。
+
+**手机登录的账号落在 `product` 分组**，该组当前 19 个模型：`claode-5`、`deepseek-flash`、
+`deepseek-v4-flash`、`deepseek-v4-flash-0731`、`deepseek-v4-pro`、`glm-5.1`、`glm-5.2`、`gp-5.5`、
+`gpt-image-2`、`kimi-k2.6`、`kimi-k2.7-code`、`MiniMax-H3`、`qwen3.6-flash`、`qwen3.6-plus`、
+`qwen3.7-max`、`qwen3.7-plus`、`qwen3.8-max`、`ys-1.0`、`yunshu-internal-gpt-image-2`。
+该组倍率 1，即用户实付。
+
+其余分组：`yunshu-managed` 16 个（倍率 0，免费托管组，不是给产品用户用的）、
+`default` 5 个、`yunshu-image-private` 1 个。
+
+### 4.1 `MiniMax-H3` 是**异步视频任务**，不是聊天
+
+别用 `/v1/chat/completions`。它走 new-api 的任务插件通道（内置 `hailuo` 插件）：
+
+```
+POST /harness/v1/video/generations           # 提交任务，返回 task_id
+GET  /harness/v1/video/generations/{task_id} # 轮询到完成
+```
+
+请求体：
+
+```json
+{ "model": "MiniMax-H3", "prompt": "……", "duration": 5, "size": "768P" }
+```
+
+- `duration`：**4–15 秒**整数；也可写 `seconds`（**数字或字符串都接受**，例如 `"seconds": 5`）。
+- `size`：**`768P` 或 `2K`**；也可写 `resolution`。产品两个都发也没关系。
+- 可选参考图走图片字段（文生视频、图生视频、多模态参考都支持）。
+
+**模型名就叫 `MiniMax-H3`**，不要改成 `sora-2` 或 `Minimax-H3` —— 渠道上没有做名字映射。
+
+**计费是按秒**（`seconds × ¥0.3`），不是按次 —— 4 秒 = ¥1.2 = 1200 积分，预扣值可以直接从
+轮询响应的 `data.quota` 看到。产品侧报价时注意口径。
 
 Gemini 格式走 `/harness/v1beta/...`。
 
