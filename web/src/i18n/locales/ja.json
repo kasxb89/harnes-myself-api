@@ -7411,6 +7411,13 @@
     "Last 14 days": "過去14日間",
     "New today": "本日の新規",
     "Saved": "保存しました",
-    "Operations dashboard": "経営ダッシュボード"
+    "Operations dashboard": "経営ダッシュボード",
+    "User top-ups": "ユーザーのチャージ",
+    "Completed payments only. Amount is what the user paid.": "支払い成功の注文のみ。金額はユーザーの支払額です。",
+    "Per user": "ユーザー別",
+    "Total paid": "支払い合計",
+    "Last top-up": "最終チャージ",
+    "Recent top-ups": "最近のチャージ",
+    "No completed top-ups yet": "完了したチャージはありません"
   }
 }

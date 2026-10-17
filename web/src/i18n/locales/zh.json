@@ -7411,6 +7411,13 @@
     "Last 14 days": "近 14 天",
     "New today": "今日新增",
     "Saved": "已保存",
-    "Operations dashboard": "经营看板"
+    "Operations dashboard": "经营看板",
+    "User top-ups": "用户充值",
+    "Completed payments only. Amount is what the user paid.": "只统计支付成功的订单，金额为用户实付。",
+    "Per user": "按用户汇总",
+    "Total paid": "累计充值",
+    "Last top-up": "最近充值",
+    "Recent top-ups": "最近充值订单",
+    "No completed top-ups yet": "还没有成功充值"
   }
 }

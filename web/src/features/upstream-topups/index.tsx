@@ -95,6 +95,25 @@ type TopUpStats = {
   users_today: number
 }
 
+/** One account's completed top-up history. */
+type UserTopUpTotal = {
+  user_id: number
+  username: string
+  money: number
+  count: number
+  last_paid_at: number
+}
+
+/** One completed payment, newest first. */
+type TopUpRecord = {
+  id: number
+  user_id: number
+  username: string
+  money: number
+  provider: string
+  completed_at: number
+}
+
 type LedgerPayload = {
   items: UpstreamTopup[]
   /** Paid upstream, per currency, in the currency's minor unit. */
@@ -112,6 +131,10 @@ type LedgerPayload = {
   calls_today: number
   users: UserGrowth
   topups: TopUpStats
+  /** Completed top-ups summed per account, largest payer first. */
+  topup_users: UserTopUpTotal[]
+  /** The latest completed payments, newest first. */
+  recent_topups: TopUpRecord[]
   /** Per-day operations, oldest first, for the trend charts. */
   daily: DailyOperationsPoint[]
 }
@@ -138,6 +161,10 @@ function formatCents(cents: number, currency: string): string {
 
 function formatDay(seconds: number): string {
   return new Date(seconds * 1000).toLocaleDateString()
+}
+
+function formatDateTime(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleString()
 }
 
 /** The date input's value for a Unix timestamp, in the local calendar. */
@@ -425,6 +452,96 @@ export function UpstreamTopupsPage() {
               compactMobile
             />
           </MetricRow>
+        </div>
+      </section>
+
+      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+        <SectionHeader
+          title={t('User top-ups')}
+          description={t(
+            'Completed payments only. Amount is what the user paid.'
+          )}
+        />
+        <div className='mt-4 grid gap-5 xl:grid-cols-2'>
+          <div className='flex flex-col gap-2'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {t('Per user')}
+            </span>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('User')}</TableHead>
+                  <TableHead className='text-right'>{t('Total paid')}</TableHead>
+                  <TableHead className='text-right'>{t('Top-up count')}</TableHead>
+                  <TableHead>{t('Last top-up')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(ledger.data?.topup_users ?? []).map((row) => (
+                  <TableRow key={row.user_id}>
+                    <TableCell>
+                      {row.username || `#${row.user_id}`}
+                    </TableCell>
+                    <TableCell className='text-right tabular-nums'>
+                      {formatLocalCurrencyAmount(row.money)}
+                    </TableCell>
+                    <TableCell className='text-right tabular-nums'>
+                      {row.count}
+                    </TableCell>
+                    <TableCell>{formatDay(row.last_paid_at)}</TableCell>
+                  </TableRow>
+                ))}
+                {(ledger.data?.topup_users ?? []).length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className='text-muted-foreground text-center text-sm'
+                    >
+                      {t('No completed top-ups yet')}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className='flex flex-col gap-2'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {t('Recent top-ups')}
+            </span>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('Time')}</TableHead>
+                  <TableHead>{t('User')}</TableHead>
+                  <TableHead className='text-right'>{t('Amount')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(ledger.data?.recent_topups ?? []).map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{formatDateTime(row.completed_at)}</TableCell>
+                    <TableCell>
+                      {row.username || `#${row.user_id}`}
+                    </TableCell>
+                    <TableCell className='text-right tabular-nums'>
+                      {formatLocalCurrencyAmount(row.money)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {(ledger.data?.recent_topups ?? []).length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={3}
+                      className='text-muted-foreground text-center text-sm'
+                    >
+                      {t('No completed top-ups yet')}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </section>
 

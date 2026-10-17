@@ -7411,6 +7411,13 @@
     "Last 14 days": "14 ngày gần đây",
     "New today": "Mới hôm nay",
     "Saved": "Đã lưu",
-    "Operations dashboard": "Bảng điều khiển vận hành"
+    "Operations dashboard": "Bảng điều khiển vận hành",
+    "User top-ups": "Nạp tiền của người dùng",
+    "Completed payments only. Amount is what the user paid.": "Chỉ tính đơn thanh toán thành công; số tiền là số người dùng đã trả.",
+    "Per user": "Theo người dùng",
+    "Total paid": "Tổng đã trả",
+    "Last top-up": "Lần nạp gần nhất",
+    "Recent top-ups": "Lần nạp gần đây",
+    "No completed top-ups yet": "Chưa có lần nạp thành công"
   }
 }

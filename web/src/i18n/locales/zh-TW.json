@@ -7411,6 +7411,13 @@
     "Last 14 days": "近 14 天",
     "New today": "今日新增",
     "Saved": "已儲存",
-    "Operations dashboard": "經營看板"
+    "Operations dashboard": "經營看板",
+    "User top-ups": "使用者儲值",
+    "Completed payments only. Amount is what the user paid.": "只統計支付成功的訂單，金額為使用者實付。",
+    "Per user": "依使用者彙總",
+    "Total paid": "累計儲值",
+    "Last top-up": "最近儲值",
+    "Recent top-ups": "最近儲值訂單",
+    "No completed top-ups yet": "尚無成功儲值"
   }
 }

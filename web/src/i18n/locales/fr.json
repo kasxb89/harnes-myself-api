@@ -7411,6 +7411,13 @@
     "Last 14 days": "14 derniers jours",
     "New today": "Nouveaux aujourd'hui",
     "Saved": "Enregistré",
-    "Operations dashboard": "Tableau de bord opérationnel"
+    "Operations dashboard": "Tableau de bord opérationnel",
+    "User top-ups": "Recharges des utilisateurs",
+    "Completed payments only. Amount is what the user paid.": "Uniquement les paiements réussis ; le montant est celui payé par l’utilisateur.",
+    "Per user": "Par utilisateur",
+    "Total paid": "Total payé",
+    "Last top-up": "Dernière recharge",
+    "Recent top-ups": "Recharges récentes",
+    "No completed top-ups yet": "Aucune recharge complétée"
   }
 }

@@ -107,6 +107,16 @@ func GetUpstreamTopups(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	topupUsers, err := model.ListUserTopUpTotals(100)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recentTopUps, err := model.ListRecentTopUps(30)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	daily, err := model.OperationsByDay(14)
 	if err != nil {
 		common.ApiError(c, err)
@@ -127,6 +137,8 @@ func GetUpstreamTopups(c *gin.Context) {
 		"calls_today":          callsToday,
 		"users":                users,
 		"topups":               topupStats,
+		"topup_users":          topupUsers,
+		"recent_topups":        recentTopUps,
 		"daily":                daily,
 	})
 }

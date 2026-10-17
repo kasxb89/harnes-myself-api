@@ -840,3 +840,52 @@ func GetTopUpStats(todayStart int64) (TopUpStats, error) {
 	stats.UsersToday = today.UsersToday
 	return stats, nil
 }
+
+// UserTopUpTotal is one account's completed top-up history.
+type UserTopUpTotal struct {
+	UserId     int     `json:"user_id" gorm:"column:user_id"`
+	Username   string  `json:"username" gorm:"column:username"`
+	Money      float64 `json:"money" gorm:"column:money"`
+	Count      int64   `json:"count" gorm:"column:topup_count"`
+	LastPaidAt int64   `json:"last_paid_at" gorm:"column:last_paid_at"`
+}
+
+// ListUserTopUpTotals sums each account's completed top-ups, largest payer
+// first. Only successful payments count; a pending order is not money.
+func ListUserTopUpTotals(limit int) ([]UserTopUpTotal, error) {
+	totals := make([]UserTopUpTotal, 0)
+	err := DB.Model(&TopUp{}).
+		Select("top_ups.user_id AS user_id, COALESCE(users.username, '') AS username, "+
+			"COALESCE(SUM(top_ups.money), 0) AS money, COUNT(*) AS topup_count, MAX(top_ups.complete_time) AS last_paid_at").
+		Joins("LEFT JOIN users ON users.id = top_ups.user_id").
+		Where("top_ups.status = ?", common.TopUpStatusSuccess).
+		Group("top_ups.user_id, users.username").
+		Order("money DESC").
+		Limit(limit).
+		Scan(&totals).Error
+	return totals, err
+}
+
+// TopUpRecord is one completed payment in the audit list.
+type TopUpRecord struct {
+	Id          int     `json:"id"`
+	UserId      int     `json:"user_id"`
+	Username    string  `json:"username"`
+	Money       float64 `json:"money"`
+	Provider    string  `json:"provider"`
+	CompletedAt int64   `json:"completed_at"`
+}
+
+// ListRecentTopUps returns the latest completed payments, newest first.
+func ListRecentTopUps(limit int) ([]TopUpRecord, error) {
+	records := make([]TopUpRecord, 0)
+	err := DB.Model(&TopUp{}).
+		Select("top_ups.id AS id, top_ups.user_id AS user_id, COALESCE(users.username, '') AS username, "+
+			"top_ups.money AS money, top_ups.payment_provider AS provider, top_ups.complete_time AS completed_at").
+		Joins("LEFT JOIN users ON users.id = top_ups.user_id").
+		Where("top_ups.status = ?", common.TopUpStatusSuccess).
+		Order("top_ups.complete_time DESC, top_ups.id DESC").
+		Limit(limit).
+		Scan(&records).Error
+	return records, err
+}

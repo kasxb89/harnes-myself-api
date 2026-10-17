@@ -7411,6 +7411,13 @@
     "Last 14 days": "Last 14 days",
     "New today": "New today",
     "Saved": "Saved",
-    "Operations dashboard": "Operations dashboard"
+    "Operations dashboard": "Operations dashboard",
+    "User top-ups": "User top-ups",
+    "Completed payments only. Amount is what the user paid.": "Completed payments only. Amount is what the user paid.",
+    "Per user": "Per user",
+    "Total paid": "Total paid",
+    "Last top-up": "Last top-up",
+    "Recent top-ups": "Recent top-ups",
+    "No completed top-ups yet": "No completed top-ups yet"
   }
 }

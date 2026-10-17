@@ -7411,6 +7411,13 @@
     "Last 14 days": "Последние 14 дней",
     "New today": "Новые сегодня",
     "Saved": "Сохранено",
-    "Operations dashboard": "Панель управления бизнесом"
+    "Operations dashboard": "Панель управления бизнесом",
+    "User top-ups": "Пополнения пользователей",
+    "Completed payments only. Amount is what the user paid.": "Только успешные платежи; сумма — то, что заплатил пользователь.",
+    "Per user": "По пользователям",
+    "Total paid": "Всего оплачено",
+    "Last top-up": "Последнее пополнение",
+    "Recent top-ups": "Последние пополнения",
+    "No completed top-ups yet": "Успешных пополнений пока нет"
   }
 }

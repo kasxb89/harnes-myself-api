@@ -86,4 +86,22 @@ func TestOperationsByDayBucketsDenseLocalDays(t *testing.T) {
 	require.InDelta(t, 10, stats.MoneyToday, 0.001)
 	require.Equal(t, int64(1), stats.CountToday)
 	require.Equal(t, int64(1), stats.UsersToday)
+
+	perUser, err := ListUserTopUpTotals(10)
+	require.NoError(t, err)
+	require.Len(t, perUser, 2, "only accounts with a successful payment are listed")
+	require.Equal(t, 1, perUser[0].UserId)
+	require.Equal(t, "u1", perUser[0].Username)
+	require.InDelta(t, 10, perUser[0].Money, 0.001)
+	require.Equal(t, int64(1), perUser[0].Count)
+	require.Equal(t, today.Add(time.Hour).Unix(), perUser[0].LastPaidAt)
+	require.Equal(t, 2, perUser[1].UserId)
+	require.InDelta(t, 5, perUser[1].Money, 0.001)
+
+	recent, err := ListRecentTopUps(10)
+	require.NoError(t, err)
+	require.Len(t, recent, 2, "a pending order is not a payment")
+	require.Equal(t, 1, recent[0].UserId)
+	require.InDelta(t, 10, recent[0].Money, 0.001)
+	require.Equal(t, 2, recent[1].UserId)
 }
