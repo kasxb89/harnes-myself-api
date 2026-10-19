@@ -41,7 +41,7 @@ export function ActivitySummary(props: {
       icon: Monitor,
     },
     {
-      title: t('Active foregroundrs'),
+      title: t('Active foreground users'),
       value: data?.foreground_users,
       description: t('Window focused with recent user activity'),
       icon: Eye,
