@@ -356,6 +356,15 @@ func SetApiRouter(router *gin.Engine) {
 		}
 		handlePermissionRoute(apiRouter.Group("", middleware.DisableCache(), middleware.AdminAuth()), http.MethodGet, "/audit", authz.AuditRead, controller.GetAuditLogs)
 		apiRouter.GET("/audit/self", middleware.DisableCache(), middleware.UserAuth(), controller.GetAuditLogs)
+		clientActivityRoute := apiRouter.Group("/client-activity")
+		clientActivityRoute.Use(middleware.DisableCache())
+		{
+			clientActivityRoute.POST("/heartbeat", middleware.UserAuth(), middleware.ClientActivityRateLimit(), controller.ClientActivityHeartbeat)
+			clientActivityRoute.GET("/summary", middleware.AdminAuth(), controller.GetClientActivitySummary)
+			clientActivityRoute.GET("/sessions", middleware.AdminAuth(), controller.GetClientActivitySessions)
+			clientActivityRoute.GET("/sessions/:id", middleware.AdminAuth(), controller.GetClientActivitySession)
+		}
+
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)

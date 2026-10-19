@@ -150,6 +150,12 @@ export function useSidebarData(): SidebarData {
             icon: Users,
           },
           {
+            title: t('User Activity'),
+            url: '/user-activity',
+            icon: Activity,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,

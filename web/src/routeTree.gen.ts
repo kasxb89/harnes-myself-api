@@ -55,6 +55,7 @@ import { Route as AuthenticatedUpstreamTopupsIndexRouteImport } from './routes/_
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedUsageLogsAuditRouteImport } from './routes/_authenticated/usage-logs/audit'
+import { Route as AuthenticatedUserActivityIndexRouteImport } from './routes/_authenticated/user-activity/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
@@ -323,6 +324,12 @@ const AuthenticatedUsageLogsAuditRoute =
     path: '/usage-logs/audit',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedUserActivityIndexRoute =
+  AuthenticatedUserActivityIndexRouteImport.update({
+    id: '/user-activity/',
+    path: '/user-activity/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
@@ -481,6 +488,7 @@ export interface FileRoutesByFullPath {
   '/task-plugins/': typeof AuthenticatedTaskPluginsIndexRoute
   '/upstream-topups/': typeof AuthenticatedUpstreamTopupsIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
+  '/user-activity/': typeof AuthenticatedUserActivityIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
@@ -545,6 +553,7 @@ export interface FileRoutesByTo {
   '/task-plugins': typeof AuthenticatedTaskPluginsIndexRoute
   '/upstream-topups': typeof AuthenticatedUpstreamTopupsIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
+  '/user-activity': typeof AuthenticatedUserActivityIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
@@ -613,6 +622,7 @@ export interface FileRoutesById {
   '/_authenticated/task-plugins/': typeof AuthenticatedTaskPluginsIndexRoute
   '/_authenticated/upstream-topups/': typeof AuthenticatedUpstreamTopupsIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
+  '/_authenticated/user-activity/': typeof AuthenticatedUserActivityIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
@@ -680,6 +690,7 @@ export interface FileRouteTypes {
     | '/task-plugins/'
     | '/upstream-topups/'
     | '/usage-logs/'
+    | '/user-activity/'
     | '/users/'
     | '/wallet/'
     | '/pricing/$modelId/'
@@ -744,6 +755,7 @@ export interface FileRouteTypes {
     | '/task-plugins'
     | '/upstream-topups'
     | '/usage-logs'
+    | '/user-activity'
     | '/users'
     | '/wallet'
     | '/pricing/$modelId'
@@ -811,6 +823,7 @@ export interface FileRouteTypes {
     | '/_authenticated/task-plugins/'
     | '/_authenticated/upstream-topups/'
     | '/_authenticated/usage-logs/'
+    | '/_authenticated/user-activity/'
     | '/_authenticated/users/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
@@ -1175,6 +1188,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsageLogsAuditRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/user-activity/': {
+      id: '/_authenticated/user-activity/'
+      path: '/user-activity'
+      fullPath: '/user-activity/'
+      preLoaderRoute: typeof AuthenticatedUserActivityIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/users'
@@ -1423,6 +1443,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedTaskPluginsIndexRoute: typeof AuthenticatedTaskPluginsIndexRoute
   AuthenticatedUpstreamTopupsIndexRoute: typeof AuthenticatedUpstreamTopupsIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
+  AuthenticatedUserActivityIndexRoute: typeof AuthenticatedUserActivityIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
@@ -1453,6 +1474,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedTaskPluginsIndexRoute: AuthenticatedTaskPluginsIndexRoute,
   AuthenticatedUpstreamTopupsIndexRoute: AuthenticatedUpstreamTopupsIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
+  AuthenticatedUserActivityIndexRoute: AuthenticatedUserActivityIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }
