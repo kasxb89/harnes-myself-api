@@ -16,9 +16,72 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+func TestDistributeRecordsModelFailureBeforeRelayAndHonorsLogOptOut(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	previousDB, previousLogDB := model.DB, model.LOG_DB
+	previousRedis, previousCache, previousEnabled := common.RedisEnabled, common.MemoryCacheEnabled, constant.ErrorLogEnabled
+	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := database.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Log{}))
+	model.DB, model.LOG_DB = database, database
+	common.RedisEnabled, common.MemoryCacheEnabled = false, true
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLogDB
+		common.RedisEnabled, common.MemoryCacheEnabled, constant.ErrorLogEnabled = previousRedis, previousCache, previousEnabled
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, database.Create(&model.User{Id: 619, Username: "distribution-user"}).Error)
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+			require.NoError(t, database.Where("type = ?", model.LogTypeError).Delete(&model.Log{}).Error)
+			constant.ErrorLogEnabled = enabled
+			router := gin.New()
+			router.POST("/v1/chat/completions", func(c *gin.Context) {
+				c.Set("id", 619)
+				c.Set("username", "distribution-user")
+				c.Set(common.RequestIdKey, "distribution-request-id")
+				common.SetContextKey(c, constant.ContextKeyUsingGroup, "unavailable-diagnostic-group")
+			}, Distribute(), func(c *gin.Context) { t.Error("an unavailable request must not reach Relay") })
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"private prompt must never enter diagnostics"}]}`))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			require.Equal(t, http.StatusServiceUnavailable, response.Code)
+			var logs []model.Log
+			require.NoError(t, database.Where("type = ?", model.LogTypeError).Find(&logs).Error)
+			if !enabled {
+				assert.Empty(t, logs)
+				return
+			}
+			require.Len(t, logs, 1)
+			assert.Equal(t, 619, logs[0].UserId)
+			assert.Equal(t, "deepseek-v4-flash", logs[0].ModelName)
+			assert.Equal(t, "distribution-request-id", logs[0].RequestId)
+			assert.NotContains(t, logs[0].Content+logs[0].Other, "private prompt")
+			other, err := common.StrToMap(logs[0].Other)
+			require.NoError(t, err)
+			assert.Equal(t, "/v1/chat/completions", other["request_path"])
+			assert.Equal(t, float64(http.StatusServiceUnavailable), other["status_code"])
+			userLogs, total, err := model.GetUserLogs(619, model.LogFilter{Type: model.LogTypeError}, 0, 10)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, total)
+			assert.NotContains(t, userLogs[0].Content+userLogs[0].Other, "unavailable-diagnostic-group")
+			assert.NotContains(t, userLogs[0].Content+userLogs[0].Other, "No available channel")
+		})
+	}
+}
 
 func TestChannelMatchesExpectedTaskPluginUsesGenericChannelSetting(t *testing.T) {
 	channel := &model.Channel{Type: constant.ChannelTypeTaskPlugin}

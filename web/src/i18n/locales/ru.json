@@ -7418,6 +7418,13 @@
     "Total paid": "Всего оплачено",
     "Last top-up": "Последнее пополнение",
     "Recent top-ups": "Последние пополнения",
-    "No completed top-ups yet": "Успешных пополнений пока нет"
+    "No completed top-ups yet": "Успешных пополнений пока нет",
+    "API Error Logs": "Ошибки вызовов API",
+    "Failed API calls will appear here. Adjust the filters to find earlier errors.": "Здесь отображаются неудачные вызовы API. Измените фильтры для поиска прошлых ошибок.",
+    "HTTP Status": "Статус HTTP",
+    "No API errors found": "Ошибки API не найдены",
+    "Error Type": "Тип ошибки",
+    "Error Code": "Код ошибки",
+    "Server is busy. Please try again later": "Сервер занят. Повторите попытку позже."
   }
 }

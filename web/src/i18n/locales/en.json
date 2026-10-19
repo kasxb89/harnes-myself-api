@@ -7418,6 +7418,13 @@
     "Total paid": "Total paid",
     "Last top-up": "Last top-up",
     "Recent top-ups": "Recent top-ups",
-    "No completed top-ups yet": "No completed top-ups yet"
+    "No completed top-ups yet": "No completed top-ups yet",
+    "API Error Logs": "API Error Logs",
+    "Failed API calls will appear here. Adjust the filters to find earlier errors.": "Failed API calls will appear here. Adjust the filters to find earlier errors.",
+    "HTTP Status": "HTTP Status",
+    "No API errors found": "No API errors found",
+    "Error Type": "Error Type",
+    "Error Code": "Error Code",
+    "Server is busy. Please try again later": "Server is busy. Please try again later"
   }
 }

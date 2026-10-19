@@ -114,7 +114,14 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
-		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityUser)
+		if logs[i].Type == LogTypeError {
+			other := NewLogOther()
+			logs[i].Content = other.setContent([]*common.Message{common.NewMessage("Server is busy. Please try again later")})
+			logs[i].Other = other.JSONString()
+			logs[i].UpstreamRequestId = ""
+		} else {
+			logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityUser)
+		}
 	}
 	assignDisplayLogIds(logs, startIdx)
 }
@@ -123,7 +130,8 @@ func formatUserLogs(logs []*Log, startIdx int) {
 // admin_info. Root callers must not pass their results through this formatter.
 func FormatAdminLogs(logs []*Log) {
 	for i := range logs {
-		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityAdmin)
+		logs[i].Content = common.MaskCredentials(logs[i].Content)
+		logs[i].Other = common.MaskCredentials(formatLogOtherJSON(logs[i].Other, logOtherVisibilityAdmin))
 	}
 }
 
@@ -131,7 +139,8 @@ func FormatAdminLogs(logs []*Log) {
 // without removing root-only diagnostics.
 func FormatRootLogs(logs []*Log) {
 	for i := range logs {
-		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityRoot)
+		logs[i].Content = common.MaskCredentials(logs[i].Content)
+		logs[i].Other = common.MaskCredentials(formatLogOtherJSON(logs[i].Other, logOtherVisibilityRoot))
 	}
 }
 
@@ -277,11 +286,13 @@ func RecordTopupLog(userId int, content *common.Message, callerIp string, paymen
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other *LogOther) {
+	content = common.MaskCredentials(content)
+	tokenName = common.MaskCredentials(tokenName)
 	logger.LogInfo(c, common.LogText("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
-	otherStr := other.JSONString()
+	otherStr := common.MaskCredentials(other.JSONString())
 	// 判断是否需要记录 IP
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
@@ -306,7 +317,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		IsStream:         isStream,
 		Group:            group,
 		Ip: func() string {
-			if needRecordIp {
+			if needRecordIp && c.Request != nil {
 				return c.ClientIP()
 			}
 			return ""
@@ -612,9 +623,9 @@ func StreamAllLogs(ctx context.Context, filter LogFilter, role int, fn func(*Log
 	if err != nil {
 		return err
 	}
-	visibility := logOtherVisibilityAdmin
+	formatLogs := FormatAdminLogs
 	if role >= common.RoleRootUser {
-		visibility = logOtherVisibilityRoot
+		formatLogs = FormatRootLogs
 	}
 	channelNames := make(map[int]string)
 	return streamLogs(tx, "logs.created_at desc, logs.id desc", func(log *Log) error {
@@ -628,7 +639,7 @@ func StreamAllLogs(ctx context.Context, filter LogFilter, role int, fn func(*Log
 			}
 			log.ChannelName = name
 		}
-		log.Other = formatLogOtherJSON(log.Other, visibility)
+		formatLogs([]*Log{log})
 		return fn(log)
 	})
 }
@@ -642,10 +653,8 @@ func StreamUserLogs(ctx context.Context, userId int, filter LogFilter, fn func(*
 	}
 	count := 0
 	return streamLogs(tx, "logs.id desc", func(log *Log) error {
+		formatUserLogs([]*Log{log}, count)
 		count++
-		log.Id = count
-		log.ChannelName = ""
-		log.Other = formatLogOtherJSON(log.Other, logOtherVisibilityUser)
 		return fn(log)
 	})
 }

@@ -138,3 +138,8 @@ func MaskEmail(email string) string {
 func MaskSensitiveInfo(str string) string {
 	return kitutil.MaskSensitiveInfo(str)
 }
+
+// MaskCredentials removes authentication material without hiding useful diagnostics.
+func MaskCredentials(str string) string {
+	return kitutil.MaskCredentials(str)
+}

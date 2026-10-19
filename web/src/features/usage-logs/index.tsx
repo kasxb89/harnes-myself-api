@@ -50,6 +50,9 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   common: {
     titleKey: 'Common Logs',
   },
+  errors: {
+    titleKey: 'API Error Logs',
+  },
   drawing: {
     titleKey: 'Drawing Logs',
   },
@@ -83,7 +86,7 @@ function UsageLogsContent() {
   const sectionOrder = useMemo<UsageLogsSectionId[]>(
     () =>
       canViewOperations
-        ? [...LOG_SECTIONS, 'operations']
+        ? ['common', 'errors', 'drawing', 'task', 'operations']
         : [...LOG_SECTIONS],
     [canViewOperations]
   )
@@ -133,6 +136,7 @@ function UsageLogsContent() {
   )
 
   const isOperations = activeCategory === 'operations'
+  const isErrors = activeCategory === 'errors'
   const pageMeta = SECTION_META[activeCategory]
   const showSectionTabs = visibleSections.length > 1
 
@@ -143,7 +147,7 @@ function UsageLogsContent() {
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          {canManageScope && !isOperations && (
+          {canManageScope && !isOperations && !isErrors && (
             <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
               <TabsList>
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
@@ -171,7 +175,10 @@ function UsageLogsContent() {
               </div>
             ) : (
               <div className='min-h-0 flex-1'>
-                <UsageLogsTable logCategory={activeCategory} />
+                <UsageLogsTable
+                  logCategory={isErrors ? 'common' : activeCategory}
+                  errorOnly={isErrors}
+                />
               </div>
             )}
           </div>
@@ -206,8 +213,9 @@ function UsageLogsContent() {
 }
 
 export function UsageLogs() {
+  const params = route.useParams()
   return (
-    <UsageLogsProvider>
+    <UsageLogsProvider key={params.section === 'errors' ? 'errors' : 'logs'}>
       <UsageLogsContent />
     </UsageLogsProvider>
   )

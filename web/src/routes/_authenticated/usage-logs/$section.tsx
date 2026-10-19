@@ -62,11 +62,15 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         params: { section: USAGE_LOGS_DEFAULT_SECTION },
       })
     }
-    // type 仅 common 使用，非 common 时清掉 URL 里的 type
+    // Common logs allow a type filter; errors are always fixed to type=5 in the data fetch.
     const hasTypeSearch = Array.isArray(search?.type)
       ? search.type.length > 0
       : search?.type != null && search.type !== ''
-    if (params.section !== 'common' && hasTypeSearch) {
+    if (
+      params.section !== 'common' &&
+      params.section !== 'errors' &&
+      hasTypeSearch
+    ) {
       throw redirect({
         to: '/usage-logs/$section',
         params: { section: params.section },
@@ -74,8 +78,8 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         replace: true,
       })
     }
-    // The operations dashboard reads deployment-wide revenue, so it stays admin-only.
-    if (params.section === 'operations') {
+    // Deployment-wide revenue and upstream error diagnostics remain admin-only.
+    if (params.section === 'operations' || params.section === 'errors') {
       const { auth } = useAuthStore.getState()
       if (!auth.user || auth.user.role < ROLE.ADMIN) {
         throw redirect({ to: '/403' })

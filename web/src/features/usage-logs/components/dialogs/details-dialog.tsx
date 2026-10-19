@@ -657,6 +657,31 @@ export function DetailsDialog(props: DetailsDialogProps) {
       <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-x-hidden py-1 sm:space-y-3'>
         {/* Overview section - key identifiers */}
         <div className='min-w-0 space-y-1'>
+          {props.isAdmin && props.log.type === 5 && (
+            <>
+              {other?.status_code != null && (
+                <DetailRow
+                  label={t('HTTP Status')}
+                  value={String(other.status_code)}
+                  mono
+                />
+              )}
+              {other?.error_type && (
+                <DetailRow
+                  label={t('Error Type')}
+                  value={other.error_type}
+                  mono
+                />
+              )}
+              {other?.error_code && (
+                <DetailRow
+                  label={t('Error Code')}
+                  value={other.error_code}
+                  mono
+                />
+              )}
+            </>
+          )}
           {props.log.request_id && (
             <DetailRow
               label={t('Request ID')}

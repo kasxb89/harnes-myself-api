@@ -7418,6 +7418,13 @@
     "Total paid": "支払い合計",
     "Last top-up": "最終チャージ",
     "Recent top-ups": "最近のチャージ",
-    "No completed top-ups yet": "完了したチャージはありません"
+    "No completed top-ups yet": "完了したチャージはありません",
+    "API Error Logs": "API 呼び出しエラー",
+    "Failed API calls will appear here. Adjust the filters to find earlier errors.": "失敗した API 呼び出しを表示します。フィルターで過去のエラーを検索できます。",
+    "HTTP Status": "HTTP ステータス",
+    "No API errors found": "API エラーはありません",
+    "Error Type": "エラー種別",
+    "Error Code": "エラーコード",
+    "Server is busy. Please try again later": "サーバーが混み合っています。しばらくしてから再試行してください。"
   }
 }

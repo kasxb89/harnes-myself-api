@@ -1,6 +1,10 @@
 package service
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -121,27 +125,123 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
-	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
-		userId := c.GetInt("id")
-		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
-		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
-		other := model.NewLogOther()
-		if c.Request != nil && c.Request.URL != nil {
-			other.SetPublic("request_path", c.Request.URL.Path)
-		}
-		other.SetPublic("error_type", err.GetErrorType())
-		other.SetPublic("error_code", err.GetErrorCode())
-		other.SetPublic("status_code", err.StatusCode)
-		AppendRelayLogAdminInfo(c, relayInfo, other)
-		AppendResponseModelLogInfo(relayInfo, other)
-		AppendTaskPluginContextAuditInfo(c, other)
-		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelError.ChannelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	recordRelayError(c, channelError.ChannelId, err, relayInfo)
+}
+
+const recordedRelayErrorKey = "recorded_relay_error"
+
+// RecordRelayError fills the paths that fail before an upstream attempt. An
+// attempt already recorded by ProcessChannelError is not recorded again when
+// the controller presents the same terminal failure.
+func RecordRelayError(c *gin.Context, err *types.NewAPIError, info *relaycommon.RelayInfo) {
+	if c == nil || err == nil {
+		return
 	}
+	if previous, exists := c.Get(recordedRelayErrorKey); exists && previous == err.ErrorWithStatusCode() {
+		return
+	}
+	channelID := c.GetInt("channel_id")
+	if err.GetErrorCode() == types.ErrorCodeGetChannelFailed {
+		channelID = 0
+	}
+	recordRelayError(c, channelID, err, info)
+}
+
+func recordRelayError(c *gin.Context, channelID int, err *types.NewAPIError, info *relaycommon.RelayInfo) {
+	if c == nil || !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) {
+		return
+	}
+	other := model.NewLogOther()
+	if c.Request != nil && c.Request.URL != nil {
+		other.SetPublic("request_path", c.Request.URL.Path)
+	}
+	taskID := c.Param("task_id")
+	if taskID == "" {
+		taskID = c.GetString("task_id")
+	}
+	if taskID != "" {
+		other.SetPublic("task_id", taskID)
+	}
+	other.SetPublic("error_type", err.GetErrorType())
+	other.SetPublic("error_code", err.GetErrorCode())
+	other.SetPublic("status_code", err.StatusCode)
+	AppendRelayLogAdminInfo(c, info, other)
+	AppendResponseModelLogInfo(info, other)
+	AppendTaskPluginContextAuditInfo(c, other)
+	modelName := c.GetString("original_model")
+	if info != nil && info.OriginModelName != "" {
+		modelName = info.OriginModelName
+	}
+	if taskID != "" && modelName == "" {
+		if task, exists, taskErr := model.GetByTaskId(c.GetInt("id"), taskID); taskErr == nil && exists {
+			modelName = taskModelName(task)
+			channelID = task.ChannelId
+		}
+	}
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	isStream := common.GetContextKeyBool(c, constant.ContextKeyIsStream) || info != nil && info.IsStream
+	model.RecordErrorLog(c, c.GetInt("id"), channelID, modelName, c.GetString("token_name"), err.ErrorWithStatusCode(), c.GetInt("token_id"), int(time.Since(startTime).Seconds()), isStream, c.GetString("group"), other)
+	c.Set(recordedRelayErrorKey, err.ErrorWithStatusCode())
+}
+
+// RecordStreamError preserves a protocol or transport failure discovered after
+// the response headers were already sent. Client cancellation is not an
+// upstream error, and a clean completed stream creates no error row.
+func RecordStreamError(c *gin.Context, info *relaycommon.RelayInfo) {
+	if info == nil || info.StreamStatus == nil {
+		return
+	}
+	stream := info.StreamStatus
+	outcome := stream.OutcomeSnapshot()
+	if outcome.Response != relaycommon.ResponseOutcomeFailed && !outcome.HasErrors &&
+		(outcome.EndReason == relaycommon.StreamEndReasonClientGone || outcome.Response == relaycommon.ResponseOutcomeCancelled ||
+			stream.IsNormalEnd() && (!outcome.ExpectsTerminal || outcome.Response == relaycommon.ResponseOutcomeCompleted)) {
+		return
+	}
+	detail := stream.Summary()
+	for _, message := range stream.ErrorMessages() {
+		detail += "; " + message
+	}
+	code := types.ErrorCode(outcome.ErrorCode)
+	if code == "" {
+		code = types.ErrorCodeBadResponse
+	}
+	status := outcome.ErrorStatus
+	if status < http.StatusBadRequest {
+		status = http.StatusBadGateway
+	}
+	RecordRelayError(c, types.NewOpenAIError(errors.New(detail), code, status), info)
+}
+
+// RecordTaskFailure is called only by the durable insert/status-transition
+// winner. It uses submission provenance rather than the last polling request.
+func RecordTaskFailure(task *model.Task, stage, code string, status int, detail string) {
+	if !constant.ErrorLogEnabled || task == nil || task.Status != model.TaskStatusFailure {
+		return
+	}
+	c := &gin.Context{}
+	username, _ := model.GetUsernameById(task.UserId, false)
+	c.Set("username", username)
+	other := model.NewLogOther()
+	other.SetPublic("task_id", task.TaskID)
+	other.SetPublic("error_stage", stage)
+	other.SetPublic("error_type", "task_error")
+	other.SetPublic("error_code", code)
+	other.SetPublic("status_code", status)
+	if execution := task.PrivateData.Execution; execution != nil {
+		c.Set(common.RequestIdKey, execution.RequestID)
+		other.SetPublic("request_path", execution.RequestPath)
+		AppendTaskPluginAuditInfo(other, execution.TaskPlugin)
+	}
+	if task.Properties.UpstreamModelName != "" && task.Properties.UpstreamModelName != taskModelName(task) {
+		other.SetAdmin("upstream_model_name", task.Properties.UpstreamModelName)
+	}
+	message := task.FailReason
+	if strings.TrimSpace(detail) != "" && detail != message {
+		message += "; " + detail
+	}
+	model.RecordErrorLog(c, task.UserId, task.ChannelId, taskModelName(task), "", fmt.Sprintf("status_code=%d, %s", status, message), task.PrivateData.TokenId, 0, false, task.Group, other)
 }

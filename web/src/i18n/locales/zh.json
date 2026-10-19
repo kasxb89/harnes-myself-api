@@ -7418,6 +7418,13 @@
     "Total paid": "累计充值",
     "Last top-up": "最近充值",
     "Recent top-ups": "最近充值订单",
-    "No completed top-ups yet": "还没有成功充值"
+    "No completed top-ups yet": "还没有成功充值",
+    "API Error Logs": "调用报错",
+    "Failed API calls will appear here. Adjust the filters to find earlier errors.": "模型调用失败会记录在这里，可调整时间、用户或模型筛选条件查询。",
+    "HTTP Status": "HTTP 状态码",
+    "No API errors found": "未找到调用报错",
+    "Error Type": "错误类型",
+    "Error Code": "错误代码",
+    "Server is busy. Please try again later": "服务器繁忙，请稍后重试"
   }
 }

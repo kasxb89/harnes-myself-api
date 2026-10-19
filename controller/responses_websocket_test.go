@@ -40,6 +40,7 @@ var responsesWSTestUserSequence atomic.Int64
 
 func setupResponsesWSRequestTest(t *testing.T) (*model.User, *model.Token) {
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
 	previousType := common.MainDatabaseType()
@@ -970,7 +971,11 @@ func TestResponsesStreamOutcomesPreserveAccounting(t *testing.T) {
 				require.Len(t, logs, len(quotas))
 				var other map[string]any
 				require.NoError(t, common.UnmarshalJsonStr(logs[0].Other, &other))
-				stream := other["stream_status"].(map[string]any)
+				assert.NotContains(t, other, "stream_status", "raw stream diagnostics are administrator-only")
+				adminInfo, ok := other["admin_info"].(map[string]any)
+				require.True(t, ok)
+				stream, ok := adminInfo["stream_status"].(map[string]any)
+				require.True(t, ok)
 				if tc.failed {
 					assert.Equal(t, "error", stream["status"])
 					assert.Equal(t, "failed", stream["response_status"])
@@ -1379,7 +1384,11 @@ func TestResponsesWebSocketForwardsErrorForOtherResponseWithoutEndingRequest(t *
 	require.Len(t, logs, 1)
 	var other map[string]any
 	require.NoError(t, common.UnmarshalJsonStr(logs[0].Other, &other))
-	stream, _ := other["stream_status"].(map[string]any)
+	assert.NotContains(t, other, "stream_status", "raw stream diagnostics are administrator-only")
+	adminInfo, ok := other["admin_info"].(map[string]any)
+	require.True(t, ok)
+	stream, ok := adminInfo["stream_status"].(map[string]any)
+	require.True(t, ok)
 	assert.Equal(t, "ok", stream["status"])
 	assert.Equal(t, "completed", stream["response_status"])
 }

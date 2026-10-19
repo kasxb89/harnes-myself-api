@@ -246,6 +246,10 @@ export async function fetchLogsByCategory(
   const { logCategory, isAdmin, page, pageSize, searchParams, columnFilters } =
     config
 
+  if (config.errorOnly && !isAdmin) {
+    throw new Error('Administrator access is required for API error logs')
+  }
+
   if (logCategory === 'common') {
     const params = buildApiParams({
       page,
@@ -254,6 +258,7 @@ export async function fetchLogsByCategory(
       columnFilters,
       isAdmin,
     })
+    if (config.errorOnly) params.type = 5
     return isAdmin ? await getAllLogs(params) : await getUserLogs(params)
   }
 

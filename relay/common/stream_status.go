@@ -206,6 +206,20 @@ func (s *StreamStatus) TotalErrorCount() int {
 	return s.ErrorCount
 }
 
+// ErrorMessages returns an independent snapshot for operator diagnostics.
+func (s *StreamStatus) ErrorMessages() []string {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	messages := make([]string, 0, len(s.Errors))
+	for _, entry := range s.Errors {
+		messages = append(messages, entry.Message)
+	}
+	return messages
+}
+
 func (s *StreamStatus) IsNormalEnd() bool {
 	if s == nil {
 		return true

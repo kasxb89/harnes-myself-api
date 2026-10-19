@@ -19,6 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // API error diagnostics and the user-safe server-error projection.
+  'API Error Logs',
+  'No API errors found',
+  'Failed API calls will appear here. Adjust the filters to find earlier errors.',
+  'Server is busy. Please try again later',
   'Task usage metadata is unavailable. Pricing details cannot be displayed.',
   'This expression cannot be expanded into a price table. View the original expression below.',
   'This operation is only supported for vLLM or SGLang channels',

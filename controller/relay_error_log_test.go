@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -18,6 +19,56 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestRelayEarlyValidationAndLocalTaskErrorsAreRecorded(t *testing.T) {
+	previousDB, previousLogDB, previousEnabled := model.DB, model.LOG_DB, constant.ErrorLogEnabled
+	previousRedis, previousMainType, previousLogType := common.RedisEnabled, common.MainDatabaseType(), common.LogDatabaseType()
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := database.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Log{}))
+	model.DB, model.LOG_DB, constant.ErrorLogEnabled = database, database, true
+	common.RedisEnabled = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB, constant.ErrorLogEnabled = previousDB, previousLogDB, previousEnabled
+		common.RedisEnabled = previousRedis
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, database.Create(&model.User{Id: 615, Username: "diagnostic-user"}).Error)
+	for _, scenario := range []struct {
+		name string
+		run  func(*gin.Context)
+	}{
+		{name: "request validation", run: func(c *gin.Context) { Relay(c, types.RelayFormat("unsupported-format")) }},
+		{name: "local task failure", run: func(c *gin.Context) {
+			respondTaskSubmissionError(c, &taskdto.TaskError{Code: "get_channel_failed", Message: "no channel available", StatusCode: http.StatusServiceUnavailable, LocalError: true})
+		}},
+		{name: "task query failure", run: func(c *gin.Context) {
+			respondTaskError(c, &taskdto.TaskError{Code: "get_task_failed", Message: "failed to fetch task", StatusCode: http.StatusBadGateway})
+		}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			require.NoError(t, database.Where("type = ?", model.LogTypeError).Delete(&model.Log{}).Error)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			c.Set("id", 615)
+			c.Set("username", "diagnostic-user")
+			c.Set("original_model", "deepseek-v4-flash")
+			c.Set(common.RequestIdKey, "controller-request-id")
+			scenario.run(c)
+			var logs []model.Log
+			require.NoError(t, database.Where("type = ?", model.LogTypeError).Find(&logs).Error)
+			require.Len(t, logs, 1, "task submission and response presenters must not duplicate a failure")
+			assert.Equal(t, "deepseek-v4-flash", logs[0].ModelName)
+			assert.Equal(t, "controller-request-id", logs[0].RequestId)
+			assert.Equal(t, 615, logs[0].UserId)
+		})
+	}
+}
 
 func TestProcessChannelErrorUsesSnapshotWithoutLeakingChannelMetadata(t *testing.T) {
 	gin.SetMode(gin.TestMode)

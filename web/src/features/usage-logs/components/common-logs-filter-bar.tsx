@@ -114,6 +114,7 @@ function buildSearchSourceKey(values: {
 
 interface CommonLogsFilterBarProps<TData> {
   table: Table<TData>
+  errorOnly?: boolean
 }
 
 export function CommonLogsFilterBar<TData>(
@@ -194,7 +195,8 @@ export function CommonLogsFilterBar<TData>(
   const activeDraft =
     draft.sourceKey === searchState.sourceKey ? draft : searchState
   const filters = activeDraft.filters
-  const logType = activeDraft.logType
+  const logType = props.errorOnly ? '5' : activeDraft.logType
+  const section = props.errorOnly ? 'errors' : 'common'
 
   const handleChange = useCallback(
     (field: keyof CommonLogFilters, value: Date | string | undefined) => {
@@ -216,7 +218,7 @@ export function CommonLogsFilterBar<TData>(
       const filterParams = buildSearchParams(nextFilters, 'common')
       navigate({
         to: '/usage-logs/$section',
-        params: { section: 'common' },
+        params: { section },
         search: {
           ...filterParams,
           type: [logType],
@@ -226,14 +228,14 @@ export function CommonLogsFilterBar<TData>(
       queryClient.invalidateQueries({ queryKey: ['logs'] })
       queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
     },
-    [filters, logType, navigate, queryClient]
+    [filters, logType, section, navigate, queryClient]
   )
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
     const resetFilters: CommonLogFilters = { startTime: start, endTime: end }
     const resetSearch = {
-      type: [LOG_TYPE_ALL_VALUE],
+      type: [props.errorOnly ? '5' : LOG_TYPE_ALL_VALUE],
       startTime: start.getTime(),
       endTime: end.getTime(),
     }
@@ -245,7 +247,7 @@ export function CommonLogsFilterBar<TData>(
 
     navigate({
       to: '/usage-logs/$section',
-      params: { section: 'common' },
+      params: { section },
       search: {
         page: 1,
         ...resetSearch,
@@ -253,7 +255,7 @@ export function CommonLogsFilterBar<TData>(
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [navigate, queryClient])
+  }, [navigate, queryClient, props.errorOnly, section])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -264,18 +266,22 @@ export function CommonLogsFilterBar<TData>(
 
   const hasExpandedFilters =
     !!filters.token ||
-    !!filters.username ||
+    (!props.errorOnly && !!filters.username) ||
     !!filters.channel ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
 
-  const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
+  const hasTypeFilter = !props.errorOnly && logType !== LOG_TYPE_ALL_VALUE
   const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
+    !!filters.model ||
+    !!filters.group ||
+    !!filters.username ||
+    hasTypeFilter ||
+    hasExpandedFilters
 
   const expandedFilterCount = [
     filters.token,
-    isAdmin ? filters.username : undefined,
+    isAdmin && !props.errorOnly ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
@@ -297,7 +303,7 @@ export function CommonLogsFilterBar<TData>(
     'Only used to find historical logs. New records are available in Audit Logs.'
   )
 
-  const statsBar = <CommonLogsStats />
+  const statsBar = props.errorOnly ? undefined : <CommonLogsStats />
   const sensitiveToggle = (
     <Tooltip>
       <TooltipTrigger
@@ -433,6 +439,17 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
+  const usernameFilter = isAdmin && (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Username')}
+        className={sensitiveInputClass}
+        value={filters.username || ''}
+        onChange={(e) => handleChange('username', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
   const advancedFilters = (
     <>
       <LogsFilterField>
@@ -444,17 +461,7 @@ export function CommonLogsFilterBar<TData>(
           onKeyDown={handleKeyDown}
         />
       </LogsFilterField>
-      {isAdmin && (
-        <LogsFilterField>
-          <LogsFilterInput
-            placeholder={t('Username')}
-            className={sensitiveInputClass}
-            value={filters.username || ''}
-            onChange={(e) => handleChange('username', e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        </LogsFilterField>
-      )}
+      {!props.errorOnly && usernameFilter}
       {isAdmin && (
         <LogsFilterField>
           <LogsFilterInput
@@ -490,13 +497,14 @@ export function CommonLogsFilterBar<TData>(
       compactMobile
       stats={statsBar}
       actionStart={sensitiveToggle}
-      actionEnd={<ExportLogsDialog />}
+      actionEnd={props.errorOnly ? undefined : <ExportLogsDialog />}
       primaryFilters={
         <>
           {dateRangeFilter}
           {modelFilter}
+          {props.errorOnly && usernameFilter}
           {groupFilter}
-          {typeFilter}
+          {!props.errorOnly && typeFilter}
         </>
       }
       advancedFilters={advancedFilters}
@@ -504,14 +512,19 @@ export function CommonLogsFilterBar<TData>(
       mobileFilters={
         <>
           {modelFilter}
+          {props.errorOnly && usernameFilter}
           {groupFilter}
-          {typeFilter}
+          {!props.errorOnly && typeFilter}
           {advancedFilters}
         </>
       }
       mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
+        [
+          filters.model,
+          filters.group,
+          hasTypeFilter,
+          props.errorOnly && filters.username,
+        ].filter(Boolean).length + expandedFilterCount
       }
       hasAdvancedActiveFilters={hasExpandedFilters}
       advancedFilterCount={expandedFilterCount}

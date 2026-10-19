@@ -76,6 +76,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	var (
 		newAPIError *types.NewAPIError
 		ws          *websocket.Conn
+		relayInfo   *relaycommon.RelayInfo
 	)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
@@ -91,6 +92,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			service.RecordRequestPolicyTermination(c, newAPIError)
+			service.RecordRelayError(c, newAPIError, relayInfo)
 			logger.LogError(c, common.LogText("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			// The log above keeps the real failure for operators; the client reads
 			// congestion, because every channel and fallback model this request was
@@ -128,7 +130,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
-	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
+	relayInfo, err = relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
@@ -248,6 +250,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		if newAPIError == nil {
 			service.MarkRequestPolicySuccess(c, relayInfo.StreamStatus)
+			service.RecordStreamError(c, relayInfo)
 			relayInfo.LastError = nil
 			return
 		}
@@ -486,7 +489,7 @@ func RelayTaskPluginEndpoint(c *gin.Context, fallback gin.HandlerFunc) {
 func RelayTaskFetch(c *gin.Context) {
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, &taskdto.TaskError{
+		respondTaskError(c, &taskdto.TaskError{
 			Code:       "gen_relay_info_failed",
 			Message:    err.Error(),
 			StatusCode: http.StatusInternalServerError,
@@ -550,7 +553,12 @@ func executeTaskSubmissionWith(
 	c *gin.Context,
 	relayInfo *relaycommon.RelayInfo,
 	submit taskSubmitAttempt,
-) (*taskSubmissionOutcome, *taskdto.TaskError) {
+) (outcome *taskSubmissionOutcome, submissionErr *taskdto.TaskError) {
+	defer func() {
+		if submissionErr != nil {
+			service.RecordRelayError(c, taskSubmissionAPIError(submissionErr), relayInfo)
+		}
+	}()
 	policy := service.RequestPolicy(c)
 	diagnostics := newTaskPluginSubmitDiagnostics(c)
 	diagnostics.start(relayInfo)
@@ -777,6 +785,7 @@ func executeTaskSubmissionWith(
 		service.MarkRequestPolicySuccess(c, nil)
 	} else {
 		policy.AddEvent(service.PolicyEvent{Decision: service.PolicyDecision{Action: "stop", Reason: "task_failed", Source: "upstream"}})
+		service.RecordTaskFailure(task, "task_submit", "task_failed", http.StatusBadGateway, "")
 	}
 	service.LogTaskConsumption(c, relayInfo, task)
 	diagnostics.complete(task, result.Quota)
@@ -839,6 +848,7 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 
 func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 	service.RecordRequestPolicyTermination(c, taskSubmissionAPIError(taskErr))
+	service.RecordRelayError(c, taskSubmissionAPIError(taskErr), nil)
 	newTaskPluginSubmitDiagnostics(c).presentError(taskErr)
 	if middleware.RespondTaskPluginError(c, taskErr) {
 		return
@@ -848,6 +858,7 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
+	service.RecordRelayError(c, taskSubmissionAPIError(taskErr), nil)
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = i18n.T(c, i18n.MsgRelayGroupUpstreamSaturated)
 	}

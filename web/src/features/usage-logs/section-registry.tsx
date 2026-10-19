@@ -28,6 +28,11 @@ const USAGE_LOGS_SECTIONS = [
     build: () => null, // Content is rendered directly in the page component
   },
   {
+    id: 'errors',
+    titleKey: 'API Error Logs',
+    build: () => null, // Reuses the common log table with a fixed error filter
+  },
+  {
     id: 'drawing',
     titleKey: 'Drawing Logs',
     build: () => null, // Content is rendered directly in the page component

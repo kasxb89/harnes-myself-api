@@ -76,6 +76,10 @@ func TestStreamStatus_RecordError_Basic(t *testing.T) {
 	assert.True(t, s.HasErrors())
 	assert.Equal(t, 3, s.TotalErrorCount())
 	assert.Len(t, s.Errors, 3)
+	messages := s.ErrorMessages()
+	assert.Equal(t, []string{"bad json", "another bad json", "client gone"}, messages)
+	messages[0] = "changed by log projection"
+	assert.Equal(t, "bad json", s.ErrorMessages()[0], "operator projections cannot mutate stream diagnostics")
 }
 
 func TestStreamStatus_RecordError_CapAtMax(t *testing.T) {
@@ -94,6 +98,7 @@ func TestStreamStatus_RecordError_NilSafe(t *testing.T) {
 	t.Parallel()
 	var s *StreamStatus
 	s.RecordError("should not panic")
+	assert.Nil(t, s.ErrorMessages())
 }
 
 func TestStreamStatus_RecordError_Concurrent(t *testing.T) {

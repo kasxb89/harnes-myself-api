@@ -7418,6 +7418,13 @@
     "Total paid": "Total payé",
     "Last top-up": "Dernière recharge",
     "Recent top-ups": "Recharges récentes",
-    "No completed top-ups yet": "Aucune recharge complétée"
+    "No completed top-ups yet": "Aucune recharge complétée",
+    "API Error Logs": "Erreurs des appels API",
+    "Failed API calls will appear here. Adjust the filters to find earlier errors.": "Les appels API échoués apparaissent ici. Ajustez les filtres pour retrouver les erreurs précédentes.",
+    "HTTP Status": "Statut HTTP",
+    "No API errors found": "Aucune erreur API trouvée",
+    "Error Type": "Type d’erreur",
+    "Error Code": "Code d’erreur",
+    "Server is busy. Please try again later": "Le serveur est occupé. Veuillez réessayer plus tard."
   }
 }

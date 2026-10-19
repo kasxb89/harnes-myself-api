@@ -82,9 +82,13 @@ function deserializeLogTypeFilter(value: unknown): unknown[] {
 
 interface UsageLogsTableProps {
   logCategory: LogCategory
+  errorOnly?: boolean
 }
 
-export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
+export function UsageLogsTable({
+  logCategory,
+  errorOnly = false,
+}: UsageLogsTableProps) {
   const { t } = useTranslation()
   const getColumnClassName = useCallback(
     () => (logCategory === 'common' ? 'py-2' : 'py-3.5'),
@@ -100,7 +104,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const userId = useAuthStore((state) => state.auth.user?.id)
   const { data: showBillingSource = false } = useQuery({
     queryKey: ['usage-log-billing-source', isAdmin, userId],
-    enabled: logCategory === 'common' && userId != null,
+    enabled: !errorOnly && logCategory === 'common' && userId != null,
     queryFn: async () => {
       if (isAdmin) {
         const plansResult = await getAdminPlans()
@@ -165,15 +169,19 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       'logs',
       logCategory,
       viewAccess,
+      errorOnly,
+      userId,
       pagination.pageIndex + 1,
       pagination.pageSize,
       columnFilters,
       searchParams,
       t,
     ],
+    enabled: !errorOnly || isAdmin,
     queryFn: async () => {
       const result = await fetchLogsByCategory({
         logCategory,
+        errorOnly,
         isAdmin,
         page: pagination.pageIndex + 1,
         pageSize: pagination.pageSize,
@@ -190,7 +198,9 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     placeholderData: (previousData, previousQuery) => {
       if (
         previousQuery?.queryKey[1] === logCategory &&
-        previousQuery.queryKey[2] === viewAccess
+        previousQuery.queryKey[2] === viewAccess &&
+        previousQuery.queryKey[3] === errorOnly &&
+        previousQuery.queryKey[4] === userId
       ) {
         return previousData
       }
@@ -203,7 +213,8 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     logCategory,
     isAdmin,
     isRoot,
-    showBillingSource
+    showBillingSource,
+    errorOnly
   )
   const isLoadingData = isLoading || (isFetching && !data)
 
@@ -211,10 +222,9 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     data: logs as Record<string, unknown>[],
     columns: columns as ColumnDef<Record<string, unknown>>[],
     columnFilters,
-    columnVisibilityStorageKey: getColumnVisibilityStorageKey(
-      logCategory,
-      viewAccess
-    ),
+    columnVisibilityStorageKey:
+      getColumnVisibilityStorageKey(logCategory, viewAccess) +
+      (errorOnly ? ':errors' : ''),
     pagination,
     enableRowSelection: false,
     onPaginationChange,
@@ -234,9 +244,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       columns={columns as ColumnDef<Record<string, unknown>>[]}
       isLoading={isLoadingData}
       isFetching={isFetching}
-      emptyTitle={t('No Logs Found')}
+      emptyTitle={t(errorOnly ? 'No API errors found' : 'No Logs Found')}
       emptyDescription={t(
-        'No usage logs available. Logs will appear here once API calls are made.'
+        errorOnly
+          ? 'Failed API calls will appear here. Adjust the filters to find earlier errors.'
+          : 'No usage logs available. Logs will appear here once API calls are made.'
       )}
       skeletonKeyPrefix='usage-log-skeleton'
       applyHeaderSize
@@ -248,11 +260,20 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
           table={table}
           isLoading={isLoadingData}
           logCategory={logCategory}
+          errorOnly={errorOnly}
+          emptyTitle={errorOnly ? t('No API errors found') : undefined}
+          emptyDescription={
+            errorOnly
+              ? t(
+                  'Failed API calls will appear here. Adjust the filters to find earlier errors.'
+                )
+              : undefined
+          }
         />
       }
       toolbar={
         isCommon ? (
-          <CommonLogsFilterBar table={table} />
+          <CommonLogsFilterBar table={table} errorOnly={errorOnly} />
         ) : (
           <TaskLogsFilterBar table={table} logCategory={logCategory} />
         )

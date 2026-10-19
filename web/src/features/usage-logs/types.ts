@@ -115,6 +115,9 @@ export interface ToolSurchargeItem {
 }
 
 export interface LogOtherData {
+  status_code?: number
+  error_code?: string
+  error_type?: string
   admin_info?: {
     request_policy?: PolicyEvent[]
     is_multi_key?: boolean
@@ -503,6 +506,7 @@ export interface GetTaskLogsParams {
  * Configuration for fetching logs by category
  */
 export interface FetchLogsConfig {
+  errorOnly?: boolean
   logCategory: LogCategory
   isAdmin: boolean
   page: number

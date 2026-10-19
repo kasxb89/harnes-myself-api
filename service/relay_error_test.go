@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -23,6 +24,105 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestRelayFailureLogCoversLocalErrorsWithoutDuplicatingChannelErrors(t *testing.T) {
+	truncate(t)
+	previous := constant.ErrorLogEnabled
+	constant.ErrorLogEnabled = true
+	t.Cleanup(func() { constant.ErrorLogEnabled = previous })
+	seedUser(t, 610, 1000)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/harness/v1/chat/completions", nil)
+	c.Set("id", 610)
+	c.Set("username", "test_user")
+	c.Set("original_model", "deepseek-v4-flash")
+	c.Set(common.RequestIdKey, "relay-diagnostic-request")
+	apiErr := types.NewErrorWithStatusCode(errors.New("administrator has not priced model"), types.ErrorCodeModelPriceError, http.StatusBadRequest)
+	RecordRelayError(c, apiErr, nil)
+	RecordRelayError(c, apiErr, nil)
+	var logs []model.Log
+	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Order("id").Find(&logs).Error)
+	require.Len(t, logs, 1)
+	assert.Equal(t, "deepseek-v4-flash", logs[0].ModelName)
+	assert.Equal(t, "relay-diagnostic-request", logs[0].RequestId)
+	assert.Contains(t, logs[0].Content, "administrator has not priced model")
+	other, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	assert.Equal(t, "/harness/v1/chat/completions", other["request_path"])
+	assert.Equal(t, "model_price_error", other["error_code"])
+
+	upstreamErr := types.NewOpenAIError(errors.New("provider rejected request"), types.ErrorCodeBadResponseStatusCode, http.StatusBadGateway)
+	ProcessChannelError(c, types.ChannelError{ChannelId: 101}, upstreamErr, nil)
+	RecordRelayError(c, upstreamErr, nil)
+	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Order("id").Find(&logs).Error)
+	require.Len(t, logs, 2, "the outer relay must not duplicate its channel's failure")
+	assert.Equal(t, 101, logs[1].ChannelId)
+	c.Set("channel_id", 101)
+	RecordRelayError(c, types.NewError(errors.New("no available channel"), types.ErrorCodeGetChannelFailed), nil)
+	require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Order("id").Find(&logs).Error)
+	require.Len(t, logs, 3)
+	assert.Zero(t, logs[2].ChannelId, "a failed channel selection must not inherit the preceding attempt's channel")
+
+	constant.ErrorLogEnabled = false
+	RecordRelayError(c, types.NewError(errors.New("logging disabled"), types.ErrorCodeInvalidRequest), nil)
+	var count int64
+	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeError).Count(&count).Error)
+	assert.EqualValues(t, 3, count, "an explicit logging opt-out remains effective")
+}
+
+func TestStreamFailureLogsAfterHTTP200AndIgnoresCompletedOrCancelledStreams(t *testing.T) {
+	truncate(t)
+	previous := constant.ErrorLogEnabled
+	constant.ErrorLogEnabled = true
+	t.Cleanup(func() { constant.ErrorLogEnabled = previous })
+	seedUser(t, 611, 1000)
+	for _, scenario := range []struct {
+		name     string
+		setup    func(*relaycommon.StreamStatus)
+		wantLogs int
+	}{
+		{name: "failed event", setup: func(s *relaycommon.StreamStatus) {
+			s.RecordError("reasoning_content must be passed back")
+			s.MarkFailed("invalid_request_error", "invalid_request_error", http.StatusBadRequest)
+			s.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+		}, wantLogs: 1},
+		{name: "completed", setup: func(s *relaycommon.StreamStatus) {
+			s.MarkCompleted()
+			s.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+		}},
+		{name: "client cancelled", setup: func(s *relaycommon.StreamStatus) {
+			s.MarkCancelled()
+			s.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+		}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Delete(&model.Log{}).Error)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			c.Set("id", 611)
+			c.Set("original_model", "deepseek-v4-flash")
+			status := relaycommon.NewStreamStatus()
+			scenario.setup(status)
+			info := &relaycommon.RelayInfo{IsStream: true, StreamStatus: status}
+			RecordStreamError(c, info)
+			other := model.NewLogOther()
+			appendStreamStatus(info, other)
+			assert.NotContains(t, other.Snapshot(), "stream_status", "raw stream diagnostics are administrator-only")
+			assert.Contains(t, other.Snapshot()["admin_info"], "stream_status")
+			var logs []model.Log
+			require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Find(&logs).Error)
+			require.Len(t, logs, scenario.wantLogs)
+			if scenario.wantLogs > 0 {
+				assert.True(t, logs[0].IsStream)
+				assert.Contains(t, logs[0].Content, "reasoning_content must be passed back")
+				other, err := common.StrToMap(logs[0].Other)
+				require.NoError(t, err)
+				assert.Equal(t, float64(http.StatusBadRequest), other["status_code"])
+				assert.Equal(t, "invalid_request_error", other["error_code"])
+			}
+		})
+	}
+}
 
 func TestShouldRetryRelayErrorHonorsChannelPinOnChannelError(t *testing.T) {
 	err := types.NewError(errors.New("channel failed"), types.ErrorCodeChannelNoAvailableKey)

@@ -60,6 +60,7 @@ type LogField = {
 /** Mobile summaries use tappable fields; desktop tooltip cells cannot reveal full text on touch. */
 export function CommonLogMobileCard<TData>(props: {
   log: UsageLog
+  errorOnly?: boolean
   cells: Map<string, Cell<TData, unknown>>
 }) {
   const { t } = useTranslation()
@@ -89,7 +90,9 @@ export function CommonLogMobileCard<TData>(props: {
     },
     time: {
       label: t('Time'),
-      value: formatTimestampToDate(log.created_at),
+      value: props.errorOnly
+        ? dayjs.unix(log.created_at).format('YYYY-MM-DD HH:mm:ss Z')
+        : formatTimestampToDate(log.created_at),
       visible: props.cells.has('created_at'),
     },
     user: {
@@ -161,6 +164,18 @@ export function CommonLogMobileCard<TData>(props: {
           </div>
         )}
       </div>
+      {props.errorOnly && (
+        <div className='flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs'>
+          <span>
+            {t('HTTP Status')}: {other?.status_code ?? '—'}
+          </span>
+          {log.request_id && (
+            <span className='min-w-0 break-all'>
+              {t('Request ID')}: {log.request_id}
+            </span>
+          )}
+        </div>
+      )}
       <div
         className='grid min-w-0 grid-cols-2 items-stretch gap-x-3'
         data-slot='log-time-and-timing'
@@ -181,7 +196,9 @@ export function CommonLogMobileCard<TData>(props: {
               onClick={() => setSelectedField('time')}
               className='text-muted-foreground h-auto min-h-6 px-0 py-0 text-xs font-normal whitespace-normal tabular-nums'
             >
-              {dayjs.unix(log.created_at).format('MM-DD HH:mm:ss')}
+              {props.errorOnly
+                ? fields.time.value
+                : dayjs.unix(log.created_at).format('MM-DD HH:mm:ss')}
             </Button>
           </div>
         )}

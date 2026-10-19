@@ -171,15 +171,11 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other *model.LogOther)
 	if ss.EndError != nil {
 		streamInfo["end_error"] = ss.EndError.Error()
 	}
-	if ss.ErrorCount > 0 {
-		streamInfo["error_count"] = ss.ErrorCount
-		messages := make([]string, 0, len(ss.Errors))
-		for _, e := range ss.Errors {
-			messages = append(messages, e.Message)
-		}
-		streamInfo["errors"] = messages
+	if count := ss.TotalErrorCount(); count > 0 {
+		streamInfo["error_count"] = count
+		streamInfo["errors"] = ss.ErrorMessages()
 	}
-	other.SetPublic("stream_status", streamInfo)
+	other.SetAdmin("stream_status", streamInfo)
 }
 
 func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {

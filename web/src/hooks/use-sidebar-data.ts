@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  AlertTriangle,
   Box,
   ClipboardList,
   CreditCard,
@@ -157,6 +158,12 @@ export function useSidebarData(): SidebarData {
             title: t('AI Creation Management'),
             url: '/creation-content',
             icon: LayoutDashboard,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('API Error Logs'),
+            url: '/usage-logs/errors',
+            icon: AlertTriangle,
             requiredRole: ROLE.ADMIN,
           },
           {

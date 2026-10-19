@@ -7418,6 +7418,13 @@
     "Total paid": "Tổng đã trả",
     "Last top-up": "Lần nạp gần nhất",
     "Recent top-ups": "Lần nạp gần đây",
-    "No completed top-ups yet": "Chưa có lần nạp thành công"
+    "No completed top-ups yet": "Chưa có lần nạp thành công",
+    "API Error Logs": "Lỗi gọi API",
+    "Failed API calls will appear here. Adjust the filters to find earlier errors.": "Các lần gọi API thất bại sẽ hiển thị tại đây. Điều chỉnh bộ lọc để tìm lỗi trước đó.",
+    "HTTP Status": "Trạng thái HTTP",
+    "No API errors found": "Không tìm thấy lỗi API",
+    "Error Type": "Loại lỗi",
+    "Error Code": "Mã lỗi",
+    "Server is busy. Please try again later": "Máy chủ đang bận. Vui lòng thử lại sau."
   }
 }

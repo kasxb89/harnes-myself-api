@@ -58,7 +58,10 @@ func seedExportLogs(t *testing.T, mainDB *gorm.DB, logDB *gorm.DB, now int64) {
 	logs := []model.Log{
 		{UserId: 1, Username: "alice", CreatedAt: now - 3600, Type: model.LogTypeConsume, ModelName: "gpt-a", ChannelId: 9, Quota: 10, RequestId: "a-1", Other: `{"admin_info":{"use_channel":["9"]}}`},
 		{UserId: 2, Username: "bob", CreatedAt: now - 1800, Type: model.LogTypeConsume, ModelName: "gpt-b", ChannelId: 9, Quota: 20, RequestId: "b-1"},
-		{UserId: 1, Username: "alice", CreatedAt: now - 60, Type: model.LogTypeError, ModelName: "gpt-a", RequestId: "a-2"},
+		{UserId: 1, Username: "alice", CreatedAt: now - 60, Type: model.LogTypeError, ModelName: "gpt-a", RequestId: "a-2", UpstreamRequestId: "upstream-private",
+			Content: `400 reasoning_content missing; Authorization: Bearer opaque-provider-secret`,
+			Other:   `{"status_code":400,"admin_info":{"api_key":"opaque-provider-secret","diagnostic":"upstream rejected request"},"root_info":{"diagnostic":"root trace","password":"opaque-root-secret"}}`,
+		},
 		{UserId: 1, Username: "alice", CreatedAt: now - 400*24*3600, Type: model.LogTypeConsume, ModelName: "gpt-a", RequestId: "a-old"},
 	}
 	for i := range logs {
@@ -128,6 +131,9 @@ func TestLogExportDatabaseMatrix(t *testing.T) {
 			listed := callLogHandler(t, GetUserLogs, 1, common.RoleCommonUser, query)[0]
 			require.Equal(t, true, listed["success"])
 			assert.EqualValues(t, 2, listed["data"].(map[string]any)["total"])
+			userError := listed["data"].(map[string]any)["items"].([]any)[0].(map[string]any)
+			assert.Equal(t, "Server is busy. Please try again later", userError["content"])
+			assert.Empty(t, userError["upstream_request_id"])
 			listed = callLogHandler(t, GetAllLogs, 3, common.RoleAdminUser, query+"&username=alice")[0]
 			require.Equal(t, true, listed["success"])
 			assert.EqualValues(t, 2, listed["data"].(map[string]any)["total"])
@@ -137,8 +143,13 @@ func TestLogExportDatabaseMatrix(t *testing.T) {
 			assert.Equal(t, []any{"a-2", "a-1"}, exportedRequestIds(own))
 			assert.Equal(t, map[string]any{"success": true, "message": "", "data": map[string]any{"count": float64(2)}}, own[2])
 			assert.Equal(t, float64(1), own[0]["id"], "user exports carry list positions, not row ids")
+			assert.Equal(t, float64(2), own[1]["id"])
 			assert.Empty(t, own[1]["channel_name"])
 			assert.NotContains(t, own[1]["other"], "admin_info")
+			assert.Equal(t, userError["content"], own[0]["content"])
+			assert.Equal(t, userError["other"], own[0]["other"])
+			assert.Empty(t, own[0]["upstream_request_id"])
+			assert.NotContains(t, own[0]["other"], "reasoning_content")
 
 			all := callLogHandler(t, ExportAllLogs, 3, common.RoleAdminUser, query+"&model_name=gpt-%25")
 			require.Len(t, all, 4)
@@ -146,6 +157,25 @@ func TestLogExportDatabaseMatrix(t *testing.T) {
 			assert.Equal(t, "primary", all[2]["channel_name"])
 			assert.Contains(t, all[2]["other"], "admin_info")
 			assert.Equal(t, true, all[3]["success"])
+			for _, role := range []int{common.RoleAdminUser, common.RoleRootUser} {
+				listed := callLogHandler(t, GetAllLogs, 3, role, query+"&type=5")[0]
+				require.Equal(t, true, listed["success"])
+				errorLog := listed["data"].(map[string]any)["items"].([]any)[0].(map[string]any)
+				exported := callLogHandler(t, ExportAllLogs, 3, role, query+"&type=5")
+				require.Len(t, exported, 2)
+				assert.Equal(t, errorLog["content"], exported[0]["content"])
+				assert.Equal(t, errorLog["other"], exported[0]["other"])
+				assert.Contains(t, exported[0]["content"], "reasoning_content missing")
+				assert.Contains(t, exported[0]["other"], "upstream rejected request")
+				assert.NotContains(t, exported[0]["content"], "opaque-provider-secret")
+				assert.NotContains(t, exported[0]["other"], "opaque-provider-secret")
+				assert.NotContains(t, exported[0]["other"], "opaque-root-secret")
+				if role < common.RoleRootUser {
+					assert.NotContains(t, exported[0]["other"], "root trace")
+				} else {
+					assert.Contains(t, exported[0]["other"], "root trace")
+				}
+			}
 		})
 	}
 }

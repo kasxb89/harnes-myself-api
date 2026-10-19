@@ -107,6 +107,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 			logger.LogInfo(ctx, common.LogText("sweepTimedOutTasks: task %s already transitioned, skip", task.TaskID))
 			continue
 		}
+		RecordTaskFailure(task, "task_timeout", "task_timeout", http.StatusGatewayTimeout, "")
 		timedOutCount++
 		if !isLegacy && task.Quota != 0 {
 			RefundTaskQuota(ctx, task, reason)
@@ -298,12 +299,12 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 				logger.LogWarn(ctx, common.LogText("task %s poll %s (failures=%d, http=%d): %s", task.TaskID, pollClassNotFound, task.PrivateData.PollFailures, resp.StatusCode, unrecognizedPollDetail("", responseBody)))
 			}
 		}
-		return failTasksFromPoll(ctx, adaptor, tasks, "Upstream task not found")
+		return failTasksFromPoll(ctx, adaptor, tasks, "Upstream task not found", taskFailureDiagnostic{stage: "task_poll", code: pollClassNotFound, status: resp.StatusCode, detail: unrecognizedPollDetail("", responseBody)})
 	case pollClassAuth:
 		logger.LogWarn(ctx, common.LogText("task poll auth failure channel_id=%d http=%d", channelId, resp.StatusCode))
-		return recordPollFailureForTasks(ctx, adaptor, tasks, pollClassAuth, resp.StatusCode, "")
+		return recordPollFailureForTasks(ctx, adaptor, tasks, pollClassAuth, resp.StatusCode, unrecognizedPollDetail("", responseBody))
 	case pollClassTransient:
-		return recordPollFailureForTasks(ctx, adaptor, tasks, pollClassTransient, resp.StatusCode, "")
+		return recordPollFailureForTasks(ctx, adaptor, tasks, pollClassTransient, resp.StatusCode, unrecognizedPollDetail("", responseBody))
 	}
 	responseItems, err := adaptor.ParseBatchResult(tasks, resp, responseBody)
 	if err != nil {
@@ -379,6 +380,7 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 			continue
 		}
 		if terminalTransition {
+			recordPollingTaskFailure(task)
 			finalizeTerminalTask(ctx, adaptor, task, &responseItem.TaskInfo)
 		}
 	}
@@ -515,12 +517,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	switch classifyPollHTTP(resp.StatusCode) {
 	case pollClassNotFound:
 		logger.LogWarn(ctx, common.LogText("task %s poll %s (failures=%d, http=%d): %s", task.TaskID, pollClassNotFound, task.PrivateData.PollFailures, resp.StatusCode, unrecognizedPollDetail("", responseBody)))
-		return failTaskFromPoll(ctx, adaptor, task, snap.Status, "Upstream task not found")
+		return failTaskFromPoll(ctx, adaptor, task, snap.Status, "Upstream task not found", taskFailureDiagnostic{stage: "task_poll", code: pollClassNotFound, status: resp.StatusCode, detail: unrecognizedPollDetail("", responseBody)})
 	case pollClassAuth:
 		logger.LogWarn(ctx, common.LogText("task poll auth failure channel_id=%d task=%s http=%d", ch.Id, task.TaskID, resp.StatusCode))
-		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassAuth, resp.StatusCode, "")
+		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassAuth, resp.StatusCode, unrecognizedPollDetail("", responseBody))
 	case pollClassTransient:
-		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassTransient, resp.StatusCode, "")
+		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassTransient, resp.StatusCode, unrecognizedPollDetail("", responseBody))
 	}
 
 	taskResult := &relaycommon.TaskInfo{}
@@ -612,6 +614,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		} else if !won {
 			logger.LogWarn(ctx, common.LogText("Task %s CAS lost or no-op update, skip billing", task.TaskID))
 			shouldFinalizeBilling = false
+		} else {
+			recordPollingTaskFailure(task)
 		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
@@ -779,7 +783,7 @@ func recordPollFailure(ctx context.Context, adaptor TaskPollingAdaptor, task *mo
 		logger.LogWarn(ctx, common.LogText("task %s poll %s (failures=%d, http=%d): %s", task.TaskID, class, task.PrivateData.PollFailures, statusCode, detail))
 	}
 	if giveUp {
-		return failTaskFromPoll(ctx, adaptor, task, fromStatus, "Failed to query the upstream task status")
+		return failTaskFromPoll(ctx, adaptor, task, fromStatus, "Failed to query the upstream task status", taskFailureDiagnostic{stage: "task_poll", code: class, status: statusCode, detail: detail})
 	}
 	if _, err := task.UpdateWithStatus(fromStatus); err != nil {
 		return err
@@ -800,7 +804,24 @@ func recordPollFailureForTasks(ctx context.Context, adaptor TaskPollingAdaptor, 
 	return firstErr
 }
 
-func failTaskFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, reason string) error {
+type taskFailureDiagnostic struct {
+	stage  string
+	code   string
+	status int
+	detail string
+}
+
+// recordPollingTaskFailure records diagnostics only; callers retain ownership
+// of the pre-existing billing/finalization path and confirm the status CAS.
+func recordPollingTaskFailure(task *model.Task, diagnostics ...taskFailureDiagnostic) {
+	diagnostic := taskFailureDiagnostic{stage: "task_terminal", code: "task_failed", status: http.StatusBadGateway}
+	if len(diagnostics) > 0 {
+		diagnostic = diagnostics[0]
+	}
+	RecordTaskFailure(task, diagnostic.stage, diagnostic.code, diagnostic.status, diagnostic.detail)
+}
+
+func failTaskFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, reason string, diagnostic ...taskFailureDiagnostic) error {
 	now := time.Now().Unix()
 	task.Status = model.TaskStatusFailure
 	task.Progress = taskcommon.ProgressComplete
@@ -815,17 +836,20 @@ func failTaskFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, task *mod
 	if !won {
 		return nil
 	}
+	if fromStatus != model.TaskStatusSuccess && fromStatus != model.TaskStatusFailure {
+		recordPollingTaskFailure(task, diagnostic...)
+	}
 	finalizeTerminalTask(ctx, adaptor, task, relaycommon.FailTaskInfo(reason))
 	return nil
 }
 
-func failTasksFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, tasks []*model.Task, reason string) error {
+func failTasksFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, tasks []*model.Task, reason string, diagnostic ...taskFailureDiagnostic) error {
 	var firstErr error
 	for _, task := range tasks {
 		if task == nil {
 			continue
 		}
-		if err := failTaskFromPoll(ctx, adaptor, task, task.Status, reason); err != nil && firstErr == nil {
+		if err := failTaskFromPoll(ctx, adaptor, task, task.Status, reason, diagnostic...); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

@@ -49,6 +49,7 @@ interface UsageLogsMobileListProps<TData> {
   emptyTitle?: string
   emptyDescription?: string
   logCategory: LogCategory
+  errorOnly?: boolean
 }
 
 function UsageLogsMobileSkeleton(props: { separate: boolean }) {
@@ -242,6 +243,7 @@ export function UsageLogsMobileList<TData>({
   emptyTitle,
   emptyDescription,
   logCategory,
+  errorOnly = false,
 }: UsageLogsMobileListProps<TData>) {
   const { t } = useTranslation()
 
@@ -302,6 +304,7 @@ export function UsageLogsMobileList<TData>({
           >
             {logCategory === 'common' && (
               <CommonLogMobileCard
+                errorOnly={errorOnly}
                 log={row.original as UsageLog}
                 cells={cells}
               />

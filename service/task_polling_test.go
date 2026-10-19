@@ -173,6 +173,72 @@ func TestRedactVideoResponseBodyPreservesPollingPayloadShape(t *testing.T) {
 	assert.Equal(t, "https://media.example/video.mp4", video["uri"])
 }
 
+func TestTaskFailuresLogOnceAfterTerminalCASWithOriginalRequest(t *testing.T) {
+	for _, scenario := range []string{"upstream failure", "polling exhausted", "timeout"} {
+		t.Run(scenario, func(t *testing.T) {
+			truncate(t)
+			previousLog, previousTimeout, previousMax := constant.ErrorLogEnabled, constant.TaskTimeoutMinutes, constant.TaskPollMaxFailures
+			constant.ErrorLogEnabled, constant.TaskTimeoutMinutes, constant.TaskPollMaxFailures = true, 1, 1
+			t.Cleanup(func() {
+				constant.ErrorLogEnabled, constant.TaskTimeoutMinutes, constant.TaskPollMaxFailures = previousLog, previousTimeout, previousMax
+			})
+			seedUser(t, 612, 1000)
+			settings, err := common.Marshal(dto.UserSetting{RecordIpLog: true})
+			require.NoError(t, err)
+			require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 612).Update("setting", string(settings)).Error)
+			task := makeTask(612, 7, 0, 0, BillingSourceWallet, 0)
+			task.TaskID = "diagnostic-task"
+			task.SubmitTime = time.Now().Add(-2 * time.Minute).Unix()
+			task.Properties.OriginModelName = "MiniMax-H3"
+			task.PrivateData.BillingContext.OriginModelName = "MiniMax-H3"
+			task.PrivateData.Execution = &model.TaskExecutionSnapshot{RequestID: "original-submit-id", RequestPath: "/harness/v1/video/generations"}
+			require.NoError(t, model.DB.Create(task).Error)
+			stale := *task
+			adaptor := &scriptedPollingAdaptor{statusCode: http.StatusOK, parse: &relaycommon.TaskInfo{Status: model.TaskStatusFailure, Reason: "upstream balance exhausted"}}
+			switch scenario {
+			case "upstream failure":
+				channel := &model.Channel{Id: 7, Type: constant.ChannelTypeKling}
+				require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, task.TaskID, map[string]*model.Task{task.TaskID: task}))
+				// A second worker carrying the old snapshot loses the status CAS.
+				require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, stale.TaskID, map[string]*model.Task{stale.TaskID: &stale}))
+			case "polling exhausted":
+				require.NoError(t, recordPollFailure(context.Background(), adaptor, task, task.Status, pollClassTransient, http.StatusServiceUnavailable, "provider unavailable"))
+				require.NoError(t, recordPollFailure(context.Background(), adaptor, &stale, stale.Status, pollClassTransient, http.StatusServiceUnavailable, "provider unavailable"))
+			case "timeout":
+				sweepTimedOutTasks(context.Background())
+				sweepTimedOutTasks(context.Background())
+			}
+			var terminal model.Task
+			require.NoError(t, model.DB.First(&terminal, task.ID).Error)
+			// Re-querying the already persisted failure creates no second error
+			// row, while retaining the existing terminal finalization behavior.
+			if scenario == "upstream failure" {
+				channel := &model.Channel{Id: 7, Type: constant.ChannelTypeKling}
+				require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, terminal.TaskID, map[string]*model.Task{terminal.TaskID: &terminal}))
+			} else if scenario == "polling exhausted" {
+				require.NoError(t, recordPollFailure(context.Background(), adaptor, &terminal, terminal.Status, pollClassTransient, http.StatusServiceUnavailable, "provider unavailable"))
+			}
+			var logs []model.Log
+			require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Find(&logs).Error)
+			require.Len(t, logs, 1)
+			assert.Equal(t, 612, logs[0].UserId)
+			assert.Equal(t, "test_user", logs[0].Username)
+			assert.Equal(t, "MiniMax-H3", logs[0].ModelName)
+			assert.Equal(t, "original-submit-id", logs[0].RequestId)
+			assert.Equal(t, 7, logs[0].ChannelId)
+			assert.InDelta(t, time.Now().Unix(), logs[0].CreatedAt, 2)
+			other, err := common.StrToMap(logs[0].Other)
+			require.NoError(t, err)
+			assert.Equal(t, task.TaskID, other["task_id"])
+			assert.Equal(t, "/harness/v1/video/generations", other["request_path"])
+			if scenario == "polling exhausted" {
+				assert.Contains(t, logs[0].Content, "provider unavailable")
+				assert.Equal(t, float64(http.StatusServiceUnavailable), other["status_code"])
+			}
+		})
+	}
+}
+
 func seedTaskPollingChannel(t *testing.T, id int, disableSleep bool) {
 	t.Helper()
 	ch := &model.Channel{

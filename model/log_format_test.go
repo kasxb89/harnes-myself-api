@@ -242,3 +242,52 @@ func TestLogFormattingPreservesLargeIntegerLexemes(t *testing.T) {
 		assert.Equal(t, unprivileged, adminLogs[0].Other)
 	})
 }
+
+func TestUserErrorLogsExposeFriendlyMessageInsteadOfDiagnostics(t *testing.T) {
+	logs := []*Log{{Type: LogTypeError, CreatedAt: 1792404000, UserId: 7, Username: "test-user",
+		ModelName: "deepseek-flash", RequestId: "product-request", UpstreamRequestId: "upstream-private",
+		Content: `400 reasoning_content missing; sk-private-provider-secret-123456`,
+		Other:   `{"error_code":"invalid_request_error","status_code":400,"content_parts":[{"key":"raw diagnostic"}],"stream_status":{"end_error":"private trace"}}`,
+	}}
+	formatUserLogs(logs, 0)
+	assert.Equal(t, "Server is busy. Please try again later", logs[0].Content)
+	assert.Equal(t, "deepseek-flash", logs[0].ModelName)
+	assert.Equal(t, int64(1792404000), logs[0].CreatedAt)
+	assert.Equal(t, "product-request", logs[0].RequestId)
+	assert.Empty(t, logs[0].UpstreamRequestId)
+	assert.JSONEq(t, `{"content_parts":[{"key":"Server is busy. Please try again later"}]}`, logs[0].Other)
+}
+
+func TestAdminErrorLogsKeepReasonAndRedactNestedCredentials(t *testing.T) {
+	for _, format := range []struct {
+		name  string
+		apply func([]*Log)
+	}{{"admin", FormatAdminLogs}, {"root", FormatRootLogs}} {
+		t.Run(format.name, func(t *testing.T) {
+			logs := []*Log{{Type: LogTypeError,
+				Content: `400 reasoning_content missing; Authorization: Bearer opaque-provider-secret`,
+				Other:   `{"public_id":9007199254740993,"status_code":400,"admin_info":{"api_key":"opaque-provider-secret","message":"upstream refused sk-private-provider-secret-123456","nested":"{\"refresh_token\":\"nested-secret\"}"}}`,
+			}}
+			format.apply(logs)
+			assert.Contains(t, logs[0].Content, "reasoning_content missing")
+			assert.NotContains(t, logs[0].Content, "opaque-provider-secret")
+			assert.NotContains(t, logs[0].Other, "opaque-provider-secret")
+			assert.NotContains(t, logs[0].Other, "sk-private-provider-secret-123456")
+			assert.NotContains(t, logs[0].Other, "nested-secret")
+			assert.Contains(t, logs[0].Other, `"public_id":9007199254740993`)
+			assert.Contains(t, logs[0].Other, `"status_code":400`)
+			var parsed map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(logs[0].Other, &parsed))
+		})
+	}
+}
+
+func TestLegacyStreamDiagnosticsAreNotExposedToLogOwner(t *testing.T) {
+	const other = `{"model_price":0.004,"stream_status":{"end_error":"upstream private trace","errors":["raw reason"]}}`
+	logs := []*Log{{Type: LogTypeConsume, Other: other}}
+	formatUserLogs(logs, 0)
+	assert.JSONEq(t, `{"model_price":0.004}`, logs[0].Other)
+	adminLogs := []*Log{{Type: LogTypeConsume, Other: other}}
+	FormatAdminLogs(adminLogs)
+	assert.Contains(t, adminLogs[0].Other, "upstream private trace")
+}
