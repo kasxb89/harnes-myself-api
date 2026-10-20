@@ -154,12 +154,15 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	return logs, err
 }
 
-func RecordLog(userId int, logType int, content *common.Message) {
+func RecordLog(userId int, logType int, content *common.Message, balanceChanges ...BalanceChange) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
 	username, _ := GetUsernameById(userId, false)
 	other := NewLogOther()
+	if len(balanceChanges) > 0 {
+		other.SetPublic("balance_change", balanceChanges[0])
+	}
 	log := &Log{
 		UserId:    userId,
 		Username:  username,

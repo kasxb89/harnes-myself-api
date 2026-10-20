@@ -901,4 +901,14 @@ export const STATIC_I18N_KEYS = [
   'Verification method',
   'Admin permissions updated',
   'Provider ID',
+  // Balance source labels are selected dynamically.
+  'All balance sources',
+  'Registration gift',
+  'Paid top-up',
+  'Administrator adjustment',
+  'Redemption code credit',
+  'Invitation reward',
+  'Check-in reward',
+  'Subscription purchase',
+  'Other balance changes',
 ] as const

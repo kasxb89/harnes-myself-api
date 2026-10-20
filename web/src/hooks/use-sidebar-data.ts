@@ -110,6 +110,42 @@ export function useSidebarData(): SidebarData {
         ],
       },
       {
+        id: 'operations',
+        title: t('Operations management'),
+        items: [
+          {
+            title: t('Operations dashboard'),
+            url: '/usage-logs/operations',
+            icon: Receipt,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Balance ledger'),
+            url: '/balance-ledger',
+            icon: Wallet,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('User Activity'),
+            url: '/user-activity',
+            icon: Activity,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('API Error Logs'),
+            url: '/usage-logs/errors',
+            icon: AlertTriangle,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('AI Creation Management'),
+            url: '/creation-content',
+            icon: LayoutDashboard,
+            requiredRole: ROLE.ADMIN,
+          },
+        ],
+      },
+      {
         id: 'personal',
         title: t('Personal'),
         items: [
@@ -150,33 +186,9 @@ export function useSidebarData(): SidebarData {
             icon: Users,
           },
           {
-            title: t('User Activity'),
-            url: '/user-activity',
-            icon: Activity,
-            requiredRole: ROLE.ADMIN,
-          },
-          {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
-          },
-          {
-            title: t('AI Creation Management'),
-            url: '/creation-content',
-            icon: LayoutDashboard,
-            requiredRole: ROLE.ADMIN,
-          },
-          {
-            title: t('API Error Logs'),
-            url: '/usage-logs/errors',
-            icon: AlertTriangle,
-            requiredRole: ROLE.ADMIN,
-          },
-          {
-            title: t('Profit & Upstream Top-ups'),
-            url: '/usage-logs/operations',
-            icon: Receipt,
-            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Subscriptions'),
