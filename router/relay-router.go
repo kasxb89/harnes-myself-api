@@ -76,6 +76,9 @@ func SetRelayRouter(router *gin.Engine) {
 		// Responses WebSocket route. Channel selection happens after the first
 		// response.create event; each event runs the ordinary request limiter.
 		relayV1Router.GET("/responses", controller.ResponsesWebSocket)
+		// Reference uploads have their own bounds and user limiter and never
+		// enter generation billing or the generic multipart/model parser.
+		relayV1Router.POST("/uploads/images", middleware.PrepareReferenceImageUpload(), middleware.Distribute(), controller.UploadReferenceImage)
 	}
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
 	{

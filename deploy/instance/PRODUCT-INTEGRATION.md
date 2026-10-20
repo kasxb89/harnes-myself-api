@@ -163,6 +163,45 @@ Gemini 格式走 `/harness/v1beta/...`。
 
 ---
 
+### 4.3 参考图上传（2026-10-20）
+
+`yunshu-internal-gpt-image-2` 的本地参考图先逐张上传，再提交图片生成：
+
+```http
+POST /harness/v1/uploads/images
+Authorization: Bearer <当前用户的 relay_key>
+Content-Type: multipart/form-data; boundary=<客户端自动生成>
+```
+
+表单只接受一次 `model=yunshu-internal-gpt-image-2` 和一个 `file`，拒绝重复或额外字段及查询参数。
+文件须为实际 PNG、JPEG、静态 WebP 或单帧 GIF，单张不超过 **10 MiB（10485760 字节）**、**1600 万像素**。
+表单须不压缩（不发送 `Content-Encoding`，或使用 `identity`）；动画 GIF/WebP 返回 415。
+服务端校验文件类型、尺寸及完整性后，使用当前可用模型渠道的私有密钥上传；客户端不能指定渠道、上游地址或 `purpose`。
+
+成功为 HTTP 200：
+
+```json
+{"success":true,"data":{"id":"upload_…","url":"https://files.toapis.cn/uploads/…","mime_type":"image/png","size":79}}
+```
+
+客户端必须验证 `success=true`、完整字段类型、允许的 MIME、正整数大小及 HTTPS URL，然后将 `data.url` 加入既有
+`POST /harness/toapis/v1/images/generations` 的 `reference_images`（最多 6 张，`n=1`）。
+回执 URL 只接受 `files.toapis.cn` 或 `files.toapis.com` 下的 `/uploads/`，不得包含凭据、查询或片段。
+上传失败须明确提示，不能静默丢弃参考图继续文生图。普通 OpenAI `/v1/images/edits` 继续走原有路径。
+
+错误采用 OpenAI `error` 对象：401 表示用户凭据失败，403 表示权限或模型限制，400 为表单错误，
+413 / `image_upload_too_large` 为超限，415 / `image_upload_unsupported_type` 为文件无效，429 为频率或并发超限，
+503 / `image_upload_unavailable`（或路由的 `model_not_found`）为模型渠道不可用，
+502 / `image_upload_upstream_error` 为上游失败或回执无效，504 / `image_upload_timeout` 为超时。
+上游 401/403 也净化为 502，不能伪装成用户余额不足。
+
+上传免费，不预扣、不创建生成任务、消费日志或管理员素材，也不在网关永久保存照片；文件保存于供应商上传服务。
+每用户每分钟最多 30 次，单进程最多 4 路并发，限流和并发检查在读取图片前执行；上传请求总期限 30 秒。
+后续生成仍沿用原价格、权限和余额不足识别规则。供应商上传契约见
+[官方接口文档](https://github.com/toapis/docs/blob/main/docs/cn/api-reference/uploads/images.mdx)。
+
+---
+
 ## 5. 积分换算：new-api 的 quota ≠ 产品积分
 
 **这一条最容易搞错，务必按这个来：**

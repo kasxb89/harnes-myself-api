@@ -46,6 +46,21 @@ const (
 	MsgRelayRetryGetChannelFailed        = "relay.retry_get_channel_failed"
 	MsgRelayRetryNoAvailableChannel      = "relay.retry_no_available_channel"
 	MsgRelayAccessTokenUnsupported       = "relay.access_token_unsupported"
+
+	MsgReferenceImageUploadKeyRequired            = "reference_image_upload.key_required"
+	MsgReferenceImageUploadCompressedUnsupported  = "reference_image_upload.compressed_unsupported"
+	MsgReferenceImageUploadChannelSelectForbidden = "reference_image_upload.channel_select_forbidden"
+	MsgReferenceImageUploadFieldsOnly             = "reference_image_upload.fields_only"
+	MsgReferenceImageUploadRateLimited            = "reference_image_upload.rate_limited"
+	MsgReferenceImageUploadConcurrencyLimited     = "reference_image_upload.concurrency_limited"
+	MsgReferenceImageUploadModelForbidden         = "reference_image_upload.model_forbidden"
+	MsgReferenceImageUploadUnavailable            = "reference_image_upload.unavailable"
+	MsgReferenceImageUploadTooLarge               = "reference_image_upload.too_large"
+	MsgReferenceImageUploadUnsupportedType        = "reference_image_upload.unsupported_type"
+	MsgReferenceImageUploadTimeout                = "reference_image_upload.timeout"
+	MsgReferenceImageUploadBusy                   = "reference_image_upload.busy"
+	MsgReferenceImageUploadInvalidRequest         = "reference_image_upload.invalid_request"
+	MsgReferenceImageUploadUpstreamError          = "reference_image_upload.upstream_error"
 )
 
 // Emails and the name of the token created at registration, in the

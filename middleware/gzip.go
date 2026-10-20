@@ -25,6 +25,12 @@ func (rc *readCloser) Close() error {
 
 func DecompressRequestMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Reference uploads authenticate and reject content encodings before
+		// reading any bytes. Do not initialize decompressors on this endpoint.
+		if c.Request.URL.Path == "/v1/uploads/images" {
+			c.Next()
+			return
+		}
 		if c.Request.Body == nil || c.Request.Method == http.MethodGet {
 			c.Next()
 			return
