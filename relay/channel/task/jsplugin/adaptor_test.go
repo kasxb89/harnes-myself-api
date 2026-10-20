@@ -3,6 +3,7 @@ package jsplugin
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -2374,4 +2377,168 @@ func TestTaskAdaptorChainsSunoBatchFetchThroughNewAPIUpstream(t *testing.T) {
 	require.Contains(t, results, "task_up_public")
 	assert.Equal(t, "SUCCESS", results["task_up_public"].TaskInfo.Status)
 	assert.Equal(t, []string{"POST /suno/submit/MUSIC", "POST /suno/fetch"}, seen)
+}
+
+func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+	source, err := os.ReadFile("../../../../deploy/instance/toapis-image-plugin.js")
+	require.NoError(t, err)
+	t.Logf("deployment plugin sha256: %x", sha256.Sum256(source))
+	registry := pluginruntime.NewRegistry()
+	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "toapis-image", Version: "1.1.1"})
+	require.NoError(t, err)
+	require.NoError(t, pluginruntime.ValidateV1Meta(plugin.Meta))
+	binding, exists := registry.Generation().LookupDeclaredRoute(http.MethodPost, "/toapis/v1/images/generations")
+	require.True(t, exists)
+	require.Equal(t, "decodeSubmit", binding.Route.Decode)
+
+	const modelName = "yunshu-internal-gpt-image-2"
+	const prompt = "  Keep this synthetic blue square.\n保留完整提示词  "
+	const providerTaskID = "provider-image-task"
+	const outputURL = "https://cdn.example/generated-image.png"
+	queued := map[string]any{"id": providerTaskID, "object": "generation.task", "status": "queued", "progress": 0, "created_at": 1234}
+	completed := map[string]any{"id": providerTaskID, "object": "generation.task", "status": "completed", "progress": 100, "created_at": 1234, "result": map[string]any{"data": []any{map[string]any{"url": outputURL}}}}
+	queuedJSON, err := common.Marshal(queued)
+	require.NoError(t, err)
+	completedJSON, err := common.Marshal(completed)
+	require.NoError(t, err)
+	var providerCalls atomic.Int32
+	providerBodies := make(chan []byte, 8)
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		providerCalls.Add(1)
+		assert.Equal(t, "Bearer synthetic-provider-key", request.Header.Get("Authorization"))
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/v1/images/generations":
+			body, readErr := io.ReadAll(request.Body)
+			if !assert.NoError(t, readErr) {
+				http.Error(writer, "invalid mock request", http.StatusBadRequest)
+				return
+			}
+			providerBodies <- body
+			_, _ = writer.Write(queuedJSON)
+		case request.Method == http.MethodGet && request.URL.Path == "/v1/images/generations/"+providerTaskID:
+			_, _ = writer.Write(completedJSON)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer provider.Close()
+	refs := []any{"https://files.toapis.cn/uploads/synthetic-reference.png"}
+	sixRefs := []any{"https://files.toapis.cn/uploads/1.png", "https://files.toapis.cn/uploads/2.png", "https://files.toapis.cn/uploads/3.png", "https://files.toapis.cn/uploads/4.png", "https://files.toapis.cn/uploads/5.png", "https://files.toapis.cn/uploads/6.png"}
+	legacyExtras := map[string]any{"model": modelName, "prompt": prompt, "n": 1, "reference_images": refs, "size": "1024x1024", "quality": "high", "background": "transparent", "response_format": "b64_json", "output_format": "webp", "output_compression": 90, "moderation": "low", "seed": 42, "stream": true, "user": "synthetic-user", "metadata": map[string]any{"extra": "discard"}}
+	for _, testCase := range []struct {
+		name         string
+		request      map[string]any
+		directDriver bool
+	}{
+		{"legacy OpenAI extras", legacyExtras, false},
+		{"default count and no references", map[string]any{"model": modelName, "prompt": prompt}, false},
+		{"six HTTPS references", map[string]any{"model": modelName, "prompt": prompt, "n": 1, "reference_images": sixRefs}, false},
+		{"driver also strips legacy extras", legacyExtras, true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			callsBefore := providerCalls.Load()
+			originalJSON, err := common.Marshal(testCase.request)
+			require.NoError(t, err)
+			var requestBody any = testCase.request
+			if !testCase.directDriver {
+				intent, decodeErr := plugin.Engine.CallMember(context.Background(), "native", binding.Route.Decode, map[string]any{"method": "POST", "path": binding.Route.Path, "params": map[string]any{}, "query": map[string]any{}, "body": map[string]any{"kind": "json", "value": testCase.request}})
+				require.NoError(t, decodeErr)
+				resolved, ok := intent.(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, "submit", resolved["kind"])
+				assert.Equal(t, modelName, resolved["model"])
+				requestBody = resolved["requestBody"]
+			}
+			adaptor := New(plugin)
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeTaskPlugin, ChannelBaseUrl: provider.URL, ApiKey: "synthetic-provider-key", UpstreamModelName: modelName}, OriginModelName: modelName, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public_image"}}
+			adaptor.Init(info)
+			context, _ := gin.CreateTestContext(httptest.NewRecorder())
+			context.Request = httptest.NewRequest(http.MethodPost, binding.Route.Path, nil)
+			context.Request.Header.Set("Content-Type", "application/json")
+			context.Set("task_request", requestBody)
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(context, info))
+			facts, err := adaptor.ExtractUsageFactsValidated(context, info)
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, facts["image_count"])
+			ratios, err := adaptor.EstimateBillingValidated(context, info)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]float64{"image_count": 1}, ratios)
+			body, err := adaptor.BuildRequestBody(context, info)
+			require.NoError(t, err)
+			assert.Equal(t, callsBefore, providerCalls.Load(), "decoding and billing facts must not contact the provider")
+			response, err := adaptor.DoRequest(context, info, body)
+			require.NoError(t, err)
+			submitted, taskErr := adaptor.ParseResponse(context, response, info)
+			require.Nil(t, taskErr)
+			require.NotNil(t, submitted)
+			assert.Equal(t, providerTaskID, submitted.UpstreamTaskID)
+			assert.JSONEq(t, string(queuedJSON), string(submitted.TaskData))
+			assert.Nil(t, submitted.Immediate)
+			assert.Equal(t, callsBefore+1, providerCalls.Load())
+			want := map[string]any{"model": "gpt-image-2", "prompt": prompt, "n": 1}
+			if referenceImages, present := testCase.request["reference_images"]; present {
+				want["reference_images"] = referenceImages
+			}
+			wantJSON, err := common.Marshal(want)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(wantJSON), string(<-providerBodies), "only confirmed provider fields may cross the wire")
+			afterJSON, err := common.Marshal(testCase.request)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(originalJSON), string(afterJSON), "hooks must preserve the caller's prompt and references")
+		})
+	}
+
+	for _, testCase := range []struct {
+		name  string
+		field string
+		value any
+	}{
+		{"zero count", "n", 0}, {"multiple images", "n", 2}, {"string count", "n", "1"},
+		{"seven references", "reference_images", append(append([]any{}, sixRefs...), "https://files.toapis.cn/uploads/7.png")},
+		{"HTTP reference", "reference_images", []any{"http://files.toapis.cn/uploads/reference.png"}},
+		{"data URL reference", "reference_images", []any{"data:image/png;base64,AAAA"}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			callsBefore := providerCalls.Load()
+			request := map[string]any{"model": modelName, "prompt": prompt, "n": 1}
+			request[testCase.field] = testCase.value
+			_, err := plugin.Engine.CallMember(context.Background(), "native", binding.Route.Decode, map[string]any{"body": map[string]any{"kind": "json", "value": request}})
+			require.Error(t, err)
+			assert.Equal(t, callsBefore, providerCalls.Load(), "invalid input must fail before upstream submission")
+		})
+	}
+
+	t.Run("poll completion rendering and image usage stay compatible", func(t *testing.T) {
+		adaptor := New(plugin)
+		info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeTaskPlugin, ChannelBaseUrl: provider.URL, ApiKey: "synthetic-provider-key", UpstreamModelName: modelName}, OriginModelName: modelName, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+		adaptor.Init(info)
+		task := &model.Task{TaskID: "task_public_image", Platform: "toapis-image", Status: model.TaskStatusSuccess, Properties: model.Properties{OriginModelName: modelName, UpstreamModelName: modelName}, PrivateData: model.TaskPrivateData{UpstreamTaskID: providerTaskID}}
+		response, err := adaptor.FetchTask(provider.URL, "synthetic-provider-key", task, "")
+		require.NoError(t, err)
+		body, err := io.ReadAll(response.Body)
+		require.NoError(t, err)
+		require.NoError(t, response.Body.Close())
+		result, err := adaptor.ParseTaskResult(task, response, body)
+		require.NoError(t, err)
+		assert.Equal(t, "SUCCESS", result.Status)
+		assert.Equal(t, outputURL, result.RemoteUrl)
+		assert.EqualValues(t, 1, result.UsageFacts["image_count"])
+		view := map[string]any{"task_id": task.TaskID, "status": "SUCCESS", "progress": "100%", "data": completed}
+		rendered, err := plugin.Engine.CallMember(context.Background(), "native", "renderTask", map[string]any{}, view)
+		require.NoError(t, err)
+		want := map[string]any{"id": task.TaskID, "object": "generation.task", "model": "gpt-image-2", "status": "completed", "progress": 100, "created_at": 1234, "result": completed["result"]}
+		wantJSON, err := common.Marshal(want)
+		require.NoError(t, err)
+		renderedJSON, err := common.Marshal(rendered)
+		require.NoError(t, err)
+		assert.JSONEq(t, string(wantJSON), string(renderedJSON))
+		immediate, err := plugin.Engine.Call(context.Background(), "parseSubmitResponse", map[string]any{}, map[string]any{"body": completed})
+		require.NoError(t, err)
+		immediateJSON, err := common.Marshal(immediate)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"taskId":"provider-image-task","taskData":`+string(completedJSON)+`,"immediate":{"status":"SUCCESS","progress":"100%","remoteUrl":"https://cdn.example/generated-image.png"}}`, string(immediateJSON))
+	})
 }

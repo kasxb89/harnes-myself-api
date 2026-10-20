@@ -202,6 +202,31 @@ Content-Type: multipart/form-data; boundary=<客户端自动生成>
 
 ---
 
+### 4.4 内部图片生成请求合同（2026-10-20）
+
+`yunshu-internal-gpt-image-2` 使用 `toapis-image@1.1.1`，插件源码维护于
+`deploy/instance/toapis-image-plugin.js`。原生路径仍为：
+
+```http
+POST /harness/toapis/v1/images/generations
+Authorization: Bearer <当前用户的 relay_key>
+Content-Type: application/json
+
+{"model":"yunshu-internal-gpt-image-2","prompt":"……","n":1,"reference_images":["https://files.toapis.cn/uploads/…"]}
+```
+
+生成请求只使用 `model`、原样 `prompt`、固定 `n=1`，以及可选的原样 `reference_images`。
+`n` 可以省略，省略时按 1 张规范化；提供其他值会拒绝。参考图最多 6 个 HTTPS URL，
+本地文件须先按 4.3 上传并验证回执，文生图可省略 `reference_images`。
+
+输出尺寸及其他生成选项由供应商控制，客户端不提供这些选项。为兼容旧版客户端，
+插件忽略 `size`、`quality`、`background`、`output_format`、`output_compression`、
+`response_format`、`resolution` 及其他额外字段，不向上游透传，也不因额外字段单独拒绝旧请求。
+插件在解码与构建上游请求时均按上述字段白名单创建新请求体；上游模型固定为 `gpt-image-2`。
+这不会设置或更改供应商的默认分辨率、实际模型、计费规则、上传合同、响应结构或任务轮询路径。
+
+---
+
 ## 5. 积分换算：new-api 的 quota ≠ 产品积分
 
 **这一条最容易搞错，务必按这个来：**
