@@ -3,6 +3,7 @@ package helper
 import (
 	"maps"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -12,24 +13,27 @@ import (
 )
 
 func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.RelayInfo) (billingexpr.RequestInput, error) {
+	input := billingexpr.RequestInput{}
 	if info != nil && info.BillingRequestInput != nil {
-		input := cloneRequestInput(*info.BillingRequestInput)
+		input = cloneRequestInput(*info.BillingRequestInput)
 		merged := cloneStringMap(info.RequestHeaders)
 		maps.Copy(merged, input.Headers)
 		input.Headers = merged
-		return input, nil
+	} else {
+		if info != nil {
+			input.Headers = cloneStringMap(info.RequestHeaders)
+		}
+		bodyBytes, err := readIncomingBillingExprBody(c)
+		if err != nil {
+			return billingexpr.RequestInput{}, err
+		}
+		input.Body = bodyBytes
 	}
-
-	input := billingexpr.RequestInput{}
-	if info != nil {
-		input.Headers = cloneStringMap(info.RequestHeaders)
+	if info != nil && !info.StartTime.IsZero() {
+		input.EvaluationTime = info.StartTime
+	} else if input.EvaluationTime.IsZero() {
+		input.EvaluationTime = time.Now()
 	}
-
-	bodyBytes, err := readIncomingBillingExprBody(c)
-	if err != nil {
-		return billingexpr.RequestInput{}, err
-	}
-	input.Body = bodyBytes
 	return input, nil
 }
 
@@ -87,7 +91,8 @@ func readIncomingBillingExprBody(c *gin.Context) ([]byte, error) {
 
 func cloneRequestInput(src billingexpr.RequestInput) billingexpr.RequestInput {
 	input := billingexpr.RequestInput{
-		Headers: cloneStringMap(src.Headers),
+		Headers:        cloneStringMap(src.Headers),
+		EvaluationTime: src.EvaluationTime,
 	}
 	if src.ImageCount != nil {
 		count := *src.ImageCount

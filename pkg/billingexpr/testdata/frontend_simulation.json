@@ -419,5 +419,101 @@
         "conditionText": "Text-only requests"
       }
     ]
+  },
+  {
+    "name": "DeepSeek before morning peak",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-10-20T08:59:59+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 180.6,
+    "tier": "off_peak"
+  },
+  {
+    "name": "DeepSeek morning peak start",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-10-20T09:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 361.2,
+    "tier": "peak"
+  },
+  {
+    "name": "DeepSeek morning peak end",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-10-20T12:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 180.6,
+    "tier": "off_peak"
+  },
+  {
+    "name": "DeepSeek afternoon peak start",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-10-20T14:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 361.2,
+    "tier": "peak"
+  },
+  {
+    "name": "DeepSeek afternoon peak end",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-10-20T18:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 180.6,
+    "tier": "off_peak"
+  },
+  {
+    "name": "DeepSeek National Day full holiday",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-10-01T09:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 180.6,
+    "tier": "off_peak"
+  },
+  {
+    "name": "DeepSeek make-up workday remains weekend",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2026-09-20T09:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 180.6,
+    "tier": "off_peak"
+  },
+  {
+    "name": "DeepSeek unknown calendar year stays off-peak",
+    "expression": "deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)",
+    "now": "2027-03-01T09:00:00+08:00",
+    "tokens": {
+      "p": 800,
+      "cr": 200,
+      "c": 100
+    },
+    "cost": 180.6,
+    "tier": "off_peak"
   }
 ]

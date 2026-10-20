@@ -3,14 +3,18 @@ package billingexpr
 import (
 	"crypto/sha256"
 	"fmt"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 )
 
 type RequestInput struct {
-	Headers map[string]string
-	Body    []byte
-	Usage   map[string]any
+	// EvaluationTime is supplied by the gateway, never from request JSON or
+	// headers. All time probes in an evaluation share this instant.
+	EvaluationTime time.Time `json:"-"`
+	Headers        map[string]string
+	Body           []byte
+	Usage          map[string]any
 	// ImageCount is a validated billing quantity, separate from the frozen
 	// request's n. Settlement can replace it with the actual returned count.
 	ImageCount *int
@@ -62,6 +66,7 @@ type TraceResult struct {
 // auto-group retry and settlement. It is fully serializable and contains no
 // compiled program pointers.
 type BillingSnapshot struct {
+	BillingTime               int64          `json:"billing_time,omitempty"` // Gateway request start, Unix seconds; zero in older snapshots.
 	EstimatedImageCount       *int           `json:"estimated_image_count,omitempty"`
 	BillingMode               string         `json:"billing_mode"`
 	ModelName                 string         `json:"model_name"`

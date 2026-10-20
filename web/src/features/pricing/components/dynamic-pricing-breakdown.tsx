@@ -45,7 +45,11 @@ import {
   type RequestRuleTrace,
   type TierCondition,
 } from '../lib/billing-expr'
-import { formatBillingCondition } from '../lib/billing-expression/condition-display'
+import {
+  deepSeekCalendarNotice,
+  formatBillingCondition,
+  formatBillingTierLabel,
+} from '../lib/billing-expression/condition-display'
 import { compileBillingExpression } from '../lib/billing-expression/parser'
 import { isBreakdownTierMatched } from '../lib/breakdown-tier-match'
 import {
@@ -473,6 +477,12 @@ export function DynamicPricingBreakdown({
         </div>
       )}
 
+      {expr.includes('deepseek_peak') && (
+        <p className='text-muted-foreground mb-3 text-xs'>
+          {deepSeekCalendarNotice(t)}
+        </p>
+      )}
+
       {hasTiers && (
         <div className={cn(compact ? cn(hasRules && 'mb-2') : 'mb-3 sm:mb-4')}>
           {!usageSchema && (
@@ -521,7 +531,7 @@ export function DynamicPricingBreakdown({
                         variant='secondary'
                         className='bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
                       >
-                        {tier.label || t('Default')}
+                        {formatBillingTierLabel(tier.label, t)}
                       </Badge>
                     )}
                     {isMatched && (
@@ -640,7 +650,7 @@ export function DynamicPricingBreakdown({
                             variant='secondary'
                             className='bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
                           >
-                            {tier.label || t('Default')}
+                            {formatBillingTierLabel(tier.label, t)}
                           </Badge>
                         )}
                         {isMatched && (

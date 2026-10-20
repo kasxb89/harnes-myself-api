@@ -82,6 +82,7 @@ import {
   type TimeCondition,
   type TimeFunc,
 } from '@/features/pricing/lib/billing-expr'
+import { formatBillingTierLabel } from '@/features/pricing/lib/billing-expression/condition-display'
 import {
   parseVisualBillingDocument,
   serializeVisualBillingDocument,
@@ -869,7 +870,7 @@ function CostEstimator({ effectiveExpr, fullExpr, currency }: EstimatorProps) {
             </span>
             {result.matchedTier && (
               <Badge variant='outline' className='text-xs'>
-                {t('Hit tier')}: {result.matchedTier}
+                {t('Hit tier')}: {formatBillingTierLabel(result.matchedTier, t)}
               </Badge>
             )}
           </div>
@@ -928,6 +929,7 @@ Important: len is NOT affected by auto-exclusion. Tier conditions should use len
 - param(path) — reads a request body JSON path (gjson syntax)
 - has(source, substr) — substring check
 - hour(tz), minute(tz), weekday(tz), month(tz), day(tz) — time functions, tz is a timezone like "Asia/Shanghai"
+- deepseek_peak() — official DeepSeek peak hours in Beijing: Mon–Fri 09:00–12:00 and 14:00–18:00, excluding Chinese public holidays. Weekends, including makeup workdays, and years outside the bundled holiday calendar are off-peak. Use peak/off_peak tier labels.
 
 ### Price Coefficients
 

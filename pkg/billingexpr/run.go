@@ -51,6 +51,10 @@ func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request 
 }
 
 func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[string]bool, params TokenParams, request RequestInput) (float64, TraceResult, error) {
+	evaluationTime := request.EvaluationTime
+	if evaluationTime.IsZero() {
+		evaluationTime = time.Now()
+	}
 	trace := TraceResult{
 		BillingUnit:  BillingUnitToken,
 		RequestRules: append([]RequestRuleTrace(nil), requestRules...),
@@ -134,16 +138,17 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 			}
 			return strings.Contains(fmt.Sprint(source), substr)
 		},
-		"hour":    func(tz string) int { return timeInZone(tz).Hour() },
-		"minute":  func(tz string) int { return timeInZone(tz).Minute() },
-		"weekday": func(tz string) int { return int(timeInZone(tz).Weekday()) },
-		"month":   func(tz string) int { return int(timeInZone(tz).Month()) },
-		"day":     func(tz string) int { return timeInZone(tz).Day() },
-		"max":     math.Max,
-		"min":     math.Min,
-		"abs":     math.Abs,
-		"ceil":    math.Ceil,
-		"floor":   math.Floor,
+		"deepseek_peak": func() bool { return deepSeekPeak(evaluationTime) },
+		"hour":          func(tz string) int { return timeInZone(evaluationTime, tz).Hour() },
+		"minute":        func(tz string) int { return timeInZone(evaluationTime, tz).Minute() },
+		"weekday":       func(tz string) int { return int(timeInZone(evaluationTime, tz).Weekday()) },
+		"month":         func(tz string) int { return int(timeInZone(evaluationTime, tz).Month()) },
+		"day":           func(tz string) int { return timeInZone(evaluationTime, tz).Day() },
+		"max":           math.Max,
+		"min":           math.Min,
+		"abs":           math.Abs,
+		"ceil":          math.Ceil,
+		"floor":         math.Floor,
 	}
 
 	out, err := expr.Run(prog, env)
@@ -157,16 +162,16 @@ func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, usedVars map[
 	return f, trace, nil
 }
 
-func timeInZone(tz string) time.Time {
+func timeInZone(at time.Time, tz string) time.Time {
 	tz = strings.TrimSpace(tz)
 	if tz == "" {
-		return time.Now().UTC()
+		return at.UTC()
 	}
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		return time.Now().UTC()
+		return at.UTC()
 	}
-	return time.Now().In(loc)
+	return at.In(loc)
 }
 
 func normalizeHeaders(headers map[string]string) map[string]string {

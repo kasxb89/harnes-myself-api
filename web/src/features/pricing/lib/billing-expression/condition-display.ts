@@ -20,6 +20,7 @@ import type { TOptions } from 'i18next'
 
 import { toIntlLocale } from '@/i18n/languages'
 
+import { DEEPSEEK_CALENDAR_YEARS } from './deepseek-calendar'
 import { flattenBinary } from './display'
 import { compileBillingExpression } from './parser'
 import { TIME_FUNCTIONS, type ExpressionNode, type TimeFunction } from './types'
@@ -135,6 +136,15 @@ function describeBillingCondition(
   t: Translate,
   locale: string
 ): Description | null {
+  if (node.kind === 'call' && node.name === 'deepseek_peak') {
+    return {
+      text: t(
+        'Mon–Fri 09:00–12:00 and 14:00–18:00, excluding Chinese public holidays; weekends remain off-peak, including makeup workdays'
+      ),
+      kind: 'combined',
+      timezone: 'Asia/Shanghai',
+    }
+  }
   if (node.kind === 'unary' && node.operator === '!') {
     const description = describeBillingCondition(node.operand, t, locale)
     if (!description) return null
@@ -265,4 +275,21 @@ export function formatBillingCondition(
   } catch {
     return null
   }
+}
+
+/** Translate standard time-tier names while preserving administrator-defined labels. */
+export function formatBillingTierLabel(
+  label: string | null | undefined,
+  t: Translate
+): string {
+  if (label === 'peak') return t('Peak hours')
+  if (label === 'off_peak') return t('Off-peak hours')
+  return label || t('Default')
+}
+
+export function deepSeekCalendarNotice(t: Translate): string {
+  return t(
+    'DeepSeek calendar coverage: {{years}}. Years outside this calendar use off-peak rates.',
+    { years: DEEPSEEK_CALENDAR_YEARS }
+  )
 }

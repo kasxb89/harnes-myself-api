@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
@@ -31,6 +31,61 @@ const requestExpression =
 afterEach(() => vi.useRealTimers())
 
 describe('request simulation', () => {
+  test('refreshes the current DeepSeek quote when the official peak period starts', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-20T08:59:30+08:00'))
+    render(
+      <RequestSimulation
+        expression='deepseek_peak() ? tier("peak", p * 2) : tier("off_peak", p * 1)'
+        tokens={{ p: 1_000_000 }}
+        currency={USD_PRICING_CURRENCY}
+        mode='token'
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Request simulation' }))
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Hit tier: Off-peak hours'
+    )
+    act(() => vi.advanceTimersByTime(30_000))
+    expect(screen.getByRole('status')).toHaveTextContent('Hit tier: Peak hours')
+  })
+
+  test('simulates official DeepSeek holidays and uncovered years with off-peak prices', async () => {
+    const user = userEvent.setup()
+    render(
+      <RequestSimulation
+        expression='deepseek_peak() ? tier("peak", p * 2 + cr * 0.04 + c * 8) : tier("off_peak", p * 1 + cr * 0.02 + c * 4)'
+        tokens={{ p: 1_000_000, cr: 0, c: 0 }}
+        currency={USD_PRICING_CURRENCY}
+        mode='token'
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Request simulation' }))
+    await user.click(screen.getByRole('combobox', { name: 'Simulation time' }))
+    await user.click(screen.getByRole('option', { name: 'Specified time' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Specified time' }), {
+      target: { value: '2026-10-20T09:00:00+08:00' },
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Hit tier: Peak hours')
+    expect(screen.getByRole('status')).toHaveTextContent('$2')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Specified time' }), {
+      target: { value: '2026-10-01T09:00:00+08:00' },
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Hit tier: Off-peak hours'
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('$1')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Specified time' }), {
+      target: { value: '2027-10-20T09:00:00+08:00' },
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Hit tier: Off-peak hours'
+    )
+    expect(
+      screen.getByText(/Years outside this calendar use off-peak rates/)
+    ).toBeVisible()
+  })
+
   test('explains absent task usage instead of showing a token estimator syntax error', () => {
     render(
       <TieredPricingEditor

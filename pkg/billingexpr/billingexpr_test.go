@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -1171,13 +1172,19 @@ func TestFrontendSimulationContract(t *testing.T) {
 		BillingUnit billingexpr.BillingUnit
 		FixedPrice  *float64
 		ImageCount  *int
+		Now         string
 	}
 	require.NoError(t, common.Unmarshal(data, &cases))
 	for _, tc := range cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			body, err := common.Marshal(tc.Body)
 			require.NoError(t, err)
-			cost, trace, err := billingexpr.RunExprWithRequest(tc.Expression, tc.Tokens, billingexpr.RequestInput{Body: body, Headers: tc.Headers, Usage: tc.Usage, ImageCount: tc.ImageCount})
+			var evaluationTime time.Time
+			if tc.Now != "" {
+				evaluationTime, err = time.Parse(time.RFC3339, tc.Now)
+				require.NoError(t, err)
+			}
+			cost, trace, err := billingexpr.RunExprWithRequest(tc.Expression, tc.Tokens, billingexpr.RequestInput{Body: body, Headers: tc.Headers, Usage: tc.Usage, ImageCount: tc.ImageCount, EvaluationTime: evaluationTime})
 			require.NoError(t, err)
 			assert.InDelta(t, tc.Cost, cost, 1e-9)
 			assert.Equal(t, tc.Tier, trace.MatchedTier)
@@ -1195,4 +1202,103 @@ func TestFrontendSimulationContract(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDeepSeekPeakCalendar(t *testing.T) {
+	const expression = `deepseek_peak() ? tier("peak", p * 2) : tier("off_peak", p)`
+	for _, tc := range []struct {
+		at   string
+		peak bool
+	}{
+		{"2026-10-20T08:59:59+08:00", false},
+		{"2026-10-20T09:00:00+08:00", true},
+		{"2026-10-20T11:59:59+08:00", true},
+		{"2026-10-20T12:00:00+08:00", false},
+		{"2026-10-20T13:59:59+08:00", false},
+		{"2026-10-20T14:00:00+08:00", true},
+		{"2026-10-20T17:59:59+08:00", true},
+		{"2026-10-20T18:00:00+08:00", false},
+		{"2026-10-20T01:00:00Z", true},
+		{"2026-10-23T09:00:00+08:00", true},
+		{"2026-10-24T09:00:00+08:00", false},
+		{"2026-10-25T14:00:00+08:00", false},
+		{"2026-02-14T09:00:00+08:00", false},
+		{"2026-02-28T14:00:00+08:00", false},
+		{"2026-09-20T09:00:00+08:00", false},
+		{"2026-10-10T14:00:00+08:00", false},
+		{"2026-01-01T09:00:00+08:00", false},
+		{"2026-01-02T14:00:00+08:00", false},
+		{"2026-01-03T09:00:00+08:00", false},
+		{"2026-02-15T09:00:00+08:00", false},
+		{"2026-02-16T14:00:00+08:00", false},
+		{"2026-02-23T14:00:00+08:00", false},
+		{"2026-02-24T09:00:00+08:00", true},
+		{"2026-04-04T09:00:00+08:00", false},
+		{"2026-04-06T14:00:00+08:00", false},
+		{"2026-04-07T09:00:00+08:00", true},
+		{"2026-05-01T09:00:00+08:00", false},
+		{"2026-05-05T14:00:00+08:00", false},
+		{"2026-05-06T09:00:00+08:00", true},
+		{"2026-06-19T09:00:00+08:00", false},
+		{"2026-06-21T14:00:00+08:00", false},
+		{"2026-06-22T09:00:00+08:00", true},
+		{"2026-09-25T09:00:00+08:00", false},
+		{"2026-09-27T14:00:00+08:00", false},
+		{"2026-09-28T09:00:00+08:00", true},
+		{"2026-10-01T09:00:00+08:00", false},
+		{"2026-10-07T14:00:00+08:00", false},
+		{"2026-10-08T09:00:00+08:00", true},
+		{"2027-03-01T09:00:00+08:00", false},
+		{"2025-10-20T09:00:00+08:00", false},
+	} {
+		t.Run(tc.at, func(t *testing.T) {
+			at, err := time.Parse(time.RFC3339, tc.at)
+			require.NoError(t, err)
+			cost, trace, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{P: 100}, billingexpr.RequestInput{EvaluationTime: at})
+			require.NoError(t, err)
+			if tc.peak {
+				assert.Equal(t, "peak", trace.MatchedTier)
+				assert.Equal(t, 200.0, cost)
+			} else {
+				assert.Equal(t, "off_peak", trace.MatchedTier)
+				assert.Equal(t, 100.0, cost)
+			}
+		})
+	}
+}
+
+func TestBillingTimeSnapshotAndSharedTimeProbes(t *testing.T) {
+	peak := time.Date(2026, 10, 20, 1, 0, 0, 0, time.UTC)
+	offPeak := peak.Add(3 * time.Hour)
+	const probes = `deepseek_peak() && hour("Asia/Shanghai") == 9 && hour("UTC") == 1 && minute("UTC") == 0 && weekday("Asia/Shanghai") == 2 && month("Asia/Shanghai") == 10 && day("Asia/Shanghai") == 20 ? tier("shared", p * 2) : tier("bad", p)`
+	_, trace, err := billingexpr.RunExprWithRequest(probes, billingexpr.TokenParams{P: 100}, billingexpr.RequestInput{EvaluationTime: peak})
+	require.NoError(t, err)
+	assert.Equal(t, "shared", trace.MatchedTier)
+
+	const expression = `deepseek_peak() ? tier("peak", p * 2) : tier("off_peak", p)`
+	snap := &billingexpr.BillingSnapshot{BillingTime: peak.Unix(), ExprString: expression, ExprHash: billingexpr.ExprHashString(expression), GroupRatio: 1, QuotaPerUnit: 500000}
+	encoded, err := common.Marshal(snap)
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(encoded, snap))
+	result, err := billingexpr.ComputeTieredQuotaWithRequest(snap, billingexpr.TokenParams{P: 100}, billingexpr.RequestInput{EvaluationTime: offPeak})
+	require.NoError(t, err)
+	assert.Equal(t, "peak", result.MatchedTier)
+	assert.Equal(t, 100, result.ActualQuotaAfterGroup)
+
+	// The same frozen clock also applies to asynchronous task usage pricing.
+	snap.ExprString = `deepseek_peak() ? tier("peak", u("seconds") * 2) : tier("off_peak", u("seconds"))`
+	snap.ExprHash = billingexpr.ExprHashString(snap.ExprString)
+	snap.TaskUsageBilling = true
+	result, err = billingexpr.ComputeTieredQuotaWithRequest(snap, billingexpr.TokenParams{}, billingexpr.RequestInput{EvaluationTime: offPeak, Usage: map[string]any{"seconds": 1.0}})
+	require.NoError(t, err)
+	assert.Equal(t, "peak", result.MatchedTier)
+	assert.Equal(t, 1000000, result.ActualQuotaAfterGroup)
+
+	// Old snapshots use an available server context instead of interpreting 0
+	// as 1970, and contexts absent in historical tasks still evaluate normally.
+	snap.BillingTime = 0
+	result, err = billingexpr.ComputeTieredQuotaWithRequest(snap, billingexpr.TokenParams{}, billingexpr.RequestInput{EvaluationTime: offPeak, Usage: map[string]any{"seconds": 1.0}})
+	require.NoError(t, err)
+	assert.Equal(t, "off_peak", result.MatchedTier)
+	assert.Equal(t, 500000, result.ActualQuotaAfterGroup)
 }

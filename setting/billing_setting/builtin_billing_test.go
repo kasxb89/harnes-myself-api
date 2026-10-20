@@ -3,6 +3,7 @@ package billing_setting_test
 import (
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/controller"
@@ -145,6 +146,66 @@ func TestImageModelBuiltinPricesAndOverrides(t *testing.T) {
 			actual, ok := billing_setting.GetBillingExpr(name)
 			require.True(t, ok)
 			assert.Equal(t, settings.BillingExpr[name], actual)
+		})
+	}
+}
+
+func TestDeepSeekBuiltinPeakPricesAndAdministratorOverrides(t *testing.T) {
+	settings := config.GlobalConfig.Get("billing_setting").(*billing_setting.BillingSetting)
+	saved := *settings
+	savedRatios, savedPrices := ratio_setting.ModelRatio2JSONString(), ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		*settings = saved
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+	for _, tc := range []struct {
+		model                   string
+		peakQuota, offPeakQuota int
+	}{
+		{"deepseek-flash", 180600, 90300},
+		{"deepseek-v4-flash", 180600, 90300},
+		{"deepseek-v4-flash-0731", 180600, 90300},
+		{"deepseek-v4-flash-vision-exp", 180600, 90300},
+		{"deepseek-v4-pro", 730400, 365200},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			*settings = billing_setting.BillingSetting{BillingMode: map[string]string{}, BillingExpr: map[string]string{}}
+			require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{}`))
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))
+			assert.Equal(t, billing_setting.BillingModeTieredExpr, billing_setting.GetBillingMode(tc.model))
+			expression, ok := billing_setting.GetBillingExpr(tc.model)
+			require.True(t, ok)
+			usage := &dto.Usage{PromptTokens: 1000000, CompletionTokens: 100000, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 200000}}
+			params := service.BuildTieredTokenParams(usage, false, billingexpr.UsedVars(expression))
+			assert.Equal(t, 800000.0, params.P)
+			assert.Equal(t, 200000.0, params.CR)
+			for _, hour := range []int{9, 12} {
+				at := time.Date(2026, 10, 20, hour, 0, 0, 0, time.FixedZone("Beijing", 8*60*60))
+				result, err := billingexpr.ComputeTieredQuota(&billingexpr.BillingSnapshot{
+					BillingTime: at.Unix(), ExprString: expression, ExprHash: billingexpr.ExprHashString(expression), GroupRatio: 1, QuotaPerUnit: 500000,
+				}, params)
+				require.NoError(t, err)
+				if hour == 9 {
+					assert.Equal(t, "peak", result.MatchedTier)
+					assert.Equal(t, tc.peakQuota, result.ActualQuotaAfterGroup)
+				} else {
+					assert.Equal(t, "off_peak", result.MatchedTier)
+					assert.Equal(t, tc.offPeakQuota, result.ActualQuotaAfterGroup)
+				}
+			}
+			free, err := common.Marshal(map[string]float64{tc.model: 0})
+			require.NoError(t, err)
+			require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(free)))
+			assert.Equal(t, "ratio", billing_setting.GetBillingMode(tc.model), "explicit free legacy token price is preserved")
+			require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{}`))
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(free)))
+			assert.Equal(t, "ratio", billing_setting.GetBillingMode(tc.model), "explicit free per-call price is preserved")
+			settings.BillingMode[tc.model] = billing_setting.BillingModeTieredExpr
+			settings.BillingExpr[tc.model] = `tier("custom", p * 7)`
+			actual, ok := billing_setting.GetBillingExpr(tc.model)
+			require.True(t, ok)
+			assert.Equal(t, settings.BillingExpr[tc.model], actual)
 		})
 	}
 }

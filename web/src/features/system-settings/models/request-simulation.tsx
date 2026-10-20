@@ -42,7 +42,11 @@ import {
   type PricingCurrency,
 } from '@/features/model-pricing/currency'
 import { useBillingTime } from '@/features/pricing/hooks/use-billing-time'
-import { formatBillingCondition } from '@/features/pricing/lib/billing-expression/condition-display'
+import {
+  deepSeekCalendarNotice,
+  formatBillingCondition,
+  formatBillingTierLabel,
+} from '@/features/pricing/lib/billing-expression/condition-display'
 import { compileBillingExpression } from '@/features/pricing/lib/billing-expression/parser'
 import { evaluateBillingExpression } from '@/features/pricing/lib/billing-expression/runtime'
 import type {
@@ -338,7 +342,10 @@ export function RequestSimulation(props: RequestSimulationProps) {
             />
           )}
           <FieldDescription>
-            {t('Time functions use the timezone written in the expression.')}
+            {compiled.status === 'ready' &&
+            compiled.functions.has('deepseek_peak')
+              ? deepSeekCalendarNotice(t)
+              : t('Time functions use the timezone written in the expression.')}
           </FieldDescription>
         </Field>
         {error && (
@@ -361,7 +368,8 @@ export function RequestSimulation(props: RequestSimulationProps) {
             </p>
             {success.matchedTier && (
               <Badge variant='outline'>
-                {t('Hit tier')}: {success.matchedTier}
+                {t('Hit tier')}:{' '}
+                {formatBillingTierLabel(success.matchedTier, t)}
               </Badge>
             )}
             {success.requestRules.length > 0 && (

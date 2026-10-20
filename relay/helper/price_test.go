@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -745,3 +746,55 @@ func (s *priceTestReservation) Refund(*gin.Context)      {}
 func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
+
+func TestDeepSeekPreConsumeFreezesTrustedStartAcrossSettlement(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":         `{"deepseek-time-test":"tiered_expr"}`,
+		"billing_setting.billing_expr":         `{"deepseek-time-test":"deepseek_peak() ? tier(\"peak\", p * 0.3 + cr * 0.006 + c * 1.2) : tier(\"off_peak\", p * 0.15 + cr * 0.003 + c * 0.6)"}`,
+		"group_ratio_setting.group_ratio":      `{"default":1}`,
+		"quota_setting.pre_consume_multiplier": "1",
+	}))
+	start := time.Date(2026, 10, 20, 8, 59, 59, 0, time.FixedZone("Beijing", 8*60*60))
+	later := start.Add(time.Second)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Request.Header.Set("X-Billing-Time", later.Format(time.RFC3339))
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		StartTime: start, OriginModelName: "deepseek-time-test", UserGroup: "default", UsingGroup: "default",
+		BillingRequestInput: &billingexpr.RequestInput{
+			EvaluationTime: later,
+			Headers:        map[string]string{"X-Billing-Time": later.Format(time.RFC3339)},
+			Body:           []byte(`{"evaluation_time":"2026-10-20T09:00:00+08:00","billing_time":1792458000}`),
+		},
+	}
+	originalInput := info.BillingRequestInput
+	price, err := ModelPriceHelper(ctx, info, 1000, nil)
+	require.NoError(t, err)
+	require.NotNil(t, info.TieredBillingSnapshot)
+	require.NotNil(t, info.BillingRequestInput)
+	assert.Equal(t, start.Unix(), info.TieredBillingSnapshot.BillingTime)
+	assert.True(t, start.Equal(info.BillingRequestInput.EvaluationTime))
+	assert.True(t, later.Equal(originalInput.EvaluationTime), "cloning does not change the original context")
+	assert.Equal(t, "off_peak", info.TieredBillingSnapshot.EstimatedTier)
+	assert.Equal(t, 75, price.QuotaToPreConsume)
+
+	// A long request finishes after the peak starts. Even a replaced runtime
+	// context cannot override the billing snapshot captured before submission.
+	info.BillingRequestInput.EvaluationTime = later
+	usage := &dto.Usage{PromptTokens: 1000, CompletionTokens: 100, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 200}}
+	params := service.BuildTieredTokenParams(usage, false, billingexpr.UsedVars(info.TieredBillingSnapshot.ExprString))
+	assert.Equal(t, 800.0, params.P)
+	assert.Equal(t, 200.0, params.CR)
+	ok, quota, result := service.TryTieredSettle(info, params)
+	require.True(t, ok)
+	require.NotNil(t, result)
+	assert.Equal(t, "off_peak", result.MatchedTier)
+	assert.Equal(t, 90, quota)
+}

@@ -99,6 +99,44 @@ export const peakCondition =
   'weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") <= 5 && ((hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12) || (hour("Asia/Shanghai") >= 14 && hour("Asia/Shanghai") < 18))'
 export const deepSeekExpression = `${peakCondition} ? tier("peak", p * 3 + cr * 0.10 + c * 9) : tier("off_peak", p * 1.5 + cr * 0.05 + c * 4.5)`
 
+const officialDeepSeekExpression =
+  'deepseek_peak() ? tier("peak", p * 2 + cr * 0.04 + c * 8) : tier("off_peak", p * 1 + cr * 0.02 + c * 4)'
+
+test.each([
+  ['2026-10-20T08:59:59+08:00', 'off_peak', 1402],
+  ['2026-10-20T09:00:00+08:00', 'peak', 2804],
+  ['2026-10-20T12:00:00+08:00', 'off_peak', 1402],
+  ['2026-10-20T14:00:00+08:00', 'peak', 2804],
+  ['2026-10-20T18:00:00+08:00', 'off_peak', 1402],
+  ['2026-10-01T10:00:00+08:00', 'off_peak', 1402],
+  ['2026-09-20T10:00:00+08:00', 'off_peak', 1402],
+  ['2027-10-20T10:00:00+08:00', 'off_peak', 1402],
+])(
+  'applies the shared official DeepSeek calendar at %s',
+  (now, matchedTier, cost) => {
+    expect(
+      evaluateBillingExpression(officialDeepSeekExpression, {
+        now: new Date(now),
+        tokens: { p: 1000, cr: 100, c: 100 },
+      })
+    ).toMatchObject({ status: 'success', matchedTier, cost })
+  }
+)
+
+test('resolves both official price tiers and the actual recorded off-peak bill', () => {
+  const summary = getTieredBillingSummary({
+    billing_mode: 'tiered_expr',
+    expr_b64: btoa(officialDeepSeekExpression),
+    matched_tier: 'off_peak',
+  })
+  expect(summary?.tier).toMatchObject({
+    label: 'off_peak',
+    inputPrice: 1,
+    cacheReadPrice: 0.02,
+    outputPrice: 4,
+  })
+})
+
 afterEach(() => vi.useRealTimers())
 
 describe('local billing expression evaluation', () => {
@@ -186,6 +224,10 @@ describe('local billing expression evaluation', () => {
         headers: fixture.headers as Record<string, string> | undefined,
       },
       usage: fixture.usage,
+      now:
+        'now' in fixture && typeof fixture.now === 'string'
+          ? new Date(fixture.now)
+          : undefined,
     })
     expect(result.status).toBe('success')
     if (result.status !== 'success') return

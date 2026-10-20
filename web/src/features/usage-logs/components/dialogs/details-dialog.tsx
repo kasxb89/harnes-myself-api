@@ -59,6 +59,7 @@ import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { BILLING_PRICING_VARS } from '@/features/pricing/lib/billing-expr'
+import { formatBillingTierLabel } from '@/features/pricing/lib/billing-expression/condition-display'
 import { pluginUsageSchema } from '@/features/pricing/lib/plugin-pricing'
 import { PolicyDecisionRecord } from '@/features/system-settings/request-policies/decision-record'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -191,7 +192,7 @@ function BillingBreakdown(props: {
       if (tieredSummary.tier.label) {
         rows.push({
           label: t('Matched Tier'),
-          value: tieredSummary.tier.label,
+          value: formatBillingTierLabel(tieredSummary.tier.label, t),
         })
       }
       for (const entry of tieredSummary.priceEntries) {
@@ -203,7 +204,9 @@ function BillingBreakdown(props: {
     } else {
       rows.push({
         label: t('Matched Tier'),
-        value: other.matched_tier || t('No matching results'),
+        value: other.matched_tier
+          ? formatBillingTierLabel(other.matched_tier, t)
+          : t('No matching results'),
       })
     }
   } else if (isPerCall) {

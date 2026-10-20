@@ -65,7 +65,11 @@ import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import { usePricingData } from '../hooks/use-pricing-data'
 import type { ParsedTaskTier } from '../lib/billing-expr'
-import { formatBillingCondition } from '../lib/billing-expression/condition-display'
+import {
+  deepSeekCalendarNotice,
+  formatBillingCondition,
+  formatBillingTierLabel,
+} from '../lib/billing-expression/condition-display'
 import {
   formatTaskUsageUnitPrice,
   getDynamicPriceEntries,
@@ -1188,6 +1192,11 @@ function ProviderGroupPricingSection(
           <SectionTitle>{t('Pricing by Group')}</SectionTitle>
         )}
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
+        {props.model.billing_expr?.includes('deepseek_peak') && (
+          <p className='text-muted-foreground mb-3 text-xs'>
+            {deepSeekCalendarNotice(t)}
+          </p>
+        )}
         <div className='space-y-3'>
           {availableGroups.map((group) => {
             const ratio = props.groupRatio[group] || 1
@@ -1240,9 +1249,9 @@ function ProviderGroupPricingSection(
                                 )
                               }
                               if (tier.conditionText) {
-                                return `${tier.label}: ${formatBillingCondition(tier.conditionText, t, i18n.language) ?? tier.conditionText}`
+                                return `${formatBillingTierLabel(tier.label, t)}: ${formatBillingCondition(tier.conditionText, t, i18n.language) ?? tier.conditionText}`
                               }
-                              return tier.label || t('Default')
+                              return formatBillingTierLabel(tier.label, t)
                             },
                           },
                         ]),

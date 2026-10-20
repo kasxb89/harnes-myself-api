@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useSyncExternalStore } from 'react'
 
 import { compileBillingExpression } from '../lib/billing-expression/parser'
-import { TIME_FUNCTIONS } from '../lib/billing-expression/types'
+import { TIME_DEPENDENT_FUNCTIONS } from '../lib/billing-expression/types'
 
 const listeners = new Set<() => void>()
 let timestamp = Date.now()
@@ -69,7 +69,7 @@ export function useBillingTime(
     expression && enabled ? compileBillingExpression(expression) : null
   const needsTime =
     compiled?.status === 'ready' &&
-    TIME_FUNCTIONS.some((name) => compiled.functions.has(name))
+    TIME_DEPENDENT_FUNCTIONS.some((name) => compiled.functions.has(name))
   return useSyncExternalStore(
     needsTime ? subscribeBillingTime : subscribeWithoutTime,
     needsTime ? getBillingTime : getNoTime,

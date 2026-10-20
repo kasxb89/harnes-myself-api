@@ -101,7 +101,7 @@ func usesRequestProbe(node ast.Node) bool {
 			return false
 		}
 		switch identifier.Value {
-		case "param", "header", "hour", "minute", "weekday", "month", "day":
+		case "param", "header", "hour", "minute", "weekday", "month", "day", "deepseek_peak":
 			return true
 		default:
 			return false
@@ -125,36 +125,37 @@ var (
 
 // compileEnvPrototypeV1 is the v1 type-checking prototype used at compile time.
 var compileEnvPrototypeV1 = map[string]any{
-	"image_count": float64(1),
-	"p":           float64(0),
-	"c":           float64(0),
-	"len":         float64(0),
-	"cr":          float64(0),
-	"cc":          float64(0),
-	"cc1h":        float64(0),
-	"img":         float64(0),
-	"img_cr":      float64(0),
-	"img_o":       float64(0),
-	"ai":          float64(0),
-	"ao":          float64(0),
-	"tier":        func(string, float64) float64 { return 0 },
-	"fixed":       func(float64) float64 { return 0 },
-	"_trace":      func(int, bool, float64) float64 { return 1 },
-	"_trace_int":  func(int, bool, int) int { return 1 },
-	"header":      func(string) string { return "" },
-	"param":       func(string) any { return nil },
-	"u":           func(string) any { return nil },
-	"has":         func(any, string) bool { return false },
-	"hour":        func(string) int { return 0 },
-	"minute":      func(string) int { return 0 },
-	"weekday":     func(string) int { return 0 },
-	"month":       func(string) int { return 0 },
-	"day":         func(string) int { return 0 },
-	"max":         math.Max,
-	"min":         math.Min,
-	"abs":         math.Abs,
-	"ceil":        math.Ceil,
-	"floor":       math.Floor,
+	"image_count":   float64(1),
+	"p":             float64(0),
+	"c":             float64(0),
+	"len":           float64(0),
+	"cr":            float64(0),
+	"cc":            float64(0),
+	"cc1h":          float64(0),
+	"img":           float64(0),
+	"img_cr":        float64(0),
+	"img_o":         float64(0),
+	"ai":            float64(0),
+	"ao":            float64(0),
+	"tier":          func(string, float64) float64 { return 0 },
+	"fixed":         func(float64) float64 { return 0 },
+	"_trace":        func(int, bool, float64) float64 { return 1 },
+	"_trace_int":    func(int, bool, int) int { return 1 },
+	"header":        func(string) string { return "" },
+	"param":         func(string) any { return nil },
+	"u":             func(string) any { return nil },
+	"has":           func(any, string) bool { return false },
+	"deepseek_peak": func() bool { return false },
+	"hour":          func(string) int { return 0 },
+	"minute":        func(string) int { return 0 },
+	"weekday":       func(string) int { return 0 },
+	"month":         func(string) int { return 0 },
+	"day":           func(string) int { return 0 },
+	"max":           math.Max,
+	"min":           math.Min,
+	"abs":           math.Abs,
+	"ceil":          math.Ceil,
+	"floor":         math.Floor,
 }
 
 func getCompileEnv(version int) map[string]any {

@@ -55,6 +55,33 @@ const summaryOptions = {
 }
 
 describe('expression price summaries', () => {
+  test.each([
+    ['2026-10-20T09:00:00+08:00', 'peak', [2, 8]],
+    ['2026-10-01T09:00:00+08:00', 'off_peak', [1, 4]],
+    ['2027-10-20T09:00:00+08:00', 'off_peak', [1, 4]],
+  ])(
+    'quotes the official DeepSeek period at %s while retaining both price rows',
+    (now, label, prices) => {
+      const summary = getDynamicPricingSummary(
+        pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr:
+            'deepseek_peak() ? tier("peak", p * 2 + cr * 0.04 + c * 8) : tier("off_peak", p * 1 + cr * 0.02 + c * 4)',
+        }),
+        { tokenUnit: 'M', now: new Date(now) }
+      )
+      expect(summary?.tier?.label).toBe(label)
+      expect(summary?.primaryEntries.map((entry) => entry.value)).toEqual(
+        prices
+      )
+      expect(summary?.tiers.map((tier) => tier.label)).toEqual([
+        'peak',
+        'off_peak',
+      ])
+      expect(summary?.isTimePricing).toBe(true)
+    }
+  )
+
   test('keeps request prices unchanged by token units and separates mixed billing units', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',

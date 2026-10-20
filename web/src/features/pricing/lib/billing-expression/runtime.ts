@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { isDeepSeekPeak } from './deepseek-calendar'
 import { compileBillingExpression } from './parser'
 import {
   BillingExpressionError,
@@ -422,6 +423,8 @@ class BillingRuntime {
   private call(node: Extract<ExpressionNode, { kind: 'call' }>): RuntimeValue {
     const args = node.args
     switch (node.name) {
+      case 'deepseek_peak':
+        return { value: isDeepSeekPeak(this.now) }
       case 'fixed': {
         const amount = this.numeric(args[0]).value
         this.billingUnit = 'request'

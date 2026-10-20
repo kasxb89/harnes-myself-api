@@ -40,7 +40,12 @@ export const TIME_FUNCTIONS = [
   'day',
 ] as const
 export type TimeFunction = (typeof TIME_FUNCTIONS)[number]
+export const TIME_DEPENDENT_FUNCTIONS = [
+  ...TIME_FUNCTIONS,
+  'deepseek_peak',
+] as const
 export const BILLING_FUNCTIONS: Readonly<Record<string, number>> = {
+  deepseek_peak: 0,
   tier: 2,
   fixed: 1,
   param: 1,

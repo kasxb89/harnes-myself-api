@@ -76,6 +76,26 @@ it('renders weekday and hour conditions as time windows instead of expression so
   expect(screen.queryByText(/weekday\(/)).not.toBeInTheDocument()
 })
 
+it('shows both DeepSeek prices with friendly time tiers, calendar coverage and the recorded match', () => {
+  render(
+    <DynamicPricingBreakdown
+      billingExpr='deepseek_peak() ? tier("peak", p * 2 + cr * 0.04 + c * 8) : tier("off_peak", p * 1 + cr * 0.02 + c * 4)'
+      matchedTierLabel='off_peak'
+    />
+  )
+  expect(screen.getAllByText('Peak hours').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Off-peak hours').length).toBeGreaterThan(0)
+  expect(screen.getByText(/DeepSeek calendar coverage: 2026/)).toBeVisible()
+  expect(
+    screen.getAllByText(/excluding Chinese public holidays/).length
+  ).toBeGreaterThan(0)
+  expect(screen.getAllByText('$2.0000').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$1.0000').length).toBeGreaterThan(0)
+  const matched = screen.getAllByText('Matched')
+  expect(matched.length).toBeGreaterThan(0)
+  expect(screen.queryByText(/deepseek_peak\(/)).not.toBeInTheDocument()
+})
+
 const model: PricingModel = {
   id: 1,
   model_name: 'incho_music',
