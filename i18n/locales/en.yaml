@@ -84,7 +84,7 @@ reference_image_upload.concurrency_limited: "Image upload concurrency limit exce
 reference_image_upload.model_forbidden: "This relay key cannot use the requested model"
 reference_image_upload.unavailable: "Image upload is temporarily unavailable"
 reference_image_upload.too_large: "The image must not exceed 10 MiB"
-reference_image_upload.unsupported_type: "Upload a valid PNG, JPEG, static WebP, or single-frame GIF image of at most 16 million pixels"
+reference_image_upload.unsupported_type: "Upload a valid PNG, JPEG, static WebP, or single-frame GIF image of at most 16777216 total pixels"
 reference_image_upload.timeout: "Image upload timed out"
 reference_image_upload.busy: "Image upload is busy; try again shortly"
 reference_image_upload.invalid_request: "Supply one model field and one valid image file"

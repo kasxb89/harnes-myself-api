@@ -174,7 +174,7 @@ Content-Type: multipart/form-data; boundary=<客户端自动生成>
 ```
 
 表单只接受一次 `model=yunshu-internal-gpt-image-2` 和一个 `file`，拒绝重复或额外字段及查询参数。
-文件须为实际 PNG、JPEG、静态 WebP 或单帧 GIF，单张不超过 **10 MiB（10485760 字节）**、**1600 万像素**。
+文件须为实际 PNG、JPEG、静态 WebP 或单帧 GIF，单张不超过 **10 MiB（10485760 字节）**、**16777216 总像素**（例如 4096×4096；此限制针对总像素数，不是单边尺寸）。
 表单须不压缩（不发送 `Content-Encoding`，或使用 `identity`）；动画 GIF/WebP 返回 415。
 服务端校验文件类型、尺寸及完整性后，使用当前可用模型渠道的私有密钥上传；客户端不能指定渠道、上游地址或 `purpose`。
 

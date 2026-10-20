@@ -38,7 +38,8 @@ var referenceImageUploadSlots = make(chan struct{}, 4)
 // image at a time, separately from the bounded original upload buffers.
 var referenceImageDecodeSlot = make(chan struct{}, 1)
 
-const maxReferenceImagePixels int64 = 16_000_000
+// Allow the desktop's 4096-by-4096 output; this bounds total pixels, not sides.
+const maxReferenceImagePixels int64 = 1 << 24
 
 // PrepareReferenceImageUpload authenticates the dedicated contract, validates
 // multipart bytes in memory, and pins the live generation before distribution.

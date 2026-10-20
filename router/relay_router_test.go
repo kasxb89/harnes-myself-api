@@ -212,6 +212,20 @@ func imageUploadMultipart(t *testing.T, parts ...imageUploadPart) ([]byte, strin
 	return body.Bytes(), writer.FormDataContentType()
 }
 
+// imageUploadPNG makes a complete, independently decoded low-entropy fixture;
+// dimension rejection must not pass merely because an image is truncated.
+func imageUploadPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var encoded bytes.Buffer
+	require.NoError(t, png.Encode(&encoded, image.NewGray(image.Rect(0, 0, width, height))))
+	data := encoded.Bytes()
+	decoded, err := png.Decode(bytes.NewReader(data))
+	require.NoError(t, err)
+	require.Equal(t, image.Rect(0, 0, width, height), decoded.Bounds())
+	require.Less(t, len(data), 10<<20)
+	return data
+}
+
 func TestReferenceImageUploadRoute(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	setupRelayRouterTestDB(t)
@@ -411,6 +425,7 @@ export function parseTaskResult(){return {};}
 		})
 	}
 
+	maxCanvasPNG := imageUploadPNG(t, 4096, 4096)
 	var jpegData, gifData bytes.Buffer
 	require.NoError(t, jpeg.Encode(&jpegData, image.NewNRGBA(image.Rect(0, 0, 2, 2)), nil))
 	require.NoError(t, gif.Encode(&gifData, image.NewNRGBA(image.Rect(0, 0, 2, 2)), nil))
@@ -434,6 +449,7 @@ export function parseTaskResult(){return {};}
 		{"JPEG", "image.jpeg", "image/jpeg", jpegData.Bytes(), false},
 		{"GIF", "image.gif", "image/gif", gifData.Bytes(), false},
 		{"WebP", "image.webp", "image/webp", webpData, false},
+		{"4096 by 4096 PNG pixel limit", "image.png", "image/png", maxCanvasPNG, false},
 		{"exact 10 MiB chunked", "image.png", "image/png", exactPNG, true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -513,10 +529,7 @@ export function parseTaskResult(){return {};}
 	binary.LittleEndian.PutUint32(conflictingWebP[4:8], uint32(len(conflictingWebP)-8))
 	binary.LittleEndian.PutUint32(conflictingWebP[39:43], 0x0fffffff)
 
-	oversizedCanvasPNG := bytes.Clone(filePart.data)
-	binary.BigEndian.PutUint32(oversizedCanvasPNG[16:20], 4001)
-	binary.BigEndian.PutUint32(oversizedCanvasPNG[20:24], 4000)
-	binary.BigEndian.PutUint32(oversizedCanvasPNG[29:33], crc32.ChecksumIEEE(oversizedCanvasPNG[12:29]))
+	oversizedCanvasPNG := imageUploadPNG(t, 4097, 4096)
 	var animatedGIF bytes.Buffer
 	decodedGIF, err := gif.DecodeAll(bytes.NewReader(gifData.Bytes()))
 	require.NoError(t, err)
@@ -551,7 +564,7 @@ export function parseTaskResult(){return {};}
 		{name: "SVG blocked", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.svg", mime: "image/svg+xml", data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)}}, status: 415, code: "image_upload_unsupported_type"},
 		{name: "nonimage blocked", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.png", mime: "image/png", data: []byte("not an image")}}, status: 415, code: "image_upload_unsupported_type"},
 		{name: "MIME mismatch", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.jpg", mime: "image/jpeg", data: filePart.data}}, status: 415, code: "image_upload_unsupported_type"},
-		{name: "PNG oversized pixel canvas", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.png", mime: "image/png", data: oversizedCanvasPNG}}, status: 415, code: "image_upload_unsupported_type"},
+		{name: "4097 by 4096 PNG exceeds pixel limit", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.png", mime: "image/png", data: oversizedCanvasPNG}}, status: 415, code: "image_upload_unsupported_type"},
 		{name: "animated GIF rejected", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.gif", mime: "image/gif", data: animatedGIF.Bytes()}}, status: 415, code: "image_upload_unsupported_type"},
 		{name: "animated WebP chunks rejected", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.webp", mime: "image/webp", data: animatedWebP}}, status: 415, code: "image_upload_unsupported_type"},
 		{name: "JPEG header and forged terminator", parts: []imageUploadPart{modelPart, {name: "file", filename: "image.jpeg", mime: "image/jpeg", data: truncatedJPEG}}, status: 415, code: "image_upload_unsupported_type"},

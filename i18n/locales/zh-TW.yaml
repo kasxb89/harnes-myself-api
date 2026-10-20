@@ -85,7 +85,7 @@ reference_image_upload.concurrency_limited: "目前圖片上傳較多，請稍�
 reference_image_upload.model_forbidden: "目前 relay key 無權使用此模型"
 reference_image_upload.unavailable: "圖片上傳暫時無法使用，請稍後再試"
 reference_image_upload.too_large: "圖片大小不能超過 10 MiB"
-reference_image_upload.unsupported_type: "請上傳有效的 PNG、JPEG、靜態 WebP 或單幀 GIF 圖片，最多 1600 萬像素"
+reference_image_upload.unsupported_type: "請上傳有效的 PNG、JPEG、靜態 WebP 或單幀 GIF 圖片，總像素最多 16777216"
 reference_image_upload.timeout: "圖片上傳逾時，請稍後再試"
 reference_image_upload.busy: "圖片上傳繁忙，請稍後再試"
 reference_image_upload.invalid_request: "請提供一個 model 欄位和一個有效的圖片檔案"
