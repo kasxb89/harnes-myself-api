@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
@@ -261,21 +262,44 @@ func findOrCreatePhoneUser(phoneE164 string) (*model.User, bool, error) {
 		Group:       common.PhoneLoginDefaultGroup,
 		PhoneE164:   &phone,
 	}
-	if err := created.Insert(0); err != nil {
+	// Creation and its phone grant commit together, including when batching is
+	// enabled. Only the transaction that created this unique identity may grant
+	// the bonus; retries and existing/adopted accounts return above unchanged.
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := created.InsertWithTx(tx, 0); err != nil {
+			return err
+		}
+		if bonusQuota <= 0 {
+			return nil
+		}
+		if err := common.ValidateWalletQuota(bonusQuota); err != nil {
+			return err
+		}
+		result := tx.Model(&model.User{}).
+			Where("id = ? AND quota <= ?", created.Id, common.MaxWalletQuota-bonusQuota).
+			Update("quota", gorm.Expr("quota + ?", bonusQuota))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return model.ErrWalletQuotaLimitExceeded
+		}
+		return nil
+	}); err != nil {
 		return nil, false, err
 	}
-	// Insert resets quota to the global new-user default, so the bonus is
-	// applied right after creation and only on this path.
+	// Preserve the initial quota while finalizing global registration logging.
+	// A separate phone event records only the additional, committed grant.
+	created.FinishInsert(0)
 	if bonusQuota > 0 {
-		if err := model.IncreaseUserQuota(created.Id, bonusQuota, false); err != nil {
-			common.SysError(common.LogText("failed to grant registration bonus to %s: %s", username, err.Error()))
-		} else {
-			created.Quota = bonusQuota
-			common.SysLog(common.LogText(
-				"granted registration bonus of %d points (%d quota) to %s",
-				1000*common.PhoneRegistrationBonusYuan, bonusQuota, username,
-			))
-		}
+		before := int64(created.Quota)
+		created.Quota += bonusQuota
+		after := int64(created.Quota)
+		model.RecordLog(created.Id, model.LogTypeSystem, common.NewMessage("New user sign-up bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(bonusQuota)}), model.BalanceChange{Category: "registration_bonus", RegistrationSource: "phone", QuotaDelta: int64(bonusQuota), QuotaBefore: &before, QuotaAfter: &after})
+		common.SysLog(common.LogText(
+			"granted registration bonus of %d points (%d quota) to %s",
+			1000*common.PhoneRegistrationBonusYuan, bonusQuota, username,
+		))
 	}
 	return &created, true, nil
 }

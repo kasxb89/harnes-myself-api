@@ -1,18 +1,23 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestBalanceLedgerDatabaseMatrix(t *testing.T) {
@@ -91,6 +96,9 @@ func TestBalanceLedgerDatabaseMatrix(t *testing.T) {
 					assert.EqualValues(t, 3, summary.AdminAdjustments)
 					assert.EqualValues(t, 5, summary.UnknownCount)
 					assert.True(t, summary.RawQuotaOnly)
+					assert.False(t, summary.RegistrationCoverage.Complete)
+					assert.True(t, summary.RegistrationCoverage.Relevant)
+					assert.Equal(t, "historical_unrecorded", summary.RegistrationCoverage.Reason)
 					for _, item := range items {
 						assert.NotContains(t, item.Content, "private provider")
 						if item.CreatedAt == 110 {
@@ -121,6 +129,7 @@ func TestBalanceLedgerDatabaseMatrix(t *testing.T) {
 					assert.EqualValues(t, 3, count)
 					assert.Len(t, filtered, 3)
 					assert.Zero(t, filteredSummary.PaidOrders)
+					assert.False(t, filteredSummary.RegistrationCoverage.Relevant)
 					_, count, _, err = model.GetBalanceLedger(model.BalanceLedgerFilter{UserID: 999}, 0, 20)
 					require.NoError(t, err)
 					assert.Zero(t, count, "operator ID is not the affected user's ID")
@@ -187,6 +196,109 @@ func TestBalanceLedgerDatabaseMatrix(t *testing.T) {
 					var saved model.User
 					require.NoError(t, db.First(&saved, alice.Id).Error)
 					assert.Equal(t, 12345, saved.Quota, "the ledger is read-only")
+
+					// Phone registration has its own real grant in addition to the
+					// global default. Neither event may absorb the other's amount.
+					previousGlobal, previousPhone, previousBatch := common.QuotaForNewUser, common.PhoneRegistrationBonusYuan, common.BatchUpdateEnabled
+					previousUnit, previousRate := common.QuotaPerUnit, operation_setting.USDExchangeRate
+					previousPhoneEnabled := common.PhoneLoginEnabled
+					t.Cleanup(func() {
+						common.QuotaForNewUser, common.PhoneRegistrationBonusYuan, common.BatchUpdateEnabled = previousGlobal, previousPhone, previousBatch
+						common.QuotaPerUnit, operation_setting.USDExchangeRate = previousUnit, previousRate
+						common.PhoneLoginEnabled = previousPhoneEnabled
+					})
+					common.QuotaForNewUser, common.PhoneRegistrationBonusYuan, common.BatchUpdateEnabled = 77, 10, true
+					common.QuotaPerUnit, operation_setting.USDExchangeRate = 100, 10
+					phoneUser, created, err := findOrCreatePhoneUser("+16505550101")
+					require.NoError(t, err)
+					require.True(t, created)
+					assert.Equal(t, 177, phoneUser.Quota)
+					var savedPhoneUser model.User
+					require.NoError(t, db.First(&savedPhoneUser, phoneUser.Id).Error)
+					assert.Equal(t, 177, savedPhoneUser.Quota, "batch mode cannot defer a registration grant")
+					phoneItems, count, phoneSummary, err := model.GetBalanceLedger(model.BalanceLedgerFilter{UserID: phoneUser.Id, Category: "registration_bonus"}, 0, 20)
+					require.NoError(t, err)
+					assert.EqualValues(t, 2, count)
+					assert.EqualValues(t, 177, phoneSummary.RegistrationBonusQuota)
+					grants := make(map[string]int64)
+					for _, item := range phoneItems {
+						require.NotNil(t, item.QuotaDelta)
+						grants[item.RegistrationSource] = *item.QuotaDelta
+						if item.RegistrationSource == "phone" {
+							assert.EqualValues(t, 77, *item.QuotaBefore)
+							assert.EqualValues(t, 177, *item.QuotaAfter)
+						}
+					}
+					assert.Equal(t, map[string]int64{"global": 77, "phone": 100}, grants)
+					existingPhoneUser, created, err := findOrCreatePhoneUser("+16505550101")
+					require.NoError(t, err)
+					assert.False(t, created)
+					assert.Equal(t, phoneUser.Id, existingPhoneUser.Id)
+					_, count, phoneSummary, err = model.GetBalanceLedger(model.BalanceLedgerFilter{UserID: phoneUser.Id, Category: "registration_bonus"}, 0, 20)
+					require.NoError(t, err)
+					assert.EqualValues(t, 2, count, "repeat sign-in must not grant or log another bonus")
+					assert.EqualValues(t, 177, phoneSummary.RegistrationBonusQuota)
+					adopted := model.User{Username: phoneUsername("+16505550102"), AffCode: "phone-adopted", Quota: 42}
+					require.NoError(t, db.Create(&adopted).Error)
+					adoptedUser, created, err := findOrCreatePhoneUser("+16505550102")
+					require.NoError(t, err)
+					assert.False(t, created)
+					assert.Equal(t, 42, adoptedUser.Quota)
+					_, count, _, err = model.GetBalanceLedger(model.BalanceLedgerFilter{UserID: adopted.Id, Category: "registration_bonus"}, 0, 20)
+					require.NoError(t, err)
+					assert.Zero(t, count, "adopting a legacy identity is not a new registration")
+					failure := errors.New("forced phone grant failure")
+					require.NoError(t, db.Callback().Update().Before("gorm:update").Register("test:phone_grant_failure", func(tx *gorm.DB) {
+						if fields, ok := tx.Statement.Dest.(map[string]any); ok && fields["quota"] != nil {
+							tx.AddError(failure)
+						}
+					}))
+					_, created, err = findOrCreatePhoneUser("+16505550103")
+					require.ErrorIs(t, err, failure)
+					assert.False(t, created)
+					require.NoError(t, db.Callback().Update().Remove("test:phone_grant_failure"))
+					var failedUsers int64
+					require.NoError(t, db.Model(&model.User{}).Where("username = ?", phoneUsername("+16505550103")).Count(&failedUsers).Error)
+					assert.Zero(t, failedUsers, "failed grant must roll back the new account")
+					var failedLogs int64
+					require.NoError(t, logDB.Model(&model.Log{}).Where("username = ?", phoneUsername("+16505550103")).Count(&failedLogs).Error)
+					assert.Zero(t, failedLogs, "rolled-back registration must not leave a grant event")
+					var concurrent sync.WaitGroup
+					for range 2 {
+						concurrent.Go(func() { _, _, _ = findOrCreatePhoneUser("+16505550104") })
+					}
+					concurrent.Wait()
+					var concurrentUser model.User
+					require.NoError(t, db.Where("username = ?", phoneUsername("+16505550104")).First(&concurrentUser).Error)
+					assert.Equal(t, 177, concurrentUser.Quota)
+					_, count, phoneSummary, err = model.GetBalanceLedger(model.BalanceLedgerFilter{UserID: concurrentUser.Id, Category: "registration_bonus"}, 0, 20)
+					require.NoError(t, err)
+					assert.EqualValues(t, 2, count, "unique identity admits exactly one pair of committed grants")
+					assert.EqualValues(t, 177, phoneSummary.RegistrationBonusQuota)
+					common.PhoneLoginEnabled = true
+					// Rejected or consumed phone codes cannot reach account creation.
+					common.RegisterVerificationCodeWithKey("+16505550105", "654321", common.PhoneLoginPurpose)
+					common.DeleteKey("+16505550105", common.PhoneLoginPurpose)
+					response := httptest.NewRecorder()
+					context, _ := gin.CreateTestContext(response)
+					context.Request = httptest.NewRequest(http.MethodPost, "/api/user/phone/login", strings.NewReader(`{"phone_e164":"+16505550105","code":"654321"}`))
+					PhoneLogin(context)
+					assert.Contains(t, response.Body.String(), `"success":false`)
+					require.NoError(t, db.Model(&model.User{}).Where("username = ?", phoneUsername("+16505550105")).Count(&failedUsers).Error)
+					assert.Zero(t, failedUsers)
+					previousMinutes := common.VerificationValidMinutes
+					common.VerificationValidMinutes = 0
+					t.Cleanup(func() { common.VerificationValidMinutes = previousMinutes })
+					common.RegisterVerificationCodeWithKey("+16505550106", "654321", common.PhoneLoginPurpose)
+					response = httptest.NewRecorder()
+					context, _ = gin.CreateTestContext(response)
+					context.Request = httptest.NewRequest(http.MethodPost, "/api/user/phone/login", strings.NewReader(`{"phone_e164":"+16505550106","code":"654321"}`))
+					PhoneLogin(context)
+					common.VerificationValidMinutes = previousMinutes
+					common.DeleteKey("+16505550106", common.PhoneLoginPurpose)
+					assert.Contains(t, response.Body.String(), `"success":false`)
+					require.NoError(t, db.Model(&model.User{}).Where("username = ?", phoneUsername("+16505550106")).Count(&failedUsers).Error)
+					assert.Zero(t, failedUsers, "expired verification cannot create or credit an account")
 				})
 			}
 		})

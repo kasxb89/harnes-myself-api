@@ -75,6 +75,11 @@ export interface BalanceSummary {
   registration_bonus_quota_exact?: string
   registration_bonus_count: number
   registration_bonus_unknown: number
+  registration_coverage?: {
+    complete: boolean
+    reason: string
+    relevant: boolean
+  }
   admin_increase_quota: number
   admin_increase_quota_exact?: string
   admin_decrease_quota: number

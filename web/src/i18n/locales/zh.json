@@ -7516,6 +7516,13 @@
     "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.": "{{count}} 条历史记录缺少原始额度，未计入额度汇总；已有金额原文仍展示在下方明细中。",
     "Actual payments received": "实际收款",
     "Raw quota": "原始额度",
-    "Amount exceeds display precision": "金额超出显示精度"
+    "Amount exceeds display precision": "金额超出显示精度",
+    "Historical gifts not recorded": "历史赠送未记录",
+    "Registration gift history unverified": "历史赠送记录未确认",
+    "Recorded registration gifts: {{count}}": "已记录赠送 {{count}} 笔",
+    "Only recorded registration gifts are counted": "仅统计已有流水的注册赠送",
+    "Outside the selected balance source": "不在当前额度来源筛选内",
+    "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "已有用户的历史赠送尚无原始流水，本页不据余额或当前设置反推。",
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "注册赠送的历史记录覆盖情况尚未确认，缺少流水不代表从未赠送。"
   }
 }

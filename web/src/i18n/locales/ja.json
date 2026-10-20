@@ -7516,6 +7516,13 @@
     "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.": "過去の {{count}} 件には元のクォータ値がなく、クォータ集計から除外されます。記録された金額は下に表示されます。",
     "Actual payments received": "受領した支払い",
     "Raw quota": "元のクォータ",
-    "Amount exceeds display precision": "表示精度の上限を超えています"
+    "Amount exceeds display precision": "表示精度の上限を超えています",
+    "Historical gifts not recorded": "過去の特典は記録されていません",
+    "Registration gift history unverified": "過去の特典記録は未確認です",
+    "Recorded registration gifts: {{count}}": "記録済みの特典：{{count}} 件",
+    "Only recorded registration gifts are counted": "記録された登録特典のみを集計します",
+    "Outside the selected balance source": "選択中の残高の内訳には含まれません",
+    "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "既存ユーザーの過去の特典には元の明細がありません。このページでは残高や現在の設定から推定しません。",
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "登録特典の過去の記録が完全かどうかは未確認です。記録がないことは特典がなかったことを意味しません。"
   }
 }

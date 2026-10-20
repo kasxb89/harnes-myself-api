@@ -7516,6 +7516,13 @@
     "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.": "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.",
     "Actual payments received": "Actual payments received",
     "Raw quota": "Raw quota",
-    "Amount exceeds display precision": "Amount exceeds display precision"
+    "Amount exceeds display precision": "Amount exceeds display precision",
+    "Historical gifts not recorded": "Historical gifts not recorded",
+    "Registration gift history unverified": "Registration gift history unverified",
+    "Recorded registration gifts: {{count}}": "Recorded registration gifts: {{count}}",
+    "Only recorded registration gifts are counted": "Only recorded registration gifts are counted",
+    "Outside the selected balance source": "Outside the selected balance source",
+    "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.",
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued."
   }
 }

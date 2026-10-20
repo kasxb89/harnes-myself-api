@@ -7516,6 +7516,13 @@
     "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.": "{{count}} bản ghi cũ thiếu hạn mức gốc nên không được tính vào tổng hạn mức. Số tiền đã ghi vẫn hiển thị bên dưới.",
     "Actual payments received": "Khoản thanh toán thực nhận",
     "Raw quota": "Hạn mức gốc",
-    "Amount exceeds display precision": "Số tiền vượt quá độ chính xác hiển thị"
+    "Amount exceeds display precision": "Số tiền vượt quá độ chính xác hiển thị",
+    "Historical gifts not recorded": "Quà tặng cũ chưa được ghi nhận",
+    "Registration gift history unverified": "Lịch sử quà tặng chưa được xác minh",
+    "Recorded registration gifts: {{count}}": "Quà tặng đã ghi nhận: {{count}}",
+    "Only recorded registration gifts are counted": "Chỉ tính quà đăng ký đã có bản ghi",
+    "Outside the selected balance source": "Không thuộc nguồn hạn mức đang chọn",
+    "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Quà tặng trước đây của người dùng hiện có chưa có bản ghi gốc. Trang này không suy ngược từ số dư hoặc cài đặt hiện tại.",
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Chưa xác minh mức độ đầy đủ của lịch sử quà đăng ký. Thiếu bản ghi không có nghĩa là chưa từng tặng quà."
   }
 }

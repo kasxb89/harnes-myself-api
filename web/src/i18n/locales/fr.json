@@ -7516,6 +7516,13 @@
     "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.": "{{count}} anciennes entrées sans montant brut de crédit sont exclues des totaux. Leurs montants enregistrés restent visibles ci-dessous.",
     "Actual payments received": "Paiements reçus",
     "Raw quota": "Crédit brut",
-    "Amount exceeds display precision": "Le montant dépasse la précision d’affichage"
+    "Amount exceeds display precision": "Le montant dépasse la précision d’affichage",
+    "Historical gifts not recorded": "Anciens cadeaux non enregistrés",
+    "Registration gift history unverified": "Historique des cadeaux non vérifié",
+    "Recorded registration gifts: {{count}}": "Cadeaux enregistrés : {{count}}",
+    "Only recorded registration gifts are counted": "Seuls les cadeaux à l’inscription enregistrés sont comptés",
+    "Outside the selected balance source": "Hors de la source de crédit sélectionnée",
+    "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Les anciens cadeaux des utilisateurs existants n’ont pas de pièces d’origine. Cette page ne les déduit ni des soldes ni des paramètres actuels.",
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "La couverture de l’historique des cadeaux n’est pas vérifiée. L’absence d’entrées ne signifie pas qu’aucun cadeau n’a été offert."
   }
 }

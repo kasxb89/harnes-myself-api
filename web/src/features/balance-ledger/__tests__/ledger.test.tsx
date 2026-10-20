@@ -105,6 +105,7 @@ const summary: BalanceSummary = {
   registration_bonus_quota: 0,
   registration_bonus_count: 5,
   registration_bonus_unknown: 5,
+  registration_coverage: { complete: true, reason: '', relevant: true },
   admin_increase_quota: 1000000,
   admin_decrease_quota: 500000,
   admin_adjustments: 3,
@@ -138,6 +139,8 @@ function setup(
     mobile?: boolean
     unknownCurrency?: boolean
     largeQuota?: boolean
+    summaryOverride?: Partial<BalanceSummary>
+    omitRegistrationEntries?: boolean
   } = {}
 ) {
   useAuthStore.getState().auth.setUser({
@@ -158,6 +161,9 @@ function setup(
     }
     const filters = config?.params as BalanceFilters
     let items = options.empty ? [] : [registration, adjustment, payment]
+    if (options.omitRegistrationEntries) {
+      items = items.filter((entry) => entry.category !== 'registration_bonus')
+    }
     if (options.largeQuota) {
       items = [
         {
@@ -180,7 +186,7 @@ function setup(
     if (filters.p === 2) {
       items = [{ ...registration, id: 'log:99', username: 'page-two-user' }]
     }
-    const resultSummary = options.unknownCurrency
+    const currencySummary = options.unknownCurrency
       ? {
           ...summary,
           paid_money: null,
@@ -195,6 +201,7 @@ function setup(
           ],
         }
       : summary
+    const resultSummary = { ...currencySummary, ...options.summaryOverride }
     return {
       data: {
         success: true,
@@ -234,6 +241,115 @@ it('shows whole-filter payment totals and preserves historical registration amou
   expect(screen.getByText('Historical recorded amount: ¥10.00')).toBeVisible()
   expect(screen.getByText('70 CNY')).toBeVisible()
   expect(screen.queryByText(/1970-01-01/)).not.toBeInTheDocument()
+})
+it('does not claim zero registration gifts when the server has not confirmed complete historical coverage', async () => {
+  setup({
+    omitRegistrationEntries: true,
+    summaryOverride: {
+      registration_bonus_count: 0,
+      registration_bonus_quota: 0,
+      registration_bonus_unknown: 0,
+      registration_coverage: undefined,
+      unknown_count: 0,
+    },
+  })
+  await screen.findByText('bob')
+  const totals = screen.getByRole('region', { name: 'Balance summary' })
+  expect(
+    within(totals).getByText('Registration gift history unverified')
+  ).toBeVisible()
+  expect(
+    within(totals).queryByText('Registration gift records: 0')
+  ).not.toBeInTheDocument()
+})
+it('labels a historical registration gap in Chinese without inferring gifts from balances or current settings', async () => {
+  setup({
+    omitRegistrationEntries: true,
+    summaryOverride: {
+      registration_bonus_count: 0,
+      registration_bonus_quota: 0,
+      registration_bonus_unknown: 0,
+      unknown_count: 0,
+      registration_coverage: {
+        complete: false,
+        reason: 'historical_unrecorded',
+        relevant: true,
+      },
+    },
+  })
+  await screen.findByText('bob')
+  await act(async () => testI18n.changeLanguage('zh'))
+  const totals = screen.getByRole('region', { name: '额度汇总' })
+  expect(within(totals).getByText('历史赠送未记录')).toBeVisible()
+  expect(
+    within(totals).getByText(
+      '已有用户的历史赠送尚无原始流水，本页不据余额或当前设置反推。'
+    )
+  ).toBeVisible()
+  expect(within(totals).queryByText('$0')).not.toBeInTheDocument()
+  expect(screen.queryByText('历史记录金额: ¥10.00')).not.toBeInTheDocument()
+})
+it('counts only observed gift records when historical coverage is incomplete', async () => {
+  setup({
+    summaryOverride: {
+      registration_coverage: {
+        complete: false,
+        reason: 'historical_unrecorded',
+        relevant: true,
+      },
+    },
+  })
+  await screen.findByText('bob')
+  const totals = screen.getByRole('region', { name: 'Balance summary' })
+  expect(
+    within(totals).getByText('Recorded registration gifts: 5')
+  ).toBeVisible()
+  expect(
+    within(totals).getByText('Only recorded registration gifts are counted')
+  ).toBeVisible()
+})
+it('shows a zero gift amount only when the server confirms complete coverage', async () => {
+  setup({
+    omitRegistrationEntries: true,
+    summaryOverride: {
+      registration_bonus_count: 0,
+      registration_bonus_quota: 0,
+      registration_bonus_unknown: 0,
+      unknown_count: 0,
+    },
+  })
+  await screen.findByText('bob')
+  const totals = screen.getByRole('region', { name: 'Balance summary' })
+  expect(within(totals).getByText('$0')).toBeVisible()
+  expect(within(totals).getByText('Registration gift records: 0')).toBeVisible()
+  expect(
+    within(totals).queryByText(/lack original ledger records/)
+  ).not.toBeInTheDocument()
+})
+it('marks registration gifts outside the chosen source instead of showing a zero gift total', async () => {
+  setup({
+    omitRegistrationEntries: true,
+    summaryOverride: {
+      registration_bonus_count: 0,
+      registration_bonus_quota: 0,
+      registration_bonus_unknown: 0,
+      unknown_count: 0,
+      registration_coverage: {
+        complete: false,
+        reason: 'historical_unrecorded',
+        relevant: false,
+      },
+    },
+  })
+  await screen.findByText('bob')
+  const totals = screen.getByRole('region', { name: 'Balance summary' })
+  expect(
+    within(totals).getByText('Outside the selected balance source')
+  ).toBeVisible()
+  expect(within(totals).queryByText('$0')).not.toBeInTheDocument()
+  expect(
+    within(totals).queryByText(/lack original ledger records/)
+  ).not.toBeInTheDocument()
 })
 it('shows an administrator override as a signed difference with the operator and before/after amounts', async () => {
   setup()

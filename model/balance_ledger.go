@@ -19,10 +19,11 @@ var BalanceLedgerCategories = []string{"registration_bonus", "online_topup", "ad
 // BalanceChange retains original quota units independently of localized display
 // strings and exchange rates. It describes a committed change, never a request.
 type BalanceChange struct {
-	Category    string `json:"category"`
-	QuotaDelta  int64  `json:"quota_delta"`
-	QuotaBefore *int64 `json:"quota_before,omitempty"`
-	QuotaAfter  *int64 `json:"quota_after,omitempty"`
+	Category           string `json:"category"`
+	RegistrationSource string `json:"registration_source,omitempty"`
+	QuotaDelta         int64  `json:"quota_delta"`
+	QuotaBefore        *int64 `json:"quota_before,omitempty"`
+	QuotaAfter         *int64 `json:"quota_after,omitempty"`
 }
 
 type BalanceLedgerFilter struct {
@@ -34,28 +35,29 @@ type BalanceLedgerFilter struct {
 }
 
 type BalanceLedgerItem struct {
-	ID               string   `json:"id"`
-	CreatedAt        int64    `json:"created_at"`
-	UserID           int      `json:"user_id"`
-	Username         string   `json:"username"`
-	Category         string   `json:"category"`
-	Action           string   `json:"action"`
-	QuotaDelta       *int64   `json:"quota_delta"`
-	QuotaDeltaExact  *string  `json:"quota_delta_exact"`
-	QuotaBefore      *int64   `json:"quota_before"`
-	QuotaAfter       *int64   `json:"quota_after"`
-	QuotaBeforeExact *string  `json:"quota_before_exact"`
-	QuotaAfterExact  *string  `json:"quota_after_exact"`
-	PaidMoney        *float64 `json:"paid_money"`
-	PaidCurrency     *string  `json:"paid_currency"`
-	PaymentProvider  string   `json:"payment_provider"`
-	OperatorID       *int     `json:"operator_id"`
-	OperatorUsername *string  `json:"operator_username"`
-	Source           string   `json:"source"`
-	AmountKnown      bool     `json:"amount_known"`
-	DisplayAmount    *string  `json:"display_amount"`
-	Content          string   `json:"content"`
-	Legacy           bool     `json:"legacy"`
+	ID                 string   `json:"id"`
+	CreatedAt          int64    `json:"created_at"`
+	UserID             int      `json:"user_id"`
+	Username           string   `json:"username"`
+	Category           string   `json:"category"`
+	RegistrationSource string   `json:"registration_source"`
+	Action             string   `json:"action"`
+	QuotaDelta         *int64   `json:"quota_delta"`
+	QuotaDeltaExact    *string  `json:"quota_delta_exact"`
+	QuotaBefore        *int64   `json:"quota_before"`
+	QuotaAfter         *int64   `json:"quota_after"`
+	QuotaBeforeExact   *string  `json:"quota_before_exact"`
+	QuotaAfterExact    *string  `json:"quota_after_exact"`
+	PaidMoney          *float64 `json:"paid_money"`
+	PaidCurrency       *string  `json:"paid_currency"`
+	PaymentProvider    string   `json:"payment_provider"`
+	OperatorID         *int     `json:"operator_id"`
+	OperatorUsername   *string  `json:"operator_username"`
+	Source             string   `json:"source"`
+	AmountKnown        bool     `json:"amount_known"`
+	DisplayAmount      *string  `json:"display_amount"`
+	Content            string   `json:"content"`
+	Legacy             bool     `json:"legacy"`
 }
 
 type BalanceLedgerCategoryTotal struct {
@@ -74,23 +76,33 @@ type BalanceLedgerPaidTotal struct {
 }
 
 type BalanceLedgerSummary struct {
-	PaidMoney                   *float64                     `json:"paid_money"`
-	PaidCurrency                *string                      `json:"paid_currency"`
-	PaidOrders                  int64                        `json:"paid_orders"`
-	PaidTotals                  []BalanceLedgerPaidTotal     `json:"paid_totals"`
-	RegistrationBonusQuota      int64                        `json:"registration_bonus_quota"`
-	RegistrationBonusQuotaExact string                       `json:"registration_bonus_quota_exact"`
-	RegistrationBonusCount      int64                        `json:"registration_bonus_count"`
-	RegistrationBonusUnknown    int64                        `json:"registration_bonus_unknown"`
-	AdminIncreaseQuota          int64                        `json:"admin_increase_quota"`
-	AdminDecreaseQuota          int64                        `json:"admin_decrease_quota"`
-	AdminIncreaseQuotaExact     string                       `json:"admin_increase_quota_exact"`
-	AdminDecreaseQuotaExact     string                       `json:"admin_decrease_quota_exact"`
-	AdminAdjustments            int64                        `json:"admin_adjustments"`
-	UnknownCount                int64                        `json:"unknown_count"`
-	OtherUnknown                int64                        `json:"other_unknown"`
-	RawQuotaOnly                bool                         `json:"raw_quota_only"`
-	Categories                  []BalanceLedgerCategoryTotal `json:"categories"`
+	RegistrationCoverage        BalanceLedgerRegistrationCoverage `json:"registration_coverage"`
+	PaidMoney                   *float64                          `json:"paid_money"`
+	PaidCurrency                *string                           `json:"paid_currency"`
+	PaidOrders                  int64                             `json:"paid_orders"`
+	PaidTotals                  []BalanceLedgerPaidTotal          `json:"paid_totals"`
+	RegistrationBonusQuota      int64                             `json:"registration_bonus_quota"`
+	RegistrationBonusQuotaExact string                            `json:"registration_bonus_quota_exact"`
+	RegistrationBonusCount      int64                             `json:"registration_bonus_count"`
+	RegistrationBonusUnknown    int64                             `json:"registration_bonus_unknown"`
+	AdminIncreaseQuota          int64                             `json:"admin_increase_quota"`
+	AdminDecreaseQuota          int64                             `json:"admin_decrease_quota"`
+	AdminIncreaseQuotaExact     string                            `json:"admin_increase_quota_exact"`
+	AdminDecreaseQuotaExact     string                            `json:"admin_decrease_quota_exact"`
+	AdminAdjustments            int64                             `json:"admin_adjustments"`
+	UnknownCount                int64                             `json:"unknown_count"`
+	OtherUnknown                int64                             `json:"other_unknown"`
+	RawQuotaOnly                bool                              `json:"raw_quota_only"`
+	Categories                  []BalanceLedgerCategoryTotal      `json:"categories"`
+}
+
+// Existing phone registration grants were not written to the structured log.
+// Neither current balances nor current registration settings prove their past
+// amounts; a zero count must not be presented as proof that no grants occurred.
+type BalanceLedgerRegistrationCoverage struct {
+	Complete bool   `json:"complete"`
+	Reason   string `json:"reason"`
+	Relevant bool   `json:"relevant"`
 }
 
 // The heap retains only the requested pagination prefix, while summary and count
@@ -154,10 +166,11 @@ func balanceLedgerLogItem(log Log) (BalanceLedgerItem, bool) {
 	}
 	var other struct {
 		BalanceChange *struct {
-			Category    string          `json:"category"`
-			QuotaDelta  json.RawMessage `json:"quota_delta"`
-			QuotaBefore json.RawMessage `json:"quota_before"`
-			QuotaAfter  json.RawMessage `json:"quota_after"`
+			Category           string          `json:"category"`
+			RegistrationSource string          `json:"registration_source"`
+			QuotaDelta         json.RawMessage `json:"quota_delta"`
+			QuotaBefore        json.RawMessage `json:"quota_before"`
+			QuotaAfter         json.RawMessage `json:"quota_after"`
 		} `json:"balance_change"`
 		Op *struct {
 			Action string                     `json:"action"`
@@ -221,6 +234,9 @@ func balanceLedgerLogItem(log Log) (BalanceLedgerItem, bool) {
 	hasBalanceChange := false
 	if change := other.BalanceChange; change != nil && slices.Contains(BalanceLedgerCategories, change.Category) {
 		item.Category = change.Category
+		if change.Category == "registration_bonus" && (change.RegistrationSource == "global" || change.RegistrationSource == "phone") {
+			item.RegistrationSource = change.RegistrationSource
+		}
 		if delta, ok := balanceLedgerInteger(change.QuotaDelta); ok {
 			item.QuotaDelta = delta
 			item.QuotaBefore, _ = balanceLedgerInteger(change.QuotaBefore)
@@ -237,6 +253,7 @@ func balanceLedgerLogItem(log Log) (BalanceLedgerItem, bool) {
 // parses formatted money back into quota, or sums audit duplicates.
 func GetBalanceLedger(filter BalanceLedgerFilter, start, limit int) ([]BalanceLedgerItem, int64, BalanceLedgerSummary, error) {
 	summary := BalanceLedgerSummary{RawQuotaOnly: true, PaidTotals: make([]BalanceLedgerPaidTotal, 0), Categories: make([]BalanceLedgerCategoryTotal, len(BalanceLedgerCategories)), RegistrationBonusQuotaExact: "0", AdminIncreaseQuotaExact: "0", AdminDecreaseQuotaExact: "0"}
+	summary.RegistrationCoverage = BalanceLedgerRegistrationCoverage{Complete: false, Reason: "historical_unrecorded", Relevant: filter.Category == "" || filter.Category == "all" || filter.Category == "registration_bonus"}
 	for index, category := range BalanceLedgerCategories {
 		summary.Categories[index].Category = category
 		summary.Categories[index].KnownQuotaDeltaExact = "0"

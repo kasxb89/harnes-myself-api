@@ -724,7 +724,7 @@ func (user *User) finishInsert(inviterId int) {
 
 	if common.QuotaForNewUser > 0 {
 		before, after := int64(0), int64(user.Quota)
-		RecordLog(user.Id, LogTypeSystem, common.NewMessage("New user sign-up bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(user.Quota)}), BalanceChange{Category: "registration_bonus", QuotaDelta: after, QuotaBefore: &before, QuotaAfter: &after})
+		RecordLog(user.Id, LogTypeSystem, common.NewMessage("New user sign-up bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(user.Quota)}), BalanceChange{Category: "registration_bonus", RegistrationSource: "global", QuotaDelta: after, QuotaBefore: &before, QuotaAfter: &after})
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
@@ -782,7 +782,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 
 	if common.QuotaForNewUser > 0 {
 		before, after := int64(0), int64(user.Quota)
-		RecordLog(user.Id, LogTypeSystem, common.NewMessage("New user sign-up bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(user.Quota)}), BalanceChange{Category: "registration_bonus", QuotaDelta: after, QuotaBefore: &before, QuotaAfter: &after})
+		RecordLog(user.Id, LogTypeSystem, common.NewMessage("New user sign-up bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(user.Quota)}), BalanceChange{Category: "registration_bonus", RegistrationSource: "global", QuotaDelta: after, QuotaBefore: &before, QuotaAfter: &after})
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {

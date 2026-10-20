@@ -50,6 +50,45 @@ export function LedgerSummary(props: {
     }
   }
   const giftsUnknown = (data?.registration_bonus_unknown ?? 0) > 0
+  const registrationRelevant = data?.registration_coverage?.relevant !== false
+  const registrationIncomplete =
+    !!data &&
+    registrationRelevant &&
+    data.registration_coverage?.complete !== true
+  const historicalGiftGap =
+    data?.registration_coverage?.reason === 'historical_unrecorded'
+  let giftValue = '—'
+  let giftDescription = t('Only recorded registration gifts are counted')
+  if (!registrationRelevant) {
+    giftDescription = t('Outside the selected balance source')
+  } else if (registrationIncomplete) {
+    if (data.registration_bonus_count > 0) {
+      giftValue = t('Recorded registration gifts: {{count}}', {
+        count: data.registration_bonus_count,
+      })
+    } else {
+      giftValue = historicalGiftGap
+        ? t('Historical gifts not recorded')
+        : t('Registration gift history unverified')
+    }
+    giftDescription = t('Only recorded registration gifts are counted')
+  } else if (giftsUnknown) {
+    giftValue = t('{{count}} gift records', {
+      count: data?.registration_bonus_count ?? 0,
+    })
+    giftDescription = t('Historical gift amounts appear in the ledger below')
+  } else {
+    giftValue = formatLedgerQuota(data?.registration_bonus_quota, {
+      locale,
+      t,
+      exact: data?.registration_bonus_quota_exact,
+    })
+    if (data) {
+      giftDescription = t('Registration gift records: {{count}}', {
+        count: data.registration_bonus_count,
+      })
+    }
+  }
   const cards = [
     {
       title: t('Actual payments received'),
@@ -61,20 +100,8 @@ export function LedgerSummary(props: {
     },
     {
       title: t('Registration gifts'),
-      value: giftsUnknown
-        ? t('{{count}} gift records', {
-            count: data?.registration_bonus_count ?? 0,
-          })
-        : formatLedgerQuota(data?.registration_bonus_quota, {
-            locale,
-            t,
-            exact: data?.registration_bonus_quota_exact,
-          }),
-      description: giftsUnknown
-        ? t('Historical gift amounts appear in the ledger below')
-        : t('Registration gift records: {{count}}', {
-            count: data?.registration_bonus_count ?? 0,
-          }),
+      value: giftValue,
+      description: giftDescription,
       icon: Gift,
     },
     {
@@ -117,6 +144,17 @@ export function LedgerSummary(props: {
             'Totals cover all matching records, not only this page. Paid money and quota changes are counted separately.'
           )}
         </p>
+        {registrationIncomplete && (
+          <p>
+            {historicalGiftGap
+              ? t(
+                  'Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.'
+                )
+              : t(
+                  'Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.'
+                )}
+          </p>
+        )}
         {data && data.unknown_count > 0 && (
           <p>
             {t(

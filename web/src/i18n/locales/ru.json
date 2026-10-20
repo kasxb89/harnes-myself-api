@@ -7516,6 +7516,13 @@
     "{{count}} historical records lack raw quota amounts and are excluded from quota totals. Their recorded amounts remain visible below.": "Для {{count}} исторических записей отсутствует исходная квота, они исключены из итогов. Записанные суммы показаны ниже.",
     "Actual payments received": "Полученные оплаты",
     "Raw quota": "Исходная квота",
-    "Amount exceeds display precision": "Сумма превышает точность отображения"
+    "Amount exceeds display precision": "Сумма превышает точность отображения",
+    "Historical gifts not recorded": "Исторические подарки не записаны",
+    "Registration gift history unverified": "История подарков не подтверждена",
+    "Recorded registration gifts: {{count}}": "Записанных подарков: {{count}}",
+    "Only recorded registration gifts are counted": "Учитываются только записанные подарки при регистрации",
+    "Outside the selected balance source": "Не входит в выбранный источник средств",
+    "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Для исторических подарков существующих пользователей нет исходных записей. Эта страница не вычисляет их из балансов или текущих настроек.",
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Полнота истории подарков при регистрации не подтверждена. Отсутствие записей не означает, что подарки не выдавались."
   }
 }
