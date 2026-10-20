@@ -8,16 +8,19 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	kittypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -623,6 +626,142 @@ export function buildQueryRequest(){throw new Error("completed submissions must 
 func TestAcceptedSubmitStreamNeverRetries(t *testing.T) {
 	c := taskSubmissionTestContext()
 	assert.Equal(t, service.PolicyDecision{Action: "stop", Reason: "task_accepted", Source: "system"}, decideTaskRetry(c, &dto.TaskError{StatusCode: 502, LocalError: true, NoRetry: true}, 3))
+	previousRetry := common.RetryTimes
+	common.RetryTimes = 2
+	t.Cleanup(func() { common.RetryTimes = previousRetry })
+	attempts := 0
+	outcome, taskErr := executeTaskSubmissionWith(c, taskSubmissionRelayInfo(nil), func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+		attempts++
+		return nil, &dto.TaskError{Code: "submit_stream_failed", StatusCode: http.StatusBadGateway, LocalError: true, NoRetry: true}
+	})
+	assert.Nil(t, outcome)
+	require.NotNil(t, taskErr)
+	assert.Equal(t, 1, attempts, "an accepted provider operation must not be submitted again")
+}
+
+func TestExecuteTaskSubmissionPreservesBillingRejectionsAndUpstreamRetries(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Channel{}, &model.Task{}, &model.Log{})
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
+	oldRedis, oldMemory, oldBatch := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled
+	oldErrorLog, oldRetry := constant.ErrorLogEnabled, common.RetryTimes
+	model.DB, model.LOG_DB = db, db
+	common.SetDatabaseTypes(dialect, dialect)
+	common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled = false, false, false
+	constant.ErrorLogEnabled, common.RetryTimes = true, 2
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = oldDB, oldLogDB
+		common.SetDatabaseTypes(oldMain, oldLog)
+		common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled = oldRedis, oldMemory, oldBatch
+		constant.ErrorLogEnabled, common.RetryTimes = oldErrorLog, oldRetry
+	})
+	withTieredBillingConfig(t, map[string]string{"rejection-model": "tiered_expr"}, map[string]string{"rejection-model": `tier("request", u("units") * 0.01)`})
+	plugin, err := pluginruntime.CompilePlugin(`
+export const meta={apiVersion:1,key:"billing-rejection",name:"Billing rejection",version:"1.0.0",author:{name:"Test"},models:["rejection-model"],fetchMode:"per_task",usageSchema:{units:{type:"number",unit:"count",description:{en:"Task operation unit price"}}}};
+export function buildSubmitRequest(ctx){return {url:ctx.baseUrl+"/submit",body:ctx.requestBody};}
+export function extractUsage(){return {units:4};}
+export function parseSubmitResponse(){throw new Error("failed upstream requests must not parse");}
+export function buildQueryRequest(){return {};}
+export function parseTaskResult(){return {status:"UNKNOWN"};}
+`, pluginruntime.Options{})
+	require.NoError(t, err)
+	withoutCause := kittypes.InitOpenAIError(kittypes.ErrorCodeInsufficientUserQuota, http.StatusForbidden, kittypes.ErrOptionWithSkipRetry(), kittypes.ErrOptionWithNoRecordErrorLog())
+	withoutCause.Err = nil
+	converted := service.TaskErrorFromAPIError(withoutCause)
+	assert.Equal(t, withoutCause.Error(), converted.Message)
+	assert.Same(t, withoutCause, taskSubmissionAPIError(converted))
+	assert.Nil(t, service.TaskErrorFromAPIError(nil))
+	lookupFailure := kittypes.NewError(errors.New("wallet lookup failed"), kittypes.ErrorCodeQueryDataError, kittypes.ErrOptionWithSkipRetry())
+	assert.Equal(t, service.PolicyDecision{Action: "stop", Reason: "non_retryable_error", Source: "system"}, decideTaskRetry(taskSubmissionTestContext(), service.TaskErrorFromAPIError(lookupFailure), 2), "a local 500 must honor the billing retry opt-out before status rules")
+	for index, tc := range []struct {
+		name           string
+		quota          int
+		upstreamStatus int
+		wantAttempts   int
+		wantRequests   int
+		wantLogs       int64
+	}{
+		{name: "insufficient wallet", quota: 1, upstreamStatus: http.StatusServiceUnavailable, wantAttempts: 1},
+		{name: "upstream unavailable", quota: 100000, upstreamStatus: http.StatusServiceUnavailable, wantAttempts: 3, wantRequests: 3, wantLogs: 3},
+		{name: "upstream forbidden", quota: 100000, upstreamStatus: http.StatusForbidden, wantAttempts: 3, wantRequests: 3, wantLogs: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.WriteHeader(tc.upstreamStatus)
+				_, _ = w.Write([]byte(`{"error":"provider rejected request"}`))
+			}))
+			t.Cleanup(server.Close)
+			user := model.User{Username: fmt.Sprintf("rejection_user_%d", index), AffCode: fmt.Sprintf("reject_aff_%d", index), Quota: tc.quota}
+			require.NoError(t, db.Create(&user).Error)
+			channel := model.Channel{Name: "fixture provider", Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Key: "fixture-key", BaseURL: common.GetPointer(server.URL)}
+			require.NoError(t, db.Create(&channel).Error)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/plugin/submit", strings.NewReader(`{}`))
+			c.Set("id", user.Id)
+			c.Set("username", user.Username)
+			c.Set("group", "default")
+			c.Set("task_request", map[string]any{"model": "rejection-model"})
+			c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{Plugin: plugin})
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, "rejection-model")
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, server.URL)
+			common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
+			common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
+			info := taskSubmissionRelayInfo(nil)
+			info.UserId, info.OriginModelName = user.Id, "rejection-model"
+			info.UserGroup, info.IsPlayground = "default", true
+			info.UserSetting.BillingPreference = "wallet_only"
+			info.LockedChannel = &channel
+			attempts := 0
+			outcome, taskErr := executeTaskSubmissionWith(c, info, func(c *gin.Context, info *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+				attempts++
+				return relay.RelayTaskSubmit(c, info)
+			})
+			require.Nil(t, outcome)
+			require.NotNil(t, taskErr)
+			assert.Equal(t, tc.wantAttempts, attempts)
+			assert.EqualValues(t, tc.wantRequests, requests.Load())
+			if tc.wantRequests == 0 {
+				assert.True(t, taskErr.LocalError)
+				assert.Equal(t, string(kittypes.ErrorCodeInsufficientUserQuota), taskErr.Code)
+				assert.Equal(t, http.StatusForbidden, taskErr.StatusCode)
+				apiErr := taskSubmissionAPIError(taskErr)
+				assert.Equal(t, kittypes.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+				assert.True(t, kittypes.IsSkipRetryError(apiErr))
+				assert.False(t, kittypes.IsRecordErrorLog(apiErr))
+				assert.Nil(t, info.Billing, "a rejected pre-consume must not create a billing session")
+				events := service.RequestPolicy(c).Events()
+				require.Len(t, events, 3)
+				assert.Equal(t, "local_rejection", events[1].Decision.Reason)
+				assert.Equal(t, "local", events[1].ErrorSource)
+				assert.Equal(t, "non_retryable_error", events[2].Decision.Reason)
+				assert.Equal(t, "unchanged", events[2].Health)
+			} else {
+				assert.False(t, taskErr.LocalError, "a provider rejection remains a channel failure")
+				assert.Equal(t, tc.upstreamStatus, taskErr.StatusCode)
+			}
+			respondTaskSubmissionError(c, taskErr)
+			assert.Equal(t, taskErr.StatusCode, c.Writer.Status())
+			if tc.wantRequests == 0 {
+				var response dto.TaskError
+				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+				assert.Equal(t, taskErr.Code, response.Code)
+				assert.Equal(t, taskErr.Message, response.Message)
+			}
+			require.Eventually(t, func() bool {
+				var updated model.User
+				return db.First(&updated, user.Id).Error == nil && updated.Quota == tc.quota && updated.UsedQuota == 0
+			}, time.Second, time.Millisecond, "failed submissions must leave the wallet unchanged")
+			var logCount, taskCount int64
+			require.NoError(t, db.Model(&model.Log{}).Where("user_id = ?", user.Id).Count(&logCount).Error)
+			require.NoError(t, db.Model(&model.Task{}).Where("user_id = ?", user.Id).Count(&taskCount).Error)
+			assert.Equal(t, tc.wantLogs, logCount)
+			assert.Zero(t, taskCount)
+		})
+	}
 }
 
 // Local task rejections carry a message but no cause; the response and the

@@ -223,8 +223,11 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *taskdto.TaskError {
 	}
 	return &taskdto.TaskError{
 		Code:       string(apiErr.GetErrorCode()),
-		Message:    apiErr.Err.Error(),
+		Message:    apiErr.Error(),
 		StatusCode: apiErr.StatusCode,
-		Error:      apiErr.Err,
+		LocalError: true,
+		// Preserve the billing rejection's retry and logging options when the
+		// task controller adapts it back to a NewAPIError.
+		Error: apiErr,
 	}
 }
