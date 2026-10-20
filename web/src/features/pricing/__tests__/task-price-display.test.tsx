@@ -89,6 +89,10 @@ it('shows both DeepSeek prices with friendly time tiers, calendar coverage and t
   expect(
     screen.getAllByText(/excluding Chinese public holidays/).length
   ).toBeGreaterThan(0)
+  expect(
+    screen.getAllByText('Outside these times: Peak hours (Asia/Shanghai)')
+      .length
+  ).toBeGreaterThan(0)
   expect(screen.getAllByText('$2.0000').length).toBeGreaterThan(0)
   expect(screen.getAllByText('$1.0000').length).toBeGreaterThan(0)
   const matched = screen.getAllByText('Matched')

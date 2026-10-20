@@ -151,7 +151,10 @@ function describeBillingCondition(
     return {
       ...description,
       text: t('Outside these times: {{condition}}', {
-        condition: description.text,
+        condition:
+          node.operand.kind === 'call' && node.operand.name === 'deepseek_peak'
+            ? t('Peak hours')
+            : description.text,
       }),
       kind: 'combined',
     }
