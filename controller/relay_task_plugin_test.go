@@ -16,10 +16,12 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	kittypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
@@ -641,31 +643,52 @@ func TestAcceptedSubmitStreamNeverRetries(t *testing.T) {
 
 func TestExecuteTaskSubmissionPreservesBillingRejectionsAndUpstreamRetries(t *testing.T) {
 	require.NoError(t, i18n.Init())
-	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Channel{}, &model.Task{}, &model.Log{})
+	allowPrivateTaskMediaTest(t)
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Token{}, &model.Channel{}, &model.Task{}, &model.Log{})
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
 	oldRedis, oldMemory, oldBatch := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled
-	oldErrorLog, oldRetry := constant.ErrorLogEnabled, common.RetryTimes
+	oldErrorLog, oldRetry, oldQuotaPerUnit := constant.ErrorLogEnabled, common.RetryTimes, common.QuotaPerUnit
 	model.DB, model.LOG_DB = db, db
 	common.SetDatabaseTypes(dialect, dialect)
+	// Initialize the host's dialect-specific column names without migrating or
+	// opening another database. Token rejection diagnostics use those names.
+	t.Setenv("LOG_SQL_DSN", "")
+	wasMaster := common.IsMasterNode
+	common.IsMasterNode = false
+	require.NoError(t, model.InitLogDB())
+	common.IsMasterNode = wasMaster
 	common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled = false, false, false
-	constant.ErrorLogEnabled, common.RetryTimes = true, 2
+	constant.ErrorLogEnabled, common.RetryTimes, common.QuotaPerUnit = true, 2, 500000
 	t.Cleanup(func() {
 		model.DB, model.LOG_DB = oldDB, oldLogDB
 		common.SetDatabaseTypes(oldMain, oldLog)
+		common.IsMasterNode = false
+		require.NoError(t, model.InitLogDB())
+		common.IsMasterNode = wasMaster
+		model.LOG_DB = oldLogDB
+		common.SetLogDatabaseType(oldLog)
 		common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled = oldRedis, oldMemory, oldBatch
-		constant.ErrorLogEnabled, common.RetryTimes = oldErrorLog, oldRetry
+		constant.ErrorLogEnabled, common.RetryTimes, common.QuotaPerUnit = oldErrorLog, oldRetry, oldQuotaPerUnit
 	})
-	withTieredBillingConfig(t, map[string]string{"rejection-model": "tiered_expr"}, map[string]string{"rejection-model": `tier("request", u("units") * 0.01)`})
-	plugin, err := pluginruntime.CompilePlugin(`
-export const meta={apiVersion:1,key:"billing-rejection",name:"Billing rejection",version:"1.0.0",author:{name:"Test"},models:["rejection-model"],fetchMode:"per_task",usageSchema:{units:{type:"number",unit:"count",description:{en:"Task operation unit price"}}}};
+	withTieredBillingConfig(t,
+		map[string]string{"rejection-model": "tiered_expr", "MiniMax-H3": "tiered_expr"},
+		map[string]string{"rejection-model": `tier("request", u("units") * 0.01)`, "MiniMax-H3": `tier("request", u("seconds") * 0.01)`})
+	const source = `
+export const meta={apiVersion:1,key:"billing-rejection",name:"Billing rejection",version:"1.0.0",author:{name:"Test"},models:["rejection-model"],fetchMode:"per_task",usageSchema:{units:{type:"number",unit:"count",description:{en:"Task operation unit price"}}},routes:[{method:"POST",path:"/vendor/jobs",type:"submit",decode:"decode",render:"created"}]};
+export const native={
+  decode:function(ctx){return {kind:"submit",model:ctx.body.value.model,requestBody:ctx.body.value};},
+  created:function(ctx,task){return {id:task.task_id};},
+  ERROR_HOOK
+};
 export function buildSubmitRequest(ctx){return {url:ctx.baseUrl+"/submit",body:ctx.requestBody};}
 export function extractUsage(){return {units:4};}
-export function parseSubmitResponse(){throw new Error("failed upstream requests must not parse");}
+export function parseSubmitResponse(ctx,response){return {taskId:"private-upstream-task",taskData:response.body,immediate:{status:"SUCCESS"}};}
+export function extractUsageOnComplete(ctx,result,body){return body.usage;}
 export function buildQueryRequest(){return {};}
 export function parseTaskResult(){return {status:"UNKNOWN"};}
-`, pluginruntime.Options{})
-	require.NoError(t, err)
+`
+	const errorHook = `error:function(ctx,error){return {code:error.code,message:error.message,status:error.httpStatus,retryable:error.retryable,keys:Object.keys(error).sort()};}`
 	withoutCause := kittypes.InitOpenAIError(kittypes.ErrorCodeInsufficientUserQuota, http.StatusForbidden, kittypes.ErrOptionWithSkipRetry(), kittypes.ErrOptionWithNoRecordErrorLog())
 	withoutCause.Err = nil
 	converted := service.TaskErrorFromAPIError(withoutCause)
@@ -675,86 +698,179 @@ export function parseTaskResult(){return {status:"UNKNOWN"};}
 	lookupFailure := kittypes.NewError(errors.New("wallet lookup failed"), kittypes.ErrorCodeQueryDataError, kittypes.ErrOptionWithSkipRetry())
 	assert.Equal(t, service.PolicyDecision{Action: "stop", Reason: "non_retryable_error", Source: "system"}, decideTaskRetry(taskSubmissionTestContext(), service.TaskErrorFromAPIError(lookupFailure), 2), "a local 500 must honor the billing retry opt-out before status rules")
 	for index, tc := range []struct {
-		name           string
-		quota          int
-		upstreamStatus int
-		wantAttempts   int
-		wantRequests   int
-		wantLogs       int64
+		name, presenter, upstreamBody string
+		wallet, token, upstreamStatus int
+		wantAttempts, wantRequests    int
+		wantLogs                      int64
+		wantCode, wantTaskCode        string
+		legacyH3, accepted            bool
 	}{
-		{name: "insufficient wallet", quota: 1, upstreamStatus: http.StatusServiceUnavailable, wantAttempts: 1},
-		{name: "upstream unavailable", quota: 100000, upstreamStatus: http.StatusServiceUnavailable, wantAttempts: 3, wantRequests: 3, wantLogs: 3},
-		{name: "upstream forbidden", quota: 100000, upstreamStatus: http.StatusForbidden, wantAttempts: 3, wantRequests: 3, wantLogs: 3},
+		{name: "insufficient wallet", wallet: 1, token: 100000, upstreamStatus: 503, wantAttempts: 1, wantCode: "insufficient_user_quota", wantTaskCode: "insufficient_user_quota"},
+		{name: "insufficient wallet without native error hook", presenter: "missing", wallet: 1, token: 100000, upstreamStatus: 503, wantAttempts: 1, wantCode: "insufficient_user_quota", wantTaskCode: "insufficient_user_quota"},
+		{name: "insufficient wallet with throwing native error hook", presenter: "throwing", wallet: 1, token: 100000, upstreamStatus: 503, wantAttempts: 1, wantCode: "insufficient_user_quota", wantTaskCode: "insufficient_user_quota"},
+		{name: "insufficient token quota", wallet: 100000, token: 1, upstreamStatus: 503, wantAttempts: 1, wantCode: "permission_denied", wantTaskCode: "pre_consume_token_quota_failed"},
+		{name: "upstream unavailable", wallet: 100000, token: 100000, upstreamStatus: 503, wantAttempts: 3, wantRequests: 3, wantLogs: 3, wantCode: "server_error", wantTaskCode: "fail_to_fetch_task"},
+		{name: "upstream forbidden", wallet: 100000, token: 100000, upstreamStatus: 403, wantAttempts: 3, wantRequests: 3, wantLogs: 3, wantCode: "permission_denied", wantTaskCode: "fail_to_fetch_task"},
+		{name: "forbidden with misleading wallet message", wallet: 100000, token: 100000, upstreamStatus: 403, upstreamBody: `{"message":"insufficient user quota, please top up"}`, wantAttempts: 3, wantRequests: 3, wantLogs: 3, wantCode: "permission_denied", wantTaskCode: "fail_to_fetch_task"},
+		{name: "upstream spoofed wallet code and local flag", wallet: 100000, token: 100000, upstreamStatus: 403, upstreamBody: `{"code":"insufficient_user_quota","LocalError":true,"local_error":true,"message":"insufficient user quota"}`, wantAttempts: 3, wantRequests: 3, wantLogs: 3, wantCode: "permission_denied", wantTaskCode: "fail_to_fetch_task"},
+		{name: "channel quota rejection", wallet: 100000, token: 100000, upstreamStatus: 403, upstreamBody: `{"error":{"code":"insufficient_quota","type":"insufficient_user_quota","message":"channel balance insufficient"}}`, wantAttempts: 3, wantRequests: 3, wantLogs: 3, wantCode: "permission_denied", wantTaskCode: "fail_to_fetch_task"},
+		{name: "accepted operation with final token reserve failure", wallet: 100000, token: 30000, upstreamStatus: 202, upstreamBody: `{"usage":{"units":8}}`, wantAttempts: 1, wantRequests: 1, wantLogs: 1, wantCode: "insufficient_user_quota", wantTaskCode: "insufficient_user_quota", accepted: true},
+		// The built-in Hailuo plugin has no native route. This legacy URL must
+		// keep reaching RelayTask and its existing raw TaskError response.
+		{name: "legacy H3 insufficient wallet", wallet: 1, token: 100000, upstreamStatus: 503, wantCode: "insufficient_user_quota", legacyH3: true},
+		{name: "legacy H3 upstream spoofed wallet code", wallet: 100000, token: 100000, upstreamStatus: 403, upstreamBody: `{"code":"insufficient_user_quota","LocalError":true,"message":"provider balance insufficient"}`, wantRequests: 1, wantLogs: 1, wantCode: "fail_to_fetch_task", legacyH3: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			common.RetryTimes = 2
+			if tc.legacyH3 {
+				common.RetryTimes = 0
+			}
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tc.upstreamStatus)
-				_, _ = w.Write([]byte(`{"error":"provider rejected request"}`))
+				body := tc.upstreamBody
+				if body == "" {
+					body = `{"error":"provider permission denied"}`
+				}
+				_, _ = w.Write([]byte(body))
 			}))
 			t.Cleanup(server.Close)
-			user := model.User{Username: fmt.Sprintf("rejection_user_%d", index), AffCode: fmt.Sprintf("reject_aff_%d", index), Quota: tc.quota}
+			user := model.User{Username: fmt.Sprintf("rejection_user_%d", index), AffCode: fmt.Sprintf("reject_aff_%d", index), Quota: tc.wallet}
 			require.NoError(t, db.Create(&user).Error)
-			channel := model.Channel{Name: "fixture provider", Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Key: "fixture-key", BaseURL: common.GetPointer(server.URL)}
-			require.NoError(t, db.Create(&channel).Error)
-			recorder := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(recorder)
-			c.Request = httptest.NewRequest(http.MethodPost, "/plugin/submit", strings.NewReader(`{}`))
-			c.Set("id", user.Id)
-			c.Set("username", user.Username)
-			c.Set("group", "default")
-			c.Set("task_request", map[string]any{"model": "rejection-model"})
-			c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{Plugin: plugin})
-			common.SetContextKey(c, constant.ContextKeyOriginalModel, "rejection-model")
-			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, server.URL)
-			common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
-			common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
-			info := taskSubmissionRelayInfo(nil)
-			info.UserId, info.OriginModelName = user.Id, "rejection-model"
-			info.UserGroup, info.IsPlayground = "default", true
-			info.UserSetting.BillingPreference = "wallet_only"
-			info.LockedChannel = &channel
-			attempts := 0
-			outcome, taskErr := executeTaskSubmissionWith(c, info, func(c *gin.Context, info *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
-				attempts++
-				return relay.RelayTaskSubmit(c, info)
-			})
-			require.Nil(t, outcome)
-			require.NotNil(t, taskErr)
-			assert.Equal(t, tc.wantAttempts, attempts)
-			assert.EqualValues(t, tc.wantRequests, requests.Load())
-			if tc.wantRequests == 0 {
-				assert.True(t, taskErr.LocalError)
-				assert.Equal(t, string(kittypes.ErrorCodeInsufficientUserQuota), taskErr.Code)
-				assert.Equal(t, http.StatusForbidden, taskErr.StatusCode)
-				apiErr := taskSubmissionAPIError(taskErr)
-				assert.Equal(t, kittypes.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
-				assert.True(t, kittypes.IsSkipRetryError(apiErr))
-				assert.False(t, kittypes.IsRecordErrorLog(apiErr))
-				assert.Nil(t, info.Billing, "a rejected pre-consume must not create a billing session")
-				events := service.RequestPolicy(c).Events()
-				require.Len(t, events, 3)
-				assert.Equal(t, "local_rejection", events[1].Decision.Reason)
-				assert.Equal(t, "local", events[1].ErrorSource)
-				assert.Equal(t, "non_retryable_error", events[2].Decision.Reason)
-				assert.Equal(t, "unchanged", events[2].Health)
+			token := model.Token{UserId: user.Id, Key: fmt.Sprintf("fixture-token-%d", index), Name: "fixture token", RemainQuota: tc.token}
+			require.NoError(t, db.Create(&token).Error)
+			channel := model.Channel{Name: "fixture provider", Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Key: "private-fixture-channel-key", BaseURL: common.GetPointer(server.URL)}
+			modelName, routePath := "rejection-model", "/vendor/jobs"
+			if tc.legacyH3 {
+				modelName, routePath = "MiniMax-H3", "/v1/video/generations"
+				channel.Type = constant.ChannelTypeMiniMax
 			} else {
-				assert.False(t, taskErr.LocalError, "a provider rejection remains a channel failure")
-				assert.Equal(t, tc.upstreamStatus, taskErr.StatusCode)
+				channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "billing-rejection"})
 			}
-			respondTaskSubmissionError(c, taskErr)
-			assert.Equal(t, taskErr.StatusCode, c.Writer.Status())
-			if tc.wantRequests == 0 {
-				var response dto.TaskError
-				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-				assert.Equal(t, taskErr.Code, response.Code)
-				assert.Equal(t, taskErr.Message, response.Message)
+			require.NoError(t, db.Create(&channel).Error)
+			router := gin.New()
+			seed := func(c *gin.Context) {
+				c.Set(common.RequestIdKey, "billing-rejection-request")
+				common.SetContextKey(c, constant.ContextKeyUserId, user.Id)
+				common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
+				common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+				common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+				common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
+				common.SetContextKey(c, constant.ContextKeyUserQuota, tc.wallet)
+				common.SetContextKey(c, constant.ContextKeyUserSetting, kitdto.UserSetting{BillingPreference: "wallet_only"})
+				common.SetContextKey(c, constant.ContextKeyTokenId, token.Id)
+				common.SetContextKey(c, constant.ContextKeyTokenKey, token.Key)
+				common.SetContextKey(c, constant.ContextKeyOriginalModel, modelName)
+				require.Nil(t, middleware.SetupContextForSelectedChannel(c, &channel, modelName))
+				c.Next()
+			}
+			var info *relaycommon.RelayInfo
+			var requestContext *gin.Context
+			var taskErr *dto.TaskError
+			attempts := 0
+			if tc.legacyH3 {
+				plugin, ok := relay.ResolveTaskPluginForPlatform(pluginruntime.DefaultRegistry.Generation(), "35")
+				require.True(t, ok)
+				require.Equal(t, "hailuo", plugin.Meta.Key)
+				require.Empty(t, plugin.Meta.Routes)
+				router.POST(routePath, middleware.PinTaskPluginEndpoint(), middleware.TaskPluginEndpointOnly(middleware.ModelRequestRateLimit()), middleware.PrepareTaskPluginEndpoint(), seed, func(c *gin.Context) {
+					_, endpoint := c.Get(pluginruntime.ContextKeyPinnedEndpoint)
+					_, native := c.Get(pluginruntime.ContextKeyPinnedRoute)
+					assert.False(t, endpoint)
+					assert.False(t, native)
+					RelayTaskPluginEndpoint(c, RelayTask)
+				})
+			} else {
+				hook := errorHook
+				switch tc.presenter {
+				case "missing":
+					hook = ""
+				case "throwing":
+					hook = `error:function(){throw new Error("private renderer failure");}`
+				}
+				plugin, err := pluginruntime.CompilePlugin(strings.Replace(source, "ERROR_HOOK", hook, 1), pluginruntime.Options{})
+				require.NoError(t, err)
+				router.POST(routePath, func(c *gin.Context) {
+					c.Set(pluginruntime.ContextKeyPinnedRoute, pluginruntime.PinnedRoute{Plugin: plugin, Route: plugin.Meta.Routes[0]})
+					c.Next()
+				}, seed, middleware.PrepareTaskPluginRoute(), func(c *gin.Context) {
+					requestContext = c
+					info = taskSubmissionRelayInfo(nil)
+					info.UserId, info.OriginModelName = user.Id, modelName
+					info.UserGroup, info.TokenGroup = "default", "default"
+					info.TokenId, info.TokenKey = token.Id, token.Key
+					info.UserSetting.BillingPreference = "wallet_only"
+					info.LockedChannel = &channel
+					var outcome *taskSubmissionOutcome
+					outcome, taskErr = executeTaskSubmissionWith(c, info, func(c *gin.Context, info *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+						attempts++
+						return relay.RelayTaskSubmit(c, info)
+					})
+					require.Nil(t, outcome)
+					require.NotNil(t, taskErr)
+					respondTaskSubmissionError(c, taskErr)
+				})
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, routePath, strings.NewReader(fmt.Sprintf(`{"model":%q,"prompt":"a lighthouse","duration":5,"size":"768P","credential":"private-request-secret"}`, modelName)))
+			request.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(recorder, request)
+			wantStatus := http.StatusForbidden
+			if tc.wantRequests > 0 && !tc.accepted {
+				wantStatus = tc.upstreamStatus
+			}
+			assert.Equal(t, wantStatus, recorder.Code, recorder.Body.String())
+			assert.EqualValues(t, tc.wantRequests, requests.Load())
+			var response map[string]any
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, tc.wantCode, response["code"])
+			for _, private := range []string{token.Key, channel.Key, "private-request-secret", "private renderer failure", "private-upstream-task"} {
+				assert.NotContains(t, recorder.Body.String(), private)
+			}
+			assert.NotContains(t, response, "LocalError")
+			assert.NotContains(t, response, "Error")
+			assert.NotContains(t, response, "NoRetry")
+			if !tc.legacyH3 {
+				assert.Equal(t, tc.wantAttempts, attempts)
+				assert.Equal(t, tc.wantTaskCode, taskErr.Code)
+				if tc.presenter == "" {
+					assert.Equal(t, tc.upstreamStatus >= 500 && tc.wantRequests > 0, response["retryable"])
+					assert.Equal(t, []any{"code", "httpStatus", "message", "requestId", "retryable"}, response["keys"])
+					assert.EqualValues(t, wantStatus, response["status"])
+				} else {
+					assert.Nil(t, response["data"])
+					assert.NotContains(t, response, "retryable")
+				}
+				if tc.wantRequests == 0 {
+					assert.True(t, taskErr.LocalError)
+					apiErr := taskSubmissionAPIError(taskErr)
+					assert.Equal(t, kittypes.ErrorCode(tc.wantTaskCode), apiErr.GetErrorCode())
+					assert.True(t, kittypes.IsSkipRetryError(apiErr))
+					assert.False(t, kittypes.IsRecordErrorLog(apiErr))
+					assert.Nil(t, info.Billing, "a rejected pre-consume must not create a billing session")
+					events := service.RequestPolicy(requestContext).Events()
+					require.Len(t, events, 3)
+					assert.Equal(t, "local_rejection", events[1].Decision.Reason)
+					assert.Equal(t, "local", events[1].ErrorSource)
+					assert.Equal(t, "non_retryable_error", events[2].Decision.Reason)
+					assert.Equal(t, "unchanged", events[2].Health)
+				} else if tc.accepted {
+					assert.True(t, taskErr.LocalError)
+					require.NotNil(t, info.Billing, "the provider was accepted after an actual pre-consume")
+					assert.Equal(t, 20000, info.FinalPreConsumedQuota)
+					assert.False(t, info.Billing.NeedsRefund(), "the failed final reserve must refund once")
+				} else {
+					assert.False(t, taskErr.LocalError, "a provider rejection remains a channel failure")
+				}
 			}
 			require.Eventually(t, func() bool {
 				var updated model.User
-				return db.First(&updated, user.Id).Error == nil && updated.Quota == tc.quota && updated.UsedQuota == 0
-			}, time.Second, time.Millisecond, "failed submissions must leave the wallet unchanged")
+				var updatedToken model.Token
+				return db.First(&updated, user.Id).Error == nil && updated.Quota == tc.wallet && updated.UsedQuota == 0 &&
+					db.First(&updatedToken, token.Id).Error == nil && updatedToken.RemainQuota == tc.token && updatedToken.UsedQuota == 0
+			}, time.Second, time.Millisecond, "failed submissions must leave wallet and token quotas unchanged")
 			var logCount, taskCount int64
 			require.NoError(t, db.Model(&model.Log{}).Where("user_id = ?", user.Id).Count(&logCount).Error)
 			require.NoError(t, db.Model(&model.Task{}).Where("user_id = ?", user.Id).Count(&taskCount).Error)

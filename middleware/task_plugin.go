@@ -1252,6 +1252,11 @@ func RespondTaskPluginError(c *gin.Context, taskErr *dto.TaskError) bool {
 		return false
 	}
 	sanitized := sanitizedTaskPluginError(taskErr.StatusCode, taskErr.Message)
+	// LocalError is host-only (excluded from JSON). Keep an upstream 403
+	// sanitized even if it carries this same billing code.
+	if taskErr.LocalError && taskErr.StatusCode == http.StatusForbidden && taskErr.Code == string(types.ErrorCodeInsufficientUserQuota) {
+		sanitized.Code = taskErr.Code
+	}
 	requestID := c.GetString(common.RequestIdKey)
 	hasRenderer, err := pinned.Plugin.Engine.HasCallablePath(c.Request.Context(), "native", "error")
 	requestValue, exists := c.Get(pluginruntime.ContextKeyRouteRequest)
