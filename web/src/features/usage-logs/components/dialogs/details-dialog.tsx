@@ -70,6 +70,8 @@ import { cn } from '@/lib/utils'
 
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
+import { getErrorDiagnosticCopy } from '../../lib/error-diagnostic-copy'
+import { parseErrorDiagnostics } from '../../lib/error-diagnostics'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -576,6 +578,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
     renderLogContent(other, t) ??
     props.log.content ??
     ''
+  const errorDiagnostics =
+    props.isAdmin && props.log.type === 5
+      ? parseErrorDiagnostics(props.log.content ?? '', other)
+      : null
+  const errorCopy = errorDiagnostics
+    ? getErrorDiagnosticCopy(errorDiagnostics.reason, t)
+    : null
+  let errorSourceLabel = t('Source unconfirmed')
+  if (errorDiagnostics?.source === 'upstream') {
+    errorSourceLabel = t('Upstream service')
+  } else if (errorDiagnostics?.source === 'gateway') {
+    errorSourceLabel = t('Local gateway')
+  }
   const auditRoute = isManage && props.isAdmin ? other?.audit_info : undefined
   // Channel update records which fields changed (stable field tokens); render
   // them with their localized labels for admins.
@@ -658,6 +673,36 @@ export function DetailsDialog(props: DetailsDialogProps) {
       bodyClassName='pr-2 sm:pr-4'
     >
       <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-x-hidden py-1 sm:space-y-3'>
+        {errorDiagnostics && errorCopy && (
+          <DetailSection label={t('Failure Reason')} variant='danger'>
+            <p className='text-xs font-semibold text-red-600 dark:text-red-400'>
+              {errorCopy.title}
+            </p>
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              {errorCopy.description}
+            </p>
+            <DetailRow label={t('Error Source')} value={errorSourceLabel} />
+            {errorDiagnostics.message.trim() !== details.trim() && (
+              <p className='min-w-0 text-xs leading-relaxed break-all whitespace-pre-wrap sm:wrap-break-word'>
+                {errorDiagnostics.message}
+              </p>
+            )}
+            {errorDiagnostics.upstream && errorDiagnostics.type && (
+              <DetailRow
+                label={t('Upstream Error Type')}
+                value={errorDiagnostics.type}
+                mono
+              />
+            )}
+            {errorDiagnostics.upstream && errorDiagnostics.code && (
+              <DetailRow
+                label={t('Upstream Error Code')}
+                value={errorDiagnostics.code}
+                mono
+              />
+            )}
+          </DetailSection>
+        )}
         {/* Overview section - key identifiers */}
         <div className='min-w-0 space-y-1'>
           {props.isAdmin && props.log.type === 5 && (

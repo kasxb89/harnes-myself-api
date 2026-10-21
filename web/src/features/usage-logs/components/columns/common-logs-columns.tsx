@@ -56,6 +56,8 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
+import { getErrorDiagnosticCopy } from '../../lib/error-diagnostic-copy'
+import { parseErrorDiagnostics } from '../../lib/error-diagnostics'
 import {
   formatModelName,
   decodeBillingExprB64,
@@ -843,6 +845,14 @@ export function useCommonLogsColumns(
           const log = row.original
           const other = parseLogOther(log.other)
 
+          const errorDiagnostics =
+            isAdmin && log.type === 5
+              ? parseErrorDiagnostics(log.content ?? '', other)
+              : null
+          const errorCopy = errorDiagnostics
+            ? getErrorDiagnosticCopy(errorDiagnostics.reason, t)
+            : null
+
           const pricingData = usePricingData(
             log.type === 2 &&
               other?.is_task === true &&
@@ -873,7 +883,18 @@ export function useCommonLogsColumns(
           let detailPreview = (
             <span className='text-muted-foreground/40'>—</span>
           )
-          if (primary) {
+          if (errorDiagnostics && errorCopy) {
+            detailPreview = (
+              <span className='flex min-w-0 flex-col gap-1 leading-snug group-hover:underline'>
+                <span className='font-medium text-red-600 dark:text-red-400'>
+                  {errorCopy.title}
+                </span>
+                <span className='text-muted-foreground line-clamp-2 wrap-break-word'>
+                  {errorDiagnostics.message}
+                </span>
+              </span>
+            )
+          } else if (primary) {
             detailPreview = (
               <span
                 className={cn(

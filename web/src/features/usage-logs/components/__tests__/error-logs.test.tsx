@@ -25,6 +25,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -32,8 +33,10 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import i18next from 'i18next'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
 import { Route as usageLogsRoute } from '@/routes/_authenticated/usage-logs/$section'
@@ -65,7 +68,28 @@ const record = usageLogSchema.parse({
   }),
 })
 
-async function renderErrors(empty = false, mobile = false) {
+const h3Message = 'H3 积分余额不足 (1008)'
+const h3Content = `status_code=402, ${JSON.stringify({
+  type: 'error',
+  error: {
+    type: 'insufficient_balance_error',
+    message: h3Message,
+    http_code: '402',
+  },
+  request_id: 'upstream-h3-request',
+})}`
+const h3Record = usageLogSchema.parse({
+  ...record,
+  content: h3Content,
+  model_name: 'MiniMax-H3',
+  other: JSON.stringify({
+    status_code: 402,
+    error_type: 'openai_error',
+    error_code: 'bad_response_status_code',
+  }),
+})
+
+async function renderErrors(empty = false, mobile = false, entry = record) {
   if (mobile) {
     const matchMedia = window.matchMedia
     vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
@@ -82,7 +106,7 @@ async function renderErrors(empty = false, mobile = false) {
     data: {
       success: true,
       data: url.startsWith('/api/log?')
-        ? { items: empty ? [] : [record], total: empty ? 0 : 1 }
+        ? { items: empty ? [] : [entry], total: empty ? 0 : 1 }
         : [],
     },
   }))
@@ -120,11 +144,163 @@ async function renderErrors(empty = false, mobile = false) {
   return { router, get }
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup()
+  await i18next.changeLanguage('en')
   vi.restoreAllMocks()
   useAuthStore.getState().auth.reset()
 })
+
+it.each([
+  ['desktop', false],
+  ['mobile', true],
+] as const)(
+  'shows the H3 upstream balance cause on the %s preview and preserves the full response in details',
+  async (_surface, mobile) => {
+    await renderErrors(false, mobile, h3Record)
+    await waitFor(() => {
+      const preview = within(screen.getByTitle('Click to view full details'))
+      expect(
+        preview.getByText('Upstream account balance insufficient')
+      ).toBeVisible()
+      expect(preview.getByText(h3Message)).toBeVisible()
+    })
+    await userEvent.click(screen.getByTitle('Click to view full details'))
+    const details = within(await screen.findByRole('dialog'))
+    expect(details.getByText('Failure Reason')).toBeVisible()
+    expect(details.getByText(h3Message)).toBeVisible()
+    expect(details.getByText('insufficient_balance_error')).toBeVisible()
+    expect(details.getByText(h3Content)).toBeVisible()
+  }
+)
+
+it('shows a different upstream 402 reason without labelling it as insufficient balance', async () => {
+  const message = 'This model requires a paid subscription'
+  await renderErrors(false, false, {
+    ...h3Record,
+    content: `status_code=402, ${JSON.stringify({
+      error: { type: 'subscription_required', message },
+    })}`,
+  })
+  await waitFor(() =>
+    expect(
+      within(screen.getByTitle('Click to view full details')).getByText(message)
+    ).toBeVisible()
+  )
+  expect(
+    screen.queryByText('Upstream account balance insufficient')
+  ).not.toBeInTheDocument()
+})
+
+it('translates the diagnosis when changing language while preserving the original upstream reason', async () => {
+  i18next.addResourceBundle('zhCN', 'translation', zh.translation)
+  await renderErrors(false, false, h3Record)
+  await screen.findByTitle('Click to view full details')
+  await act(async () => {
+    await i18next.changeLanguage('zhCN')
+  })
+  await userEvent.click(
+    await screen.findByTitle(i18next.t('Click to view full details'))
+  )
+  const details = within(await screen.findByRole('dialog'))
+  expect(details.getByText('具体原因')).toBeVisible()
+  expect(details.getByText('上游账户余额不足')).toBeVisible()
+  expect(details.getByText(h3Message)).toBeVisible()
+  expect(details.getByText(h3Content)).toBeVisible()
+})
+
+it.each([
+  {
+    name: 'upstream rate limit',
+    content:
+      'status_code=429, {"error":{"type":"rate_limit_error","message":"Rate limit exceeded"}}',
+    other: {
+      error_code: 'bad_response_status_code',
+      error_type: 'openai_error',
+      status_code: 429,
+    },
+    title: '触发请求限流',
+    source: '上游服务',
+  },
+  {
+    name: 'gateway DNS failure',
+    content:
+      'status_code=500, dial tcp: lookup api.example.invalid: no such host',
+    other: {
+      error_code: 'do_request_failed',
+      error_type: 'openai_error',
+      status_code: 500,
+    },
+    title: 'DNS 解析失败',
+    source: '本地网关',
+  },
+  {
+    name: 'local user quota failure',
+    content: 'status_code=403, user quota is not enough',
+    other: {
+      error_code: 'insufficient_user_quota',
+      error_type: 'new_api_error',
+      status_code: 403,
+    },
+    title: '用户余额或套餐额度不足',
+    source: '本地网关',
+  },
+  {
+    name: 'HTML error page',
+    content:
+      '<html><body><img alt="diagnostic-injected" src="invalid">Bad Gateway</body></html>',
+    other: {
+      error_code: 'bad_response_status_code',
+      error_type: 'openai_error',
+      status_code: 502,
+    },
+    title: zh.translation['Empty or unparseable response'],
+    source: '来源未确认',
+  },
+  {
+    name: 'unrecognized provider response',
+    content:
+      'vendor_e938: quote this request identifier when contacting support',
+    other: {
+      error_code: 'bad_response_status_code',
+      error_type: 'openai_error',
+      status_code: 520,
+    },
+    title: '尚未识别具体原因',
+    source: '来源未确认',
+  },
+])(
+  'shows Chinese diagnostic and source for $name while preserving the raw response',
+  async (fixture) => {
+    i18next.addResourceBundle('zhCN', 'translation', zh.translation)
+    await renderErrors(false, false, {
+      ...record,
+      content: fixture.content,
+      other: JSON.stringify(fixture.other),
+    })
+    await screen.findByTitle('Click to view full details')
+    await act(async () => {
+      await i18next.changeLanguage('zhCN')
+    })
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByTitle(i18next.t('Click to view full details'))
+        ).getByText(fixture.title)
+      ).toBeVisible()
+    )
+    await userEvent.click(
+      screen.getByTitle(i18next.t('Click to view full details'))
+    )
+    const details = within(await screen.findByRole('dialog'))
+    expect(details.getByText(fixture.title)).toBeVisible()
+    expect(details.getByText(fixture.source)).toBeVisible()
+    expect(details.getByText(fixture.content)).toBeVisible()
+    expect(
+      details.queryByAltText('diagnostic-injected')
+    ).not.toBeInTheDocument()
+  }
+)
 
 it('shows diagnostics with second precision and timezone while enforcing error-only requests', async () => {
   const { get } = await renderErrors()
