@@ -121,6 +121,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/user-activity': { section: 'admin', module: 'user' },
   '/redemption-codes': { section: 'admin', module: 'redemption' },
   '/balance-ledger': { section: 'admin', module: 'setting' },
+  '/model-profits': { section: 'admin', module: 'setting' },
   '/upstream-topups': { section: 'admin', module: 'setting' },
   '/client-model-config': { section: 'admin', module: 'setting' },
   '/creation-content': { section: 'admin', module: 'setting' },

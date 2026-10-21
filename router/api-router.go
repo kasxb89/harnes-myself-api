@@ -340,6 +340,9 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		apiRouter.GET("/balance-ledger/", middleware.AdminAuth(), controller.GetBalanceLedger)
+		apiRouter.GET("/model-profit/", middleware.AdminAuth(), controller.GetModelProfits)
+		apiRouter.GET("/model-profit/cost-rules", middleware.AdminAuth(), controller.GetModelProfitCostRules)
+		apiRouter.PUT("/model-profit/cost-rules", middleware.RootAuth(), controller.SaveModelProfitCostRules)
 
 		upstreamTopupRoute := apiRouter.Group("/upstream-topup")
 		upstreamTopupRoute.Use(middleware.AdminAuth())

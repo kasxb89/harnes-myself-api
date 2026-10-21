@@ -262,6 +262,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if strings.EqualFold(key, ModelProfitCostRulesKey) {
+		return ErrModelProfitCostRulesAPI
+	}
 	if key == keyClientModelConfig {
 		return errors.New("Use the client model configuration page to change this setting")
 	}
@@ -283,7 +286,14 @@ func UpdateOption(key string, value string) error {
 		Key: key,
 	}
 	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
+	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+		return err
+	}
+	// MySQL option keys may use a case/accent-insensitive, PAD SPACE
+	// collation. Check the key actually resolved by the database as well.
+	if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
+		return ErrModelProfitCostRulesAPI
+	}
 	option.Value = value
 	// Save is a combination function.
 	// If save value does not contain primary key, it will execute Create,
@@ -299,6 +309,11 @@ func UpdateOption(key string, value string) error {
 // is touched — safe for callers that must commit a set of related options
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
+	for key := range values {
+		if strings.EqualFold(key, ModelProfitCostRulesKey) {
+			return ErrModelProfitCostRulesAPI
+		}
+	}
 	if _, exists := values[keyClientModelConfig]; exists {
 		return errors.New("Use the client model configuration page to change this setting")
 	}
@@ -341,6 +356,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
+			}
+			if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
+				return ErrModelProfitCostRulesAPI
 			}
 			option.Value = v
 			if err := tx.Save(&option).Error; err != nil {

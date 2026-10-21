@@ -457,7 +457,7 @@ BASE=https://8.133.202.230/harness
 # 1) 实例活着
 curl -s $BASE/api/status | head -c 200
 
-# 2) 发码（本地候选协议，先保存随机发码键；不要用循环自动重发）
+# 2) 发码（v2 协议，先保存随机发码键；不要用循环自动重发）
 curl -s -X POST $BASE/api/user/phone/challenge \
   -H 'Content-Type: application/json' \
   -d '{"contract_version":2,"phone_e164":"+8613800138000","idempotency_key":"<已保存的随机发码键>"}'
@@ -475,3 +475,15 @@ curl -s $BASE/v1/chat/completions -H "Authorization: Bearer <relay_key>" \
 # 5) 看余额
 curl -s $BASE/api/user/self -H "Authorization: Bearer <access_token>"
 ```
+
+## 12. 模型利润（管理员控制台）
+
+独立侧栏 `/model-profits` 统计上海自然日内每个精确型号的计费金额、退款、上游成本估算、计费毛利、毛利率和成本覆盖率。
+`GET /harness/api/model-profit/?start_timestamp=...&end_timestamp=...&model_name=...` 仅管理员可读；时间为 Unix 秒，起点包含、终点不包含，最多 366 天，型号可省略。
+计费金额来自消费日志减退款；异步任务的补扣不重复计请求，跨期退款在退款所在账期冲减。充值、注册赠送和管理额度变更本身不算模型收入，但赠送余额后续产生的消费包含在计费金额内，不能视为现金实收。
+
+成本配置独立于客户售价及 relay 结算，不会修改扣费。`GET /harness/api/model-profit/cost-rules` 供管理员查看；`PUT` 仅 root 可用，请求为 `schema_version:1,revision,rules`，保存后 revision 加一，冲突返回 409。旧版本保留，只能按更新的生效时间追加规则；通用 option 写接口不用于维护此项。价格固定以人民币表达，支持按次、秒、图片及输入/缓存读取/输出 token；选填 `effective_until` 为不包含的截止时刻，过期后成本变为未知，不回退到更旧报价。
+
+初始报价草稿可由 `deploy/instance/model-profit-cost-seed.py` 离线生成，需核对当前渠道身份后保存：Blackrx 按 10 积分=¥1 的 15 型号采购表，DeepSeek 仅官方直连渠道使用官方忙闲价格，Toapis 图片使用 2026-10-21 的公开参考采购价（账户折扣未核实）。DeepSeek 的 token-only 成本规则在 2026-11-01 00:00 上海时间到期，因为此后官方 Server Search/Fetch 单独计费，须补齐其成本后续配规则。转售渠道和无证据的型号不自动套用模型官方价。
+
+毛利只覆盖配置了成本、用量可信且已结算的账单；缺失成本或任务仍在处理中时显示未知/待结算，不按零成本计算。历史日志没有完整汇率/成本快照，消费金额按实例当前额度单位和汇率换算，页面明确标为计费毛利估算，未与供应商发票/扣款对账，也不包含运营支出及税费。日志清理、历史用量缺失会降低覆盖率，不能据当前余额补造历史账单。请求过多返回缩短时间范围的提示，不静默截断。

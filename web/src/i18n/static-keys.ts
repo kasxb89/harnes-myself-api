@@ -19,6 +19,17 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Model profit supplier-cost validation.
+  'Profit cost rules changed. Reload before saving',
+  'Existing profit cost rules cannot be changed or removed. Append a new effective date',
+  'Too many billing records. Select a shorter time range',
+  'Failed to save profit cost rules',
+  'Enter a positive channel ID',
+  'Enter an exact model name',
+  'Enter an effective time',
+  'Enter a supplier price source',
+  'Enter a non-negative CNY price',
+  'Use 2 for the DeepSeek peak multiplier, or leave blank',
   // Client model configuration API errors and settings action labels.
   'Invalid client model configuration',
   'Client model configuration contains an unavailable model',
@@ -923,4 +934,6 @@ export const STATIC_I18N_KEYS = [
   'Check-in reward',
   'Subscription purchase',
   'Other balance changes',
+  'End time must follow the effective time',
+  'Use the profit cost rules API to preserve price history',
 ] as const

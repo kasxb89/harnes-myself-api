@@ -129,6 +129,7 @@ it('places the dedicated operational entries immediately below General and befor
       .map((link) => link.textContent)
   ).toEqual([
     'Operations dashboard',
+    'Model profits',
     'Balance ledger',
     'User Activity',
     'API Error Logs',
@@ -151,6 +152,9 @@ it('hides the whole operations group from ordinary users including its command s
   expect(within(dialog).getByRole('option', { name: 'Overview' })).toBeVisible()
   expect(
     within(dialog).queryByRole('option', { name: 'Balance ledger' })
+  ).not.toBeInTheDocument()
+  expect(
+    within(dialog).queryByRole('option', { name: 'Model profits' })
   ).not.toBeInTheDocument()
   expect(
     within(dialog).queryByRole('option', { name: 'User Activity' })

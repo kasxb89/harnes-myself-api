@@ -29,6 +29,7 @@ import {
   ListTodo,
   MessageSquare,
   PlugZap,
+  PiggyBank,
   Radio,
   Receipt,
   ServerCog,
@@ -117,6 +118,12 @@ export function useSidebarData(): SidebarData {
             title: t('Operations dashboard'),
             url: '/usage-logs/operations',
             icon: Receipt,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Model profits'),
+            url: '/model-profits',
+            icon: PiggyBank,
             requiredRole: ROLE.ADMIN,
           },
           {

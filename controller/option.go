@@ -196,6 +196,10 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
+	if strings.EqualFold(option.Key, model.ModelProfitCostRulesKey) {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage(model.ErrModelProfitCostRulesAPI.Error()))
+		return
+	}
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
