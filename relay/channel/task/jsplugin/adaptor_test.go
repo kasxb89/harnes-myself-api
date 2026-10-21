@@ -2550,7 +2550,7 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("deployment plugin sha256: %x", sha256.Sum256(source))
 	registry := pluginruntime.NewRegistry()
-	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "blackrxai-video", Version: "1.0.0"})
+	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "blackrxai-video", Version: "1.0.1"})
 	require.NoError(t, err)
 	require.NoError(t, pluginruntime.ValidateV1Meta(plugin.Meta))
 	require.Len(t, plugin.Meta.Models, 15)
@@ -2670,6 +2670,17 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 	var capturedJSON map[string]any
 	var capturedFields map[string][]string
 	var capturedFiles map[string][]string
+	var cdnCalls atomic.Int32
+	cdn := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		cdnCalls.Add(1)
+		assert.Equal(t, "/video.mp4", request.URL.Path)
+		assert.Equal(t, "signature=synthetic", request.URL.RawQuery)
+		assert.Empty(t, request.Header.Get("Authorization"))
+		assert.Empty(t, request.Header.Get("Cookie"))
+		writer.Header().Set("Content-Type", "video/mp4")
+		_, _ = io.WriteString(writer, "synthetic-video-content")
+	}))
+	defer cdn.Close()
 	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		providerCalls.Add(1)
 		assert.Equal(t, "Bearer synthetic-provider-key", request.Header.Get("Authorization"))
@@ -2702,8 +2713,13 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 			_, _ = io.WriteString(writer, `{"id":"supplier/video?private","status":"completed","seconds":1,"size":"1280x720","metadata":{"private":"discard"}}`)
 		case request.URL.EscapedPath() == "/v1/videos/supplier%2Fvideo%3Fprivate/content":
 			assert.Empty(t, request.URL.RawQuery)
-			writer.Header().Set("Content-Type", "video/mp4")
-			_, _ = io.WriteString(writer, "synthetic-video-content")
+			if request.Method == http.MethodHead {
+				writer.Header().Set("Content-Type", "text/html")
+				_, _ = io.WriteString(writer, "<html>Vendor application</html>")
+				return
+			}
+			assert.Equal(t, http.MethodGet, request.Method)
+			http.Redirect(writer, request, cdn.URL+"/video.mp4?signature=synthetic", http.StatusFound)
 		default:
 			http.NotFound(writer, request)
 		}
@@ -2768,25 +2784,69 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 		require.NoError(t, artifactErr)
 		require.Equal(t, []channel.TaskArtifact{{Key: "video", Type: "video", MimeType: "video/mp4"}}, artifacts)
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			previousCDNCalls := cdnCalls.Load()
 			descriptor, contentErr := adaptor.BuildContentRequest(t.Context(), task, "video", channel.TaskArtifactClientRequest{Method: method})
 			require.NoError(t, contentErr)
-			assert.Equal(t, provider.URL+"/v1/videos/supplier%2Fvideo%3Fprivate/content", descriptor.URL)
+			assert.Equal(t, previousCDNCalls, cdnCalls.Load(), "authenticated lookup must not follow the CDN redirect")
+			assert.Equal(t, cdn.URL+"/video.mp4?signature=synthetic", descriptor.URL)
 			assert.Equal(t, method, descriptor.Method)
-			assert.Equal(t, "Bearer synthetic-provider-key", descriptor.Headers["Authorization"])
+			assert.True(t, descriptor.Credentialless)
+			assert.Empty(t, descriptor.Headers, "provider credentials must not reach signed CDN URLs")
+			assert.Empty(t, descriptor.Body)
+			contentRequest, requestErr := http.NewRequestWithContext(t.Context(), descriptor.Method, descriptor.URL, nil)
+			require.NoError(t, requestErr)
+			contentResponse, requestErr := cdn.Client().Do(contentRequest)
+			require.NoError(t, requestErr)
+			require.Equal(t, http.StatusOK, contentResponse.StatusCode)
+			assert.Equal(t, "video/mp4", contentResponse.Header.Get("Content-Type"), "HEAD must reach CDN media instead of the provider HTML application")
+			content, readErr := io.ReadAll(contentResponse.Body)
+			require.NoError(t, readErr)
+			require.NoError(t, contentResponse.Body.Close())
 			if method == http.MethodGet {
-				contentRequest, requestErr := http.NewRequestWithContext(t.Context(), method, descriptor.URL, nil)
-				require.NoError(t, requestErr)
-				for name, value := range descriptor.Headers {
-					contentRequest.Header.Set(name, value)
-				}
-				contentResponse, requestErr := http.DefaultClient.Do(contentRequest)
-				require.NoError(t, requestErr)
-				require.Equal(t, http.StatusOK, contentResponse.StatusCode)
-				content, readErr := io.ReadAll(contentResponse.Body)
-				require.NoError(t, readErr)
-				require.NoError(t, contentResponse.Body.Close())
 				assert.Equal(t, "synthetic-video-content", string(content))
+			} else {
+				assert.Empty(t, content)
 			}
+		}
+	})
+	t.Run("download lookup rejects absent or unsafe redirects and HTML success", func(t *testing.T) {
+		for _, tc := range []struct {
+			name, location string
+			status         int
+		}{
+			{"missing location", "", http.StatusFound},
+			{"relative location", "/media/video.mp4", http.StatusFound},
+			{"insecure location", "http://cdn.example/video.mp4", http.StatusFound},
+			{"unsupported scheme", "data:video/mp4;base64,AAAA", http.StatusFound},
+			{"embedded credentials", "https://user:secret@cdn.example/video.mp4", http.StatusFound},
+			{"fragment", "https://cdn.example/video.mp4#fragment", http.StatusFound},
+			{"backslash", `https://cdn.example\private/video.mp4`, http.StatusFound},
+			{"HTML instead of redirect", "https://cdn.example/video.mp4", http.StatusOK},
+			{"upstream failure", "https://cdn.example/video.mp4", http.StatusServiceUnavailable},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				lookup := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+					assert.Equal(t, http.MethodGet, request.Method, "even HEAD clients must resolve with vendor GET")
+					assert.Equal(t, "/v1/videos/completed-task/content", request.URL.Path)
+					assert.Equal(t, "Bearer synthetic-provider-key", request.Header.Get("Authorization"))
+					writer.Header().Set("Content-Type", "text/html")
+					if tc.location != "" {
+						writer.Header().Set("Location", tc.location)
+					}
+					writer.WriteHeader(tc.status)
+					_, _ = io.WriteString(writer, "<html>Vendor application</html>")
+				}))
+				defer lookup.Close()
+				adaptor := New(plugin)
+				adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: lookup.URL, ApiKey: "synthetic-provider-key"}})
+				descriptor, contentErr := adaptor.BuildContentRequest(t.Context(), &model.Task{TaskID: "public-task", Status: model.TaskStatusSuccess, Data: []byte(`{}`), PrivateData: model.TaskPrivateData{UpstreamTaskID: "completed-task"}}, "video", channel.TaskArtifactClientRequest{Method: http.MethodHead})
+				require.ErrorContains(t, contentErr, "Video download URL is unavailable")
+				assert.Nil(t, descriptor)
+				assert.NotContains(t, contentErr.Error(), "synthetic-provider-key")
+				if tc.location != "" {
+					assert.NotContains(t, contentErr.Error(), tc.location)
+				}
+			})
 		}
 	})
 	t.Run("multipart preserves repeated URL fields and every distinct opaque file", func(t *testing.T) {

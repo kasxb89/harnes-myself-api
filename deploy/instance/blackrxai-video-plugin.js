@@ -29,7 +29,7 @@ export const meta = {
   key: 'blackrxai-video',
   name: 'BlackRxAI Seedance',
   icon: 'text:BR',
-  version: '1.0.0',
+  version: '1.0.1',
   author: { name: 'Yunshu' },
   description: { en: 'Seedance video generation', zh: 'Seedance 视频生成' },
   baseUrl: 'https://hi.blackrxai.com',
@@ -219,8 +219,27 @@ export function listArtifacts(task) {
 
 export function buildContentRequest(ctx) {
   if (ctx.artifactKey !== 'video') throw new Error('artifact_not_found');
-  return { url: ctx.baseUrl + '/v1/videos/' + encodeURIComponent(ctx.upstreamTaskId) + '/content',
-    method: ctx.clientRequest.method, headers: { Authorization: 'Bearer ' + ctx.apiKey } };
+  // The authenticated GET returns a signed CDN redirect. Vendor HEAD instead
+  // serves its HTML application, and the host correctly rejects a credentialed
+  // cross-origin redirect. Resolve only the link here; the host streams the CDN
+  // request with its existing SSRF, redirect and client Range protections.
+  let response;
+  try {
+    response = utils.fetch({
+      url: ctx.baseUrl + '/v1/videos/' + encodeURIComponent(ctx.upstreamTaskId) + '/content',
+      method: 'GET', headers: { Authorization: 'Bearer ' + ctx.apiKey },
+    });
+  } catch (_) {
+    // Transport/parser errors can embed a signed Location URL.
+    throw new Error('Video download URL is unavailable');
+  }
+  const url = response.headers.Location;
+  if (![301, 302, 303, 307, 308].includes(response.status) || typeof url !== 'string' ||
+      !/^https:\/\/[^/?#]+(?:[/?][^#]*)?$/.test(url) || /[\s\\\x00-\x1f\x7f]/.test(url) ||
+      url.split('/')[2].includes('@')) {
+    throw new Error('Video download URL is unavailable');
+  }
+  return { url: url, method: ctx.clientRequest.method, credentialless: true };
 }
 
 export const protocols = { openai_video: {
