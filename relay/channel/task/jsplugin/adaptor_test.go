@@ -2542,3 +2542,321 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		assert.JSONEq(t, `{"taskId":"provider-image-task","taskData":`+string(completedJSON)+`,"immediate":{"status":"SUCCESS","progress":"100%","remoteUrl":"https://cdn.example/generated-image.png"}}`, string(immediateJSON))
 	})
 }
+
+func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+	source, err := os.ReadFile("../../../../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	t.Logf("deployment plugin sha256: %x", sha256.Sum256(source))
+	registry := pluginruntime.NewRegistry()
+	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "blackrxai-video", Version: "1.0.0"})
+	require.NoError(t, err)
+	require.NoError(t, pluginruntime.ValidateV1Meta(plugin.Meta))
+	require.Len(t, plugin.Meta.Models, 15)
+	assert.Empty(t, plugin.Meta.ChannelTypes, "must bind only dedicated task-plugin channels")
+	assert.NotContains(t, plugin.Meta.Models, "video-sd25-720p")
+	wantExamples := map[string][]float64{
+		"lec-mj-seedance-2-5-cd-720p": {30}, "sd-25-900-2": {30}, "k2-sd2.5-720p": {30}, "lec-sz-sd2-full-480p": {30},
+		"video-sd25-480p": {15, 30}, "model_5": {15, 30}, "sd2.5-720p-x2": {15, 30},
+		"sd2-th-2.0-720p": {15}, "bt-seedance-2.0": {10, 15}, "lec-rs-seedance-2-0-fast": {15}, "sd20-933-720p": {15},
+		"sd2-hn2-480-pro": {15}, "v3-sd2.0-933-720p": {15}, "sd-20-9/3/3-1": {15}, "sd-20-903": {15},
+	}
+	for _, modelName := range plugin.Meta.Models {
+		_, exists := registry.Generation().LookupEndpoint(http.MethodPost, "/v1/videos", modelName)
+		require.True(t, exists)
+		_, exists = registry.Generation().LookupEndpoint(http.MethodPost, "/v1/responses", modelName)
+		assert.False(t, exists)
+		schema, examples := plugin.Meta.UsageForModel(modelName)
+		assert.Equal(t, plugin.Meta.UsageSchema, schema)
+		require.Len(t, examples, len(wantExamples[modelName]), modelName)
+		for index, seconds := range wantExamples[modelName] {
+			assert.Len(t, examples[index].Facts, 1, modelName)
+			assert.EqualValues(t, seconds, examples[index].Facts["seconds"], modelName)
+			label, labelErr := common.Marshal(seconds)
+			require.NoError(t, labelErr)
+			assert.Equal(t, string(label)+"s", examples[index].Label, modelName)
+		}
+	}
+	soraSource, err := plugins.Source("sora")
+	require.NoError(t, err)
+	_, err = registry.Register(soraSource, pluginruntime.Options{})
+	require.NoError(t, err)
+	for _, modelName := range []string{"sora-2", "sora-2-pro"} {
+		binding, exists := registry.Generation().LookupEndpoint(http.MethodPost, "/v1/videos", modelName)
+		require.True(t, exists)
+		assert.Equal(t, "sora", binding.Plugin.Meta.Key)
+	}
+	const prompt = "  Synthetic reference scene\n保持提示词与素材顺序  "
+	decode := func(modelName string, request map[string]any) (map[string]any, error) {
+		value, decodeErr := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_video", "decodeRequest"}, map[string]any{
+			"model": modelName, "body": map[string]any{"kind": "json", "value": request},
+		})
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		return value.(map[string]any), nil
+	}
+	t.Run("normalizes every model default and duration alias before billing", func(t *testing.T) {
+		for _, modelName := range plugin.Meta.Models {
+			intent, decodeErr := decode(modelName, map[string]any{"model": modelName, "prompt": prompt})
+			require.NoError(t, decodeErr, modelName)
+			body := intent["requestBody"].(map[string]any)
+			want := 30
+			if strings.Contains(modelName, "2.0") || strings.HasPrefix(modelName, "sd20") || strings.HasPrefix(modelName, "sd2-") || modelName == "sd-20-903" || modelName == "sd-20-9/3/3-1" || modelName == "lec-rs-seedance-2-0-fast" {
+				want = 15
+			}
+			assert.EqualValues(t, want, body["seconds"], modelName)
+			assert.Equal(t, prompt, body["prompt"])
+			descriptor, buildErr := plugin.Engine.Call(t.Context(), "buildSubmitRequest", map[string]any{"model": modelName, "upstreamModel": modelName, "requestBody": body, "baseUrl": "https://hi.blackrxai.com", "apiKey": "synthetic-provider-key", "publicTaskId": "task_public_blackrx"})
+			require.NoError(t, buildErr)
+			wire := descriptor.(map[string]any)
+			assert.Equal(t, "https://hi.blackrxai.com/v1/videos", wire["url"], "model slashes belong in the body")
+			assert.Equal(t, modelName, wire["body"].(map[string]any)["model"])
+		}
+		intent, decodeErr := decode("bt-seedance-2.0", map[string]any{"prompt": prompt, "duration": "10"})
+		require.NoError(t, decodeErr)
+		body := intent["requestBody"].(map[string]any)
+		assert.EqualValues(t, 10, body["seconds"])
+		assert.NotContains(t, body, "duration")
+		facts, usageErr := plugin.Engine.Call(t.Context(), "extractUsage", map[string]any{"model": "bt-seedance-2.0", "requestBody": body})
+		require.NoError(t, usageErr)
+		cost, _, pricingErr := billingexpr.RunExprWithRequest(`tier("base", 1.5 / 7.3 + u("seconds") * 0.1 / 7.3)`, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: facts.(map[string]any)})
+		require.NoError(t, pricingErr)
+		assert.InDelta(t, 2.5, cost*7.3, 0.000000001, "10-second fixed-tariff model keeps its full supplier cost plus per-second margin")
+	})
+	t.Run("rejects unsupported quantities and conflicting material before upstream", func(t *testing.T) {
+		cases := []struct {
+			name, modelName, field string
+			value                  any
+		}{
+			{"fractional", "model_5", "seconds", 15.5}, {"zero", "model_5", "seconds", 0},
+			{"negative", "model_5", "seconds", -1}, {"oversized", "model_5", "seconds", uint64(math.MaxUint64)},
+			{"NaN string", "model_5", "seconds", "NaN"}, {"empty", "model_5", "seconds", ""},
+			{"boolean", "model_5", "seconds", true}, {"null", "model_5", "seconds", nil},
+			{"wrong fixed duration", "lec-mj-seedance-2-5-cd-720p", "seconds", 15},
+			{"wrong range duration", "model_5", "seconds", 14}, {"above range", "model_5", "seconds", 31},
+			{"batch", "model_5", "n", 2}, {"nested quantity bypass", "model_5", "metadata", map[string]any{"duration": 31}},
+			{"unsupported model", "video-sd25-720p", "seconds", 30},
+			{"invented size", "model_5", "size", "854x480"},
+			{"no material", "model_5", "gen_type", "reference_to_video"},
+			{"wrong URL shape", "model_5", "images", "https://cdn.example/1.png"},
+			{"data URL", "model_5", "images", []any{"data:image/png;base64,AA=="}},
+			{"credential URL", "model_5", "images", []any{"https://user:pass@cdn.example/1.png"}},
+			{"unsupported video references", "lec-mj-seedance-2-5-cd-720p", "video_urls", []any{"https://cdn.example/1.mp4"}},
+			{"image limit", "bt-seedance-2.0", "images", []any{"https://cdn.example/1.png", "https://cdn.example/2.png", "https://cdn.example/3.png", "https://cdn.example/4.png", "https://cdn.example/5.png", "https://cdn.example/6.png", "https://cdn.example/7.png", "https://cdn.example/8.png", "https://cdn.example/9.png"}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				request := map[string]any{"model": tc.modelName, "prompt": prompt}
+				request[tc.field] = tc.value
+				_, decodeErr := decode(tc.modelName, request)
+				require.Error(t, decodeErr)
+			})
+		}
+		_, decodeErr := decode("model_5", map[string]any{"prompt": prompt, "seconds": 15, "duration": 30})
+		require.ErrorContains(t, decodeErr, "must agree")
+		_, decodeErr = decode("model_5", map[string]any{"prompt": prompt, "images": []any{"https://cdn.example/1.png"}, "gen_type": "text_to_video"})
+		require.ErrorContains(t, decodeErr, "conflicts")
+		_, decodeErr = decode("bt-seedance-2.0", map[string]any{"prompt": prompt, "image_url": "https://cdn.example/first.png", "images": []any{"https://cdn.example/1.png", "https://cdn.example/2.png", "https://cdn.example/3.png", "https://cdn.example/4.png", "https://cdn.example/5.png", "https://cdn.example/6.png", "https://cdn.example/7.png", "https://cdn.example/8.png"}})
+		require.ErrorContains(t, decodeErr, "exceed")
+		_, decodeErr = plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_video", "decodeRequest"}, map[string]any{"model": "model_5", "body": map[string]any{"kind": "multipart", "fields": map[string][]string{"prompt": {prompt}, "seconds": {"30", "15"}}}})
+		require.ErrorContains(t, decodeErr, "must be provided once")
+	})
+
+	const providerTaskID = "supplier/video?private"
+	const modelName = "k2-sd2.5-720p"
+	var providerCalls atomic.Int32
+	var capturedJSON map[string]any
+	var capturedFields map[string][]string
+	var capturedFiles map[string][]string
+	provider := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		providerCalls.Add(1)
+		assert.Equal(t, "Bearer synthetic-provider-key", request.Header.Get("Authorization"))
+		writer.Header().Set("Content-Type", "application/json")
+		switch {
+		case request.Method == http.MethodPost && request.URL.Path == "/v1/videos":
+			assert.Equal(t, "task_public_blackrx", request.Header.Get("Idempotency-Key"))
+			if strings.HasPrefix(request.Header.Get("Content-Type"), "multipart/form-data") {
+				require.NoError(t, request.ParseMultipartForm(1024*1024))
+				defer request.MultipartForm.RemoveAll()
+				capturedFields = request.MultipartForm.Value
+				capturedFiles = map[string][]string{}
+				for field, files := range request.MultipartForm.File {
+					for _, file := range files {
+						opened, openErr := file.Open()
+						require.NoError(t, openErr)
+						content, readErr := io.ReadAll(opened)
+						require.NoError(t, readErr)
+						require.NoError(t, opened.Close())
+						capturedFiles[field] = append(capturedFiles[field], string(content))
+					}
+				}
+			} else {
+				require.NoError(t, common.DecodeJson(request.Body, &capturedJSON))
+			}
+			writer.WriteHeader(http.StatusAccepted)
+			_, _ = io.WriteString(writer, `{"id":"supplier/video?private","object":"video","status":"queued","seconds":30,"size":"1280x720"}`)
+		case request.Method == http.MethodGet && request.URL.EscapedPath() == "/v1/videos/supplier%2Fvideo%3Fprivate":
+			assert.Empty(t, request.URL.RawQuery)
+			_, _ = io.WriteString(writer, `{"id":"supplier/video?private","status":"completed","seconds":1,"size":"1280x720","metadata":{"private":"discard"}}`)
+		case request.URL.EscapedPath() == "/v1/videos/supplier%2Fvideo%3Fprivate/content":
+			assert.Empty(t, request.URL.RawQuery)
+			writer.Header().Set("Content-Type", "video/mp4")
+			_, _ = io.WriteString(writer, "synthetic-video-content")
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer provider.Close()
+	newRequest := func(body map[string]any, request *http.Request) (*TaskAdaptor, *gin.Context, *relaycommon.RelayInfo) {
+		info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeTaskPlugin, ChannelBaseUrl: provider.URL, ApiKey: "synthetic-provider-key", UpstreamModelName: modelName}, OriginModelName: modelName, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public_blackrx"}}
+		adaptor := New(plugin)
+		adaptor.Init(info)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = request
+		c.Request.Header.Set("Authorization", "Bearer client-secret-never-forward")
+		c.Request.Header.Set("Idempotency-Key", "client-controlled-never-forward")
+		c.Set(pluginruntime.ContextKeyPinnedEndpoint, pluginruntime.PinnedEndpoint{Plugin: plugin, Protocol: "openai_video", Model: modelName})
+		c.Set(pluginruntime.ContextKeyProtocolRequest, pluginruntime.ProtocolRequestContext{RouteRequestContext: pluginruntime.RouteRequestContext{Body: body}, Protocol: "openai_video", Model: modelName})
+		return adaptor, c, info
+	}
+	t.Run("JSON references survive canonicalization and accepted task stays queryable", func(t *testing.T) {
+		request := map[string]any{"model": modelName, "prompt": prompt, "duration": "30", "size": "1280x720", "image_url": "https://cdn.example/first.png", "image_urls": []any{"https://cdn.example/second.png"}, "images": []any{"https://cdn.example/third.png"}, "videos": []any{"https://cdn.example/first.mp4"}, "video_urls": []any{"/media/second.mp4"}, "audios": []any{"https://cdn.example/first.mp3"}, "audio_urls": []any{"/media/second.mp3"}}
+		adaptor, c, info := newRequest(map[string]any{"kind": "json", "value": request}, httptest.NewRequest(http.MethodPost, "/v1/videos", nil))
+		require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+		facts, usageErr := adaptor.ExtractUsageFactsValidated(c, info)
+		require.NoError(t, usageErr)
+		assert.Equal(t, map[string]any{"seconds": 30.0}, facts)
+		body, buildErr := adaptor.BuildRequestBody(c, info)
+		require.NoError(t, buildErr)
+		assert.Zero(t, providerCalls.Load())
+		response, submitErr := adaptor.DoRequest(c, info, body)
+		require.NoError(t, submitErr)
+		require.Equal(t, http.StatusAccepted, response.StatusCode)
+		submitted, taskErr := adaptor.ParseResponse(c, response, info)
+		require.Nil(t, taskErr)
+		assert.Equal(t, providerTaskID, submitted.UpstreamTaskID)
+		assert.Nil(t, submitted.Immediate)
+		assert.Equal(t, []any{"https://cdn.example/first.png", "https://cdn.example/second.png", "https://cdn.example/third.png"}, capturedJSON["image_urls"])
+		assert.Equal(t, []any{"/media/second.mp4", "https://cdn.example/first.mp4"}, capturedJSON["video_urls"])
+		assert.Equal(t, []any{"/media/second.mp3", "https://cdn.example/first.mp3"}, capturedJSON["audio_urls"])
+		assert.Equal(t, prompt, capturedJSON["prompt"])
+		assert.Equal(t, "reference_to_video", capturedJSON["gen_type"])
+		assert.Len(t, capturedJSON, 8)
+		task := &model.Task{TaskID: "task_public_blackrx", Platform: "blackrxai-video", Status: model.TaskStatusSuccess, Properties: model.Properties{OriginModelName: modelName, UpstreamModelName: modelName}, PrivateData: model.TaskPrivateData{UpstreamTaskID: providerTaskID}}
+		queried, queryErr := adaptor.FetchTask(provider.URL, "synthetic-provider-key", task, "")
+		require.NoError(t, queryErr)
+		resultBody, readErr := io.ReadAll(queried.Body)
+		require.NoError(t, readErr)
+		require.NoError(t, queried.Body.Close())
+		result, resultErr := adaptor.ParseTaskResult(task, queried, resultBody)
+		require.NoError(t, resultErr)
+		assert.Equal(t, "SUCCESS", result.Status)
+		assert.Empty(t, result.UsageFacts, "supplier response duration must not change the selected fixed tariff")
+		task.Data = resultBody
+		rendered, renderErr := adaptor.ConvertToOpenAIVideo(task)
+		require.NoError(t, renderErr)
+		var public map[string]any
+		require.NoError(t, common.Unmarshal(rendered, &public))
+		assert.Equal(t, task.TaskID, public["id"])
+		assert.Equal(t, "completed", public["status"])
+		assert.NotContains(t, public, "metadata")
+		assert.NotContains(t, public, "seconds", "invalid upstream duration cannot be advertised as this model's tariff")
+		assert.NotContains(t, string(rendered), providerTaskID)
+		artifacts, artifactErr := adaptor.ListArtifacts(task)
+		require.NoError(t, artifactErr)
+		require.Equal(t, []channel.TaskArtifact{{Key: "video", Type: "video", MimeType: "video/mp4"}}, artifacts)
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			descriptor, contentErr := adaptor.BuildContentRequest(t.Context(), task, "video", channel.TaskArtifactClientRequest{Method: method})
+			require.NoError(t, contentErr)
+			assert.Equal(t, provider.URL+"/v1/videos/supplier%2Fvideo%3Fprivate/content", descriptor.URL)
+			assert.Equal(t, method, descriptor.Method)
+			assert.Equal(t, "Bearer synthetic-provider-key", descriptor.Headers["Authorization"])
+			if method == http.MethodGet {
+				contentRequest, requestErr := http.NewRequestWithContext(t.Context(), method, descriptor.URL, nil)
+				require.NoError(t, requestErr)
+				for name, value := range descriptor.Headers {
+					contentRequest.Header.Set(name, value)
+				}
+				contentResponse, requestErr := http.DefaultClient.Do(contentRequest)
+				require.NoError(t, requestErr)
+				require.Equal(t, http.StatusOK, contentResponse.StatusCode)
+				content, readErr := io.ReadAll(contentResponse.Body)
+				require.NoError(t, readErr)
+				require.NoError(t, contentResponse.Body.Close())
+				assert.Equal(t, "synthetic-video-content", string(content))
+			}
+		}
+	})
+	t.Run("multipart preserves repeated URL fields and every distinct opaque file", func(t *testing.T) {
+		var input bytes.Buffer
+		writer := multipart.NewWriter(&input)
+		fields := map[string][]string{"model": {modelName}, "prompt": {prompt}, "seconds": {"30"}, "size": {"1280x720"}, "image_url": {"https://cdn.example/single.png"}, "image_urls": {"https://cdn.example/one.png", "https://cdn.example/two.png"}, "video_urls": {"https://cdn.example/one.mp4", "https://cdn.example/two.mp4"}, "audio_urls": {"/media/one.mp3", "/media/two.mp3"}}
+		for field, values := range fields {
+			for _, value := range values {
+				require.NoError(t, writer.WriteField(field, value))
+			}
+		}
+		fileSpecs := []struct{ field, filename, data string }{{"images", "one.png", "image-one"}, {"images", "two.png", "image-two"}, {"input_reference", "first.png", "image-first"}, {"videos", "ref.mp4", "video-one"}, {"audios", "ref.mp3", "audio-one"}}
+		files := make([]map[string]any, 0, len(fileSpecs))
+		fileIndexes := map[string]int{}
+		for _, spec := range fileSpecs {
+			part, partErr := writer.CreateFormFile(spec.field, spec.filename)
+			require.NoError(t, partErr)
+			_, partErr = io.WriteString(part, spec.data)
+			require.NoError(t, partErr)
+			files = append(files, map[string]any{"ref": pluginruntime.FileReference(spec.field, fileIndexes[spec.field]), "field": spec.field, "filename": spec.filename, "mimeType": "application/octet-stream", "size": len(spec.data)})
+			fileIndexes[spec.field]++
+		}
+		require.NoError(t, writer.Close())
+		request := httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(input.Bytes()))
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		adaptor, c, info := newRequest(map[string]any{"kind": "multipart", "fields": fields, "files": files}, request)
+		require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+		facts, usageErr := adaptor.ExtractUsageFactsValidated(c, info)
+		require.NoError(t, usageErr)
+		assert.Equal(t, map[string]any{"seconds": 30.0}, facts)
+		body, buildErr := adaptor.BuildRequestBody(c, info)
+		require.NoError(t, buildErr)
+		response, submitErr := adaptor.DoRequest(c, info, body)
+		require.NoError(t, submitErr)
+		_, taskErr := adaptor.ParseResponse(c, response, info)
+		require.Nil(t, taskErr)
+		assert.Equal(t, []string{"https://cdn.example/single.png", "https://cdn.example/one.png", "https://cdn.example/two.png"}, capturedFields["image_urls"])
+		assert.Equal(t, fields["video_urls"], capturedFields["video_urls"])
+		assert.Equal(t, fields["audio_urls"], capturedFields["audio_urls"])
+		assert.Equal(t, []string{"image-first", "image-one", "image-two"}, capturedFiles["images"])
+		assert.Equal(t, []string{"video-one"}, capturedFiles["videos"])
+		assert.Equal(t, []string{"audio-one"}, capturedFiles["audios"])
+		assert.NotContains(t, capturedFields, "referenceFiles")
+		assert.NotContains(t, capturedFields, "duration")
+	})
+	t.Run("unknown statuses stay unknown and failures enter the host refund path", func(t *testing.T) {
+		for _, tc := range []struct{ status, want string }{{"queued", "QUEUED"}, {"in_progress", "IN_PROGRESS"}, {"completed", "SUCCESS"}, {"failed", "FAILURE"}, {"cancelled", "FAILURE"}, {"unexpected", "UNKNOWN"}, {"__proto__", "UNKNOWN"}} {
+			value, parseErr := plugin.Engine.Call(t.Context(), "parseTaskResult", map[string]any{"taskId": providerTaskID}, map[string]any{"id": providerTaskID, "status": tc.status})
+			require.NoError(t, parseErr)
+			assert.Equal(t, tc.want, value.(map[string]any)["status"])
+		}
+	})
+	t.Run("accepted task IDs survive missing or new initial statuses", func(t *testing.T) {
+		for _, status := range []any{nil, "new_provider_state"} {
+			body := map[string]any{"id": providerTaskID, "object": "video"}
+			if status != nil {
+				body["status"] = status
+			}
+			accepted, parseErr := plugin.Engine.Call(t.Context(), "parseSubmitResponse", map[string]any{}, map[string]any{"statusCode": http.StatusAccepted, "body": body})
+			require.NoError(t, parseErr)
+			assert.Equal(t, providerTaskID, accepted.(map[string]any)["taskId"])
+			assert.Equal(t, body, accepted.(map[string]any)["taskData"])
+			assert.NotContains(t, accepted.(map[string]any), "immediate")
+			queried, queryErr := plugin.Engine.Call(t.Context(), "parseTaskResult", map[string]any{"taskId": providerTaskID}, body)
+			require.NoError(t, queryErr)
+			assert.Equal(t, "UNKNOWN", queried.(map[string]any)["status"], "acceptance must not invent a successful or in-progress state")
+		}
+		for _, id := range []any{nil, "", "   ", 42} {
+			_, parseErr := plugin.Engine.Call(t.Context(), "parseSubmitResponse", map[string]any{}, map[string]any{"statusCode": http.StatusAccepted, "body": map[string]any{"id": id, "status": "queued"}})
+			require.Error(t, parseErr)
+		}
+	})
+}
