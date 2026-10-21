@@ -37,9 +37,16 @@ export interface ModelProfitRow extends ProfitTotals {
   model_name: string
 }
 
+export interface ModelProfitTrendPoint extends ProfitTotals {
+  bucket_start: number
+}
+
 export interface ModelProfitResult {
   rows: ModelProfitRow[]
   summary: ProfitTotals
+  model_options?: string[]
+  trend?: ModelProfitTrendPoint[]
+  trend_granularity?: 'day'
   timezone: string
   currency: string
   start_timestamp: number

@@ -48,7 +48,7 @@ export function ProfitSummary(props: { data: ProfitTotals }) {
         compactMobile
       />
       <StatCard
-        title={t('Configured upstream cost (estimate)')}
+        title={t('Known upstream cost (estimate)')}
         value={formatProfitCny(data.upstream_cost_cny, locale)}
         description={t('Costs supported by configured supplier price rules')}
         icon={CircleDollarSign}
@@ -62,7 +62,7 @@ export function ProfitSummary(props: { data: ProfitTotals }) {
         compactMobile
       />
       <StatCard
-        title={t('Billed gross profit')}
+        title={t('Gross profit (known-cost portion)')}
         value={formatProfitCny(data.gross_profit_cny, locale)}
         description={t('Revenue with known costs minus those upstream costs')}
         icon={PiggyBank}
@@ -75,7 +75,7 @@ export function ProfitSummary(props: { data: ProfitTotals }) {
         compactMobile
       />
       <StatCard
-        title={t('Gross margin')}
+        title={t('Gross margin (known-cost portion)')}
         value={formatProfitMargin(data.profit_margin, locale)}
         description={t('Calculated only for requests with known costs')}
         icon={Percent}

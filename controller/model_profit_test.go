@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
@@ -210,6 +211,110 @@ func TestModelProfitAccountingDatabase(t *testing.T) {
 				require.NotNil(t, report.Summary.UpstreamCostCNY)
 				assert.Equal(t, 2.0, *report.Summary.UpstreamCostCNY)
 			})
+		})
+	}
+}
+
+func TestModelProfitDashboardDatabase(t *testing.T) {
+	kind := os.Getenv("TEST_MODEL_PROFIT_DIALECT")
+	if kind == "" {
+		kind = "sqlite"
+	}
+	require.Contains(t, []string{"sqlite", "mysql", "postgres"}, kind)
+	dsn := os.Getenv("TEST_" + strings.ToUpper(kind) + "_DSN")
+	for _, separate := range []bool{false, true} {
+		t.Run(fmt.Sprintf("separate_logs_%t", separate), func(t *testing.T) {
+			db, _ := newAuditTestDatabase(t, kind, dsn)
+			logDB := db
+			if separate {
+				logDB, _ = newAuditTestDatabase(t, kind, dsn)
+			}
+			typ := map[string]common.DatabaseType{"sqlite": common.DatabaseTypeSQLite, "mysql": common.DatabaseTypeMySQL, "postgres": common.DatabaseTypePostgreSQL}[kind]
+			useLogExportDatabases(t, db, logDB, typ, typ)
+			require.NoError(t, db.AutoMigrate(&model.Option{}, &model.Task{}))
+			require.NoError(t, logDB.AutoMigrate(&model.Log{}))
+			oldQuota, oldRate := common.QuotaPerUnit, operation_setting.USDExchangeRate
+			common.QuotaPerUnit, operation_setting.USDExchangeRate = 100, 10
+			t.Cleanup(func() { common.QuotaPerUnit, operation_setting.USDExchangeRate = oldQuota, oldRate })
+			zone := time.FixedZone("Asia/Shanghai", 8*60*60)
+			day := time.Date(2026, 10, 21, 0, 0, 0, 0, zone).Unix()
+			start, end := day+23*3600+30*60, day+3*86400
+			charge, refund := day+23*3600+45*60, day+86400+15*60
+			one, two := 1.0, 2.0
+			ctx := context.Background()
+			_, err := model.SaveModelProfitCostRules(ctx, model.ModelProfitCostRules{SchemaVersion: 1, Rules: []model.ModelProfitCostRule{
+				{ChannelID: 19, ModelName: "retired-video", EffectiveFrom: day, Kind: "request", UnitCostCNY: &two, Source: "verified refunded tariff", FailureRefunded: true},
+				{ChannelID: 12, ModelName: "known-text", EffectiveFrom: day, Kind: "request", UnitCostCNY: &one, Source: "verified tariff"},
+			}})
+			require.NoError(t, err)
+			require.NoError(t, db.Create(&model.Task{TaskID: "cross-day-refund", UserId: 1, ChannelId: 19, SubmitTime: charge, Status: model.TaskStatusFailure}).Error)
+			logs := []model.Log{
+				{CreatedAt: charge, UserId: 1, ChannelId: 19, Type: model.LogTypeConsume, ModelName: "retired-video", Quota: 50, RequestId: "charge", Other: `{"task_id":"cross-day-refund","is_task":true}`},
+				{CreatedAt: refund, UserId: 1, ChannelId: 19, Type: model.LogTypeRefund, ModelName: "retired-video", Quota: 50, RequestId: "refund", Other: `{"task_id":"cross-day-refund","is_task":true}`},
+				{CreatedAt: refund, UserId: 1, ChannelId: 12, Type: model.LogTypeConsume, ModelName: "known-text", Quota: 30, RequestId: "known", Other: `{}`},
+				{CreatedAt: refund, UserId: 1, ChannelId: 9, Type: model.LogTypeConsume, ModelName: "unknown-text", Quota: 20, RequestId: "unknown", Other: `{}`},
+				{CreatedAt: start - 1, Type: model.LogTypeConsume, ModelName: "before-start", Quota: 10000, Other: `{}`},
+				{CreatedAt: end, Type: model.LogTypeConsume, ModelName: "at-end", Quota: 10000, Other: `{}`},
+				{CreatedAt: refund, Type: model.LogTypeTopup, ModelName: "not-a-consumption", Quota: 10000},
+			}
+			require.NoError(t, logDB.Create(&logs).Error)
+			report, err := model.GetModelProfits(ctx, model.ModelProfitFilter{Start: start, End: end})
+			require.NoError(t, err)
+			assert.Equal(t, []string{"known-text", "retired-video", "unknown-text"}, report.ModelOptions)
+			assert.Equal(t, "day", report.TrendGranularity)
+			assert.Equal(t, "Asia/Shanghai", report.Timezone)
+			require.Len(t, report.Trend, 3)
+			assert.EqualValues(t, 3, report.Summary.Requests)
+			assert.InDelta(t, 5, report.Summary.RevenueCNY, 1e-9)
+			assert.InDelta(t, 3, report.Summary.KnownCostRevenueCNY, 1e-9)
+			require.NotNil(t, report.Summary.UpstreamCostCNY)
+			require.NotNil(t, report.Summary.GrossProfitCNY)
+			assert.InDelta(t, 1, *report.Summary.UpstreamCostCNY, 1e-9)
+			assert.InDelta(t, 2, *report.Summary.GrossProfitCNY, 1e-9, "unknown revenue must not be counted as profit")
+			assert.Equal(t, []int64{day, day + 86400, day + 2*86400}, []int64{report.Trend[0].BucketStart, report.Trend[1].BucketStart, report.Trend[2].BucketStart})
+			assert.InDelta(t, 5, report.Trend[0].RevenueCNY, 1e-9)
+			require.NotNil(t, report.Trend[0].UpstreamCostCNY)
+			assert.InDelta(t, 2, *report.Trend[0].UpstreamCostCNY, 1e-9)
+			assert.InDelta(t, 3, *report.Trend[0].GrossProfitCNY, 1e-9)
+			assert.InDelta(t, 0, report.Trend[1].RevenueCNY, 1e-9)
+			assert.InDelta(t, 5, report.Trend[1].RefundCNY, 1e-9)
+			require.NotNil(t, report.Trend[1].UpstreamCostCNY)
+			assert.InDelta(t, -1, *report.Trend[1].UpstreamCostCNY, 1e-9)
+			assert.InDelta(t, -1, *report.Trend[1].GrossProfitCNY, 1e-9)
+			assert.Zero(t, report.Trend[2].BillingEvents)
+			assert.Zero(t, report.Trend[2].RevenueCNY)
+			assert.Nil(t, report.Trend[2].UpstreamCostCNY, "empty days do not establish a known zero cost")
+			assert.Nil(t, report.Trend[2].GrossProfitCNY)
+			for _, filter := range []model.ModelProfitFilter{
+				{Start: start, End: end, ModelName: "retired-video"},
+				{Start: start, End: end, ModelName: "missing-model"},
+			} {
+				filtered, err := model.GetModelProfits(ctx, filter)
+				require.NoError(t, err)
+				assert.Equal(t, report.ModelOptions, filtered.ModelOptions, "a model filter must not hide other choices or historical models")
+				require.Len(t, filtered.Trend, 3)
+				assert.Zero(t, filtered.Summary.RevenueCNY)
+				if filter.ModelName == "missing-model" {
+					assert.Empty(t, filtered.Rows)
+					assert.Nil(t, filtered.Summary.UpstreamCostCNY)
+				} else {
+					require.Len(t, filtered.Rows, 1)
+					assert.Equal(t, "retired-video", filtered.Rows[0].ModelName)
+					require.NotNil(t, filtered.Summary.UpstreamCostCNY)
+					assert.Zero(t, *filtered.Summary.UpstreamCostCNY)
+				}
+			}
+			refunded, err := model.GetModelProfits(ctx, model.ModelProfitFilter{Start: day + 86400, End: end, ModelName: "retired-video"})
+			require.NoError(t, err)
+			assert.Zero(t, refunded.Summary.Requests)
+			assert.InDelta(t, -5, refunded.Trend[0].RevenueCNY, 1e-9)
+			require.NotNil(t, refunded.Trend[0].UpstreamCostCNY)
+			assert.InDelta(t, -2, *refunded.Trend[0].UpstreamCostCNY, 1e-9, "find the original charge outside the selected range")
+			empty, err := model.GetModelProfits(ctx, model.ModelProfitFilter{Start: end + 1, End: end + 1 + 366*86400})
+			require.NoError(t, err)
+			require.Len(t, empty.Trend, 367, "a partial first day can span 367 calendar dates")
+			assert.Empty(t, empty.ModelOptions)
+			assert.Empty(t, empty.Rows)
 		})
 	}
 }

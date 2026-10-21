@@ -19,8 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 
 import {
   profitPreset,
@@ -34,6 +35,7 @@ export function ProfitFilters(props: {
   onApply: () => void
   loading: boolean
   invalid: boolean
+  models: string[]
 }) {
   const { t } = useTranslation()
   const presets: { value: ProfitPreset; label: string }[] = [
@@ -43,7 +45,7 @@ export function ProfitFilters(props: {
     { value: 'month', label: t('Month to date') },
   ]
   return (
-    <div className='space-y-3 rounded-xl border p-4'>
+    <div className='flex flex-col gap-3 rounded-xl border p-4'>
       <div className='flex flex-wrap items-center gap-2'>
         {presets.map((preset) => (
           <Button
@@ -65,50 +67,65 @@ export function ProfitFilters(props: {
         </span>
       </div>
       <form
-        className='grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2fr_auto]'
         onSubmit={(event) => {
           event.preventDefault()
           props.onApply()
         }}
       >
-        <div className='space-y-2'>
-          <Label htmlFor='model-profit-start'>{t('Start date')}</Label>
-          <Input
-            id='model-profit-start'
-            type='date'
-            value={props.value.start}
-            aria-invalid={props.invalid}
-            onChange={(event) =>
-              props.onChange({ ...props.value, start: event.target.value })
-            }
-          />
-        </div>
-        <div className='space-y-2'>
-          <Label htmlFor='model-profit-end'>{t('End date (inclusive)')}</Label>
-          <Input
-            id='model-profit-end'
-            type='date'
-            value={props.value.end}
-            aria-invalid={props.invalid}
-            onChange={(event) =>
-              props.onChange({ ...props.value, end: event.target.value })
-            }
-          />
-        </div>
-        <div className='space-y-2'>
-          <Label htmlFor='model-profit-model'>{t('Exact model name')}</Label>
-          <Input
-            id='model-profit-model'
-            value={props.value.model}
-            placeholder={t('All models')}
-            onChange={(event) =>
-              props.onChange({ ...props.value, model: event.target.value })
-            }
-          />
-        </div>
-        <Button type='submit' disabled={props.loading || props.invalid}>
-          {t('Apply filters')}
-        </Button>
+        <FieldGroup className='grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2fr_auto]'>
+          <Field>
+            <FieldLabel htmlFor='model-profit-start'>
+              {t('Start date')}
+            </FieldLabel>
+            <Input
+              id='model-profit-start'
+              type='date'
+              value={props.value.start}
+              aria-invalid={props.invalid}
+              onChange={(event) =>
+                props.onChange({ ...props.value, start: event.target.value })
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor='model-profit-end'>
+              {t('End date (inclusive)')}
+            </FieldLabel>
+            <Input
+              id='model-profit-end'
+              type='date'
+              value={props.value.end}
+              aria-invalid={props.invalid}
+              onChange={(event) =>
+                props.onChange({ ...props.value, end: event.target.value })
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor='model-profit-model'>{t('Model')}</FieldLabel>
+            <Combobox
+              id='model-profit-model'
+              value={props.value.model}
+              options={[
+                { value: '', label: t('All models') },
+                ...props.models.map((model) => ({
+                  value: model,
+                  label: model,
+                })),
+              ]}
+              placeholder={t('All models')}
+              searchPlaceholder={t('Search models...')}
+              emptyText={t('No matching models')}
+              aria-label={t('Model')}
+              onValueChange={(model) =>
+                props.onChange({ ...props.value, model: model ?? '' })
+              }
+            />
+          </Field>
+          <Button type='submit' disabled={props.loading || props.invalid}>
+            {t('Apply filters')}
+          </Button>
+        </FieldGroup>
       </form>
     </div>
   )

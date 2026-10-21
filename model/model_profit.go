@@ -45,19 +45,27 @@ type ModelProfitRow struct {
 	ModelProfitTotals
 }
 
+type ModelProfitTrendPoint struct {
+	BucketStart int64 `json:"bucket_start"`
+	ModelProfitTotals
+}
+
 type ModelProfitReport struct {
-	Rows                            []ModelProfitRow  `json:"rows"`
-	Summary                         ModelProfitTotals `json:"summary"`
-	StartTimestamp                  int64             `json:"start_timestamp"`
-	EndTimestamp                    int64             `json:"end_timestamp"`
-	Timezone                        string            `json:"timezone"`
-	Currency                        string            `json:"currency"`
-	CurrentRate                     float64           `json:"current_rate"`
-	QuotaPerUnit                    float64           `json:"quota_per_unit"`
-	HistoricalConversionApproximate bool              `json:"historical_conversion_approximate"`
-	ProfitBasis                     string            `json:"profit_basis"`
-	CostRulesRevision               int64             `json:"cost_rules_revision"`
-	ConsumptionLoggingEnabled       bool              `json:"consumption_logging_enabled"`
+	Rows                            []ModelProfitRow        `json:"rows"`
+	Summary                         ModelProfitTotals       `json:"summary"`
+	ModelOptions                    []string                `json:"model_options"`
+	Trend                           []ModelProfitTrendPoint `json:"trend"`
+	TrendGranularity                string                  `json:"trend_granularity"`
+	StartTimestamp                  int64                   `json:"start_timestamp"`
+	EndTimestamp                    int64                   `json:"end_timestamp"`
+	Timezone                        string                  `json:"timezone"`
+	Currency                        string                  `json:"currency"`
+	CurrentRate                     float64                 `json:"current_rate"`
+	QuotaPerUnit                    float64                 `json:"quota_per_unit"`
+	HistoricalConversionApproximate bool                    `json:"historical_conversion_approximate"`
+	ProfitBasis                     string                  `json:"profit_basis"`
+	CostRulesRevision               int64                   `json:"cost_rules_revision"`
+	ConsumptionLoggingEnabled       bool                    `json:"consumption_logging_enabled"`
 }
 
 type profitLogFacts struct {
@@ -143,7 +151,7 @@ func (totals *ModelProfitTotals) finish() {
 func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfitReport, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	report := ModelProfitReport{Rows: []ModelProfitRow{}, StartTimestamp: filter.Start, EndTimestamp: filter.End,
+	report := ModelProfitReport{Rows: []ModelProfitRow{}, ModelOptions: []string{}, Trend: []ModelProfitTrendPoint{}, TrendGranularity: "day", StartTimestamp: filter.Start, EndTimestamp: filter.End,
 		Timezone: "Asia/Shanghai", Currency: "CNY", CurrentRate: operation_setting.USDExchangeRate, QuotaPerUnit: common.QuotaPerUnit,
 		HistoricalConversionApproximate: true, ProfitBasis: "estimated_billed_consumption_margin_not_cash_profit", ConsumptionLoggingEnabled: common.LogConsumeEnabled}
 	if filter.Start < 0 || filter.End <= filter.Start || filter.End > 253402300799 || filter.End-filter.Start > 366*86400 || (filter.ModelName != "" && !validClientModelID(filter.ModelName)) || math.IsNaN(report.CurrentRate) || math.IsInf(report.CurrentRate, 0) || report.CurrentRate <= 0 || report.QuotaPerUnit <= 0 {
@@ -155,6 +163,12 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 	}
 	report.CostRulesRevision = config.Revision
 	query := LOG_DB.WithContext(ctx).Model(&Log{}).Where("type IN ? AND created_at >= ? AND created_at < ?", []int{LogTypeConsume, LogTypeRefund}, filter.Start, filter.End)
+	if err := query.Session(&gorm.Session{}).Where("model_name <> ?", "").Distinct("model_name").Order("model_name").Limit(maxProfitBillingEvents+1).Pluck("model_name", &report.ModelOptions).Error; err != nil {
+		return report, err
+	}
+	if len(report.ModelOptions) > maxProfitBillingEvents {
+		return report, ErrModelProfitTooLarge
+	}
 	if filter.ModelName != "" {
 		query = query.Where("model_name = ?", filter.ModelName)
 	}
@@ -177,6 +191,16 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 		return report, err
 	}
 	models := make(map[string]*ModelProfitRow)
+	// Match the existing report's Beijing accounting zone. Build calendar
+	// buckets in Go rather than dialect-specific SQL, and attribute refunds
+	// to their own billing-event day, exactly as rows and summary do.
+	zone := time.FixedZone("Asia/Shanghai", 8*60*60)
+	start := time.Unix(filter.Start, 0).In(zone)
+	day := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, zone)
+	for day.Unix() < filter.End {
+		report.Trend = append(report.Trend, ModelProfitTrendPoint{BucketStart: day.Unix()})
+		day = day.AddDate(0, 0, 1)
+	}
 	conversion := report.CurrentRate / report.QuotaPerUnit
 	for _, log := range logs {
 		row := models[log.ModelName]
@@ -203,12 +227,17 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 		}
 		row.add(log, event, conversion)
 		report.Summary.add(log, event, conversion)
+		bucket := (log.CreatedAt - report.Trend[0].BucketStart) / (24 * 60 * 60)
+		report.Trend[bucket].add(log, event, conversion)
 	}
 	for _, row := range models {
 		row.finish()
 		report.Rows = append(report.Rows, *row)
 	}
 	slices.SortFunc(report.Rows, func(a, b ModelProfitRow) int { return strings.Compare(a.ModelName, b.ModelName) })
+	for i := range report.Trend {
+		report.Trend[i].finish()
+	}
 	report.Summary.finish()
 	return report, nil
 }

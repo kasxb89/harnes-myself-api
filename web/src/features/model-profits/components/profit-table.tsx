@@ -23,11 +23,10 @@ import {
   type StaticDataTableColumn,
 } from '@/components/data-table'
 import { EmptyState } from '@/components/empty-state'
-import { Badge } from '@/components/ui/badge'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
-import { formatProfitCny, formatProfitMargin } from '../lib/format'
+import { formatProfitCny } from '../lib/format'
 import type { ModelProfitRow } from '../types'
 
 export function ProfitTable(props: { rows: ModelProfitRow[] }) {
@@ -67,79 +66,6 @@ export function ProfitTable(props: { rows: ModelProfitRow[] }) {
       className: numericClass,
       cellClassName: numericClass,
       cell: (row) => money(row.known_cost_revenue_cny),
-    },
-    {
-      id: 'cost',
-      header: t('Configured upstream cost (estimate)'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => money(row.upstream_cost_cny),
-    },
-    {
-      id: 'profit',
-      header: t('Billed gross profit'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => (
-        <span
-          className={
-            row.gross_profit_cny !== null && row.gross_profit_cny < 0
-              ? 'text-destructive'
-              : undefined
-          }
-        >
-          {money(row.gross_profit_cny)}
-        </span>
-      ),
-    },
-    {
-      id: 'margin',
-      header: t('Gross margin'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => formatProfitMargin(row.profit_margin, locale),
-    },
-    {
-      id: 'coverage',
-      header: t('Billing cost coverage'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => (
-        <div className='flex items-center justify-end gap-2'>
-          <span>{formatNumber(row.cost_coverage * 100, locale)}%</span>
-          {row.unknown_cost_events > 0 && (
-            <Badge variant='outline'>{t('Partial')}</Badge>
-          )}
-        </div>
-      ),
-    },
-    {
-      id: 'unknown-events',
-      header: t('Unknown cost events'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => formatNumber(row.unknown_cost_events, locale),
-    },
-    {
-      id: 'unknown',
-      header: t('Unknown cost requests'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => formatNumber(row.unknown_cost_requests, locale),
-    },
-    {
-      id: 'pending',
-      header: t('Pending settlement'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => formatNumber(row.pending_requests, locale),
-    },
-    {
-      id: 'refund',
-      header: t('Refunded amount'),
-      className: numericClass,
-      cellClassName: numericClass,
-      cell: (row) => money(row.refund_cny),
     },
   ]
   if (props.rows.length === 0) {
