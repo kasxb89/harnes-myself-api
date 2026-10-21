@@ -19,6 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Client model configuration API errors and settings action labels.
+  'Invalid client model configuration',
+  'Client model configuration contains an unavailable model',
+  'Default client model must support chat',
+  'Failed to load client model catalog',
+  'Failed to save client model configuration',
+  'Client model configuration is too large',
+  'Client model configuration must be saved separately',
+  'Use the client model configuration page to change this setting',
+  'Save client model configuration',
+  'Discard changes',
+
   // API error diagnostics and the user-safe server-error projection.
   'API Error Logs',
   'No API errors found',

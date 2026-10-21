@@ -138,6 +138,12 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.ADMIN,
           },
           {
+            title: t('Client model configuration'),
+            url: '/client-model-config',
+            icon: Box,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
             title: t('AI Creation Management'),
             url: '/creation-content',
             icon: LayoutDashboard,

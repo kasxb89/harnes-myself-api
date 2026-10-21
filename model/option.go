@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"maps"
 	"strconv"
 	"strings"
@@ -199,6 +200,10 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	// Serialize the database snapshot with client preference commits so an old
+	// periodic read cannot overwrite a newly committed complete object in memory.
+	clientModelConfigMutex.Lock()
+	defer clientModelConfigMutex.Unlock()
 	requestPolicyOptionMutex.Lock()
 	defer requestPolicyOptionMutex.Unlock()
 	defer func() {
@@ -257,6 +262,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == keyClientModelConfig {
+		return errors.New("Use the client model configuration page to change this setting")
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -291,6 +299,9 @@ func UpdateOption(key string, value string) error {
 // is touched — safe for callers that must commit a set of related options
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
+	if _, exists := values[keyClientModelConfig]; exists {
+		return errors.New("Use the client model configuration page to change this setting")
+	}
 	if len(values) == 0 {
 		return nil
 	}

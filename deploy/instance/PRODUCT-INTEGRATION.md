@@ -334,7 +334,33 @@ GET /harness/api/balance-ledger/?p=1&page_size=20&category=all
 
 ---
 
-## 10. 自检（对接完先跑这几条）
+## 10. 客户端默认聊天模型与排列偏好（schema1）
+
+公开读取 `GET /harness/api/status` 的 `data.client_model_config`，无管理员偏好或存量配置结构不合法时也返回固定对象：
+
+```json
+{"schema_version":1,"default_chat_model":"","model_order":[]}
+```
+
+这是一份展示偏好，不是用户模型权限。客户端只对当前用户实际可用的聊天模型应用默认值；默认不可用时选可用聊天模型降级，不能加入用户无权使用的型号。仅对尚未手动选择的状态应用后台默认，保留明确选择和已有会话。按 `model_order` 的精确 ID 排序，未列型号稳定追加；空默认和空数组表示没有对应管理员偏好。读取响应禁止缓存。
+
+独立管理页 `/client-model-config` 位于常规下的运营管理分组。三个管理接口均使用管理员登录会话（包括 role10，个人访问令牌和旧管理令牌不能使用），返回禁止缓存；PUT 复用来源校验：
+
+| 方法 | 路径 | 成功 data |
+| --- | --- | --- |
+| GET | `/harness/api/client-model-config` | 上述完整三字段对象 |
+| PUT | `/harness/api/client-model-config` | 本次提交并保存的完整三字段对象 |
+| GET | `/harness/api/client-model-config/models` | `{"models":[{"id":"精确ID","display_name":"显示名","chat_eligible":true}]}` |
+
+管理成功均为 `{"success":true,"data":...}`。PUT Content-Type 为 `application/json`，请求体直接使用完整三字段对象；单对象保存在一个 option 内，数据库成功后才更新读取值。没有新的表或字段迁移，旧通用 option 接口拒绝改写该项。周期 option 同步与本地保存串行，避免旧快照回退刚保存的偏好；不同节点仍按既有同步周期传播。
+
+只支持 schema1；拒绝缺字段、未知或重复字段、null、错误类型、尾随第二对象、重复型号、无效UTF8、首尾空白和控制字符。排序最多256项，精确ID最多255 UTF8字节，请求体最多256KiB。保存时重新读取启用能力及启用渠道，拒绝未知/下线ID；非空默认必须是可用聊天候选，不要求它同时出现在排序数组。图片、视频、任务、embedding/rerank及仅压缩端点等非聊天型号可排序，不能设为默认。元数据接受原有数组和对象两种endpoint声明；不改路由权限和计费。
+
+已保存型号后来下线时保留旧偏好供管理员查看，页面显式提示并要求清理后保存，客户端仍需运行时过滤。失败保留上一份完整配置和页面草稿。错误为HTTP400（合同或型号错误）、413（体积超限）、500（安全的目录/保存失败消息），携带 `success:false/message`，不返回数据库或渠道凭据。并发管理员保存采用整对象后写覆盖，不做逐字段合并。
+
+具体上线提交以发布回执为准。联调使用独立合成数据库；发布不会将合成型号或联调偏好写入生产。
+
+## 11. 自检（对接完先跑这几条）
 
 ```bash
 BASE=https://8.133.202.230/harness

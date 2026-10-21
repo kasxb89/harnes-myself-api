@@ -4,18 +4,25 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // accessTokenExemptRoutes are /api routes that never reach dashboard
@@ -223,4 +230,106 @@ func TestCreationContentRoutesHaveExplicitPublicAndSessionBoundaries(t *testing.
 		require.True(t, declared, key)
 		assert.Equal(t, "session", rule.Kind(), key)
 	}
+}
+
+func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.AuditLog{}, &model.Option{}, &model.Channel{}, &model.Ability{}, &model.Model{}))
+	previousDB, previousLog := model.DB, model.LOG_DB
+	previousType := common.MainDatabaseType()
+	previousRedis, previousMemory, previousSecret := common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret
+	previousSecure := common.SessionCookieSecure
+	common.OptionMapRWMutex.Lock()
+	previousOptions := maps.Clone(common.OptionMap)
+	common.OptionMap = map[string]string{}
+	common.OptionMapRWMutex.Unlock()
+	model.DB, model.LOG_DB = db, db
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	common.RedisEnabled, common.MemoryCacheEnabled = false, false
+	common.SessionSecret = "isolated-client-model-config-auth-test"
+	common.SessionCookieSecure = true
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLog
+		common.SetMainDatabaseType(previousType)
+		common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret = previousRedis, previousMemory, previousSecret
+		common.SessionCookieSecure = previousSecure
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+		sqlDB, err := db.DB()
+		require.NoError(t, err)
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
+	engine := newAccessTokenScopeTestEngine(t)
+	var adminSession *service.AuthBundle
+	var userSession *service.AuthBundle
+	legacy := "client-model-config-legacy-test"
+	for _, user := range []model.User{
+		{Id: 7411, Username: "cm-admin", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "cm-admin"},
+		{Id: 7412, Username: "cm-user", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "cm-user"},
+		{Id: 7413, Username: "cm-root", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "cm-root", AccessToken: &legacy},
+	} {
+		require.NoError(t, db.Create(&user).Error)
+		if user.Role == common.RoleRootUser {
+			continue
+		}
+		bundle, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "client-model-test")
+		require.NoError(t, err)
+		if user.Role == common.RoleAdminUser {
+			adminSession = bundle
+		} else {
+			userSession = bundle
+		}
+	}
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/client-model-config"},
+		{http.MethodPut, "/api/client-model-config"},
+		{http.MethodGet, "/api/client-model-config/models"},
+	} {
+		rule, ok := middleware.AccessTokenRouteRule(route.method + " " + route.path)
+		require.True(t, ok)
+		assert.Equal(t, "session", rule.Kind())
+		for _, identity := range []struct {
+			name, token string
+			status      int
+		}{
+			{"anonymous", "", http.StatusUnauthorized},
+			{"ordinary user", userSession.AccessToken, http.StatusForbidden},
+			{"legacy root token", legacy, http.StatusForbidden},
+			{"administrator", adminSession.AccessToken, http.StatusOK},
+		} {
+			t.Run(route.method+route.path+identity.name, func(t *testing.T) {
+				request := httptest.NewRequest(route.method, route.path, strings.NewReader(`{"schema_version":1,"default_chat_model":"","model_order":[]}`))
+				request.Header.Set("Content-Type", "application/json")
+				request.Header.Set("Origin", "http://example.com")
+				if identity.token != "" {
+					request.Header.Set("Authorization", "Bearer "+identity.token)
+				}
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				assert.Equal(t, identity.status, recorder.Code, recorder.Body.String())
+				assert.Contains(t, recorder.Header().Get("Cache-Control"), "no-store")
+			})
+		}
+	}
+	t.Run("cross origin write is denied", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPut, "/api/client-model-config", strings.NewReader(`{"schema_version":1,"default_chat_model":"","model_order":[]}`))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Origin", "https://untrusted.example")
+		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusForbidden, recorder.Code)
+	})
+	t.Run("revoked administrator session cannot read configuration", func(t *testing.T) {
+		_, err := model.RevokeUserSession(7411, adminSession.Session.SID, "test revocation")
+		require.NoError(t, err)
+		request := httptest.NewRequest(http.MethodGet, "/api/client-model-config", nil)
+		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+		recorder := httptest.NewRecorder()
+		engine.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	})
 }

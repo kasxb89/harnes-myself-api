@@ -39,6 +39,12 @@ func SetApiRouter(router *gin.Engine) {
 
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
+		clientModelRoute := apiRouter.Group("/client-model-config", middleware.DisableCache(), middleware.AdminAuth())
+		{
+			clientModelRoute.GET("", controller.GetClientModelConfig)
+			clientModelRoute.PUT("", middleware.SessionCookieOriginGuard(), controller.SaveClientModelConfig)
+			clientModelRoute.GET("/models", controller.GetClientModelCandidates)
+		}
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)

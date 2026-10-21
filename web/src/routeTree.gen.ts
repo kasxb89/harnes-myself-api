@@ -37,6 +37,7 @@ import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedBalanceLedgerIndexRouteImport } from './routes/_authenticated/balance-ledger/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
+import { Route as AuthenticatedClientModelConfigIndexRouteImport } from './routes/_authenticated/client-model-config/index'
 import { Route as AuthenticatedCreationContentIndexRouteImport } from './routes/_authenticated/creation-content/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
@@ -218,6 +219,12 @@ const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedClientModelConfigIndexRoute =
+  AuthenticatedClientModelConfigIndexRouteImport.update({
+    id: '/client-model-config/',
+    path: '/client-model-config/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCreationContentIndexRoute =
   AuthenticatedCreationContentIndexRouteImport.update({
     id: '/creation-content/',
@@ -482,6 +489,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/balance-ledger/': typeof AuthenticatedBalanceLedgerIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/client-model-config/': typeof AuthenticatedClientModelConfigIndexRoute
   '/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
@@ -548,6 +556,7 @@ export interface FileRoutesByTo {
   '/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/balance-ledger': typeof AuthenticatedBalanceLedgerIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
+  '/client-model-config': typeof AuthenticatedClientModelConfigIndexRoute
   '/creation-content': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
@@ -618,6 +627,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/audit': typeof AuthenticatedUsageLogsAuditRoute
   '/_authenticated/balance-ledger/': typeof AuthenticatedBalanceLedgerIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
+  '/_authenticated/client-model-config/': typeof AuthenticatedClientModelConfigIndexRoute
   '/_authenticated/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
@@ -687,6 +697,7 @@ export interface FileRouteTypes {
     | '/usage-logs/audit'
     | '/balance-ledger/'
     | '/channels/'
+    | '/client-model-config/'
     | '/creation-content/'
     | '/dashboard/'
     | '/keys/'
@@ -753,6 +764,7 @@ export interface FileRouteTypes {
     | '/usage-logs/audit'
     | '/balance-ledger'
     | '/channels'
+    | '/client-model-config'
     | '/creation-content'
     | '/dashboard'
     | '/keys'
@@ -822,6 +834,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/audit'
     | '/_authenticated/balance-ledger/'
     | '/_authenticated/channels/'
+    | '/_authenticated/client-model-config/'
     | '/_authenticated/creation-content/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
@@ -1073,6 +1086,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/$chatId'
       fullPath: '/chat/$chatId'
       preLoaderRoute: typeof AuthenticatedChatChatIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/client-model-config/': {
+      id: '/_authenticated/client-model-config/'
+      path: '/client-model-config'
+      fullPath: '/client-model-config/'
+      preLoaderRoute: typeof AuthenticatedClientModelConfigIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/creation-content/': {
@@ -1451,6 +1471,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsAuditRoute: typeof AuthenticatedUsageLogsAuditRoute
   AuthenticatedBalanceLedgerIndexRoute: typeof AuthenticatedBalanceLedgerIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
+  AuthenticatedClientModelConfigIndexRoute: typeof AuthenticatedClientModelConfigIndexRoute
   AuthenticatedCreationContentIndexRoute: typeof AuthenticatedCreationContentIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
@@ -1481,6 +1502,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsAuditRoute: AuthenticatedUsageLogsAuditRoute,
   AuthenticatedBalanceLedgerIndexRoute: AuthenticatedBalanceLedgerIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
+  AuthenticatedClientModelConfigIndexRoute:
+    AuthenticatedClientModelConfigIndexRoute,
   AuthenticatedCreationContentIndexRoute:
     AuthenticatedCreationContentIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,

@@ -132,6 +132,7 @@ it('places the dedicated operational entries immediately below General and befor
     'Balance ledger',
     'User Activity',
     'API Error Logs',
+    'Client model configuration',
     'AI Creation Management',
   ])
   expect(
