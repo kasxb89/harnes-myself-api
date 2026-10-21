@@ -7558,6 +7558,13 @@
     "Only recorded registration gifts are counted": "記録された登録特典のみを集計します",
     "Outside the selected balance source": "選択中の残高の内訳には含まれません",
     "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "既存ユーザーの過去の特典には元の明細がありません。このページでは残高や現在の設定から推定しません。",
-    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "登録特典の過去の記録が完全かどうかは未確認です。記録がないことは特典がなかったことを意味しません。"
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "登録特典の過去の記録が完全かどうかは未確認です。記録がないことは特典がなかったことを意味しません。",
+    "Sort number": "並び順の番号",
+    "Sort number for {{model}}": "{{model}} の並び順の番号",
+    "Unranked": "未指定",
+    "Enter a whole number from 1 to 999999, or leave blank.": "1〜999999 の整数を入力するか、空欄にしてください。",
+    "You can prioritize up to 256 models.": "優先順位を設定できるモデルは最大 256 個です。",
+    "Sort numbers are saved as model order and shown as consecutive numbers after saving.": "番号はモデルの順序として保存され、保存後は連番で表示されます。",
+    "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.": "並び順の番号を直接入力してください。小さい番号を優先し、空欄のモデルはカタログ順で後ろに並びます。同じ番号の場合もカタログ順です。"
   }
 }

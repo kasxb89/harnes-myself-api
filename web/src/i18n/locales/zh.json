@@ -7558,6 +7558,13 @@
     "Only recorded registration gifts are counted": "仅统计已有流水的注册赠送",
     "Outside the selected balance source": "不在当前额度来源筛选内",
     "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "已有用户的历史赠送尚无原始流水，本页不据余额或当前设置反推。",
-    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "注册赠送的历史记录覆盖情况尚未确认，缺少流水不代表从未赠送。"
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "注册赠送的历史记录覆盖情况尚未确认，缺少流水不代表从未赠送。",
+    "Sort number": "排序数字",
+    "Sort number for {{model}}": "{{model}} 的排序数字",
+    "Unranked": "未排序",
+    "Enter a whole number from 1 to 999999, or leave blank.": "请输入 1 至 999999 的整数，或留空。",
+    "You can prioritize up to 256 models.": "最多可为 256 个模型设置排序数字。",
+    "Sort numbers are saved as model order and shown as consecutive numbers after saving.": "排序数字仅用于生成模型顺序，保存后会显示为连续编号。",
+    "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.": "直接填写排序数字，数字小的在前，留空的按目录顺序排在后面；数字相同时按目录顺序排列。"
   }
 }

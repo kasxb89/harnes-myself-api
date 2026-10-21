@@ -7558,6 +7558,13 @@
     "Only recorded registration gifts are counted": "Seuls les cadeaux à l’inscription enregistrés sont comptés",
     "Outside the selected balance source": "Hors de la source de crédit sélectionnée",
     "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Les anciens cadeaux des utilisateurs existants n’ont pas de pièces d’origine. Cette page ne les déduit ni des soldes ni des paramètres actuels.",
-    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "La couverture de l’historique des cadeaux n’est pas vérifiée. L’absence d’entrées ne signifie pas qu’aucun cadeau n’a été offert."
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "La couverture de l’historique des cadeaux n’est pas vérifiée. L’absence d’entrées ne signifie pas qu’aucun cadeau n’a été offert.",
+    "Sort number": "Numéro de tri",
+    "Sort number for {{model}}": "Numéro de tri pour {{model}}",
+    "Unranked": "Sans priorité",
+    "Enter a whole number from 1 to 999999, or leave blank.": "Saisissez un entier de 1 à 999999, ou laissez vide.",
+    "You can prioritize up to 256 models.": "Vous pouvez donner la priorité à 256 modèles maximum.",
+    "Sort numbers are saved as model order and shown as consecutive numbers after saving.": "Les numéros définissent l’ordre des modèles et deviennent consécutifs après l’enregistrement.",
+    "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.": "Saisissez les numéros de tri. Les plus petits passent en premier ; les champs vides suivent dans l’ordre du catalogue. Les égalités suivent aussi cet ordre."
   }
 }

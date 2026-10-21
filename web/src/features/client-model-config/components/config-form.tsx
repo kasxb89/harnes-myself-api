@@ -42,7 +42,12 @@ import { SettingsPageFormActions } from '@/features/system-settings/components/s
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { saveClientModelConfig } from '../api'
-import { clientModelConfigSchema } from '../lib/schema'
+import {
+  buildClientModelOrder,
+  clientModelConfigFormSchema,
+  clientModelConfigToForm,
+  type ClientModelConfigFormValues,
+} from '../lib/schema'
 import type { ClientModelConfig, ClientModelOption } from '../types'
 import { ModelOrderEditor } from './model-order-editor'
 
@@ -54,14 +59,14 @@ type ConfigFormProps = {
 export function ClientModelConfigForm(props: ConfigFormProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const form = useForm<ClientModelConfig>({
-    resolver: zodResolver(clientModelConfigSchema),
-    defaultValues: props.config,
+  const form = useForm<ClientModelConfigFormValues>({
+    resolver: zodResolver(clientModelConfigFormSchema),
+    defaultValues: clientModelConfigToForm(props.config),
   })
   const save = useMutation({
     mutationFn: saveClientModelConfig,
     onSuccess: (config) => {
-      form.reset(config)
+      form.reset(clientModelConfigToForm(config))
       queryClient.setQueryData(['client-model-config'], config)
       void queryClient.invalidateQueries({ queryKey: ['status'] })
       toast.success(t('Client model configuration saved'))
@@ -71,10 +76,15 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
   const isDirty = form.formState.isDirty
   const reset = form.reset
   useEffect(() => {
-    if (!isDirty && !save.isPending) reset(props.config)
+    if (!isDirty && !save.isPending) {
+      reset(clientModelConfigToForm(props.config))
+    }
   }, [props.config, isDirty, reset, save.isPending])
   const defaultModel = form.watch('default_chat_model')
-  const order = form.watch('model_order')
+  const ranks = form.watch('model_ranks')
+  const order = buildClientModelOrder(ranks, props.models)
+  const invalidRanks = !clientModelConfigFormSchema.safeParse(form.watch())
+    .success
   const unavailable = order.filter(
     (id) => !props.models.some((model) => model.id === id)
   )
@@ -94,7 +104,9 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
           model.display_name !== model.id ? model.display_name : undefined,
       })),
   ]
-  const onSubmit = async (config: ClientModelConfig): Promise<void> => {
+  const onSubmit = async (
+    values: ClientModelConfigFormValues
+  ): Promise<void> => {
     if (invalidDefault) {
       form.setError('default_chat_model', {
         message: t('Default client model must support chat'),
@@ -102,13 +114,17 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
       return
     }
     if (unavailable.length > 0) {
-      form.setError('model_order', {
+      form.setError('model_ranks', {
         message: t('Client model configuration contains an unavailable model'),
       })
       return
     }
     try {
-      await save.mutateAsync(config)
+      await save.mutateAsync({
+        schema_version: 1,
+        default_chat_model: values.default_chat_model,
+        model_order: buildClientModelOrder(values.model_ranks, props.models),
+      })
     } catch {
       // Keep the draft; the mutation displays the server error.
     }
@@ -130,7 +146,10 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
           saveLabel='Save client model configuration'
           isSaving={save.isPending}
           isSaveDisabled={
-            !form.formState.isDirty || invalidDefault || unavailable.length > 0
+            !form.formState.isDirty ||
+            invalidDefault ||
+            unavailable.length > 0 ||
+            invalidRanks
           }
           isResetDisabled={!form.formState.isDirty}
         />
@@ -191,12 +210,12 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
         <SettingsCard
           title={t('Client model order')}
           description={t(
-            'Drag or use the arrow buttons to prioritize models. Unlisted models are appended in their original order.'
+            'Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.'
           )}
         >
           <FormField
             control={form.control}
-            name='model_order'
+            name='model_ranks'
             render={({ field }) => (
               <FormItem>
                 <FormLabel className='sr-only'>

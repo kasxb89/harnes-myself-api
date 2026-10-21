@@ -7558,6 +7558,13 @@
     "Only recorded registration gifts are counted": "Only recorded registration gifts are counted",
     "Outside the selected balance source": "Outside the selected balance source",
     "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.",
-    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued."
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.",
+    "Sort number": "Sort number",
+    "Sort number for {{model}}": "Sort number for {{model}}",
+    "Unranked": "Unranked",
+    "Enter a whole number from 1 to 999999, or leave blank.": "Enter a whole number from 1 to 999999, or leave blank.",
+    "You can prioritize up to 256 models.": "You can prioritize up to 256 models.",
+    "Sort numbers are saved as model order and shown as consecutive numbers after saving.": "Sort numbers are saved as model order and shown as consecutive numbers after saving.",
+    "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.": "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order."
   }
 }

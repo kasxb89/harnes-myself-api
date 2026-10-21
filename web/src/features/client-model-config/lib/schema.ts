@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type { ClientModelConfig, ClientModelOption } from '../types'
+
 export const MAX_CLIENT_MODEL_ORDER = 256
 
 const modelIdSchema = z
@@ -42,3 +44,57 @@ export const clientModelConfigSchema = z
       message: 'Invalid client model configuration',
     }
   )
+
+export const clientModelRankSchema = z
+  .string()
+  .refine(
+    (value) =>
+      value === '' ||
+      (/^[0-9]{1,6}$/.test(value) &&
+        Number(value) >= 1 &&
+        Number(value) <= 999999),
+    { message: 'Enter a whole number from 1 to 999999, or leave blank.' }
+  )
+
+export const clientModelConfigFormSchema = z.object({
+  default_chat_model: modelIdSchema,
+  model_ranks: z
+    .array(z.object({ id: modelIdSchema, rank: clientModelRankSchema }))
+    .refine(
+      (ranks) =>
+        ranks.filter((entry) => entry.rank !== '').length <=
+        MAX_CLIENT_MODEL_ORDER,
+      { message: 'You can prioritize up to 256 models.' }
+    ),
+})
+
+export type ClientModelConfigFormValues = z.infer<
+  typeof clientModelConfigFormSchema
+>
+
+export function clientModelConfigToForm(
+  config: ClientModelConfig
+): ClientModelConfigFormValues {
+  return {
+    default_chat_model: config.default_chat_model,
+    model_ranks: config.model_order.map((id, index) => ({
+      id,
+      rank: String(index + 1),
+    })),
+  }
+}
+
+export function buildClientModelOrder(
+  ranks: ClientModelConfigFormValues['model_ranks'],
+  models: ClientModelOption[]
+): string[] {
+  const byId = new Map(ranks.map((entry) => [entry.id, entry.rank]))
+  const catalogIds = models.map((model) => model.id)
+  const catalogSet = new Set(catalogIds)
+  return [
+    ...catalogIds,
+    ...ranks.map((entry) => entry.id).filter((id) => !catalogSet.has(id)),
+  ]
+    .filter((id) => byId.has(id) && byId.get(id) !== '')
+    .sort((left, right) => Number(byId.get(left)) - Number(byId.get(right)))
+}

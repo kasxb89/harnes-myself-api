@@ -7558,6 +7558,13 @@
     "Only recorded registration gifts are counted": "Учитываются только записанные подарки при регистрации",
     "Outside the selected balance source": "Не входит в выбранный источник средств",
     "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Для исторических подарков существующих пользователей нет исходных записей. Эта страница не вычисляет их из балансов или текущих настроек.",
-    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Полнота истории подарков при регистрации не подтверждена. Отсутствие записей не означает, что подарки не выдавались."
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Полнота истории подарков при регистрации не подтверждена. Отсутствие записей не означает, что подарки не выдавались.",
+    "Sort number": "Номер сортировки",
+    "Sort number for {{model}}": "Номер сортировки для {{model}}",
+    "Unranked": "Без приоритета",
+    "Enter a whole number from 1 to 999999, or leave blank.": "Введите целое число от 1 до 999999 или оставьте поле пустым.",
+    "You can prioritize up to 256 models.": "Можно задать приоритет максимум для 256 моделей.",
+    "Sort numbers are saved as model order and shown as consecutive numbers after saving.": "Числа определяют порядок моделей и после сохранения заменяются последовательной нумерацией.",
+    "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.": "Введите номера сортировки. Меньшие числа идут первыми, пустые поля — в конце в порядке каталога. При равных числах используется порядок каталога."
   }
 }

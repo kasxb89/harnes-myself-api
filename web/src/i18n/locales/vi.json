@@ -7558,6 +7558,13 @@
     "Only recorded registration gifts are counted": "Chỉ tính quà đăng ký đã có bản ghi",
     "Outside the selected balance source": "Không thuộc nguồn hạn mức đang chọn",
     "Historical registration gifts for existing users lack original ledger records. This page does not infer them from balances or current settings.": "Quà tặng trước đây của người dùng hiện có chưa có bản ghi gốc. Trang này không suy ngược từ số dư hoặc cài đặt hiện tại.",
-    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Chưa xác minh mức độ đầy đủ của lịch sử quà đăng ký. Thiếu bản ghi không có nghĩa là chưa từng tặng quà."
+    "Registration gift history coverage is unverified. Missing records do not establish that no gifts were issued.": "Chưa xác minh mức độ đầy đủ của lịch sử quà đăng ký. Thiếu bản ghi không có nghĩa là chưa từng tặng quà.",
+    "Sort number": "Số thứ tự",
+    "Sort number for {{model}}": "Số thứ tự cho {{model}}",
+    "Unranked": "Chưa ưu tiên",
+    "Enter a whole number from 1 to 999999, or leave blank.": "Nhập số nguyên từ 1 đến 999999 hoặc để trống.",
+    "You can prioritize up to 256 models.": "Bạn có thể ưu tiên tối đa 256 mô hình.",
+    "Sort numbers are saved as model order and shown as consecutive numbers after saving.": "Các số xác định thứ tự mô hình và được hiển thị thành số liên tiếp sau khi lưu.",
+    "Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.": "Nhập trực tiếp số thứ tự. Số nhỏ xếp trước; ô trống xếp sau theo thứ tự danh mục. Các số bằng nhau cũng theo thứ tự danh mục."
   }
 }
