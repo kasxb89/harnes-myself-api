@@ -167,6 +167,11 @@ func SendPhoneLoginCode(c *gin.Context) {
 	data := phoneChallengeData(challenge)
 	switch challenge.DeliveryStatus {
 	case "accepted":
+		if legacy {
+			// Released v1 clients treat any challenge_id as a phone number.
+			// Keep their original response while the durable ID stays internal.
+			data = gin.H{"resend_after_seconds": data["resend_after_seconds"], "expires_in_minutes": common.VerificationValidMinutes}
+		}
 		if common.PhoneSmsBypassAllows(phone) {
 			data["dev_code"] = common.PhoneSmsDevCode
 		}

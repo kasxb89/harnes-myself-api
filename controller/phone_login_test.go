@@ -123,6 +123,93 @@ func phoneTestChallenge(t *testing.T, phone string) (string, string) {
 	return sent.Data.ChallengeID, code
 }
 
+func TestPhoneChallengeResponseKeepsLegacyClientLoginCompatible(t *testing.T) {
+	for _, version := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("version_%d", version), func(t *testing.T) {
+			db, _ := setupPhoneAuthRecovery(t)
+			phone := "+8613800138080"
+			calls := 0
+			var code string
+			phoneCodeSender = func(destination, value string) error {
+				require.Equal(t, phone, destination)
+				calls++
+				code = value
+				return nil
+			}
+			request := map[string]any{"phone_e164": phone}
+			if version > 0 {
+				request["contract_version"] = version
+			}
+			if version == 2 {
+				request["idempotency_key"] = uuid.NewString()
+			}
+			sentResponse, sent := phoneAuthRequest(t, SendPhoneLoginCode, request)
+			require.Equal(t, http.StatusOK, sentResponse.Code)
+			require.True(t, sent.Success)
+			require.Equal(t, 1, calls)
+			require.NotEmpty(t, code)
+			login := map[string]any{"code": code}
+			if version > 0 {
+				login["contract_version"] = version
+			}
+			if version == 2 {
+				require.Len(t, sent.Data.ChallengeID, 64)
+				require.NotEqual(t, phone, sent.Data.ChallengeID)
+				require.Equal(t, "accepted", sent.Data.DeliveryStatus)
+				require.Greater(t, sent.Data.ExpiresAt, time.Now().Unix())
+				login["phone_e164"], login["challenge_id"], login["idempotency_key"] = phone, sent.Data.ChallengeID, uuid.NewString()
+				_, recovered := phoneAuthRequest(t, SendPhoneLoginCode, request)
+				require.Equal(t, sent.Data.ChallengeID, recovered.Data.ChallengeID)
+				require.Equal(t, 1, calls, "v2 dispatch recovery must not send again")
+			} else {
+				// Released Host 873 uses any returned challenge_id as the phone
+				// argument. Only an absent ID activates its original phone fallback.
+				challengePhone := sent.Data.ChallengeID
+				if challengePhone == "" {
+					challengePhone = phone
+				}
+				require.Regexp(t, phoneE164Pattern, challengePhone, "released Host must be able to submit the code")
+				login["phone_e164"] = challengePhone
+				var envelope struct {
+					Data map[string]any `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(sentResponse.Body.Bytes(), &envelope))
+				assert.Len(t, envelope.Data, 2, "legacy success preserves the pre-v2 response shape")
+				assert.Contains(t, envelope.Data, "resend_after_seconds")
+				assert.Contains(t, envelope.Data, "expires_in_minutes")
+			}
+			first, result := phoneAuthRequest(t, PhoneLogin, login)
+			require.True(t, result.Success)
+			assert.NotEmpty(t, result.Data.AccessToken)
+			assert.NotEmpty(t, result.Data.RelayKey)
+			assert.NotEmpty(t, result.Data.Session.SID)
+			assert.Equal(t, "phone", result.Data.Session.LoginMethod)
+			refreshPresent := false
+			for _, cookie := range first.Result().Cookies() {
+				refreshPresent = refreshPresent || cookie.Name == service.RefreshCookieName && cookie.Value != ""
+			}
+			assert.True(t, refreshPresent, "successful login must include its refresh credential")
+			second, replay := phoneAuthRequest(t, PhoneLogin, login)
+			if version == 2 {
+				assert.True(t, replay.Success)
+				assert.Equal(t, result.Data.AccessToken, replay.Data.AccessToken)
+				assert.Equal(t, result.Data.Session.SID, replay.Data.Session.SID)
+			} else {
+				assert.Equal(t, "PHONE_CHALLENGE_CONSUMED", replay.Code)
+				assert.Empty(t, replay.Data.AccessToken)
+				assert.Empty(t, replay.Data.RelayKey)
+				assert.Empty(t, second.Header().Values("Set-Cookie"))
+			}
+			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}} {
+				var count int64
+				require.NoError(t, db.Model(record).Count(&count).Error)
+				assert.EqualValues(t, 1, count)
+			}
+			assert.Equal(t, 1, calls)
+		})
+	}
+}
+
 func TestPhoneChallengeDeliveryAndRecovery(t *testing.T) {
 	for _, outcome := range []string{"not_sent", "unknown", "pending"} {
 		t.Run(outcome, func(t *testing.T) {
@@ -289,7 +376,11 @@ func TestPhoneLegacyClientsUseDurableChallengesWithoutReceiptReplay(t *testing.T
 				return nil
 			}
 			_, sent := phoneAuthRequest(t, SendPhoneLoginCode, map[string]string{"phone_e164": phone})
-			require.NotEmpty(t, sent.Data.ChallengeID)
+			if sent.Success {
+				require.Empty(t, sent.Data.ChallengeID, "legacy success must keep the original phone fallback")
+			} else {
+				require.NotEmpty(t, sent.Data.ChallengeID)
+			}
 			if outcome == "not_sent" {
 				for range 5 {
 					_, failed := phoneAuthRequest(t, SendPhoneLoginCode, map[string]string{"phone_e164": phone})
@@ -330,11 +421,36 @@ func TestPhoneLegacyClientsUseDurableChallengesWithoutReceiptReplay(t *testing.T
 			var sessions int64
 			require.NoError(t, db.Model(&model.UserSession{}).Count(&sessions).Error)
 			assert.EqualValues(t, 1, sessions)
-			_, partial := phoneAuthRequest(t, PhoneLogin, map[string]any{"phone_e164": phone, "code": code, "challenge_id": sent.Data.ChallengeID})
+			_, partial := phoneAuthRequest(t, PhoneLogin, map[string]any{"phone_e164": phone, "code": code, "challenge_id": strings.Repeat("a", 64)})
 			assert.Equal(t, "PHONE_INVALID_PARAMETERS", partial.Code)
 			_, partial = phoneAuthRequest(t, SendPhoneLoginCode, map[string]any{"phone_e164": phone, "contract_version": 2})
 			assert.Equal(t, "PHONE_INVALID_PARAMETERS", partial.Code)
 		})
+	}
+}
+
+func TestPhoneLegacyClientCannotBypassMFA(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	phone := "+8613800138081"
+	user, _, err := findOrCreatePhoneUser(phone)
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
+	var code string
+	phoneCodeSender = func(_ string, value string) error { code = value; return nil }
+	_, sent := phoneAuthRequest(t, SendPhoneLoginCode, map[string]string{"phone_e164": phone})
+	require.True(t, sent.Success)
+	require.Empty(t, sent.Data.ChallengeID)
+	response, pending := phoneAuthRequest(t, PhoneLogin, map[string]string{"phone_e164": phone, "code": code})
+	require.Equal(t, "PHONE_LOGIN_VERIFICATION_REQUIRED", pending.Code)
+	assert.True(t, pending.Data.RequireVerification)
+	assert.NotEmpty(t, pending.Data.FlowToken)
+	assert.Empty(t, pending.Data.AccessToken)
+	assert.Empty(t, pending.Data.RelayKey)
+	assert.Empty(t, response.Header().Values("Set-Cookie"))
+	for _, record := range []any{&model.Token{}, &model.UserSession{}} {
+		var count int64
+		require.NoError(t, db.Model(record).Count(&count).Error)
+		assert.Zero(t, count)
 	}
 }
 
