@@ -45,6 +45,45 @@ type ClientModelCandidate struct {
 	ChatEligible bool   `json:"chat_eligible"`
 }
 
+// modelDisplayName changes presentation only; routing and stored identities
+// continue to use the exact model ID.
+func modelDisplayName(id string) string {
+	switch id {
+	case "lec-mj-seedance-2-5-cd-720p":
+		return "Seedance 2.5 · 720p · 30秒（线路1）"
+	case "sd-25-900-2":
+		return "Seedance 2.5 · 720p · 30秒（线路2）"
+	case "k2-sd2.5-720p":
+		return "Seedance 2.5 满参版 · 720p · 30秒"
+	case "lec-sz-sd2-full-480p":
+		return "Seedance 2.5 · 480p · 30秒"
+	case "video-sd25-480p":
+		return "Seedance 2.5 · 480p · 15–30秒"
+	case "model_5":
+		return "Seedance 2.5 完整版 · 480p · 15–30秒"
+	case "sd2.5-720p-x2":
+		return "Seedance 2.5 完整版 · 720p · 15–30秒"
+	case "sd2-th-2.0-720p":
+		return "Seedance 2.0 Fast · 720p · 15秒（线路1）"
+	case "bt-seedance-2.0":
+		return "Seedance 2.0 · 720p · 10/15秒"
+	case "lec-rs-seedance-2-0-fast":
+		return "Seedance 2.0 Fast · 720p · 15秒（线路2）"
+	case "sd20-933-720p":
+		return "Seedance 2.0 Fast · 720p · 15秒（线路3）"
+	case "sd2-hn2-480-pro":
+		return "Seedance 2.0 完整版 · 480p · 15秒"
+	case "v3-sd2.0-933-720p":
+		return "Seedance 2.0 完整版 · 720p · 15秒（线路1）"
+	case "sd-20-9/3/3-1":
+		return "Seedance 2.0 完整版 · 720p · 15秒（线路2）"
+	case "sd-20-903":
+		return "Seedance 2.0 Fast · 480p · 15秒"
+	default:
+		return id
+	}
+}
+
 // Each field receives every occurrence during JSON decoding, allowing a
 // duplicate key to be rejected without bypassing the common JSON codec.
 type clientModelConfigField struct {
@@ -202,7 +241,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 		}
 		candidate := byID[ability.Model]
 		candidate.ID = ability.Model
-		candidate.DisplayName = ability.Model
+		candidate.DisplayName = modelDisplayName(ability.Model)
 		candidate.ChatEligible = candidate.ChatEligible || clientModelSupportsChat(channel, ability.Model, metadataByModel[ability.Model], taskModels)
 		byID[ability.Model] = candidate
 	}
