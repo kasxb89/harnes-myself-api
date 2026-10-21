@@ -7641,6 +7641,10 @@
     "Month to date": "本月",
     "Cost valid until (Shanghai time, exclusive, optional)": "成本有效期截止（北京時間，不含該時刻，可留空）",
     "End time must follow the effective time": "截止時間必須晚於生效時間",
-    "Use the profit cost rules API to preserve price history": "請使用利潤成本設定介面，以保留價格歷史"
+    "Use the profit cost rules API to preserve price history": "請使用利潤成本設定介面，以保留價格歷史",
+    "Per image resolution": "按圖片解析度",
+    "1K image cost (CNY per image)": "1K 圖片成本（元/張）",
+    "2K image cost (CNY per image)": "2K 圖片成本（元/張）",
+    "4K image cost (CNY per image)": "4K 圖片成本（元/張）"
   }
 }

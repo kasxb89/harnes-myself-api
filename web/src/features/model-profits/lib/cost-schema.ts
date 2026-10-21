@@ -27,8 +27,11 @@ export const costRuleSchema = z
     model_name: z.string().trim().min(1, 'Enter an exact model name').max(200),
     effective_from: z.string().min(1, 'Enter an effective time'),
     effective_until: z.string().optional(),
-    kind: z.enum(['request', 'second', 'image', 'token']),
+    kind: z.enum(['request', 'second', 'image', 'image_resolution', 'token']),
     unit_cost_cny: z.string(),
+    resolution_1k_cost_cny: z.string(),
+    resolution_2k_cost_cny: z.string(),
+    resolution_4k_cost_cny: z.string(),
     input_cost_per_million_cny: z.string(),
     cache_cost_per_million_cny: z.string(),
     output_cost_per_million_cny: z.string(),
@@ -75,17 +78,36 @@ export const costRuleSchema = z
         })
       }
     }
-    const rateFields =
-      value.kind === 'token'
-        ? ([
-            'input_cost_per_million_cny',
-            'cache_cost_per_million_cny',
-            'output_cost_per_million_cny',
-          ] as const)
-        : (['unit_cost_cny'] as const)
+    let rateFields: Array<
+      | 'unit_cost_cny'
+      | 'resolution_1k_cost_cny'
+      | 'resolution_2k_cost_cny'
+      | 'resolution_4k_cost_cny'
+      | 'input_cost_per_million_cny'
+      | 'cache_cost_per_million_cny'
+      | 'output_cost_per_million_cny'
+    > = ['unit_cost_cny']
+    if (value.kind === 'token') {
+      rateFields = [
+        'input_cost_per_million_cny',
+        'cache_cost_per_million_cny',
+        'output_cost_per_million_cny',
+      ]
+    } else if (value.kind === 'image_resolution') {
+      rateFields = [
+        'resolution_1k_cost_cny',
+        'resolution_2k_cost_cny',
+        'resolution_4k_cost_cny',
+      ]
+    }
     for (const name of rateFields) {
       const rate = Number(value[name])
-      if (value[name].trim() === '' || !Number.isFinite(rate) || rate < 0) {
+      if (
+        value[name].trim() === '' ||
+        !Number.isFinite(rate) ||
+        rate < 0 ||
+        rate > 1000000
+      ) {
         context.addIssue({
           code: 'custom',
           path: [name],
@@ -127,6 +149,12 @@ export function toCostRule(value: CostRuleFormValues): CostRule {
     rule.output_cost_per_million_cny = Number(value.output_cost_per_million_cny)
     if (value.deepseek_peak_multiplier.trim() !== '') {
       rule.deepseek_peak_multiplier = 2
+    }
+  } else if (value.kind === 'image_resolution') {
+    rule.resolution_costs_cny = {
+      '1k': Number(value.resolution_1k_cost_cny),
+      '2k': Number(value.resolution_2k_cost_cny),
+      '4k': Number(value.resolution_4k_cost_cny),
     }
   } else rule.unit_cost_cny = Number(value.unit_cost_cny)
   return rule

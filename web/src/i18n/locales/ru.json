@@ -7641,6 +7641,10 @@
     "Month to date": "С начала месяца",
     "Cost valid until (Shanghai time, exclusive, optional)": "Срок цены до (Шанхай, исключительно, необязательно)",
     "End time must follow the effective time": "Конец должен быть позже начала действия",
-    "Use the profit cost rules API to preserve price history": "Используйте API правил себестоимости для сохранения истории цен"
+    "Use the profit cost rules API to preserve price history": "Используйте API правил себестоимости для сохранения истории цен",
+    "Per image resolution": "По разрешению изображения",
+    "1K image cost (CNY per image)": "Стоимость изображения 1K (CNY за изображение)",
+    "2K image cost (CNY per image)": "Стоимость изображения 2K (CNY за изображение)",
+    "4K image cost (CNY per image)": "Стоимость изображения 4K (CNY за изображение)"
   }
 }

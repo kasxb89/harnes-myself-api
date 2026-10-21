@@ -7641,6 +7641,10 @@
     "Month to date": "今月",
     "Cost valid until (Shanghai time, exclusive, optional)": "原価の有効期限（上海時間、当該時刻を含まない、任意）",
     "End time must follow the effective time": "終了時刻は適用開始時刻より後にしてください",
-    "Use the profit cost rules API to preserve price history": "価格履歴を保持するため原価ルール専用 API を使用してください"
+    "Use the profit cost rules API to preserve price history": "価格履歴を保持するため原価ルール専用 API を使用してください",
+    "Per image resolution": "画像解像度別",
+    "1K image cost (CNY per image)": "1K画像原価（人民元/枚）",
+    "2K image cost (CNY per image)": "2K画像原価（人民元/枚）",
+    "4K image cost (CNY per image)": "4K画像原価（人民元/枚）"
   }
 }

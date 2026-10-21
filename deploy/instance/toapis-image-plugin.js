@@ -3,7 +3,7 @@ export const meta = {
   key: 'toapis-image',
   name: 'ToAPIs GPT-Image-2',
   icon: 'text:TI',
-  version: '1.1.1',
+  version: '1.2.0',
   author: { name: 'Yunshu' },
   description: { en: 'Async GPT-Image-2 generation', zh: 'GPT-Image-2 异步生图' },
   baseUrl: 'https://toapis.cn',
@@ -11,7 +11,14 @@ export const meta = {
   fetchMode: 'per_task',
   usageSchema: {
     image_count: { type: 'number', unit: 'count', description: { en: 'Image generation unit price', zh: '图片生成单价' } },
+    resolution: { enum: ['1k', '2k', '4k'], description: { en: 'Output image resolution', zh: '输出图片分辨率' },
+      enumLabels: { '1k': { en: '1K', zh: '1K' }, '2k': { en: '2K', zh: '2K' }, '4k': { en: '4K', zh: '4K' } } },
   },
+  usageExamples: [
+    { label: '1K', facts: { image_count: 1, resolution: '1k' } },
+    { label: '2K', facts: { image_count: 1, resolution: '2k' } },
+    { label: '4K', facts: { image_count: 1, resolution: '4k' } },
+  ],
   routes: [
     { method: 'POST', path: '/toapis/v1/images/generations', type: 'submit', models: ['yunshu-internal-gpt-image-2'], decode: 'decodeSubmit', render: 'renderSubmit' },
     { method: 'GET', path: '/toapis/v1/images/generations/:task_id', type: 'query', render: 'renderTask' },
@@ -20,6 +27,14 @@ export const meta = {
 
 function record(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function imageResolution(value) {
+  if (value === undefined) return '1k';
+  if (typeof value !== 'string' || !/^(1k|2k|4k)$/i.test(value)) {
+    throw new Error('resolution must be 1k, 2k or 4k');
+  }
+  return value.toLowerCase();
 }
 
 function images(body) {
@@ -33,7 +48,8 @@ function imageCount(body) {
 }
 
 export function buildSubmitRequest(ctx) {
-  const body = { model: 'gpt-image-2', prompt: ctx.requestBody.prompt, n: 1 };
+  const body = { model: 'gpt-image-2', prompt: ctx.requestBody.prompt, n: 1,
+    resolution: imageResolution(ctx.requestBody.resolution) };
   if (ctx.requestBody.reference_images !== undefined) body.reference_images = ctx.requestBody.reference_images;
   return {
     url: ctx.baseUrl + '/v1/images/generations',
@@ -49,7 +65,10 @@ export function parseSubmitResponse(ctx, response) {
   if (!record(body) || typeof body.id !== 'string' || !body.id || body.object !== 'generation.task') {
     throw new Error('ToAPIs did not return an image task');
   }
-  const result = { taskId: body.id, taskData: body };
+  // Persist the validated upstream tariff selector before any polling. The
+  // query context has no requestBody, and result pixels are not tariff facts.
+  const result = { taskId: body.id, taskData: body,
+    state: { resolution: imageResolution(ctx.requestBody.resolution) } };
   const outputImages = images(body);
   if (body.status === 'completed' && outputImages.length > 0) {
     result.immediate = { status: 'SUCCESS', progress: '100%', remoteUrl: outputImages[0].url };
@@ -60,11 +79,18 @@ export function parseSubmitResponse(ctx, response) {
 }
 
 export function extractUsage(ctx) {
-  return { image_count: Number((ctx.requestBody || {}).n) || 1 };
+  return { image_count: Number((ctx.requestBody || {}).n) || 1,
+    resolution: imageResolution((ctx.requestBody || {}).resolution) };
 }
 
 export function extractUsageOnComplete(ctx, result, body) {
-  return { image_count: imageCount(body) };
+  const facts = { image_count: imageCount(body) };
+  // Older tasks did not persist resolution. Keep their historical usage
+  // unchanged instead of inventing a verified tariff fact for them.
+  if (record(ctx.state) && ctx.state.resolution !== undefined) {
+    facts.resolution = imageResolution(ctx.state.resolution);
+  }
+  return facts;
 }
 
 export function buildQueryRequest(ctx) {
@@ -123,7 +149,8 @@ export const native = {
       body.reference_images.some(function (url) { return typeof url !== 'string' || !url.startsWith('https://'); }))) {
       throw new Error('reference_images must contain up to six HTTPS URLs');
     }
-    const requestBody = { model: 'yunshu-internal-gpt-image-2', prompt: body.prompt, n: 1 };
+    const requestBody = { model: 'yunshu-internal-gpt-image-2', prompt: body.prompt, n: 1,
+      resolution: imageResolution(body.resolution) };
     if (body.reference_images !== undefined) requestBody.reference_images = body.reference_images;
     return { kind: 'submit', model: 'yunshu-internal-gpt-image-2', action: 'generate', requestBody };
   },

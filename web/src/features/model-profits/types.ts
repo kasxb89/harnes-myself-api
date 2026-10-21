@@ -58,8 +58,9 @@ export interface CostRule {
   model_name: string
   effective_from: number
   effective_until?: number
-  kind: 'request' | 'second' | 'image' | 'token'
+  kind: 'request' | 'second' | 'image' | 'image_resolution' | 'token'
   unit_cost_cny?: number
+  resolution_costs_cny?: Record<'1k' | '2k' | '4k', number>
   input_cost_per_million_cny?: number
   cache_cost_per_million_cny?: number
   output_cost_per_million_cny?: number

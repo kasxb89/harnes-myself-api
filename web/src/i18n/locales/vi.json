@@ -7641,6 +7641,10 @@
     "Month to date": "Từ đầu tháng",
     "Cost valid until (Shanghai time, exclusive, optional)": "Hiệu lực đến (giờ Thượng Hải, không gồm mốc này, tùy chọn)",
     "End time must follow the effective time": "Thời điểm kết thúc phải sau thời điểm có hiệu lực",
-    "Use the profit cost rules API to preserve price history": "Dùng API quy tắc chi phí để giữ lịch sử giá"
+    "Use the profit cost rules API to preserve price history": "Dùng API quy tắc chi phí để giữ lịch sử giá",
+    "Per image resolution": "Theo độ phân giải ảnh",
+    "1K image cost (CNY per image)": "Giá vốn ảnh 1K (CNY/ảnh)",
+    "2K image cost (CNY per image)": "Giá vốn ảnh 2K (CNY/ảnh)",
+    "4K image cost (CNY per image)": "Giá vốn ảnh 4K (CNY/ảnh)"
   }
 }

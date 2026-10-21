@@ -60,6 +60,9 @@ export function CostRuleForm(props: {
       effective_until: '',
       kind: 'request',
       unit_cost_cny: '',
+      resolution_1k_cost_cny: '',
+      resolution_2k_cost_cny: '',
+      resolution_4k_cost_cny: '',
       input_cost_per_million_cny: '',
       cache_cost_per_million_cny: '',
       output_cost_per_million_cny: '',
@@ -106,6 +109,24 @@ export function CostRuleForm(props: {
         type: 'number',
       }
     )
+  } else if (kind === 'image_resolution') {
+    fields.push(
+      {
+        name: 'resolution_1k_cost_cny',
+        label: t('1K image cost (CNY per image)'),
+        type: 'number',
+      },
+      {
+        name: 'resolution_2k_cost_cny',
+        label: t('2K image cost (CNY per image)'),
+        type: 'number',
+      },
+      {
+        name: 'resolution_4k_cost_cny',
+        label: t('4K image cost (CNY per image)'),
+        type: 'number',
+      }
+    )
   } else {
     fields.push({
       name: 'unit_cost_cny',
@@ -141,6 +162,10 @@ export function CostRuleForm(props: {
                     { value: 'request', label: t('Per request') },
                     { value: 'second', label: t('Per second') },
                     { value: 'image', label: t('Per image') },
+                    {
+                      value: 'image_resolution',
+                      label: t('Per image resolution'),
+                    },
                     { value: 'token', label: t('Per million tokens') },
                   ]}
                 />

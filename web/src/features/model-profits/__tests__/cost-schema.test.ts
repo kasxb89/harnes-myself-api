@@ -30,6 +30,9 @@ const base: CostRuleFormValues = {
   effective_from: '2026-10-21T12:30',
   kind: 'second',
   unit_cost_cny: '0.1',
+  resolution_1k_cost_cny: '',
+  resolution_2k_cost_cny: '',
+  resolution_4k_cost_cny: '',
   input_cost_per_million_cny: '',
   cache_cost_per_million_cny: '',
   output_cost_per_million_cny: '',
@@ -39,6 +42,33 @@ const base: CostRuleFormValues = {
 }
 
 describe('supplier cost version input', () => {
+  it('requires each resolution price and keeps explicitly free image tiers', () => {
+    expect(
+      costRuleSchema.safeParse({ ...base, kind: 'image_resolution' }).success
+    ).toBe(false)
+    const value = costRuleSchema.parse({
+      ...base,
+      kind: 'image_resolution',
+      resolution_1k_cost_cny: '0',
+      resolution_2k_cost_cny: '0.15',
+      resolution_4k_cost_cny: '0.2',
+    })
+    const rule = toCostRule(value)
+    expect(rule.resolution_costs_cny).toEqual({
+      '1k': 0,
+      '2k': 0.15,
+      '4k': 0.2,
+    })
+    expect(rule).not.toHaveProperty('unit_cost_cny')
+    expect(
+      costRuleSchema.safeParse({ ...value, resolution_2k_cost_cny: '-1' })
+        .success
+    ).toBe(false)
+    expect(
+      costRuleSchema.safeParse({ ...value, resolution_4k_cost_cny: '1000001' })
+        .success
+    ).toBe(false)
+  })
   it('preserves an explicitly free unit price and omits inactive token prices', () => {
     const value = costRuleSchema.parse({ ...base, unit_cost_cny: '0' })
     expect(toCostRule(value)).toEqual({

@@ -7641,6 +7641,10 @@
     "Month to date": "Depuis le début du mois",
     "Cost valid until (Shanghai time, exclusive, optional)": "Valide jusqu’au (heure de Shanghai, exclusif, facultatif)",
     "End time must follow the effective time": "La fin doit être postérieure à la prise d’effet",
-    "Use the profit cost rules API to preserve price history": "Utilisez l’API des coûts pour conserver l’historique des prix"
+    "Use the profit cost rules API to preserve price history": "Utilisez l’API des coûts pour conserver l’historique des prix",
+    "Per image resolution": "Par résolution d’image",
+    "1K image cost (CNY per image)": "Coût image 1K (CNY par image)",
+    "2K image cost (CNY per image)": "Coût image 2K (CNY par image)",
+    "4K image cost (CNY per image)": "Coût image 4K (CNY par image)"
   }
 }

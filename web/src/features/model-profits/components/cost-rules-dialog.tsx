@@ -127,11 +127,16 @@ export function CostRulesDialog() {
                       ' '
                     )}
                   </div>
-                  <div>
-                    {rule.kind === 'token'
-                      ? `${t('Input')}: ${formatProfitCny(rule.input_cost_per_million_cny, locale)} · ${t('Cache Read')}: ${formatProfitCny(rule.cache_cost_per_million_cny, locale)} · ${t('Output')}: ${formatProfitCny(rule.output_cost_per_million_cny, locale)} / ${t('Per million tokens')}`
-                      : `${formatProfitCny(rule.unit_cost_cny, locale)} / ${t({ request: 'Per request', second: 'Per second', image: 'Per image' }[rule.kind])}`}
-                  </div>
+                  {rule.kind === 'token' && (
+                    <div>{`${t('Input')}: ${formatProfitCny(rule.input_cost_per_million_cny, locale)} · ${t('Cache Read')}: ${formatProfitCny(rule.cache_cost_per_million_cny, locale)} · ${t('Output')}: ${formatProfitCny(rule.output_cost_per_million_cny, locale)} / ${t('Per million tokens')}`}</div>
+                  )}
+                  {rule.kind === 'image_resolution' && (
+                    <div>{`1K: ${formatProfitCny(rule.resolution_costs_cny?.['1k'], locale)} · 2K: ${formatProfitCny(rule.resolution_costs_cny?.['2k'], locale)} · 4K: ${formatProfitCny(rule.resolution_costs_cny?.['4k'], locale)} / ${t('Per image')}`}</div>
+                  )}
+                  {rule.kind !== 'token' &&
+                    rule.kind !== 'image_resolution' && (
+                      <div>{`${formatProfitCny(rule.unit_cost_cny, locale)} / ${t({ request: 'Per request', second: 'Per second', image: 'Per image' }[rule.kind])}`}</div>
+                    )}
                   {rule.deepseek_peak_multiplier && (
                     <div>{t('DeepSeek peak multiplier (optional)')}: 2</div>
                   )}

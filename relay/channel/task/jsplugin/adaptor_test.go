@@ -2386,7 +2386,7 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("deployment plugin sha256: %x", sha256.Sum256(source))
 	registry := pluginruntime.NewRegistry()
-	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "toapis-image", Version: "1.1.1"})
+	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "toapis-image", Version: "1.2.0"})
 	require.NoError(t, err)
 	require.NoError(t, pluginruntime.ValidateV1Meta(plugin.Meta))
 	binding, exists := registry.Generation().LookupDeclaredRoute(http.MethodPost, "/toapis/v1/images/generations")
@@ -2432,11 +2432,17 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		name         string
 		request      map[string]any
 		directDriver bool
+		resolution   string
 	}{
-		{"legacy OpenAI extras", legacyExtras, false},
-		{"default count and no references", map[string]any{"model": modelName, "prompt": prompt}, false},
-		{"six HTTPS references", map[string]any{"model": modelName, "prompt": prompt, "n": 1, "reference_images": sixRefs}, false},
-		{"driver also strips legacy extras", legacyExtras, true},
+		{"legacy OpenAI extras", legacyExtras, false, "1k"},
+		{"default count and no references", map[string]any{"model": modelName, "prompt": prompt}, false, "1k"},
+		{"six HTTPS references", map[string]any{"model": modelName, "prompt": prompt, "n": 1, "reference_images": sixRefs}, false, "1k"},
+		{"driver also strips legacy extras", legacyExtras, true, "1k"},
+		{"explicit 1K", map[string]any{"model": modelName, "prompt": prompt, "resolution": "1K"}, false, "1k"},
+		{"2K with reference", map[string]any{"model": modelName, "prompt": prompt, "resolution": "2K", "reference_images": refs, "size": "1024x1024"}, false, "2k"},
+		{"4k", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4k"}, false, "4k"},
+		{"public native canonicalizes 4K", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4K"}, false, "4k"},
+		{"driver receives canonical 4k", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4k"}, true, "4k"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			callsBefore := providerCalls.Load()
@@ -2463,6 +2469,7 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 			facts, err := adaptor.ExtractUsageFactsValidated(context, info)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, facts["image_count"])
+			assert.Equal(t, testCase.resolution, facts["resolution"])
 			ratios, err := adaptor.EstimateBillingValidated(context, info)
 			require.NoError(t, err)
 			assert.Equal(t, map[string]float64{"image_count": 1}, ratios)
@@ -2476,9 +2483,10 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 			require.NotNil(t, submitted)
 			assert.Equal(t, providerTaskID, submitted.UpstreamTaskID)
 			assert.JSONEq(t, string(queuedJSON), string(submitted.TaskData))
+			assert.JSONEq(t, `{"resolution":"`+testCase.resolution+`"}`, string(submitted.PluginState), "persist the submitted tariff for polling without requestBody")
 			assert.Nil(t, submitted.Immediate)
 			assert.Equal(t, callsBefore+1, providerCalls.Load())
-			want := map[string]any{"model": "gpt-image-2", "prompt": prompt, "n": 1}
+			want := map[string]any{"model": "gpt-image-2", "prompt": prompt, "n": 1, "resolution": testCase.resolution}
 			if referenceImages, present := testCase.request["reference_images"]; present {
 				want["reference_images"] = referenceImages
 			}
@@ -2500,6 +2508,9 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		{"seven references", "reference_images", append(append([]any{}, sixRefs...), "https://files.toapis.cn/uploads/7.png")},
 		{"HTTP reference", "reference_images", []any{"http://files.toapis.cn/uploads/reference.png"}},
 		{"data URL reference", "reference_images", []any{"data:image/png;base64,AAAA"}},
+		{"unknown resolution", "resolution", "8k"}, {"pixel size is not resolution", "resolution", "2048x2048"},
+		{"null resolution", "resolution", nil}, {"numeric resolution", "resolution", 2048},
+		{"whitespace resolution", "resolution", " 2k"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			callsBefore := providerCalls.Load()
@@ -2526,6 +2537,7 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		assert.Equal(t, "SUCCESS", result.Status)
 		assert.Equal(t, outputURL, result.RemoteUrl)
 		assert.EqualValues(t, 1, result.UsageFacts["image_count"])
+		assert.NotContains(t, result.UsageFacts, "resolution", "historical tasks must not acquire an invented tariff")
 		view := map[string]any{"task_id": task.TaskID, "status": "SUCCESS", "progress": "100%", "data": completed}
 		rendered, err := plugin.Engine.CallMember(context.Background(), "native", "renderTask", map[string]any{}, view)
 		require.NoError(t, err)
@@ -2535,11 +2547,46 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		renderedJSON, err := common.Marshal(rendered)
 		require.NoError(t, err)
 		assert.JSONEq(t, string(wantJSON), string(renderedJSON))
-		immediate, err := plugin.Engine.Call(context.Background(), "parseSubmitResponse", map[string]any{}, map[string]any{"body": completed})
+		immediate, err := plugin.Engine.Call(context.Background(), "parseSubmitResponse", map[string]any{"requestBody": map[string]any{}}, map[string]any{"body": completed})
 		require.NoError(t, err)
 		immediateJSON, err := common.Marshal(immediate)
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"taskId":"provider-image-task","taskData":`+string(completedJSON)+`,"immediate":{"status":"SUCCESS","progress":"100%","remoteUrl":"https://cdn.example/generated-image.png"}}`, string(immediateJSON))
+		assert.JSONEq(t, `{"taskId":"provider-image-task","taskData":`+string(completedJSON)+`,"state":{"resolution":"1k"},"immediate":{"status":"SUCCESS","progress":"100%","remoteUrl":"https://cdn.example/generated-image.png"}}`, string(immediateJSON))
+	})
+
+	t.Run("persisted resolution governs completion count and price", func(t *testing.T) {
+		// The expression is a CNY display example at USDExchangeRate=1. The
+		// deployment generator converts the same exact quotes to instance USD.
+		const expression = `u("resolution") == "4k" ? tier("4k", u("image_count") * 0.4) : u("resolution") == "2k" ? tier("2k", u("image_count") * 0.3) : tier("1k", u("image_count") * 0.2)`
+		for _, tc := range []struct {
+			resolution string
+			unitPrice  float64
+		}{{"1k", 0.2}, {"2k", 0.3}, {"4k", 0.4}} {
+			t.Run(tc.resolution, func(t *testing.T) {
+				adaptor := New(plugin)
+				info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: modelName}, OriginModelName: modelName, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+				adaptor.Init(info)
+				state := json.RawMessage(`{"resolution":"` + tc.resolution + `"}`)
+				task := &model.Task{Properties: model.Properties{OriginModelName: modelName, UpstreamModelName: modelName}, PrivateData: model.TaskPrivateData{UpstreamTaskID: providerTaskID, PluginState: state}}
+				// Count actual valid payloads, ignoring metadata and invalid URLs.
+				body := []byte(`{"id":"provider-image-task","object":"generation.task","status":"completed","resolution":"1k","result":{"data":[{"url":"https://cdn.example/first.png"},{"metadata":{"url":"https://cdn.example/not-an-image"}},{"url":"http://cdn.example/not-https.png"},{"url":"https://cdn.example/second.png"}]}}`)
+				result, err := adaptor.ParseTaskResult(task, &http.Response{StatusCode: http.StatusOK}, body)
+				require.NoError(t, err)
+				assert.Equal(t, map[string]any{"image_count": float64(2), "resolution": tc.resolution}, result.UsageFacts)
+				cost, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: result.UsageFacts})
+				require.NoError(t, err)
+				assert.InDelta(t, tc.unitPrice*2, cost, 1e-12)
+				// Synchronous completion must use the same frozen state before
+				// there is a persisted task or a first polling request.
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, binding.Route.Path, nil)
+				c.Set("task_request", map[string]any{"prompt": prompt, "resolution": strings.ToUpper(tc.resolution)})
+				immediate, taskErr := adaptor.ParseResponse(c, &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(completedJSON)))}, info)
+				require.Nil(t, taskErr)
+				require.NotNil(t, immediate.Immediate)
+				assert.Equal(t, map[string]any{"image_count": float64(1), "resolution": tc.resolution}, immediate.Immediate.UsageFacts)
+			})
+		}
 	})
 }
 

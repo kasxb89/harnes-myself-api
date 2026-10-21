@@ -233,9 +233,9 @@ Content-Type: multipart/form-data; boundary=<客户端自动生成>
 
 ---
 
-### 4.4 内部图片生成请求合同（2026-10-20）
+### 4.4 内部图片生成请求合同（2026-10-21）
 
-`yunshu-internal-gpt-image-2` 使用 `toapis-image@1.1.1`，插件源码维护于
+`yunshu-internal-gpt-image-2` 使用 `toapis-image@1.2.0`，插件源码维护于
 `deploy/instance/toapis-image-plugin.js`。原生路径仍为：
 
 ```http
@@ -243,18 +243,48 @@ POST /harness/toapis/v1/images/generations
 Authorization: Bearer <当前用户的 relay_key>
 Content-Type: application/json
 
-{"model":"yunshu-internal-gpt-image-2","prompt":"……","n":1,"reference_images":["https://files.toapis.cn/uploads/…"]}
+{"model":"yunshu-internal-gpt-image-2","prompt":"……","n":1,"resolution":"2k","reference_images":["https://files.toapis.cn/uploads/…"]}
 ```
 
-生成请求只使用 `model`、原样 `prompt`、固定 `n=1`，以及可选的原样 `reference_images`。
+生成请求只使用 `model`、原样 `prompt`、固定 `n=1`、`resolution`，以及可选的原样 `reference_images`。
 `n` 可以省略，省略时按 1 张规范化；提供其他值会拒绝。参考图最多 6 个 HTTPS URL，
 本地文件须先按 4.3 上传并验证回执，文生图可省略 `reference_images`。
 
-输出尺寸及其他生成选项由供应商控制，客户端不提供这些选项。为兼容旧版客户端，
+`resolution` 仅允许 `1k`、`2k`、`4k`；可接收 `1K`、`2K`、`4K` 并规范化为小写。
+省略时使用 `1k`，空值、空串、像素尺寸或其他档位会在提交上游前拒绝。
+上游请求会明确携带同一分辨率档位，任务完成后按该档位与实际有效图片数量结算：
+
+| 分辨率档位 | 客户单价（人民币/张） | 采购估价（人民币/张） |
+| --- | --- | --- |
+| 1K（默认） | 0.20 | 0.10 |
+| 2K | 0.30 | 0.15 |
+| 4K | 0.40 | 0.20 |
+
+客户单价与采购估价均为本次确认价格，按默认分组倍率 1 计算；采购估价不代表供应商账单。
+`resolution` 是供应商的分辨率档位，实际宽高还取决于其输出，不根据返回图片像素反推计费档位。
+历史任务缺少已记录档位时不会补写档位或回算历史成本。
+
+其他生成选项继续由供应商控制。为兼容旧版客户端，
 插件忽略 `size`、`quality`、`background`、`output_format`、`output_compression`、
-`response_format`、`resolution` 及其他额外字段，不向上游透传，也不因额外字段单独拒绝旧请求。
+`response_format` 及其他额外字段，不向上游透传，也不因额外字段单独拒绝旧请求。
 插件在解码与构建上游请求时均按上述字段白名单创建新请求体；上游模型固定为 `gpt-image-2`。
-这不会设置或更改供应商的默认分辨率、实际模型、计费规则、上传合同、响应结构或任务轮询路径。
+旧客户端的 `size=1024x1024` 不会变成供应商的比例参数，也不用于选择或计收 2K/4K。
+上传合同、响应结构与任务轮询路径保持不变，2K/4K 仍使用上述同一个模型名称。
+
+离线准备定价可运行 `python3 deploy/instance/toapis-image-pricing.py --usd-exchange-rate <当前值>`；
+加 `--snapshot <model_pricing快照.json>` 可生成保留原配置及 `expected_version` 的草稿，
+同时对齐已有的 ToAPIs 提供方表达式覆盖。该脚本不连接或写入服务器；
+插件升级、定价保存及采购成本规则仍须由发布流程验证后应用。
+
+利润规则使用 `kind: "image_resolution"` 与
+`resolution_costs_cny: {"1k": 0.10, "2k": 0.15, "4k": 0.20}`，
+读取冻结后记录的 `usage_facts.resolution` 和实际 `image_count`。档位或数量缺失时成本为未知，
+不会回退到旧固定成本；成本依据仍是用户采购报价与发往供应商的档位，并非独立核销的账单。
+新规则仅追加，从发布时刻起生效，历史按任务提交时间匹配原规则。
+
+发布先更新能识别该成本类型的服务端，再更新插件、价格和成本配置。
+新增该规则后，常规回滚保留兼容服务端，回退插件和售价，并追加后来生效的默认档成本；
+不得删除已存在的价格历史或整库回写。旧版服务端不识别此成本类型，不能作为该阶段的常规回滚目标。
 
 ---
 

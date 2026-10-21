@@ -28,18 +28,19 @@ var (
 // Profit cost rules are accounting evidence only. Relay billing never reads them.
 // Prices remain CNY, independently of the gateway's USD quota conversion.
 type ModelProfitCostRule struct {
-	ChannelID               int      `json:"channel_id"`
-	ModelName               string   `json:"model_name"`
-	EffectiveFrom           int64    `json:"effective_from"`
-	EffectiveUntil          *int64   `json:"effective_until,omitempty"`
-	Kind                    string   `json:"kind"`
-	UnitCostCNY             *float64 `json:"unit_cost_cny,omitempty"`
-	InputCostPerMillionCNY  *float64 `json:"input_cost_per_million_cny,omitempty"`
-	CacheCostPerMillionCNY  *float64 `json:"cache_cost_per_million_cny,omitempty"`
-	OutputCostPerMillionCNY *float64 `json:"output_cost_per_million_cny,omitempty"`
-	DeepSeekPeakMultiplier  *float64 `json:"deepseek_peak_multiplier,omitempty"`
-	Source                  string   `json:"source"`
-	FailureRefunded         bool     `json:"failure_refunded"`
+	ChannelID               int                `json:"channel_id"`
+	ModelName               string             `json:"model_name"`
+	EffectiveFrom           int64              `json:"effective_from"`
+	EffectiveUntil          *int64             `json:"effective_until,omitempty"`
+	Kind                    string             `json:"kind"`
+	UnitCostCNY             *float64           `json:"unit_cost_cny,omitempty"`
+	ResolutionCostsCNY      map[string]float64 `json:"resolution_costs_cny,omitempty"`
+	InputCostPerMillionCNY  *float64           `json:"input_cost_per_million_cny,omitempty"`
+	CacheCostPerMillionCNY  *float64           `json:"cache_cost_per_million_cny,omitempty"`
+	OutputCostPerMillionCNY *float64           `json:"output_cost_per_million_cny,omitempty"`
+	DeepSeekPeakMultiplier  *float64           `json:"deepseek_peak_multiplier,omitempty"`
+	Source                  string             `json:"source"`
+	FailureRefunded         bool               `json:"failure_refunded"`
 }
 
 type ModelProfitCostRules struct {
@@ -64,9 +65,20 @@ func ParseModelProfitCostRules(body []byte) (ModelProfitCostRules, error) {
 				return config, ErrModelProfitParameters
 			}
 			switch key {
-			case "channel_id", "model_name", "effective_from", "effective_until", "kind", "unit_cost_cny", "input_cost_per_million_cny", "cache_cost_per_million_cny", "output_cost_per_million_cny", "deepseek_peak_multiplier", "source", "failure_refunded":
+			case "channel_id", "model_name", "effective_from", "effective_until", "kind", "unit_cost_cny", "input_cost_per_million_cny", "cache_cost_per_million_cny", "output_cost_per_million_cny", "deepseek_peak_multiplier", "resolution_costs_cny", "source", "failure_refunded":
 			default:
 				return config, ErrModelProfitParameters
+			}
+		}
+		if encoded, exists := rule["resolution_costs_cny"]; exists {
+			var prices map[string]common.RawMessage
+			if common.Unmarshal(encoded, &prices) != nil {
+				return config, ErrModelProfitParameters
+			}
+			for _, price := range prices {
+				if bytes.Equal(bytes.TrimSpace(price), []byte("null")) {
+					return config, ErrModelProfitParameters
+				}
 			}
 		}
 		for _, key := range []string{"channel_id", "model_name", "effective_from", "kind", "source"} {
@@ -104,11 +116,21 @@ func ValidateModelProfitCostRules(config ModelProfitCostRules) error {
 		}
 		switch rule.Kind {
 		case "request", "second", "image":
-			if rule.UnitCostCNY == nil || rule.InputCostPerMillionCNY != nil || rule.CacheCostPerMillionCNY != nil || rule.OutputCostPerMillionCNY != nil || rule.DeepSeekPeakMultiplier != nil {
+			if rule.UnitCostCNY == nil || rule.ResolutionCostsCNY != nil || rule.InputCostPerMillionCNY != nil || rule.CacheCostPerMillionCNY != nil || rule.OutputCostPerMillionCNY != nil || rule.DeepSeekPeakMultiplier != nil {
 				return ErrModelProfitParameters
 			}
+		case "image_resolution":
+			if rule.UnitCostCNY != nil || rule.InputCostPerMillionCNY != nil || rule.CacheCostPerMillionCNY != nil || rule.OutputCostPerMillionCNY != nil || rule.DeepSeekPeakMultiplier != nil || len(rule.ResolutionCostsCNY) != 3 {
+				return ErrModelProfitParameters
+			}
+			for _, resolution := range []string{"1k", "2k", "4k"} {
+				price, exists := rule.ResolutionCostsCNY[resolution]
+				if !exists || math.IsNaN(price) || math.IsInf(price, 0) || price < 0 || price > 1000000 {
+					return ErrModelProfitParameters
+				}
+			}
 		case "token":
-			if rule.UnitCostCNY != nil || rule.InputCostPerMillionCNY == nil || rule.CacheCostPerMillionCNY == nil || rule.OutputCostPerMillionCNY == nil || (rule.DeepSeekPeakMultiplier != nil && (*rule.DeepSeekPeakMultiplier < 1 || *rule.DeepSeekPeakMultiplier > 100)) {
+			if rule.UnitCostCNY != nil || rule.ResolutionCostsCNY != nil || rule.InputCostPerMillionCNY == nil || rule.CacheCostPerMillionCNY == nil || rule.OutputCostPerMillionCNY == nil || (rule.DeepSeekPeakMultiplier != nil && (*rule.DeepSeekPeakMultiplier < 1 || *rule.DeepSeekPeakMultiplier > 100)) {
 				return ErrModelProfitParameters
 			}
 		default:

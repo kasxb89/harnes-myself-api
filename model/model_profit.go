@@ -273,7 +273,7 @@ func modelProfitCost(rule ModelProfitCostRule, log Log, facts profitLogFacts) (f
 			return 0, false
 		}
 		cost = quantity * *rule.UnitCostCNY
-	case "image":
+	case "image", "image_resolution":
 		quantity, exists := facts.UsageFacts["image_count"].(float64)
 		if !exists && facts.ImageCount != nil {
 			quantity, exists = *facts.ImageCount, true
@@ -281,7 +281,19 @@ func modelProfitCost(rule ModelProfitCostRule, log Log, facts profitLogFacts) (f
 		if !exists || !validQuantity(quantity, 128) || quantity <= 0 || math.Trunc(quantity) != quantity {
 			return 0, false
 		}
-		cost = quantity * *rule.UnitCostCNY
+		if rule.Kind == "image_resolution" {
+			resolution, exists := facts.UsageFacts["resolution"].(string)
+			if !exists {
+				return 0, false
+			}
+			price, exists := rule.ResolutionCostsCNY[resolution]
+			if !exists {
+				return 0, false
+			}
+			cost = quantity * price
+		} else {
+			cost = quantity * *rule.UnitCostCNY
+		}
 	case "token":
 		// This intentionally handles only input/cache-read/output tariffs. Cache
 		// writes and modality-specific prices require a separately verified rule.

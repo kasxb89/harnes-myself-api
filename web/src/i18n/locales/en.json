@@ -7641,6 +7641,10 @@
     "Month to date": "Month to date",
     "Cost valid until (Shanghai time, exclusive, optional)": "Cost valid until (Shanghai time, exclusive, optional)",
     "End time must follow the effective time": "End time must follow the effective time",
-    "Use the profit cost rules API to preserve price history": "Use the profit cost rules API to preserve price history"
+    "Use the profit cost rules API to preserve price history": "Use the profit cost rules API to preserve price history",
+    "Per image resolution": "Per image resolution",
+    "1K image cost (CNY per image)": "1K image cost (CNY per image)",
+    "2K image cost (CNY per image)": "2K image cost (CNY per image)",
+    "4K image cost (CNY per image)": "4K image cost (CNY per image)"
   }
 }
