@@ -22,17 +22,23 @@
 
 ## 2. 登录：手机验证码，一次拿回两把凭据
 
+本节的持久 challenge／登录交换契约是 2026-10-21 源码候选，尚未部署。新客户端显式选择 `contract_version:2`；旧客户端省略所有新增字段时保持 v1 登录兼容，当前线上旧接口不能据此推断已支持恢复。
+
 **第一步，发码**
 
 ```
 POST /harness/api/user/phone/challenge
 Content-Type: application/json
 
-{"phone_e164": "+8613800138000"}
+{"contract_version": 2, "phone_e164": "+8613800138000", "idempotency_key": "<客户端随机生成并保存的发码键>"}
 ```
 
-返回 `data.resend_after_seconds`（重发冷却）、`data.expires_in_minutes`（有效期）。
-同一号码 60 秒冷却、每小时上限 5 次。号码必须是 E.164（带 `+86`）。
+`idempotency_key` 使用客户端安全随机数，至少 128 位熵，允许 22–128 字符的字母、数字、`_`、`-`（可用 UUID）。发起请求前保存，同一请求恢复时保持不变。同键修改手机号会冲突。
+
+返回 `data.challenge_id`、`data.delivery_status`、`data.expires_at`（Unix 秒）、`data.resend_after_seconds`（重发等待秒数）、`data.expires_in_minutes`。
+同一号码成功发码冷却 60 秒、5 小时最多 5 次；受理未知也保留防重发预算。号码使用 E.164（带 `+86`）。
+
+`accepted` 表示供应商已受理；`unknown` 表示可能已经发送，收到短信后仍可输入验证码；`sending` 表示仍在处理；`not_sent` 表示确定未发送。原请求保留期间，相同发码键只恢复状态，不再次发送；客户端不得复用过期请求的键。配置错误或明确拒绝不占成功次数和发送冷却；只有明确收到 `data.delivery_status=not_sent` 时，用户主动重发才生成新键。错误码本身不能证明未发送：同键恢复时若数据库读取失败，可能只有 `PHONE_CHALLENGE_UNAVAILABLE` 而没有原请求状态，应保留原键恢复。未知或处理中不能自动重发；未知请求的防重发等待持续到验证码过期。
 
 **第二步，校验并登录**
 
@@ -40,8 +46,10 @@ Content-Type: application/json
 POST /harness/api/user/phone/login
 Content-Type: application/json
 
-{"phone_e164": "+8613800138000", "code": "123456"}
+{"contract_version": 2, "phone_e164": "+8613800138000", "code": "123456", "challenge_id": "<发码回执>", "idempotency_key": "<另一个随机登录交换键>"}
 ```
+
+登录交换键与发码键不同。发送前保存，同一次登录的超时、响应丢失或暂时失败均用相同手机号、challenge、验证码和交换键恢复；修改请求内容须使用新的交换键。正确验证码后的账户、赠送、relay key 或会话创建失败不会消费验证码。成功交换在 5 分钟恢复期内重放恢复同一会话，不重复注册、赠送或创建令牌；退出、撤销、安全版本变更或 refresh 轮换后禁止恢复旧结果。
 
 返回 `data`：
 
@@ -54,7 +62,26 @@ Content-Type: application/json
 | **`relay_key`** | **`sk-` 开头的本账号中转 key —— 调模型就用它** |
 | `relay_key_id` | 该 key 的令牌 id |
 
-同时 `Set-Cookie` 下发 refresh cookie（30 天）。
+成功的新交换和恢复都通过 `Set-Cookie` 下发匹配的 `new_api_refresh`（30 天）。客户端应连同 access、relay 凭据一起保存，失败不能清除原有有效会话。
+
+已有二次验证的账户返回 `success:true`、`code:PHONE_LOGIN_VERIFICATION_REQUIRED` 和 `data.require_verification/flow_token/methods/expires_at`，其中 `methods` 是形如 `[{"method":"2fa","available":true}]` 的对象数组。只展示明确可用的方法；TOTP 和备用码均通过 `POST /harness/api/user/login/verify` 提交 `{"flow_token":"...","method":"2fa","code":"..."}`。这是待验证中间态，没有 access token、relay key 或登录 cookie；完成既有安全验证后才返回登录凭据。同交换键只恢复仍有效的同一个验证流程。通用二次验证完成接口的响应丢失恢复不属于本次新增幂等保证。
+
+错误保留 `success:false/message/message_key`，新增顶层 `code` 和整数 `retry_after_seconds`；有等待期时同时返回 `Retry-After`。供应商原始错误、验证码和凭据不进入客户端错误文案。
+
+| `code` | 客户端处理 |
+| --- | --- |
+| `PHONE_LOGIN_DISABLED` | 管理员关闭入口 |
+| `PHONE_INVALID_PARAMETERS` | 检查当前协议必填字段和格式，不自动降级重试 |
+| `PHONE_RATE_LIMITED` | 按返回等待时间显示倒计时 |
+| `PHONE_CHALLENGE_UNAVAILABLE` | 只有 `delivery_status=not_sent` 时允许手动换新发码键；缺少明确状态时保留原键恢复 |
+| `PHONE_DELIVERY_UNKNOWN` | 保留 challenge 和验证码输入，不能自动重发 |
+| `PHONE_CHALLENGE_PENDING` | 保留同发码键恢复状态 |
+| `PHONE_CODE_INVALID_OR_EXPIRED` | 统一显示验证码错误或过期 |
+| `PHONE_LOGIN_UNAVAILABLE` | 暂时失败，保留同登录交换键重试 |
+| `PHONE_CHALLENGE_CONSUMED` | 已消费、恢复期到期或因撤销／刷新轮换等不可恢复；不能凭旧码重建会话 |
+| `PHONE_IDEMPOTENCY_CONFLICT` | 同键请求发生改变，停止自动重试 |
+
+v1 发码仍接受 `{"phone_e164":"..."}`，登录仍接受 `{"phone_e164":"...","code":"..."}`，与 v2 共用持久发码预算、未知结果防重发、验证码猜测次数、账户状态和二次验证检查。v1 的正确验证码与账户、赠送、relay key、会话一起原子提交，内部失败保留验证码；成功后验证码只能消费一次。v1 没有客户端交换键，因此不保证成功响应丢失后的会话恢复，也不能仅凭已消费验证码重新签发会话。部分新增字段缺失或显式 v2 缺字段返回参数错误，不能借此绕过新模式。
 
 **首次验证该号码会自动注册**（落 `default` 分组），不需要单独的注册接口 ——
 网页注册在这条入口上是关掉的。
@@ -430,14 +457,15 @@ BASE=https://8.133.202.230/harness
 # 1) 实例活着
 curl -s $BASE/api/status | head -c 200
 
-# 2) 发码（换成你自己的号码）
+# 2) 发码（本地候选协议，先保存随机发码键；不要用循环自动重发）
 curl -s -X POST $BASE/api/user/phone/challenge \
-  -H 'Content-Type: application/json' -d '{"phone_e164":"+8613800138000"}'
+  -H 'Content-Type: application/json' \
+  -d '{"contract_version":2,"phone_e164":"+8613800138000","idempotency_key":"<已保存的随机发码键>"}'
 
 # 3) 登录 → 从返回里取 access_token 与 relay_key
 curl -s -X POST $BASE/api/user/phone/login \
   -H 'Content-Type: application/json' \
-  -d '{"phone_e164":"+8613800138000","code":"<收到的码>"}'
+  -d '{"contract_version":2,"phone_e164":"+8613800138000","code":"<收到的码>","challenge_id":"<发码回执>","idempotency_key":"<已保存的随机登录交换键>"}'
 
 # 4) 用 relay_key 调一次模型
 curl -s $BASE/v1/chat/completions -H "Authorization: Bearer <relay_key>" \

@@ -1,10 +1,67 @@
 package common
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type smsTestTransport func(*http.Request) (*http.Response, error)
+
+func (f smsTestTransport) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestSendSmsCodeDistinguishesDefiniteRejectionFromUnknownDelivery(t *testing.T) {
+	oldID, oldSecret, oldSign, oldTemplate := SmsAliyunAccessKeyId, SmsAliyunAccessKeySecret, SmsAliyunSignName, SmsAliyunTemplateCode
+	oldTransport := http.DefaultTransport
+	SmsAliyunAccessKeyId, SmsAliyunAccessKeySecret, SmsAliyunSignName, SmsAliyunTemplateCode = "fixture-id", "fixture-secret", "fixture-sign", "SMS_FIXTURE"
+	t.Cleanup(func() {
+		SmsAliyunAccessKeyId, SmsAliyunAccessKeySecret, SmsAliyunSignName, SmsAliyunTemplateCode = oldID, oldSecret, oldSign, oldTemplate
+		http.DefaultTransport = oldTransport
+	})
+	for _, test := range []struct {
+		name, body             string
+		status                 int
+		transportErr, expected error
+	}{
+		{"accepted", `{"Code":"OK"}`, 200, nil, nil},
+		{"rejected", `{"Code":"isv.SMS_TEMPLATE_ILLEGAL"}`, 200, nil, ErrSmsRejected},
+		{"credential rejection", `{"Code":"SignatureDoesNotMatch"}`, 403, nil, ErrSmsRejected},
+		{"insufficient provider funds", `{"Code":"isv.AMOUNT_NOT_ENOUGH"}`, 200, nil, ErrSmsRejected},
+		{"throttled", `{"Code":"isv.BUSINESS_LIMIT_CONTROL"}`, 200, nil, ErrSmsThrottled},
+		{"unknown provider code", `{"Code":"FutureProviderFailure"}`, 200, nil, ErrSmsDeliveryUnknown},
+		{"unknown template code", `{"Code":"isv.SMS_TEMPLATE_FUTURE_FAILURE"}`, 200, nil, ErrSmsDeliveryUnknown},
+		{"redirect is not delivery", `{"Code":"OK"}`, 307, nil, ErrSmsDeliveryUnknown},
+		{"empty body", "", 200, nil, ErrSmsDeliveryUnknown},
+		{"missing code", `{}`, 200, nil, ErrSmsDeliveryUnknown},
+		{"malformed body", `{`, 200, nil, ErrSmsDeliveryUnknown},
+		{"success code HTTP mismatch", `{"Code":"OK"}`, 503, nil, ErrSmsDeliveryUnknown},
+		{"transport timeout", "", 0, context.DeadlineExceeded, ErrSmsDeliveryUnknown},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			http.DefaultTransport = smsTestTransport(func(request *http.Request) (*http.Response, error) {
+				calls++
+				require.Equal(t, "dysmsapi.aliyuncs.com", request.URL.Host)
+				if test.transportErr != nil {
+					return nil, test.transportErr
+				}
+				return &http.Response{StatusCode: test.status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(test.body)), Request: request}, nil
+			})
+			err := SendSmsCode("+8613800138000", "123456")
+			if test.expected == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.expected)
+			}
+			assert.Equal(t, 1, calls, "the sender must not retry an uncertain dispatch")
+		})
+	}
+}
 
 // The parameter set and the expected signature are Aliyun's own published
 // example for the RPC signing procedure, so this pins the canonicalization the

@@ -36,7 +36,7 @@ func TestBalanceLedgerDatabaseMatrix(t *testing.T) {
 					}
 					typ := map[string]common.DatabaseType{"sqlite": common.DatabaseTypeSQLite, "mysql": common.DatabaseTypeMySQL, "postgres": common.DatabaseTypePostgreSQL}[kind]
 					useLogExportDatabases(t, db, logDB, typ, typ)
-					require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+					require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.AuthFlow{}))
 					require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 					versionQuery := "SELECT version()"
 					if kind == "sqlite" {

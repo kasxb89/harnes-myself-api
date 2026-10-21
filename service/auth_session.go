@@ -47,6 +47,8 @@ type AuthBundle struct {
 	AccessExpiresAt int64            `json:"access_expires_at"`
 	Session         LoginSessionView `json:"session"`
 	RefreshToken    string           `json:"-"`
+	RelayKey        string           `json:"-"`
+	RelayKeyID      int              `json:"-"`
 }
 
 func CreateLoginSession(userID int, loginMethod, ip, userAgent string) (*AuthBundle, error) {

@@ -213,6 +213,9 @@ func writeLoginResponse(c *gin.Context, user *model.User, bundle *service.AuthBu
 	if relayKey := c.GetString("relay_key"); relayKey != "" {
 		data["relay_key"] = relayKey
 		data["relay_key_id"] = c.GetInt("relay_key_id")
+	} else if bundle.RelayKey != "" {
+		data["relay_key"] = bundle.RelayKey
+		data["relay_key_id"] = bundle.RelayKeyID
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "",

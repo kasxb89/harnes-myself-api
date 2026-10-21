@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -52,14 +53,6 @@ var (
 	smsCodePattern           = regexp.MustCompile(`^[0-9]{6}$`)
 )
 
-// An upstream code matching either pattern is a caller-side problem worth
-// distinguishing from an outage: throttling to retry, rejection to fix in the
-// console. Anything else is treated as unavailable.
-var (
-	smsThrottledCode = regexp.MustCompile(`THROTTL|BUSINESS_LIMIT_CONTROL|FLOW_CONTROL`)
-	smsRejectedCode  = regexp.MustCompile(`MOBILE_NUMBER|SIGNATURE|TEMPLATE|RAM_PERMISSION|PERMISSION|ACCESS_KEY|ACCESSKEY|AUTH|PARAM`)
-)
-
 // Errors returned by SendSmsCode, for callers that need to tell a retryable
 // failure from a configuration one.
 var (
@@ -68,6 +61,9 @@ var (
 	ErrSmsThrottled     = errors.New("sms_provider_throttled")
 	ErrSmsRejected      = errors.New("sms_provider_rejected")
 	ErrSmsUnavailable   = errors.New("sms_provider_unavailable")
+	// The request may have reached the provider. Callers must retain its code
+	// and dispatch reservation rather than sending another SMS automatically.
+	ErrSmsDeliveryUnknown = errors.New("sms_delivery_unknown")
 )
 
 type aliyunSmsResponse struct {
@@ -143,27 +139,35 @@ func SendSmsCode(phoneE164 string, code string) error {
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	response, err := (&http.Client{Timeout: smsAliyunTimeout}).Do(request)
+	client := &http.Client{Timeout: smsAliyunTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Do(request)
 	if err != nil {
-		return ErrSmsUnavailable
+		return ErrSmsDeliveryUnknown
 	}
 	defer response.Body.Close()
 
 	var reply aliyunSmsResponse
-	if err := DecodeJson(response.Body, &reply); err != nil {
-		return ErrSmsUnavailable
+	if err := DecodeJson(io.LimitReader(response.Body, 64<<10), &reply); err != nil {
+		return ErrSmsDeliveryUnknown
 	}
-	if reply.Code == "OK" {
+	if response.StatusCode == http.StatusOK && reply.Code == "OK" {
 		return nil
 	}
-	switch {
-	case smsThrottledCode.MatchString(reply.Code):
+	if reply.Code == "" || reply.Code == "OK" {
+		return ErrSmsDeliveryUnknown
+	}
+	// Only documented rejection codes release the dispatch reservation. A
+	// future provider code or intermediary failure is conservatively unknown.
+	switch reply.Code {
+	case "isv.BUSINESS_LIMIT_CONTROL", "isv.DAY_LIMIT_CONTROL", "isv.LIMIT_CONTROL", "isv.ALIYUN_CLOUD_SMS_OVER_LIMIT", "Throttling", "Throttling.User", "Throttling.Api":
 		return ErrSmsThrottled
-	case smsRejectedCode.MatchString(reply.Code):
-		SysError(LogText("aliyun rejected the sms request: %s", reply.Code))
+	case "isv.SMS_TEMPLATE_ILLEGAL", "isv.SMS_SIGNATURE_ILLEGAL", "isv.SMS_SIGN_NAME_ILLEGAL", "isv.SMS_SIGNATURE_SCENE_ILLEGAL",
+		"isv.MOBILE_NUMBER_ILLEGAL", "isv.MOBILE_COUNT_OVER_LIMIT", "isv.TEMPLATE_MISSING_PARAMETERS", "isv.TEMPLATE_PARAMS_ILLEGAL", "isv.TEMPLATE_PARAM_ILLEGAL",
+		"isv.INVALID_PARAMETERS", "isv.PARAM_LENGTH_LIMIT", "isv.PARAM_NOT_SUPPORT_URL", "isv.AMOUNT_NOT_ENOUGH", "isv.OUT_OF_SERVICE", "isv.PRODUCT_UN_SUBSCRIPT", "isv.PRODUCT_UNSUBSCRIBE", "isv.RAM_PERMISSION_DENY", "isv.SMS_CONTENT_ILLEGAL",
+		"InvalidAccessKeyId.NotFound", "InvalidAccessKeyId.Inactive", "SignatureDoesNotMatch", "SignatureNonceUsed", "SignatureNotFound", "TemplateNotFound", "InvalidSecurityToken.Expired", "InvalidSecurityToken.NotFound",
+		"MissingParameter", "InvalidParameter", "Forbidden.RAM", "Forbidden.NoPermission", "InvalidVersion", "InvalidAction.NotFound", "IncompleteSignature", "MissingSignature", "InvalidTimeStamp.Expired":
 		return ErrSmsRejected
 	default:
-		SysError(LogText("aliyun sms send failed: %s", reply.Code))
-		return ErrSmsUnavailable
+		return ErrSmsDeliveryUnknown
 	}
 }

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -132,6 +133,9 @@ func VerifyLoginCode(token, code, ip, userAgent string) (*AuthBundle, *LegacyGit
 	if err != nil {
 		return nil, nil, err
 	}
+	if verification.payload.LoginMethod == "phone" {
+		return completeLoginVerification(token, verification, VerificationMethodTwoFA, ip, userAgent, code)
+	}
 	twoFA, err := model.GetTwoFAByUserId(verification.State.UserID)
 	if err != nil {
 		return nil, nil, err
@@ -148,6 +152,10 @@ func VerifyLoginCode(token, code, ip, userAgent string) (*AuthBundle, *LegacyGit
 // returned migration is non-nil when the flow's pending GitHub binding rewrite
 // was written together with the session.
 func CompleteLoginVerification(token string, verification *LoginVerification, method, ip, userAgent string) (*AuthBundle, *LegacyGitHubMigration, error) {
+	return completeLoginVerification(token, verification, method, ip, userAgent, "")
+}
+
+func completeLoginVerification(token string, verification *LoginVerification, method, ip, userAgent, phoneCode string) (*AuthBundle, *LegacyGitHubMigration, error) {
 	if verification == nil || verification.Flow == nil || verification.State == nil {
 		return nil, nil, model.ErrAuthFlowInvalid
 	}
@@ -156,6 +164,9 @@ func CompleteLoginVerification(token string, verification *LoginVerification, me
 		return nil, nil, err
 	}
 	var migration *LegacyGitHubMigration
+	var phoneRelayKey string
+	var phoneRelayKeyID int
+	var phoneBundle *AuthBundle
 	if err := model.CreateUserSessionFromLoginFlow(token, session, func(tx *gorm.DB, flow *model.AuthFlow, state *model.UserVerificationState) error {
 		var payload loginFlowPayload
 		if flow.Id != verification.Flow.Id || common.UnmarshalJsonStr(flow.Payload, &payload) != nil || payload != verification.payload {
@@ -163,6 +174,22 @@ func CompleteLoginVerification(token string, verification *LoginVerification, me
 		}
 		if err := requireLoginVerificationMethod(state, method); err != nil {
 			return err
+		}
+		if payload.LoginMethod == "phone" {
+			if method == VerificationMethodTwoFA {
+				if err := model.UsePhoneLoginFactorWithTx(tx, state.UserID, phoneCode); err != nil {
+					return err
+				}
+			}
+			key, tokenID, err := model.EnsurePhoneRelayTokenWithTx(tx, state.UserID)
+			if err != nil {
+				return err
+			}
+			phoneRelayKey, phoneRelayKeyID = "sk-"+key, tokenID
+			phoneBundle, err = issueAuthBundle(session, session.SID+"."+refreshSecret, true)
+			if err != nil {
+				return err
+			}
 		}
 		if payload.PendingGitHubID == "" {
 			return nil
@@ -178,12 +205,30 @@ func CompleteLoginVerification(token string, verification *LoginVerification, me
 		}
 		return nil
 	}); err != nil {
+		if errors.Is(err, model.ErrPhoneLoginFactorInvalid) {
+			factor, countErr := model.GetTwoFAByUserId(verification.State.UserID)
+			if countErr != nil {
+				return nil, nil, countErr
+			}
+			if factor == nil || !factor.IsEnabled {
+				return nil, nil, model.ErrTwoFANotEnabled
+			}
+			if countErr = factor.IncrementFailedAttempts(); countErr != nil {
+				return nil, nil, countErr
+			}
+			return nil, nil, ErrVerificationFailed
+		}
 		return nil, nil, err
+	}
+	if phoneBundle != nil {
+		phoneBundle.RelayKey, phoneBundle.RelayKeyID = phoneRelayKey, phoneRelayKeyID
+		return phoneBundle, migration, nil
 	}
 	bundle, err := issueAuthBundle(session, session.SID+"."+refreshSecret, true)
 	if err != nil {
 		_, _ = model.RevokeUserSession(session.UserID, session.SID, "token_issue_failed")
 		return nil, nil, err
 	}
+	bundle.RelayKey, bundle.RelayKeyID = phoneRelayKey, phoneRelayKeyID
 	return bundle, migration, nil
 }
