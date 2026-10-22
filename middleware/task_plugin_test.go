@@ -3,13 +3,18 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -21,6 +26,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	builtinplugins "github.com/QuantumNous/new-api/plugins"
+	taskadaptor "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -1997,4 +2004,247 @@ func TestPrepareTaskPluginEndpointFiltersEachSharedCandidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBlackRxAILegacyInlineReferencesReachCanonicalMultipart(t *testing.T) {
+	previousCacheConfig := common.GetDiskCacheConfig()
+	common.SetDiskCacheConfig(common.DiskCacheConfig{Enabled: true, ThresholdMB: 0, MaxSizeMB: 128, Path: t.TempDir()})
+	t.Cleanup(func() {
+		defer common.SetDiskCacheConfig(previousCacheConfig)
+		entries, err := os.ReadDir(common.GetDiskCacheDir())
+		require.NoError(t, err)
+		assert.Empty(t, entries, "success, validation errors and cancellation must release request temporary files")
+	})
+	source, err := os.ReadFile("../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	plugin := compileTaskRoutePlugin(t, string(source))
+	_, operation, found := jsplugin.LookupHostProtocolOperation(http.MethodPost, "/v1/videos")
+	require.True(t, found)
+	pinned := jsplugin.PinnedEndpoint{Generation: &jsplugin.RoutingGeneration{}, Plugin: plugin, Protocol: "openai_video", Operation: operation, Model: "model_5"}
+	imageURL := func(value byte) (string, []byte) {
+		t.Helper()
+		picture := image.NewRGBA(image.Rect(0, 0, 1, 1))
+		picture.Set(0, 0, color.RGBA{R: value, A: 255})
+		var output bytes.Buffer
+		require.NoError(t, png.Encode(&output, picture))
+		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(output.Bytes()), output.Bytes()
+	}
+	first, firstData := imageURL(20)
+	last, lastData := imageURL(200)
+	t.Run("positional frames are deduplicated and survive the real driver", func(t *testing.T) {
+		reached := false
+		var original, converted common.BodyStorage
+		router := gin.New()
+		router.POST("/v1/videos", func(c *gin.Context) {
+			defer common.CleanupBodyStorage(c)
+			var err error
+			original, err = common.GetBodyStorage(c)
+			require.NoError(t, err)
+			c.Set(jsplugin.ContextKeyPinnedEndpoint, pinned)
+			c.Next()
+		}, PrepareTaskPluginEndpoint(), func(c *gin.Context) {
+			reached = true
+			var err error
+			converted, err = common.GetBodyStorage(c)
+			require.NoError(t, err)
+			require.NotSame(t, original, converted)
+			assert.True(t, original.IsDisk())
+			assert.True(t, converted.IsDisk())
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeTaskPlugin, ChannelBaseUrl: "https://example.com", ApiKey: "synthetic-provider-key", UpstreamModelName: "model_5"}, OriginModelName: "model_5", TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_legacy_inline"}}
+			adaptor := taskadaptor.New(plugin)
+			adaptor.Init(info)
+			require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+			facts, err := adaptor.ExtractUsageFactsValidated(c, info)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"seconds": 15.0}, facts)
+			body, err := adaptor.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			wire := httptest.NewRequest(http.MethodPost, "/v1/videos", body)
+			wire.Header.Set("Content-Type", c.GetHeader("Content-Type"))
+			require.NoError(t, wire.ParseMultipartForm(1024))
+			defer wire.MultipartForm.RemoveAll()
+			assert.Equal(t, []string{"15"}, wire.MultipartForm.Value["seconds"])
+			assert.Equal(t, []string{"1280x720"}, wire.MultipartForm.Value["size"])
+			assert.Empty(t, wire.MultipartForm.Value["metadata"])
+			assert.Empty(t, wire.MultipartForm.Value["duration"])
+			files := wire.MultipartForm.File["images"]
+			require.Len(t, files, 2)
+			for index, want := range [][]byte{firstData, lastData} {
+				file, err := files[index].Open()
+				require.NoError(t, err)
+				got, err := io.ReadAll(file)
+				require.NoError(t, err)
+				require.NoError(t, file.Close())
+				assert.Equal(t, want, got)
+			}
+			c.Status(http.StatusNoContent)
+		})
+		data, err := common.Marshal(map[string]any{"model": "model_5", "prompt": "legacy prompt", "seconds": 15, "resolution": "720P", "aspect_ratio": "16:9", "images": []string{first, last}, "metadata": map[string]any{"ratio": "16:9", "first_frame_image": first, "last_frame_image": last}})
+		require.NoError(t, err)
+		request := httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(data))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+		assert.True(t, reached)
+		_, err = original.Bytes()
+		assert.ErrorIs(t, err, common.ErrStorageClosed)
+		_, err = converted.Bytes()
+		assert.ErrorIs(t, err, common.ErrStorageClosed)
+	})
+
+	t.Run("legacy content and reference media keep bytes and canonical roles", func(t *testing.T) {
+		audio := []byte("RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00")
+		video := []byte("\x00\x00\x00\x18ftypisom\x00\x00\x00\x00isommp41")
+		body := map[string]any{"model": "model_5", "prompt": "legacy prompt", "duration": "15", "ratio": "32:18", "image_urls": []string{"https://example.com/first.png"}, "metadata": map[string]any{
+			"ratio":           "16:9",
+			"content":         []any{map[string]any{"type": "text", "text": "legacy prompt"}, map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": first}}},
+			"reference_audio": []string{"data:audio/wav;base64," + base64.StdEncoding.EncodeToString(audio)},
+			"reference_video": []string{"data:video/mp4;base64," + base64.StdEncoding.EncodeToString(video)},
+		}}
+		data, err := common.Marshal(body)
+		require.NoError(t, err)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		defer common.CleanupBodyStorage(c)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(data))
+		c.Request.Header.Set("Content-Type", "application/json")
+		require.NoError(t, normalizeBlackRxAILegacyReferences(c, pinned))
+		request, err := buildTaskPluginRouteRequest(c)
+		require.NoError(t, err)
+		parsed, err := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_video", "decodeRequest"}, jsplugin.ProtocolRequestContext{RouteRequestContext: request, Protocol: "openai_video", Model: "model_5"}.JSValueFor(plugin.Meta))
+		require.NoError(t, err)
+		normalized := parsed.(map[string]any)["requestBody"].(map[string]any)
+		assert.Equal(t, []any{"https://example.com/first.png"}, normalized["image_urls"])
+		assert.EqualValues(t, 15, normalized["seconds"])
+		assert.Equal(t, "1280x720", normalized["size"])
+		form, err := common.ParseMultipartFormReusable(c)
+		require.NoError(t, err)
+		defer form.RemoveAll()
+		for field, want := range map[string][]byte{"images": firstData, "videos": video, "audios": audio} {
+			require.Len(t, form.File[field], 1)
+			file, err := form.File[field][0].Open()
+			require.NoError(t, err)
+			got, err := io.ReadAll(file)
+			require.NoError(t, err)
+			require.NoError(t, file.Close())
+			assert.Equal(t, want, got)
+		}
+	})
+	t.Run("invalid references cannot reach distribution or expose inline contents", func(t *testing.T) {
+		for name, patch := range map[string]map[string]any{
+			"wrong MIME":               {"images": []string{strings.Replace(first, "image/png", "image/jpeg", 1)}},
+			"invalid base64":           {"images": []string{"data:image/png;base64,secret-not-base64"}},
+			"conflicting frames":       {"images": []string{first}, "metadata": map[string]any{"first_frame_image": last}},
+			"last frame only":          {"metadata": map[string]any{"last_frame_image": first}},
+			"unknown metadata":         {"images": []string{first}, "metadata": map[string]any{"discard_me": "must not disappear"}},
+			"conflicting ratio":        {"images": []string{first}, "ratio": "9:16", "metadata": map[string]any{"ratio": "16:9"}},
+			"object content prompt":    {"prompt": map[string]any{}, "metadata": map[string]any{"content": []any{map[string]any{"type": "text", "text": map[string]any{}}, map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": first}}}}},
+			"changed content prompt":   {"metadata": map[string]any{"content": []any{map[string]any{"type": "text", "text": "changed"}, map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": first}}}}},
+			"mixed reference order":    {"images": []string{first, "https://example.com/last.png"}},
+			"explicit invalid seconds": {"images": []string{first}, "seconds": 4},
+			"file limit":               {"images": []string{first}, "video_urls": []string{"file:///private/test.mp4"}},
+		} {
+			t.Run(name, func(t *testing.T) {
+				body := map[string]any{"model": "model_5", "prompt": "legacy prompt", "seconds": 15}
+				for key, value := range patch {
+					body[key] = value
+				}
+				data, err := common.Marshal(body)
+				require.NoError(t, err)
+				reached := false
+				router := gin.New()
+				router.POST("/v1/videos", func(c *gin.Context) {
+					defer common.CleanupBodyStorage(c)
+					c.Set(jsplugin.ContextKeyPinnedEndpoint, pinned)
+					c.Next()
+				}, PrepareTaskPluginEndpoint(), func(c *gin.Context) { reached = true; c.Status(http.StatusNoContent) })
+				request := httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(data))
+				request.Header.Set("Content-Type", "application/json")
+				recorder := httptest.NewRecorder()
+				router.ServeHTTP(recorder, request)
+				assert.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+				assert.False(t, reached)
+				assert.NotContains(t, recorder.Body.String(), "base64,")
+				assert.NotContains(t, recorder.Body.String(), "secret-not-base64")
+			})
+		}
+	})
+
+	t.Run("Content-Type validation is preserved before replacing request headers", func(t *testing.T) {
+		for name, headers := range map[string][]string{
+			"same canonical JSON": {"application/json; charset=UTF-8", "application/json; charset=UTF-8"},
+			"conflicting":         {"application/json", "text/plain"},
+			"invalid parameter":   {"application/json", "application/json; charset=\"unterminated"},
+			"conflicting charset": {"application/json; charset=utf-8", "application/json; charset=utf-16"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				data, err := common.Marshal(map[string]any{"model": "model_5", "prompt": "legacy prompt", "seconds": 15, "images": []string{first}})
+				require.NoError(t, err)
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				defer common.CleanupBodyStorage(c)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(data))
+				c.Request.Header["Content-Type"] = headers
+				err = normalizeBlackRxAILegacyReferences(c, pinned)
+				if name == "same canonical JSON" {
+					require.NoError(t, err)
+					assert.Contains(t, c.GetHeader("Content-Type"), "multipart/form-data")
+				} else {
+					require.Error(t, err)
+					assert.Equal(t, headers, c.Request.Header.Values("Content-Type"))
+				}
+			})
+		}
+	})
+	t.Run("cancel and shared providers keep original storage intact", func(t *testing.T) {
+		for _, cancelled := range []bool{false, true} {
+			data, err := common.Marshal(map[string]any{"model": "model_5", "prompt": "legacy prompt", "seconds": 15, "images": []string{first}})
+			require.NoError(t, err)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", bytes.NewReader(data))
+			c.Request.Header.Set("Content-Type", "application/json")
+			original, err := common.GetBodyStorage(c)
+			require.NoError(t, err)
+			current := pinned
+			if cancelled {
+				ctx, cancel := context.WithCancel(c.Request.Context())
+				cancel()
+				c.Request = c.Request.WithContext(ctx)
+			} else {
+				current.Candidates = []jsplugin.ProtocolBinding{{Plugin: plugin}, {Plugin: &jsplugin.LoadedPlugin{Meta: jsplugin.Meta{Key: "other-provider", Models: []string{"model_5"}}}}}
+			}
+			err = normalizeBlackRxAILegacyReferences(c, current)
+			if cancelled {
+				assert.ErrorIs(t, err, context.Canceled)
+			} else {
+				require.NoError(t, err)
+			}
+			actual, err := common.GetBodyStorage(c)
+			require.NoError(t, err)
+			assert.Same(t, original, actual)
+			raw, err := original.Bytes()
+			require.NoError(t, err)
+			assert.Equal(t, data, raw)
+			common.CleanupBodyStorage(c)
+			_, err = original.Bytes()
+			assert.ErrorIs(t, err, common.ErrStorageClosed)
+		}
+	})
+	t.Run("byte limits and MIME signatures reject before allocation grows", func(t *testing.T) {
+		var total int64
+		_, _, _, err := decodeBlackRxAIInlineReference(t.Context(), "data:image/png;base64,"+strings.Repeat("A", (6<<20)*4/3+8), "images", &total)
+		require.ErrorContains(t, err, "size limit")
+		assert.Zero(t, total)
+		total = 48 << 20
+		_, _, _, err = decodeBlackRxAIInlineReference(t.Context(), first, "images", &total)
+		require.ErrorContains(t, err, "size limit")
+		total = 0
+		audio := []byte("RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00")
+		decoded, mimeType, extension, err := decodeBlackRxAIInlineReference(t.Context(), "data:audio/wav;base64,"+base64.StdEncoding.EncodeToString(audio), "audios", &total)
+		require.NoError(t, err)
+		assert.Equal(t, audio, decoded)
+		assert.Equal(t, "audio/wav", mimeType)
+		assert.Equal(t, ".wav", extension)
+		_, _, _, err = decodeBlackRxAIInlineReference(t.Context(), "data:video/mp4;base64,"+base64.StdEncoding.EncodeToString(audio), "videos", &total)
+		require.ErrorContains(t, err, "MIME type")
+	})
 }

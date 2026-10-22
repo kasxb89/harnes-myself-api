@@ -2597,7 +2597,7 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("deployment plugin sha256: %x", sha256.Sum256(source))
 	registry := pluginruntime.NewRegistry()
-	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "blackrxai-video", Version: "1.0.1"})
+	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "blackrxai-video", Version: "1.0.2"})
 	require.NoError(t, err)
 	require.NoError(t, pluginruntime.ValidateV1Meta(plugin.Meta))
 	require.Len(t, plugin.Meta.Models, 15)
@@ -2709,6 +2709,118 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 		require.ErrorContains(t, decodeErr, "exceed")
 		_, decodeErr = plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_video", "decodeRequest"}, map[string]any{"model": "model_5", "body": map[string]any{"kind": "multipart", "fields": map[string][]string{"prompt": {prompt}, "seconds": {"30", "15"}}}})
 		require.ErrorContains(t, decodeErr, "must be provided once")
+	})
+
+	t.Run("legacy aliases preserve exact supported quantities and canonical requests without networking", func(t *testing.T) {
+		var networkCalls atomic.Int32
+		offline := pluginruntime.WithFetcher(t.Context(), func(context.Context, pluginruntime.FetchRequest) (pluginruntime.FetchResponse, error) {
+			networkCalls.Add(1)
+			return pluginruntime.FetchResponse{}, errors.New("network forbidden in compatibility regression")
+		})
+		for modelName, durationExamples := range wantExamples {
+			durations := durationExamples
+			if modelName == "model_5" || modelName == "video-sd25-480p" || modelName == "sd2.5-720p-x2" {
+				durations = nil
+				for seconds := 15; seconds <= 30; seconds++ {
+					durations = append(durations, float64(seconds))
+				}
+			}
+			for _, seconds := range durations {
+				canonical, canonicalErr := decode(modelName, map[string]any{"model": modelName, "prompt": prompt, "seconds": seconds, "size": "1280x720"})
+				require.NoError(t, canonicalErr)
+				legacy, legacyErr := plugin.Engine.CallPath(offline, "protocols", []string{"openai_video", "decodeRequest"}, map[string]any{
+					"model": modelName, "body": map[string]any{"kind": "json", "value": map[string]any{
+						"model": modelName, "prompt": prompt, "seconds": seconds, "duration": seconds,
+						"size": "1280x720", "resolution": "1280x720", "ratio": "16:9", "aspect_ratio": "16:9", "metadata": map[string]any{"ratio": "16:9"},
+					}},
+				})
+				require.NoError(t, legacyErr, "%s %.0fs", modelName, seconds)
+				assert.Equal(t, canonical, legacy, "%s %.0fs must not change identity, duration or material", modelName, seconds)
+				body := legacy.(map[string]any)["requestBody"].(map[string]any)
+				ctx := map[string]any{"model": modelName, "upstreamModel": modelName, "requestBody": body, "baseUrl": "https://no-network.invalid", "apiKey": "synthetic", "publicTaskId": "legacy_task"}
+				facts, usageErr := plugin.Engine.Call(offline, "extractUsage", ctx)
+				require.NoError(t, usageErr)
+				assert.EqualValues(t, seconds, facts.(map[string]any)["seconds"])
+				descriptor, buildErr := plugin.Engine.Call(offline, "buildSubmitRequest", ctx)
+				require.NoError(t, buildErr)
+				assert.EqualValues(t, seconds, descriptor.(map[string]any)["body"].(map[string]any)["seconds"])
+			}
+		}
+		assert.Zero(t, networkCalls.Load())
+	})
+	t.Run("only provably equivalent legacy dimensions collapse", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			fields map[string]any
+			want   string
+		}{
+			{"resolution alias", map[string]any{"resolution": "720x1280"}, "720x1280"},
+			{"landscape ratio", map[string]any{"ratio": "16:9", "aspect_ratio": "32:18"}, "1280x720"},
+			{"portrait ratio", map[string]any{"ratio": "9:16"}, "720x1280"},
+			{"exact tall ratio", map[string]any{"ratio": "4:7"}, "1024x1792"},
+			{"explicit 720p orientation", map[string]any{"size": "720P", "resolution": "720P", "ratio": "16:9"}, "1280x720"},
+			{"720p matches explicit dimensions", map[string]any{"size": "720x1280", "resolution": "720p"}, "720x1280"},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				request := map[string]any{"prompt": prompt, "seconds": 15}
+				for key, value := range tc.fields {
+					request[key] = value
+				}
+				intent, decodeErr := decode("model_5", request)
+				require.NoError(t, decodeErr)
+				assert.Equal(t, tc.want, intent["requestBody"].(map[string]any)["size"])
+			})
+		}
+		invalid := []map[string]any{
+			{"seconds": 4}, {"seconds": 15, "duration": 30},
+			{"size": "1280x720", "resolution": "720x1280"}, {"size": "720P"},
+			{"size": "1024x1792", "ratio": "9:16"}, {"ratio": "adaptive"}, {"ratio": "1:1"},
+			{"ratio": "16:9", "aspect_ratio": "9:16"}, {"ratio": "16:9", "metadata": map[string]any{"ratio": "9:16"}},
+			{"ratio": nil}, {"resolution": 720}, {"ratio": "9999999999999999:1"},
+			{"metadata": map[string]any{"duration": 30}}, {"metadata": map[string]any{"n": 2}},
+			{"metadata": map[string]any{"parameters": map[string]any{"duration": 30}}}, {"unknown": true},
+		}
+		for _, fields := range invalid {
+			request := map[string]any{"prompt": prompt, "seconds": 15}
+			for key, value := range fields {
+				request[key] = value
+			}
+			_, decodeErr := decode("model_5", request)
+			require.Error(t, decodeErr, "%v", fields)
+		}
+	})
+	t.Run("strict legacy reference metadata keeps order and never silently discards material", func(t *testing.T) {
+		first, last, image := "https://cdn.example/first.png", "https://cdn.example/last.png", "https://cdn.example/ref.png"
+		metadata := map[string]any{
+			"first_frame_image": first, "last_frame_image": last,
+			"content":         []any{map[string]any{"type": "text", "text": prompt}, map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": image}}},
+			"reference_video": []any{"https://cdn.example/ref.mp4"}, "reference_audio": []any{"https://cdn.example/ref.wav"},
+		}
+		intent, decodeErr := decode("model_5", map[string]any{"prompt": prompt, "seconds": 15, "images": []any{first, last}, "metadata": metadata})
+		require.NoError(t, decodeErr)
+		body := intent["requestBody"].(map[string]any)
+		assert.Equal(t, []any{first, last, image}, body["image_urls"], "duplicate positional frames count once and retain their order")
+		assert.Equal(t, []any{"https://cdn.example/ref.mp4"}, body["video_urls"])
+		assert.Equal(t, []any{"https://cdn.example/ref.wav"}, body["audio_urls"])
+		assert.Equal(t, "reference_to_video", body["gen_type"])
+		assert.NotContains(t, body, "metadata")
+		badMetadata := []map[string]any{
+			{"last_frame_image": last},
+			{"first_frame_image": first}, // The request below deliberately disagrees with the positional frame.
+			{"content": []any{map[string]any{"type": "text", "text": "changed prompt"}, map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": image}}}},
+			{"content": []any{map[string]any{"type": "text", "text": prompt}, map[string]any{"type": "video_url", "role": "reference_video", "video_url": map[string]any{"url": "https://cdn.example/ref.mp4"}}}},
+			{"content": []any{map[string]any{"type": "text", "text": prompt}, map[string]any{"type": "image_url", "role": "reference_image", "image_url": map[string]any{"url": image, "detail": "auto"}}}},
+			{"reference_audio": "https://cdn.example/ref.wav"},
+			{"first_frame_image": "data:image/png;base64,AA=="},
+			{"reference_audio": []any{"data:audio/wav;base64,AA=="}},
+		}
+		for _, value := range badMetadata {
+			_, decodeErr := decode("model_5", map[string]any{"prompt": prompt, "seconds": 15, "images": []any{last}, "metadata": value})
+			require.Error(t, decodeErr, "%v", value)
+		}
+		_, decodeErr = decode("lec-mj-seedance-2-5-cd-720p", map[string]any{"prompt": prompt, "metadata": map[string]any{"reference_video": []any{"https://cdn.example/ref.mp4"}}})
+		require.ErrorContains(t, decodeErr, "exceed")
 	})
 
 	const providerTaskID = "supplier/video?private"
@@ -2899,7 +3011,7 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 	t.Run("multipart preserves repeated URL fields and every distinct opaque file", func(t *testing.T) {
 		var input bytes.Buffer
 		writer := multipart.NewWriter(&input)
-		fields := map[string][]string{"model": {modelName}, "prompt": {prompt}, "seconds": {"30"}, "size": {"1280x720"}, "image_url": {"https://cdn.example/single.png"}, "image_urls": {"https://cdn.example/one.png", "https://cdn.example/two.png"}, "video_urls": {"https://cdn.example/one.mp4", "https://cdn.example/two.mp4"}, "audio_urls": {"/media/one.mp3", "/media/two.mp3"}}
+		fields := map[string][]string{"model": {modelName}, "prompt": {prompt}, "seconds": {"30"}, "duration": {"30"}, "size": {"1280x720"}, "resolution": {"1280x720"}, "ratio": {"16:9"}, "aspect_ratio": {"16:9"}, "image_url": {"https://cdn.example/single.png"}, "image_urls": {"https://cdn.example/one.png", "https://cdn.example/two.png"}, "video_urls": {"https://cdn.example/one.mp4", "https://cdn.example/two.mp4"}, "audio_urls": {"/media/one.mp3", "/media/two.mp3"}}
 		for field, values := range fields {
 			for _, value := range values {
 				require.NoError(t, writer.WriteField(field, value))
@@ -2938,6 +3050,10 @@ func TestBlackRxAIVideoDeploymentPluginContract(t *testing.T) {
 		assert.Equal(t, []string{"audio-one"}, capturedFiles["audios"])
 		assert.NotContains(t, capturedFields, "referenceFiles")
 		assert.NotContains(t, capturedFields, "duration")
+		assert.NotContains(t, capturedFields, "resolution")
+		assert.NotContains(t, capturedFields, "ratio")
+		assert.NotContains(t, capturedFields, "aspect_ratio")
+		assert.NotContains(t, capturedFields, "metadata")
 	})
 	t.Run("unknown statuses stay unknown and failures enter the host refund path", func(t *testing.T) {
 		for _, tc := range []struct{ status, want string }{{"queued", "QUEUED"}, {"in_progress", "IN_PROGRESS"}, {"completed", "SUCCESS"}, {"failed", "FAILURE"}, {"cancelled", "FAILURE"}, {"unexpected", "UNKNOWN"}, {"__proto__", "UNKNOWN"}} {

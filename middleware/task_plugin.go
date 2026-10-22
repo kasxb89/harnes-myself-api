@@ -541,6 +541,10 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			abortWithOpenAiMessage(c, http.StatusNotImplemented, "Task protocol bridge is not available")
 			return
 		}
+		if err := normalizeBlackRxAILegacyReferences(c, pinned); err != nil {
+			abortWithOpenAiMessage(c, invalidRequestStatus(err), err.Error())
+			return
+		}
 		requestContext, err := buildTaskPluginRouteRequest(c)
 		if err != nil {
 			logger.LogWarn(

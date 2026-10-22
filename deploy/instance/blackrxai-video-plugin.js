@@ -18,7 +18,7 @@ const MODELS = {
   'sd-20-903': { seconds: [15], defaultSeconds: 15, images: 9, videos: 0, audios: 3 },
 };
 const SIZES = ['720x1280', '1280x720', '1024x1792', '1792x1024'];
-const FIELDS = ['model', 'prompt', 'seconds', 'duration', 'size', 'gen_type', 'n',
+const FIELDS = ['model', 'prompt', 'seconds', 'duration', 'size', 'resolution', 'ratio', 'aspect_ratio', 'metadata', 'gen_type', 'n',
   'images', 'input_reference', 'image_url', 'image_urls', 'videos', 'video_urls', 'audios', 'audio_urls'];
 const VIDEO_USAGE_SCHEMA = {
   seconds: { type: 'number', unit: 'second', description: { en: 'Video generation unit price', zh: '视频生成单价' } },
@@ -29,7 +29,7 @@ export const meta = {
   key: 'blackrxai-video',
   name: 'BlackRxAI Seedance',
   icon: 'text:BR',
-  version: '1.0.1',
+  version: '1.0.2',
   author: { name: 'Yunshu' },
   description: { en: 'Seedance video generation', zh: 'Seedance 视频生成' },
   baseUrl: 'https://hi.blackrxai.com',
@@ -85,6 +85,90 @@ function urls(value, media) {
   return value.map(function (item) { return referenceURL(item, media); });
 }
 
+// Legacy desktop clients send aliases together. Only equivalent values may
+// collapse to the vendor's canonical field; a conflict must fail before billing.
+function normalizedSize(req, metadata) {
+  let ratio;
+  for (const value of [req.ratio, req.aspect_ratio, metadata.ratio]) {
+    if (value === undefined) continue;
+    if (typeof value !== 'string' || !/^[1-9][0-9]{0,4}:[1-9][0-9]{0,4}$/.test(value)) {
+      throw new Error('video ratio must match a supported width and height');
+    }
+    const parts = value.split(':').map(Number);
+    if (ratio && ratio[0] * parts[1] !== parts[0] * ratio[1]) throw new Error('video ratio aliases must agree');
+    ratio = parts;
+  }
+  let size;
+  let shortEdge;
+  for (const value of [req.size, req.resolution]) {
+    if (value === undefined) continue;
+    if (typeof value !== 'string') throw new Error('unsupported video size');
+    // Legacy 720P names the 720-pixel short edge, not an orientation.
+    // Require an explicit ratio or concrete size to select the unique vendor size.
+    if (/^720p$/i.test(value)) shortEdge = 720;
+    else {
+      if (!SIZES.includes(value)) throw new Error('unsupported video size');
+      if (size && size !== value) throw new Error('size and resolution must agree');
+      size = value;
+    }
+  }
+  const candidates = SIZES.filter(function (value) {
+    const dimensions = value.split('x').map(Number);
+    return (!size || size === value) && (!shortEdge || Math.min(...dimensions) === shortEdge) &&
+      (!ratio || dimensions[0] * ratio[1] === dimensions[1] * ratio[0]);
+  });
+  if (size !== undefined || shortEdge !== undefined || ratio !== undefined) {
+    if (candidates.length !== 1) throw new Error('video size and ratio must select one supported width and height');
+    return candidates[0];
+  }
+  return undefined;
+}
+
+function legacyMetadata(req, multipart) {
+  if (req.metadata === undefined) return {};
+  if (multipart) throw new Error('legacy video metadata requires a JSON body');
+  const metadata = req.metadata;
+  if (!record(metadata)) throw new Error('video metadata must be an object');
+  for (const name of Object.keys(metadata)) {
+    if (!['ratio', 'first_frame_image', 'last_frame_image', 'content', 'reference_video', 'reference_audio'].includes(name)) {
+      throw new Error('unsupported video metadata field: ' + name);
+    }
+  }
+  return metadata;
+}
+
+function legacyReferences(req, metadata) {
+  const frames = [];
+  if (metadata.first_frame_image !== undefined) frames.push(referenceURL(metadata.first_frame_image, false));
+  if (metadata.last_frame_image !== undefined) {
+    if (!frames.length) throw new Error('last frame requires the first frame');
+    frames.push(referenceURL(metadata.last_frame_image, false));
+  }
+  let images = urls(req.images, false);
+  if (frames.length) {
+    if (req.images !== undefined && (images.length !== frames.length || images.some(function (value, index) { return value !== frames[index]; }))) {
+      throw new Error('frame metadata and images must agree');
+    }
+    images = frames;
+  }
+  if (metadata.content !== undefined) {
+    const content = metadata.content;
+    if (!Array.isArray(content) || content.length < 2 || !record(content[0]) ||
+        Object.keys(content[0]).length !== 2 || content[0].type !== 'text' || content[0].text !== req.prompt) {
+      throw new Error('video metadata content must preserve the prompt and reference images');
+    }
+    for (let index = 1; index < content.length; index++) {
+      const item = content[index];
+      if (!record(item) || Object.keys(item).length !== 3 || item.type !== 'image_url' || item.role !== 'reference_image' ||
+          !record(item.image_url) || Object.keys(item.image_url).length !== 1 || !Object.prototype.hasOwnProperty.call(item.image_url, 'url')) {
+        throw new Error('unsupported video metadata reference');
+      }
+      images.push(referenceURL(item.image_url.url, false));
+    }
+  }
+  return { images: images, videos: urls(metadata.reference_video, true), audios: urls(metadata.reference_audio, true) };
+}
+
 function normalize(ctx) {
   if (!ctx.body || !['json', 'multipart'].includes(ctx.body.kind)) throw new Error('JSON or multipart body required');
   const multipart = ctx.body.kind === 'multipart';
@@ -109,17 +193,19 @@ function normalize(ctx) {
   const seconds = req.seconds === undefined ? (req.duration === undefined ? config.defaultSeconds : duration(req.duration)) : duration(req.seconds);
   if (req.duration !== undefined && duration(req.duration) !== seconds) throw new Error('seconds and duration must agree');
   if (!supportedSeconds(config, seconds)) throw new Error('seconds is not supported by the selected model');
-  if (req.size !== undefined && !SIZES.includes(req.size)) throw new Error('unsupported video size');
+  const metadata = legacyMetadata(req, multipart);
+  const size = normalizedSize(req, metadata);
+  const legacy = multipart ? { images: [], videos: [], audios: [] } : legacyReferences(req, metadata);
   const images = [];
   if (req.image_url !== undefined) images.push(referenceURL(req.image_url, false));
   images.push(...urls(req.image_urls, false));
-  if (!multipart) images.push(...urls(req.images, false));
+  if (!multipart) images.push(...legacy.images);
   else if (req.images !== undefined || req.videos !== undefined || req.audios !== undefined || req.input_reference !== undefined) {
     throw new Error('multipart reference material must be a file or a URL field');
   }
   if (!multipart && req.input_reference !== undefined) throw new Error('input_reference requires a multipart file');
-  const videos = urls(req.video_urls, true).concat(multipart ? [] : urls(req.videos, true));
-  const audios = urls(req.audio_urls, true).concat(multipart ? [] : urls(req.audios, true));
+  const videos = urls(req.video_urls, true).concat(multipart ? [] : urls(req.videos, true), legacy.videos);
+  const audios = urls(req.audio_urls, true).concat(multipart ? [] : urls(req.audios, true), legacy.audios);
   const files = [];
   const counts = { images: images.length, videos: videos.length, audios: audios.length };
   const orderedFiles = (ctx.body.files || []).filter(function (file) { return file.field === 'input_reference'; })
@@ -142,7 +228,7 @@ function normalize(ctx) {
   if (req.gen_type !== undefined && req.gen_type !== genType) throw new Error('gen_type conflicts with reference material');
   const body = { model: ctx.model, prompt: req.prompt, seconds: seconds, gen_type: genType,
     image_urls: images, video_urls: videos, audio_urls: audios, referenceFiles: files };
-  if (req.size !== undefined) body.size = req.size;
+  if (size !== undefined) body.size = size;
   return { kind: 'submit', model: ctx.model, action: genType, requestBody: body };
 }
 

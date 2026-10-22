@@ -8,10 +8,67 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPricingBlackrxParametersEnableReleasedClientsWithoutChangingBilling(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	insertPricingEndpointChannel(t, 503, constant.ChannelTypeTaskPlugin, dto.ChannelOtherSettings{})
+	for _, id := range []string{"model_5", "lec-mj-seedance-2-5-cd-720p", "bt-seedance-2.0", "unrelated-video"} {
+		insertPricingEndpointAbility(t, 503, id)
+	}
+	InitChannelCache()
+	for _, row := range GetPricing() {
+		assert.Nil(t, row.Parameters, "unregistered plugins cannot advertise input contracts")
+	}
+	source, err := os.ReadFile("../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	plugin, err := jsplugin.DefaultRegistry.Register(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("blackrxai-video") })
+	InvalidatePricingCache()
+	rows := pricingByModel(GetPricing())
+	assert.Nil(t, rows["unrelated-video"].Parameters)
+	for _, id := range []string{"model_5", "lec-mj-seedance-2-5-cd-720p", "bt-seedance-2.0"} {
+		row := rows[id]
+		assert.Equal(t, id, row.ModelName)
+		properties := row.Parameters["properties"].(map[string]any)
+		seconds := properties["seconds"].(map[string]any)["enum"].([]int)
+		switch id {
+		case "model_5":
+			assert.Equal(t, []int{15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}, seconds)
+		case "lec-mj-seedance-2-5-cd-720p":
+			assert.Equal(t, []int{30}, seconds)
+		case "bt-seedance-2.0":
+			assert.Equal(t, []int{10, 15}, seconds)
+		}
+		schema, examples := plugin.Meta.UsageForModel(id)
+		assert.Equal(t, jsplugin.CloneUsageSchema(schema), row.BillingUsageSchema)
+		assert.Equal(t, jsplugin.CloneUsageExamples(examples), row.BillingUsageExamples)
+		encoded, err := common.Marshal(row)
+		require.NoError(t, err)
+		var decoded map[string]any
+		require.NoError(t, common.Unmarshal(encoded, &decoded))
+		assert.Contains(t, decoded, "parameters")
+		assert.Equal(t, id, decoded["model_name"])
+	}
+	// Every advertised model's examples remain within its input contract, while
+	// numeric input enums never enter the billing usage schema.
+	for _, id := range plugin.Meta.Models {
+		parameters := blackrxVideoClientParameters(id)
+		require.NotNil(t, parameters, id)
+		seconds := parameters["properties"].(map[string]any)["seconds"].(map[string]any)["enum"].([]int)
+		_, examples := plugin.Meta.UsageForModel(id)
+		for _, example := range examples {
+			value, ok := example.Facts["seconds"].(int64)
+			require.True(t, ok, "integer plugin metadata uses int64")
+			assert.Contains(t, seconds, int(value), id)
+		}
+	}
+}
 
 func TestPricingVideoDisplayNamesPreserveModelIDs(t *testing.T) {
 	resetPricingEndpointTestTables(t)

@@ -28,6 +28,7 @@ type Pricing struct {
 	BillingPluginVariants  []PricingPluginVariant               `json:"billing_plugin_variants,omitempty"`
 	ModelName              string                               `json:"model_name"`
 	DisplayName            string                               `json:"display_name,omitempty"`
+	Parameters             map[string]any                       `json:"parameters,omitempty"`
 	Description            string                               `json:"description,omitempty"`
 	Icon                   string                               `json:"icon,omitempty"`
 	Tags                   string                               `json:"tags,omitempty"`
@@ -397,6 +398,9 @@ func updatePricing() {
 			usageSchema, usageExamples := plugin.Meta.UsageForModel(usageModel)
 			pricing.BillingUsageSchema = jsplugin.CloneUsageSchema(usageSchema)
 			pricing.BillingUsageExamples = jsplugin.CloneUsageExamples(usageExamples)
+			if plugin.Meta.Key == "blackrxai-video" {
+				pricing.Parameters = blackrxVideoClientParameters(usageModel)
+			}
 		}
 		providers := pluginGeneration.PluginsByModel(model)
 		hasProviderOverride := false
@@ -446,6 +450,38 @@ func updatePricing() {
 	modelEnableGroupsLock.Unlock()
 
 	lastGetPricingTime = time.Now()
+}
+
+// blackrxVideoClientParameters exposes input constraints separately from billing
+// facts. Released clients already read this schema before constructing requests.
+func blackrxVideoClientParameters(model string) map[string]any {
+	var seconds []int
+	switch model {
+	case "lec-mj-seedance-2-5-cd-720p", "sd-25-900-2", "k2-sd2.5-720p", "lec-sz-sd2-full-480p":
+		seconds = []int{30}
+	case "video-sd25-480p", "model_5", "sd2.5-720p-x2":
+		for value := 15; value <= 30; value++ {
+			seconds = append(seconds, value)
+		}
+	case "bt-seedance-2.0":
+		seconds = []int{10, 15}
+	case "sd2-th-2.0-720p", "lec-rs-seedance-2-0-fast", "sd20-933-720p", "sd2-hn2-480-pro", "v3-sd2.0-933-720p", "sd-20-9/3/3-1", "sd-20-903":
+		seconds = []int{15}
+	default:
+		return nil
+	}
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"seconds": map[string]any{
+				"type": "integer", "enum": seconds,
+				"minimum": seconds[0], "maximum": seconds[len(seconds)-1], "default": seconds[len(seconds)-1],
+			},
+			"resolution": map[string]any{
+				"type": "string", "enum": []string{"1280x720", "720x1280", "1792x1024", "1024x1792"}, "default": "1280x720",
+			},
+		},
+	}
 }
 
 // GetSupportedEndpointMap 返回全局端点到路径的映射
