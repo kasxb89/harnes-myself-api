@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""Validate a TAR stream against a private manifest, without extracting files."""
+import argparse
+import decimal
+import hashlib
+import json
+import posixpath
+import re
+import sys
+import tarfile
+import zlib
+
+CHUNK = 1024 * 1024
+HEX = re.compile(r"^[a-f0-9]{64}$")
+BLOB = re.compile(r"^blobs/sha256/([a-f0-9]{64})$")
+
+
+def check(condition, code):
+    if not condition:
+        raise ValueError(code)
+
+
+def canonical(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def name(value, directory=False):
+    check(isinstance(value, str) and value and "\0" not in value and not value.startswith("/"), "TAR_PATH_INVALID")
+    while value.startswith("./"):
+        value = value[2:]
+    if directory:
+        value = value.rstrip("/")
+    check(value and all(part not in ("", ".", "..") for part in value.split("/")), "TAR_PATH_INVALID")
+    return value
+
+
+def member_type(member):
+    if member.isreg() or member.islnk():
+        return "file"
+    if member.isdir():
+        return "dir"
+    if member.issym():
+        return "symlink"
+    raise ValueError("TAR_ENTRY_TYPE_UNSUPPORTED")
+
+
+def metadata_matches(member, expected):
+    check(member_type(member) == expected["type"], "TAR_ENTRY_TYPE_MISMATCH")
+    for attribute in ("uid", "gid"):
+        check(getattr(member, attribute) == expected[attribute], "TAR_OWNER_MISMATCH")
+    check((member.mode & 0o7777) == (expected["mode"] & 0o7777), "TAR_MODE_MISMATCH")
+    mtime = member.pax_headers.get("mtime", str(member.mtime))
+    exact = decimal.Decimal(mtime) * decimal.Decimal(1000000000)
+    check(exact == decimal.Decimal(expected["mtime_ns"]), "TAR_MTIME_MISMATCH")
+
+
+def consume(fileobj, capture=False, diff_hash=False):
+    digest = hashlib.sha256()
+    raw = bytearray() if capture else None
+    size = 0
+    decompressor = None
+    uncompressed = hashlib.sha256()
+    first = True
+    while True:
+        chunk = fileobj.read(CHUNK)
+        if not chunk:
+            break
+        digest.update(chunk)
+        size += len(chunk)
+        if raw is not None:
+            if len(raw) + len(chunk) <= 4 * CHUNK:
+                raw.extend(chunk)
+            else:
+                raw = None
+        if diff_hash:
+            if first and chunk.startswith(b"\x1f\x8b"):
+                decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+            if decompressor is not None:
+                pending = chunk
+                while pending:
+                    uncompressed.update(decompressor.decompress(pending, CHUNK))
+                    pending = decompressor.unconsumed_tail
+                check(not decompressor.unused_data, "DOCKER_LAYER_GZIP_TRAILING_DATA")
+            else:
+                uncompressed.update(chunk)
+        first = False
+    if decompressor is not None:
+        check(decompressor.eof, "DOCKER_LAYER_GZIP_TRUNCATED")
+        uncompressed.update(decompressor.flush())
+    result = {"size": size, "sha256": digest.hexdigest()}
+    if diff_hash:
+        result["diff_sha256"] = uncompressed.hexdigest()
+    if raw is not None:
+        try:
+            result["json"] = json.loads(raw)
+        except (ValueError, UnicodeError):
+            pass
+    return result
+
+
+def finish_tar(tar):
+    # tarfile accepts missing end blocks. Require the first consumed zero header,
+    # another zero block and zero-only record padding, then drain to actual EOF.
+    check(tar.fileobj.tell() == tar.offset + 512, "TAR_END_BLOCK_MISSING")
+    padding = 0
+    while True:
+        chunk = tar.fileobj.read(CHUNK)
+        if not chunk:
+            break
+        check(not any(chunk), "TAR_TRAILING_DATA")
+        padding += len(chunk)
+    check(padding >= 512 and padding % 512 == 0, "TAR_END_PADDING_INVALID")
+
+
+def verify_files(expected):
+    check(expected.get("schema") == 1 and isinstance(expected.get("entries"), list), "SOURCE_MANIFEST_INVALID")
+    entries = expected["entries"]
+    tree = hashlib.sha256(canonical(entries)).hexdigest()
+    check(tree == expected.get("tree_sha256"), "SOURCE_TREE_HASH_MISMATCH")
+    wanted = {}
+    for entry in entries:
+        pathname = name(entry["path"], entry["type"] == "dir")
+        check(pathname == entry["path"] and pathname not in wanted and entry["type"] in ("file", "dir", "symlink"), "SOURCE_ENTRY_INVALID")
+        check(isinstance(entry["mode"], int) and isinstance(entry["uid"], int) and isinstance(entry["gid"], int)
+              and isinstance(entry["mtime_ns"], str) and re.fullmatch(r"-?\d+", entry["mtime_ns"]), "SOURCE_METADATA_INVALID")
+        if entry["type"] == "file":
+            check(isinstance(entry["size"], int) and entry["size"] >= 0 and HEX.fullmatch(entry["sha256"]), "SOURCE_FILE_INVALID")
+        if entry["type"] == "symlink":
+            check(isinstance(entry.get("link"), str), "SOURCE_LINK_INVALID")
+        wanted[pathname] = entry
+    seen = {}
+    hardlinks = 0
+    regular = 0
+    logical = 0
+    with tarfile.open(fileobj=sys.stdin.buffer, mode="r|", bufsize=512) as tar:
+        for member in tar:
+            pathname = name(member.name, member.isdir())
+            check(pathname in wanted and pathname not in seen, "TAR_ENTRY_UNEXPECTED_OR_DUPLICATE")
+            entry = wanted[pathname]
+            metadata_matches(member, entry)
+            if member.islnk():
+                target = name(member.linkname)
+                check(target in seen and seen[target].get("sha256"), "TAR_HARDLINK_TARGET_NOT_PREVIOUS_FILE")
+                actual = {"size": seen[target]["size"], "sha256": seen[target]["sha256"]}
+                hardlinks += 1
+            elif member.isreg():
+                check(member.size == entry["size"], "TAR_FILE_SIZE_MISMATCH")
+                actual = consume(tar.extractfile(member))
+                regular += 1
+            elif member.issym():
+                check(member.linkname == entry["link"], "TAR_SYMLINK_MISMATCH")
+                actual = {}
+            else:
+                actual = {}
+            if entry["type"] == "file":
+                check(actual["size"] == entry["size"] and actual["sha256"] == entry["sha256"], "TAR_FILE_CONTENT_MISMATCH")
+                logical += actual["size"]
+            seen[pathname] = actual
+        finish_tar(tar)
+    check(len(seen) == len(wanted), "TAR_ENTRIES_MISSING")
+    return {"status": "PASS", "kind": "files", "entry_count": len(seen), "regular_files": regular,
+            "hardlinks": hardlinks, "logical_bytes": logical, "tree_sha256": tree}
+
+
+def verify_docker(expected):
+    ids = expected.get("image_ids")
+    check(expected.get("schema") == 1 and isinstance(ids, list) and ids and len(set(ids)) == len(ids)
+          and all(isinstance(value, str) and re.fullmatch(r"sha256:[a-f0-9]{64}", value) for value in ids), "DOCKER_EXPECTED_IDS_INVALID")
+    records = {}
+    links = {}
+    json_bytes = 0
+    blob_count = 0
+    with tarfile.open(fileobj=sys.stdin.buffer, mode="r|", bufsize=512) as tar:
+        for member in tar:
+            pathname = name(member.name, member.isdir())
+            check(pathname not in records and pathname not in links, "DOCKER_TAR_DUPLICATE")
+            member_type(member)
+            if member.islnk():
+                target = name(member.linkname)
+                check(target in records and records[target].get("sha256"), "DOCKER_HARDLINK_TARGET_INVALID")
+                records[pathname] = records[target]
+            elif member.issym():
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(pathname), member.linkname))
+                links[pathname] = name(target)
+            elif member.isdir():
+                records[pathname] = {}
+            else:
+                capture = member.size <= 4 * CHUNK
+                record = consume(tar.extractfile(member), capture=capture, diff_hash=True)
+                if "json" in record:
+                    json_bytes += record["size"]
+                    check(json_bytes <= 64 * CHUNK, "DOCKER_JSON_LIMIT")
+                records[pathname] = record
+            blob = BLOB.fullmatch(pathname)
+            if blob:
+                check(pathname in records and records[pathname].get("sha256") == blob.group(1), "DOCKER_BLOB_HASH_MISMATCH")
+                blob_count += 1
+        finish_tar(tar)
+
+    def resolve(pathname, visiting=None):
+        pathname = name(pathname)
+        if pathname in records:
+            check(records[pathname].get("sha256"), "DOCKER_REFERENCE_NOT_FILE")
+            return records[pathname]
+        visiting = set() if visiting is None else visiting
+        check(pathname in links and pathname not in visiting, "DOCKER_REFERENCE_MISSING_OR_CYCLIC")
+        return resolve(links[pathname], visiting | {pathname})
+
+    def descriptor(value):
+        check(isinstance(value, dict) and re.fullmatch(r"sha256:[a-f0-9]{64}", value.get("digest", "")), "OCI_DESCRIPTOR_INVALID")
+        record = resolve("blobs/sha256/" + value["digest"][7:])
+        check(record["sha256"] == value["digest"][7:] and record["size"] == value.get("size"), "OCI_DESCRIPTOR_MISMATCH")
+        return record
+
+    found = set()
+    image_count = 0
+    manifest_record = records.get("manifest.json", {})
+    manifest = manifest_record.get("json")
+    if manifest is not None:
+        check(isinstance(manifest, list) and manifest, "DOCKER_MANIFEST_INVALID")
+        for image in manifest:
+            check(isinstance(image, dict) and isinstance(image.get("Layers"), list), "DOCKER_IMAGE_INVALID")
+            config_name = name(image["Config"])
+            config = resolve(config_name)
+            check("json" in config, "DOCKER_CONFIG_NOT_JSON")
+            if re.fullmatch(r"[a-f0-9]{64}\.json", posixpath.basename(config_name)):
+                check(posixpath.basename(config_name)[:-5] == config["sha256"], "DOCKER_CONFIG_FILENAME_MISMATCH")
+            image_id = "sha256:" + config["sha256"]
+            diffs = config["json"].get("rootfs", {}).get("diff_ids")
+            check(isinstance(diffs, list) and len(diffs) == len(image["Layers"]), "DOCKER_LAYER_COUNT_MISMATCH")
+            for index, layer_name in enumerate(image["Layers"]):
+                layer = resolve(layer_name)
+                check("sha256:" + layer["diff_sha256"] == diffs[index], "DOCKER_LAYER_DIFF_HASH_MISMATCH")
+            found.add(image_id)
+            image_count += 1
+    # OCI indexes may accompany Docker manifest.json; validate every reachable
+    # descriptor as well, including its declared size and content digest.
+    visited = set()
+
+    def walk_index(value):
+        check(isinstance(value, dict) and value.get("schemaVersion") == 2, "OCI_MANIFEST_INVALID")
+        if "manifests" in value:
+            check(isinstance(value["manifests"], list) and value["manifests"], "OCI_INDEX_EMPTY")
+            for item in value["manifests"]:
+                record = descriptor(item)
+                if record["sha256"] not in visited:
+                    visited.add(record["sha256"])
+                    check("json" in record, "OCI_MANIFEST_NOT_JSON")
+                    walk_index(record["json"])
+        else:
+            config = descriptor(value.get("config"))
+            check("json" in config and isinstance(value.get("layers"), list), "OCI_IMAGE_INVALID")
+            diffs = config["json"].get("rootfs", {}).get("diff_ids")
+            check(isinstance(diffs, list) and len(diffs) == len(value["layers"]), "OCI_LAYER_COUNT_MISMATCH")
+            for index, item in enumerate(value["layers"]):
+                layer = descriptor(item)
+                check("sha256:" + layer["diff_sha256"] == diffs[index], "OCI_LAYER_DIFF_HASH_MISMATCH")
+            found.add("sha256:" + config["sha256"])
+
+    if "index.json" in records:
+        check("json" in records["index.json"], "OCI_INDEX_NOT_JSON")
+        walk_index(records["index.json"]["json"])
+    check(found == set(ids), "DOCKER_IMAGE_IDS_MISMATCH")
+    return {"status": "PASS", "kind": "docker", "entry_count": len(records) + len(links),
+            "image_count": len(found), "manifest_entries": image_count, "blob_count": blob_count, "image_ids": sorted(found)}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--kind", choices=("files", "docker"), required=True)
+    parser.add_argument("--expected", required=True)
+    parser.add_argument("--expected-sha256")
+    args = parser.parse_args()
+    with open(args.expected, "rb") as fileobj:
+        raw = fileobj.read()
+    if args.expected_sha256 is not None:
+        check(HEX.fullmatch(args.expected_sha256) and hashlib.sha256(raw).hexdigest() == args.expected_sha256, "EXPECTED_MANIFEST_CHANGED")
+    expected = json.loads(raw)
+    result = verify_files(expected) if args.kind == "files" else verify_docker(expected)
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        print("ARCHIVE_TAR_VALIDATION_FAILED:" + str(error), file=sys.stderr)
+        sys.exit(1)

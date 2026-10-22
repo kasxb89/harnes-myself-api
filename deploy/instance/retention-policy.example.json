@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "root": "/opt/yunshu-harness-newapi-20261016",
+  "container": "yunshu-harness-newapi",
+  "rollback_count": 2,
+  "head_revision": "REPLACE_WITH_ACTUAL_LIVE_40_HEX_REVISION",
+  "releases": [
+    {
+      "release": "YYYYMMDD-REVISION12-HHMMSS",
+      "revision": "REPLACE_WITH_ACTUAL_LIVE_40_HEX_REVISION",
+      "parent_revision": "REPLACE_WITH_ACTUAL_FIRST_FALLBACK_REVISION",
+      "backup": "release-YYYYMMDD-REVISION12-HHMMSS",
+      "image_id": "sha256:REPLACE_WITH_ACTUAL_64_HEX_IMAGE_ID",
+      "manifest": "retention-manifest.json",
+      "manifest_sha256": "REPLACE_WITH_VERIFIED_64_HEX_MANIFEST_DIGEST",
+      "artifacts": {
+        "staged_binary": {
+          "path": "/opt/yunshu-harness-newapi-20261016/new-api-YYYYMMDD-REVISION12-HHMMSS",
+          "sha256": "REPLACE_WITH_INSPECT_ARTIFACTS_BINARY_SHA"
+        },
+        "operator_dir": {
+          "path": "/tmp/yunshu-api-YYYYMMDD-REVISION12-HHMMSS",
+          "manifest_origin": "release-operator_sha256",
+          "manifest_sha256": "REPLACE_WITH_INSPECT_ARTIFACTS_MANIFEST_SHA",
+          "files": {
+            "release.json": {"bytes": 0, "sha256": "REPLACE_WITH_ACTUAL_SHA"},
+            "REPLACE_WITH_EACH_FROZEN_SOURCE_FILENAME": {"bytes": 0, "sha256": "REPLACE_WITH_ACTUAL_SHA"}
+          }
+        }
+      }
+    },
+    {
+      "release": "YYYYMMDD-REVISION12-HHMMSS",
+      "revision": "REPLACE_WITH_ACTUAL_FIRST_FALLBACK_REVISION",
+      "parent_revision": "REPLACE_WITH_ACTUAL_SECOND_FALLBACK_REVISION",
+      "backup": "release-YYYYMMDD-REVISION12-HHMMSS",
+      "image_id": "sha256:REPLACE_WITH_ACTUAL_64_HEX_IMAGE_ID",
+      "manifest": "retention-manifest.json",
+      "manifest_sha256": "REPLACE_WITH_VERIFIED_64_HEX_MANIFEST_DIGEST",
+      "artifacts": {
+        "staged_binary": {
+          "path": "/opt/yunshu-harness-newapi-20261016/new-api-YYYYMMDD-REVISION12-HHMMSS",
+          "sha256": "REPLACE_WITH_INSPECT_ARTIFACTS_BINARY_SHA"
+        },
+        "operator_dir": {
+          "path": "/tmp/yunshu-api-YYYYMMDD-REVISION12-HHMMSS",
+          "manifest_origin": "release-operator_sha256",
+          "manifest_sha256": "REPLACE_WITH_INSPECT_ARTIFACTS_MANIFEST_SHA",
+          "files": {
+            "release.json": {"bytes": 0, "sha256": "REPLACE_WITH_ACTUAL_SHA"},
+            "REPLACE_WITH_EACH_FROZEN_SOURCE_FILENAME": {"bytes": 0, "sha256": "REPLACE_WITH_ACTUAL_SHA"}
+          }
+        }
+      }
+    },
+    {
+      "release": "YYYYMMDD-REVISION12-HHMMSS",
+      "revision": "REPLACE_WITH_ACTUAL_SECOND_FALLBACK_REVISION",
+      "parent_revision": null,
+      "backup": "release-YYYYMMDD-REVISION12-HHMMSS",
+      "image_id": "sha256:REPLACE_WITH_ACTUAL_64_HEX_IMAGE_ID",
+      "manifest": "retention-manifest.json",
+      "manifest_sha256": "REPLACE_WITH_VERIFIED_64_HEX_MANIFEST_DIGEST",
+      "artifacts": {
+        "staged_binary": {
+          "path": "/opt/yunshu-harness-newapi-20261016/new-api-YYYYMMDD-REVISION12-HHMMSS",
+          "sha256": "REPLACE_WITH_INSPECT_ARTIFACTS_BINARY_SHA"
+        },
+        "operator_dir": {
+          "path": "/tmp/yunshu-api-YYYYMMDD-REVISION12-HHMMSS",
+          "manifest_origin": "release-operator_sha256",
+          "manifest_sha256": "REPLACE_WITH_INSPECT_ARTIFACTS_MANIFEST_SHA",
+          "files": {
+            "release.json": {"bytes": 0, "sha256": "REPLACE_WITH_ACTUAL_SHA"},
+            "REPLACE_WITH_EACH_FROZEN_SOURCE_FILENAME": {"bytes": 0, "sha256": "REPLACE_WITH_ACTUAL_SHA"}
+          }
+        }
+      }
+    }
+  ]
+}

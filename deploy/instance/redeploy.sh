@@ -8,6 +8,11 @@
 # 数据（/data，含 SQLite 与创作内容）与证书（/data/secrets）都在挂载卷上，不受重建影响。
 set -euo pipefail
 
+# This historical bootstrap does not preserve the current instance or its
+# archive-before-delete retention policy. Keep its source for audit only.
+printf '%s\n' '此旧部署入口已停用。请使用当前发布操作器，并执行 deploy/instance/backup_retention.py 的容量、候选备份和归档保留检查。详见 deploy/instance/BACKUP-RETENTION.md。' >&2
+return 64 2>/dev/null || exit 64
+
 HOST=${HOST:-8.133.202.230}
 KEY=${KEY:-$HOME/.ssh/codex-yunshu-audit-20260826}
 D=${INSTANCE_DIR:-/opt/yunshu-harness-newapi-20261016}
