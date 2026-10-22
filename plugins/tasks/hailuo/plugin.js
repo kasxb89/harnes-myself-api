@@ -62,7 +62,7 @@ export const meta = {
     en: "MiniMax Hailuo video generation (text-to-video, image-to-video, and MiniMax-H3 multimodal reference)",
     zh: "MiniMax 海螺视频生成（文生视频、图生视频、MiniMax-H3 多模态参考生视频）",
   },
-  version: "1.2.1",
+  version: "1.2.3",
   author: { name: "QuantumNous" },
   channelTypes: [35],
   models: [
@@ -196,6 +196,7 @@ const H3_MAX_REFERENCE_VIDEOS = 3;
 const H3_MAX_REFERENCE_AUDIOS = 3;
 const H3_MAX_INPUT_VIDEO_SECONDS = 15;
 const H3_RATIOS = ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
+const H3_PRIVATE_FILE_ERROR = "private Metaso file ids require an owned gateway asset; use URL, data URL or upload";
 
 // MiniMax-H3 speaks the /v2 video generation contract: a multimodal `content`
 // array instead of flat frame fields, an explicit `ratio`, 768P/2K resolutions,
@@ -205,7 +206,10 @@ function isH3(model) {
 }
 
 function h3Duration(req) {
-  const raw = req.duration;
+  if (req.seconds !== undefined && req.duration !== undefined && Number(req.seconds) !== Number(req.duration)) {
+    throw new Error(H3_MODEL + " conflicting seconds/duration values");
+  }
+  const raw = req.seconds === undefined ? req.duration : req.seconds;
   if (raw === undefined || raw === null || raw === "") return H3_DEFAULT_DURATION;
   const seconds = Number(raw);
   if (!Number.isInteger(seconds) || seconds < H3_MIN_DURATION || seconds > H3_MAX_DURATION) {
@@ -214,44 +218,122 @@ function h3Duration(req) {
   return seconds;
 }
 
-function h3Resolution(req) {
+const H3_SIZE_SPECS = {
+  "720x1280": { resolution: "768P", ratio: "9:16" },
+  "1280x720": { resolution: "768P", ratio: "16:9" },
+  "1024x1792": { resolution: "2K", ratio: "9:16" },
+  "1792x1024": { resolution: "2K", ratio: "16:9" },
+};
+const H3_FILE_FIELDS = {
+  input_reference: { type: "image_url", role: "first_frame", mimeType: "image/png", maxBytes: 20971520 },
+  reference_image: { type: "image_url", role: "reference_image", mimeType: "image/png", maxBytes: 31457280 },
+  reference_video: { type: "video_url", role: "reference_video", mimeType: "video/mp4", maxBytes: 52428800 },
+  video_reference: { type: "video_url", role: "reference_video", mimeType: "video/mp4", maxBytes: 52428800 },
+  reference_audio: { type: "audio_url", role: "reference_audio", mimeType: "audio/mpeg", maxBytes: 15728640 },
+  audio_reference: { type: "audio_url", role: "reference_audio", mimeType: "audio/mpeg", maxBytes: 15728640 },
+};
+
+// Canonical names and official Metaso aliases are equivalent. Ambiguous
+// simultaneous values fail before submission instead of dropping a material.
+function h3Fingerprint(value) {
+  if (Array.isArray(value)) return "[" + value.map(h3Fingerprint).join(",") + "]";
+  if (value && typeof value === "object")
+    return (
+      "{" +
+      Object.keys(value)
+        .sort()
+        .map(function (key) {
+          return JSON.stringify(key) + ":" + h3Fingerprint(value[key]);
+        })
+        .join(",") +
+      "}"
+    );
+  return JSON.stringify(value);
+}
+
+function h3Alias(req, keys, normalize) {
   const metadata = req.metadata || {};
-  const raw = trimmed(metadata.resolution) || trimmed(req.resolution) || trimmed(req.size);
-  if (!raw) return "768P";
-  const value = raw.toUpperCase();
-  if (value.includes("2K")) return "2K";
-  if (value.includes("768")) return "768P";
+  const metaso = metadata.metaso || {};
+  let selected;
+  for (const source of [req, metadata, metaso]) {
+    for (const key of keys) {
+      if (source[key] === undefined || source[key] === null || source[key] === "") continue;
+      const value = normalize ? normalize(source[key]) : source[key];
+      if (selected !== undefined && h3Fingerprint(selected) !== h3Fingerprint(value)) {
+        throw new Error(H3_MODEL + " conflicting " + keys.join("/") + " values");
+      }
+      selected = value;
+    }
+  }
+  return selected;
+}
+
+function h3Resolution(req) {
+  const explicit = h3Alias(req, ["resolution", "metaso_resolution"], function (raw) {
+    return trimmed(raw).toUpperCase();
+  });
+  const size = trimmed(req.size);
+  const pixel = H3_SIZE_SPECS[size];
+  // Official explicit resolution/ratio override a size-derived default.
+  const value = explicit || (pixel && pixel.resolution) || size.toUpperCase() || "768P";
+  if (value === "768P" || value === "2K") return value;
   throw new Error(H3_MODEL + " resolution must be 768P or 2K");
+}
+
+function h3MediaURL(value) {
+  if (typeof value === "string" && trimmed(value)) {
+    if (/^mm_file:/i.test(trimmed(value))) throw new Error(H3_PRIVATE_FILE_ERROR);
+    return trimmed(value);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(H3_MODEL + " media input requires a URL or file reference");
+  // An upstream file id belongs to a shared channel account, not necessarily
+  // the current gateway user. No owned-asset resolver exists on this surface.
+  if (Object.prototype.hasOwnProperty.call(value, "file_id")) throw new Error(H3_PRIVATE_FILE_ERROR);
+  if (value.__fileRef) return value;
+  const candidates = [];
+  for (const key of ["url", "image_url"]) {
+    if (value[key] !== undefined && value[key] !== null) candidates.push(h3MediaURL(value[key]));
+  }
+  if (!candidates.length) throw new Error(H3_MODEL + " media input requires a URL or file reference");
+  if (
+    candidates.some(function (candidate) {
+      return h3Fingerprint(candidate) !== h3Fingerprint(candidates[0]);
+    })
+  ) {
+    throw new Error(H3_MODEL + " conflicting media URL values");
+  }
+  return candidates[0];
 }
 
 function h3MediaItem(type, url, role) {
   const item = { type: type, role: role };
-  item[type] = { url: url };
+  item[type] = { url: h3MediaURL(url) };
   return item;
 }
 
-// Accepts a single value or an array; file placeholders stay objects and are
-// resolved by the host after the body is built.
-function h3MediaList(source, key) {
-  const raw = source[key];
-  if (raw === undefined || raw === null) return [];
-  const values = Array.isArray(raw) ? raw : [raw];
-  return values.filter(function (value) {
-    return value && typeof value === "object" ? true : Boolean(trimmed(value));
-  });
+function h3MediaList(value) {
+  if (value === undefined || value === null || value === "") return [];
+  return (Array.isArray(value) ? value : [value]).map(h3MediaURL);
+}
+
+function h3ReferenceList(req, keys) {
+  return h3Alias(req, keys, h3MediaList) || [];
 }
 
 function h3FrameImages(req) {
   const metadata = req.metadata || {};
-  const images = h3MediaList(req, "images");
+  const images = h3MediaList(req.images);
   if (images.length > H3_MAX_FRAME_IMAGES) throw new Error(H3_MODEL + " accepts at most " + H3_MAX_FRAME_IMAGES + " frame images");
+  const first = metadata.first_frame_image ? h3MediaURL(metadata.first_frame_image) : images[0];
+  const last = metadata.last_frame_image ? h3MediaURL(metadata.last_frame_image) : images[1];
+  for (let index = 0; index < images.length; index += 1) {
+    const explicit = index === 0 ? first : last;
+    if (h3Fingerprint(explicit) !== h3Fingerprint(images[index])) throw new Error(H3_MODEL + " conflicting frame image inputs");
+  }
   const frames = [];
-  if (metadata.first_frame_image) frames.push(h3MediaItem("image_url", metadata.first_frame_image, "first_frame"));
-  if (metadata.last_frame_image) frames.push(h3MediaItem("image_url", metadata.last_frame_image, "last_frame"));
-  if (frames.length) return frames;
-  return images.map(function (url, index) {
-    return h3MediaItem("image_url", url, index === 0 ? "first_frame" : "last_frame");
-  });
+  if (first) frames.push(h3MediaItem("image_url", first, "first_frame"));
+  if (last) frames.push(h3MediaItem("image_url", last, "last_frame"));
+  return frames;
 }
 
 function validateH3Content(items) {
@@ -264,13 +346,21 @@ function validateH3Content(items) {
   let referenceVideos = 0;
   let referenceAudios = 0;
   let inputImages = 0;
-  for (const item of items) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+  const media = [];
+  const content = items.map(function (item) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(H3_MODEL + " content items must be objects");
     const role = trimmed(item.role);
-    if (item.type === "text" && trimmed(item.text)) {
-      hasText = true;
-      continue;
+    if (item.type === "text") {
+      if (trimmed(item.text)) hasText = true;
+      return item;
     }
+    if (!["image_url", "video_url", "audio_url"].includes(item.type)) throw new Error(H3_MODEL + " unsupported content type");
+    if (Object.prototype.hasOwnProperty.call(item, "file_id")) throw new Error(H3_PRIVATE_FILE_ERROR);
+    const payload = item[item.type];
+    const url = h3MediaURL(payload);
+    const normalized = Object.assign({}, item);
+    normalized[item.type] = Object.assign({}, payload && typeof payload === "object" ? payload : {}, { url: url });
+    if (typeof url === "object") media.push(url.__fileRef);
     if (item.type === "image_url") {
       inputImages += 1;
       if (!role || role === "first_frame") {
@@ -284,19 +374,18 @@ function validateH3Content(items) {
       } else if (role === "reference_image") {
         referenceImages += 1;
         hasReference = true;
-      }
-      continue;
-    }
-    if (item.type === "video_url") {
+      } else throw new Error(H3_MODEL + " unsupported image role");
+    } else if (item.type === "video_url") {
+      if (role && role !== "reference_video") throw new Error(H3_MODEL + " unsupported video role");
       referenceVideos += 1;
       hasReference = true;
-      continue;
-    }
-    if (item.type === "audio_url") {
+    } else {
+      if (role && role !== "reference_audio") throw new Error(H3_MODEL + " unsupported audio role");
       referenceAudios += 1;
       hasReference = true;
     }
-  }
+    return normalized;
+  });
   if (!hasText) throw new Error(H3_MODEL + " requires a non-empty text item");
   if (firstFrames > 1) throw new Error(H3_MODEL + " accepts at most one first_frame image");
   if (lastFrames > 1) throw new Error(H3_MODEL + " accepts at most one last_frame image");
@@ -305,32 +394,82 @@ function validateH3Content(items) {
   if (referenceVideos > H3_MAX_REFERENCE_VIDEOS) throw new Error(H3_MODEL + " accepts at most " + H3_MAX_REFERENCE_VIDEOS + " reference videos");
   if (referenceAudios > H3_MAX_REFERENCE_AUDIOS) throw new Error(H3_MODEL + " accepts at most " + H3_MAX_REFERENCE_AUDIOS + " reference audios");
   if (hasFrame && hasReference) throw new Error(H3_MODEL + " cannot mix frame images with reference media");
-  return items;
+  if (new Set(media).size !== media.length) throw new Error(H3_MODEL + " duplicate uploaded file references are not supported");
+  return content;
 }
 
-// metadata.content is the full multimodal passthrough; otherwise the content
-// array is assembled from prompt, frame images, and reference media.
-function h3Content(req) {
-  const metadata = req.metadata || {};
+// All input surfaces share this assembly and validation for submission and
+// billing. Files come from the host, never client-declared file metadata.
+function h3Content(req, files) {
+  const supplied =
+    h3Alias(req, ["content", "metaso_content"], function (value) {
+      if (!Array.isArray(value)) throw new Error("metadata.content must be an array");
+      return value;
+    }) || [];
+  const content = supplied.slice();
   const prompt = trimmed(req.prompt);
-  if (metadata.content !== undefined && metadata.content !== null) {
-    if (!Array.isArray(metadata.content)) throw new Error("metadata.content must be an array");
-    const items = metadata.content;
-    const hasText = items.some(function (item) {
+  if (
+    !content.some(function (item) {
       return item && item.type === "text" && trimmed(item.text);
-    });
-    if (hasText) return validateH3Content(items);
-    if (!prompt) throw new Error(H3_MODEL + " metadata.content requires a text item or a prompt");
-    return validateH3Content([{ type: "text", text: prompt }].concat(items));
+    }) &&
+    prompt
+  ) {
+    content.unshift({ type: "text", text: prompt });
   }
-  const content = prompt ? [{ type: "text", text: prompt }] : [];
   for (const frame of h3FrameImages(req)) content.push(frame);
-  const videos = h3MediaList(metadata, "reference_video");
-  if (videos.length > H3_MAX_REFERENCE_VIDEOS) throw new Error(H3_MODEL + " accepts at most " + H3_MAX_REFERENCE_VIDEOS + " reference videos");
-  for (const video of videos) content.push(h3MediaItem("video_url", video, "reference_video"));
-  const audios = h3MediaList(metadata, "reference_audio");
-  if (audios.length > H3_MAX_REFERENCE_AUDIOS) throw new Error(H3_MODEL + " accepts at most " + H3_MAX_REFERENCE_AUDIOS + " reference audios");
-  for (const audio of audios) content.push(h3MediaItem("audio_url", audio, "reference_audio"));
+  for (const spec of [
+    { keys: ["reference_image"], type: "image_url", role: "reference_image" },
+    { keys: ["reference_video", "video_reference"], type: "video_url", role: "reference_video" },
+    { keys: ["reference_audio", "audio_reference"], type: "audio_url", role: "reference_audio" },
+  ]) {
+    for (const url of h3ReferenceList(req, spec.keys)) content.push(h3MediaItem(spec.type, url, spec.role));
+  }
+  const uploads = files || [];
+  const referenceMode =
+    content.some(function (item) {
+      return item && (item.type === "video_url" || item.type === "audio_url" || item.role === "reference_image");
+    }) ||
+    uploads.some(function (file) {
+      return file.field !== "input_reference";
+    }) ||
+    uploads.filter(function (file) {
+      return file.field === "input_reference";
+    }).length > 1;
+  const standard = h3Alias(req, ["input_reference", "image"], h3MediaURL);
+  if (
+    standard &&
+    !content.some(function (item) {
+      return (
+        item &&
+        item.type === "image_url" &&
+        ["first_frame", "last_frame"].includes(item.role) &&
+        h3Fingerprint(item.image_url && item.image_url.url) === h3Fingerprint(standard)
+      );
+    })
+  )
+    content.push(h3MediaItem("image_url", standard, referenceMode ? "reference_image" : "first_frame"));
+  for (const file of uploads) {
+    const spec = H3_FILE_FIELDS[file.field];
+    if (!spec) throw new Error("unexpected file field: " + file.field);
+    if (!file.ref || !String(file.ref).startsWith("request_file:")) throw new Error(H3_MODEL + " invalid uploaded file reference");
+    const suppliedMime = trimmed(file.mimeType);
+    const mime = !suppliedMime || suppliedMime.toLowerCase() === "application/octet-stream" ? spec.mimeType : suppliedMime;
+    const category = spec.type === "image_url" ? "image/" : spec.type === "video_url" ? "video/" : "audio/";
+    if (!mime.toLowerCase().startsWith(category)) throw new Error(H3_MODEL + " uploaded file MIME type does not match its media field");
+    if (Number(file.size) > spec.maxBytes) throw new Error(H3_MODEL + " uploaded file exceeds its media size limit");
+    content.push(
+      h3MediaItem(
+        spec.type,
+        {
+          __fileRef: file.ref,
+          encoding: "dataUrl",
+          mimeType: mime,
+          maxBytes: spec.maxBytes,
+        },
+        file.field === "input_reference" && referenceMode ? "reference_image" : spec.role
+      )
+    );
+  }
   if (!content.length) throw new Error(H3_MODEL + " requires a prompt or a media input");
   return validateH3Content(content);
 }
@@ -344,9 +483,9 @@ function h3HasVisualContent(content) {
 // ratio is mandatory upstream and `adaptive` is only meaningful when the
 // aspect ratio can be inherited from a visual input.
 function h3Ratio(req, content) {
-  const metadata = req.metadata || {};
-  const ratio = trimmed(metadata.ratio);
-  if (!ratio) return h3HasVisualContent(content) ? "adaptive" : "16:9";
+  const explicit = h3Alias(req, ["ratio", "metaso_ratio"], trimmed);
+  const pixel = H3_SIZE_SPECS[trimmed(req.size)];
+  const ratio = explicit || (pixel && pixel.ratio) || (h3HasVisualContent(content) ? "adaptive" : "16:9");
   if (!H3_RATIOS.includes(ratio)) throw new Error(H3_MODEL + " ratio must be one of " + H3_RATIOS.join(", "));
   if (ratio === "adaptive" && !h3HasVisualContent(content)) throw new Error(H3_MODEL + " ratio adaptive requires an image or video input");
   return ratio;
@@ -442,7 +581,7 @@ export function buildSubmitRequest(ctx) {
   const model = ctx.upstreamModel;
   const metadata = req.metadata || {};
   if (isH3(model)) {
-    const content = h3Content(req);
+    const content = h3Content(req, ctx.files);
     const h3Body = {
       model: model,
       content: content,
@@ -502,7 +641,7 @@ export function extractUsage(ctx) {
   const req = ctx.requestBody || {};
   const model = ctx.upstreamModel || req.model;
   if (isH3(model)) {
-    const content = h3Content(req);
+    const content = h3Content(req, ctx.files);
     return {
       seconds: h3Duration(req),
       resolution: h3Resolution(req),
@@ -536,14 +675,18 @@ export function buildQueryRequest(ctx) {
 
 export function parseTaskResult(ctx, body) {
   const apiError = h3APIError(body);
-  if (apiError) {
-    if (apiError.statusCode === 408 || apiError.statusCode === 429 || apiError.statusCode >= 500) throw new Error(apiError.message);
-    return { code: apiError.statusCode, status: "FAILURE", progress: "100%", reason: apiError.message };
-  }
+  // Query API rejection is an observation failure, never proof that the
+  // supplier task reached a terminal state. Keep its receipt and reservation.
+  if (apiError) throw new Error(apiError.message);
   const h3Task = h3QueryTask(body);
   if (h3Task) {
+    if (ctx && ctx.taskId) {
+      const id = h3Task.id;
+      const validID = typeof id === "string" || (typeof id === "number" && Number.isSafeInteger(id) && id > 0);
+      if (!validID || trimmed(id) !== trimmed(ctx.taskId)) return { status: "UNKNOWN", reason: "unrecognized H3 task identity" };
+    }
     const h3Statuses = { queued: "QUEUED", running: "IN_PROGRESS", succeeded: "SUCCESS", failed: "FAILURE", cancelled: "FAILURE" };
-    const h3Status = h3Statuses[h3Task.status];
+    const h3Status = Object.prototype.hasOwnProperty.call(h3Statuses, h3Task.status) ? h3Statuses[h3Task.status] : undefined;
     if (!h3Status) {
       return { status: "UNKNOWN", reason: "unrecognized status: " + String(h3Task.status || "") };
     }
@@ -557,12 +700,13 @@ export function parseTaskResult(ctx, body) {
     }
     return h3Result;
   }
+  if (ctx && isH3(ctx.upstreamModel || ctx.model)) return { status: "UNKNOWN", reason: "unrecognized H3 task response" };
   if (body.base_resp && body.base_resp.status_code !== 0) {
     return { code: body.base_resp.status_code || 0, status: "FAILURE", progress: "100%", reason: body.base_resp.status_msg || "" };
   }
   const base = body.base_resp || {};
   const statuses = { Preparing: "IN_PROGRESS", Queueing: "IN_PROGRESS", Processing: "IN_PROGRESS", Success: "SUCCESS", Fail: "FAILURE" };
-  const status = statuses[body.status];
+  const status = Object.prototype.hasOwnProperty.call(statuses, body.status) ? statuses[body.status] : undefined;
   if (!status) {
     return { status: "UNKNOWN", reason: "unrecognized status: " + String(body.status || "") };
   }
@@ -634,7 +778,8 @@ export function extractUsageOnComplete(_task, _taskResult, body) {
     // Omit malformed or out-of-contract upstream values so settlement keeps
     // the bounded submission estimate instead of accepting a new multiplier.
     for (const field of fields) {
-      if (field.value === undefined || field.value === null || field.value === "") continue;
+      if (typeof field.value !== "number" && typeof field.value !== "string") continue;
+      if (typeof field.value === "string" && !field.value.trim()) continue;
       const value = Number(field.value);
       if (!Number.isFinite(value) || value < field.minimum || value > field.maximum || (field.integer && !Number.isInteger(value))) continue;
       facts[field.key] = value;
@@ -645,6 +790,25 @@ export function extractUsageOnComplete(_task, _taskResult, body) {
   const height = Number((body || {}).video_height || 0);
   if (!(width > 0) || !(height > 0)) return null;
   return { resolution: resolutionFor(width + "x" + height, "") };
+}
+
+function h3Intent(ctx, req, files) {
+  if (req.metadata !== undefined && (!req.metadata || typeof req.metadata !== "object" || Array.isArray(req.metadata))) {
+    throw new Error("metadata must be an object");
+  }
+  if (req.images !== undefined && !Array.isArray(req.images)) throw new Error("images must be an array");
+  const content = h3Content(req, files);
+  const duration = h3Duration(req);
+  h3Resolution(req);
+  h3Ratio(req, content);
+  const requestBody = Object.assign({}, req, { model: ctx.model });
+  if (req.seconds !== undefined || req.duration !== undefined) requestBody.duration = duration;
+  return {
+    kind: "submit",
+    model: ctx.model,
+    action: h3HasVisualContent(content) ? "image_to_video" : "text_to_video",
+    requestBody: requestBody,
+  };
 }
 
 export const protocols = {
@@ -661,6 +825,23 @@ export const protocols = {
         throw new Error("metadata must be an object");
       const input = responsesInput(req);
       const prompt = input.prompt || trimmed(req.prompt);
+      if (isH3(ctx.upstreamModel || model)) {
+        // Responses input does not define this plugin's video/audio references.
+        // Reject misplaced material rather than silently turning it into text-only.
+        for (const item of Array.isArray(req.input) ? req.input : []) {
+          if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+          const parts = item.content === undefined ? [item] : Array.isArray(item.content) ? item.content : [item.content];
+          for (const part of parts) {
+            if (part && ["input_video", "input_audio", "video_url", "audio_url"].includes(part.type)) {
+              throw new Error("MiniMax-H3 Responses video/audio references require metadata.content or metadata.metaso_content");
+            }
+          }
+        }
+        const normalized = Object.assign({}, req, { prompt: prompt });
+        if (input.images.length) normalized.images = (req.images || []).concat(input.images);
+        if (req.resolution !== undefined && req.size === undefined) normalized.size = req.resolution;
+        return h3Intent(Object.assign({}, ctx, { model: model }), normalized, []);
+      }
       const images = [];
       for (const image of [req.image, req.input_reference].concat(req.images || [], input.images)) {
         if (trimmed(image) && !images.includes(trimmed(image))) images.push(trimmed(image));
@@ -732,6 +913,35 @@ const legacyRenderers = {
 protocols.openai_video = {
   decodeRequest: function (ctx) {
     if (!ctx.body || (ctx.body.kind !== "json" && ctx.body.kind !== "multipart")) throw new Error("JSON or multipart body required");
+    if (isH3(ctx.upstreamModel || ctx.model)) {
+      let request;
+      if (ctx.body.kind === "json") {
+        if (!ctx.body.value || typeof ctx.body.value !== "object" || Array.isArray(ctx.body.value)) throw new Error("JSON object required");
+        request = Object.assign({}, ctx.body.value);
+      } else {
+        request = {};
+        for (const name of Object.keys(ctx.body.fields || {})) {
+          const values = ctx.body.fields[name];
+          const mediaField = ["reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference"].includes(name);
+          if (values.length > 1 && !mediaField) throw new Error(name + " must be provided once");
+          let value = mediaField && values.length > 1 ? values.slice() : values[0];
+          const encodedJSON =
+            ["metadata", "content", "metaso_content", "images"].includes(name) ||
+            (typeof value === "string" &&
+              ["input_reference", "image", "reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference"].includes(name) &&
+              ["{", "["].includes(value.trim()[0]));
+          if (encodedJSON) {
+            try {
+              value = JSON.parse(value);
+            } catch {
+              throw new Error(name + " must contain valid JSON");
+            }
+          }
+          request[name] = value;
+        }
+      }
+      return h3Intent(ctx, request, ctx.body.kind === "multipart" ? ctx.body.files || [] : []);
+    }
     let req;
     let hasInputReferenceFile = false;
     if (ctx.body.kind === "json") {

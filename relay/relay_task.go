@@ -2,6 +2,7 @@ package relay
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -229,6 +230,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
 		}
 	}
+	if taskErr := service.PrepareH3Submission(c, info, platform); taskErr != nil {
+		return nil, taskErr
+	}
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 		return nil, taskErr
 	}
@@ -343,6 +347,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
+	if taskErr := service.SaveH3SubmissionBilling(c, info); taskErr != nil {
+		return nil, taskErr
+	}
+
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {
@@ -350,6 +358,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 9. 发送请求
+	if taskErr := service.BeginH3SubmissionSend(c); taskErr != nil {
+		return nil, taskErr
+	}
+	if service.H3SubmissionFromContext(c) != nil {
+		original := c.Request
+		boundedCtx, cancel := context.WithTimeout(context.WithoutCancel(original.Context()), 90*time.Second)
+		defer cancel()
+		c.Request = original.WithContext(boundedCtx)
+		defer func() { c.Request = original }()
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
@@ -361,7 +379,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// Any 2xx is a successful submission: task APIs commonly answer 201 Created
 	// or 202 Accepted, and parseSubmitResponse receives the exact status code.
 	if resp.StatusCode/100 != 2 {
-		responseBody, _ := io.ReadAll(resp.Body)
+		reader := io.Reader(resp.Body)
+		if service.H3SubmissionFromContext(c) != nil {
+			reader = io.LimitReader(resp.Body, (1<<20)+1)
+		}
+		responseBody, readErr := io.ReadAll(reader)
+		if readErr == nil && service.ClassifyH3SubmitAuthRejection(c, resp.StatusCode, responseBody) {
+			rejected := service.TaskErrorWrapperLocal(errors.New("Upstream authentication rejected the video submission"), service.H3AuthRejectedCode, http.StatusBadGateway)
+			rejected.NoRetry = true
+			return nil, rejected
+		}
 		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
 	}
 
@@ -373,6 +400,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	if parsed == nil {
 		return nil, service.TaskErrorWrapperLocal(errors.New("task adaptor returned an empty response"), "plugin_submit_response_invalid", http.StatusBadGateway)
+	}
+
+	if taskErr := service.SaveH3ProviderReceipt(c, parsed.UpstreamTaskID, parsed.TaskData, parsed.PluginState); taskErr != nil {
+		return nil, taskErr
 	}
 
 	// 11. 提交后计费调整：让适配器根据上游实际返回调整 OtherRatios

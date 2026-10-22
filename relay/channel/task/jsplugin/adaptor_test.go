@@ -2386,7 +2386,7 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("deployment plugin sha256: %x", sha256.Sum256(source))
 	registry := pluginruntime.NewRegistry()
-	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "toapis-image", Version: "1.2.0"})
+	plugin, err := registry.Register(string(source), pluginruntime.Options{Key: "toapis-image", Version: "1.2.1"})
 	require.NoError(t, err)
 	require.NoError(t, pluginruntime.ValidateV1Meta(plugin.Meta))
 	binding, exists := registry.Generation().LookupDeclaredRoute(http.MethodPost, "/toapis/v1/images/generations")
@@ -2433,16 +2433,22 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		request      map[string]any
 		directDriver bool
 		resolution   string
+		wantSize     string
 	}{
-		{"legacy OpenAI extras", legacyExtras, false, "1k"},
-		{"default count and no references", map[string]any{"model": modelName, "prompt": prompt}, false, "1k"},
-		{"six HTTPS references", map[string]any{"model": modelName, "prompt": prompt, "n": 1, "reference_images": sixRefs}, false, "1k"},
-		{"driver also strips legacy extras", legacyExtras, true, "1k"},
-		{"explicit 1K", map[string]any{"model": modelName, "prompt": prompt, "resolution": "1K"}, false, "1k"},
-		{"2K with reference", map[string]any{"model": modelName, "prompt": prompt, "resolution": "2K", "reference_images": refs, "size": "1024x1024"}, false, "2k"},
-		{"4k", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4k"}, false, "4k"},
-		{"public native canonicalizes 4K", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4K"}, false, "4k"},
-		{"driver receives canonical 4k", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4k"}, true, "4k"},
+		{"legacy OpenAI extras", legacyExtras, false, "1k", ""},
+		{"default count and no references", map[string]any{"model": modelName, "prompt": prompt}, false, "1k", ""},
+		{"six HTTPS references", map[string]any{"model": modelName, "prompt": prompt, "n": 1, "reference_images": sixRefs}, false, "1k", ""},
+		{"driver also strips legacy extras", legacyExtras, true, "1k", ""},
+		{"explicit 1K", map[string]any{"model": modelName, "prompt": prompt, "resolution": "1K"}, false, "1k", ""},
+		{"2K with reference", map[string]any{"model": modelName, "prompt": prompt, "resolution": "2K", "reference_images": refs, "size": "1024x1024"}, false, "2k", ""},
+		{"4k", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4k"}, false, "4k", ""},
+		{"public native canonicalizes 4K", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4K"}, false, "4k", ""},
+		{"driver receives canonical 4k", map[string]any{"model": modelName, "prompt": prompt, "resolution": "4k"}, true, "4k", ""},
+		{"ratio size 16:9", map[string]any{"model": modelName, "prompt": prompt, "size": "16:9", "resolution": "4k"}, false, "4k", "16:9"},
+		{"portrait ratio 9:16", map[string]any{"model": modelName, "prompt": prompt, "size": "9:16"}, false, "1k", "9:16"},
+		{"explicit ratio alias", map[string]any{"model": modelName, "prompt": prompt, "aspect_ratio": "4:3"}, false, "1k", "4:3"},
+		{"equivalent ratio aliases", map[string]any{"model": modelName, "prompt": prompt, "size": "21:9", "aspect_ratio": "21:9"}, false, "1k", "21:9"},
+		{"driver preserves ratio", map[string]any{"model": modelName, "prompt": prompt, "size": "3:4"}, true, "1k", "3:4"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			callsBefore := providerCalls.Load()
@@ -2487,6 +2493,9 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 			assert.Nil(t, submitted.Immediate)
 			assert.Equal(t, callsBefore+1, providerCalls.Load())
 			want := map[string]any{"model": "gpt-image-2", "prompt": prompt, "n": 1, "resolution": testCase.resolution}
+			if testCase.wantSize != "" {
+				want["size"] = testCase.wantSize
+			}
 			if referenceImages, present := testCase.request["reference_images"]; present {
 				want["reference_images"] = referenceImages
 			}
@@ -2511,6 +2520,9 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 		{"unknown resolution", "resolution", "8k"}, {"pixel size is not resolution", "resolution", "2048x2048"},
 		{"null resolution", "resolution", nil}, {"numeric resolution", "resolution", 2048},
 		{"whitespace resolution", "resolution", " 2k"},
+		{"unsupported explicit aspect ratio", "aspect_ratio", "9:17"},
+		{"null explicit aspect ratio", "aspect_ratio", nil},
+		{"unsupported ratio size", "size", "9:17"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			callsBefore := providerCalls.Load()
@@ -2521,6 +2533,13 @@ func TestToAPIsImageDeploymentPluginWireContract(t *testing.T) {
 			assert.Equal(t, callsBefore, providerCalls.Load(), "invalid input must fail before upstream submission")
 		})
 	}
+
+	t.Run("conflicting ratio aliases fail before provider submission", func(t *testing.T) {
+		before := providerCalls.Load()
+		_, err := plugin.Engine.CallMember(t.Context(), "native", binding.Route.Decode, map[string]any{"body": map[string]any{"kind": "json", "value": map[string]any{"model": modelName, "prompt": prompt, "size": "16:9", "aspect_ratio": "9:16"}}})
+		require.ErrorContains(t, err, "aspect ratio")
+		assert.Equal(t, before, providerCalls.Load())
+	})
 
 	t.Run("poll completion rendering and image usage stay compatible", func(t *testing.T) {
 		adaptor := New(plugin)

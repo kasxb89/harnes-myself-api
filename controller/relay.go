@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -569,9 +570,75 @@ func executeTaskSubmissionWith(
 	durable := false
 	stage := "start"
 	defer func() {
+		if h3 := service.H3SubmissionFromContext(c); h3 != nil {
+			if h3.Rejected {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := model.RejectH3Submission(cleanupCtx, h3.Task); err != nil {
+					service.PreserveH3Unknown(h3)
+					outcome = h3UnknownOutcome(c, relayInfo)
+					submissionErr = nil
+					return
+				}
+				h3.SlotReleased = true
+				h3.Task.Status = model.TaskStatusFailure
+				h3.Task.FailReason = "Upstream authentication rejected the video submission"
+				service.RecordTaskFailure(h3.Task, "task_submit", service.H3AuthRejectedCode, http.StatusBadGateway, "", service.TaskFailureDiagnostics{UpstreamHTTPStatus: h3.RejectedHTTPStatus})
+				if relayInfo.Billing != nil {
+					relayInfo.Billing.Refund(c)
+				}
+				if !h3.RefundConfirmed {
+					service.PreserveH3Unknown(h3)
+					outcome = h3UnknownOutcome(c, relayInfo)
+					submissionErr = nil
+				}
+				return
+			}
+			if h3.MayHaveSent || h3.BillingUncertain {
+				if outcome == nil || submissionErr != nil {
+					service.PreserveH3Unknown(h3)
+					outcome = h3UnknownOutcome(c, relayInfo)
+					submissionErr = nil
+				}
+				return
+			}
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if releaseErr := model.ReleaseH3BeforeSend(cleanupCtx, h3.Task); releaseErr != nil {
+				logger.LogError(c, "failed to release unsent H3 admission")
+				service.PreserveH3Unknown(h3)
+				outcome = h3UnknownOutcome(c, relayInfo)
+				submissionErr = nil
+				return
+			}
+			h3.SlotReleased = true
+			if h3.Task.Quota > 0 {
+				if relayInfo.Billing != nil {
+					diagnostics.refund(stage)
+					relayInfo.Billing.Refund(c)
+				}
+				if !h3.RefundConfirmed {
+					service.PreserveH3Unknown(h3)
+					outcome = h3UnknownOutcome(c, relayInfo)
+					submissionErr = nil
+				}
+				return
+			}
+		}
 		if !durable && relayInfo.Billing != nil {
 			diagnostics.refund(stage)
 			relayInfo.Billing.Refund(c)
+		}
+	}()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if h3 := service.H3SubmissionFromContext(c); h3 != nil && (h3.MayHaveSent || h3.BillingUncertain) {
+				service.PreserveH3Unknown(h3)
+				outcome = h3UnknownOutcome(c, relayInfo)
+				submissionErr = nil
+				return
+			}
+			panic(recovered)
 		}
 	}()
 	stage = "before_attempt"
@@ -610,6 +677,11 @@ func executeTaskSubmissionWith(
 			var channelErr *types.NewAPIError
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
+				if len(h3FullChannels(c)) > 0 {
+					taskErr = service.TaskErrorWrapperLocal(model.ErrH3Capacity, service.H3CapacityCode, http.StatusTooManyRequests)
+					taskErr.NoRetry = true
+					break
+				}
 				logger.LogError(c, channelErr.Error())
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", channelErr.StatusCode)
 				break
@@ -632,7 +704,26 @@ func executeTaskSubmissionWith(
 
 		stage = "submit"
 		result, taskErr = submit(c, relayInfo)
-		if requestErr := c.Request.Context().Err(); requestErr != nil {
+		if h3 := service.H3SubmissionFromContext(c); h3 != nil && h3.MayHaveSent && !h3.Rejected && (taskErr != nil || result == nil) {
+			service.PreserveH3Unknown(h3)
+			return h3UnknownOutcome(c, relayInfo), nil
+		}
+		if taskErr != nil && taskErr.Code == service.H3CapacityCode {
+			_, pinned, _ := service.GetChannelConstraints(c).ResolvedPin()
+			full := append(h3FullChannels(c), channel.Id)
+			c.Set("h3_full_channels", full)
+			if pinned || relayInfo.LockedChannel != nil || policy.SessionMode == "strict" || len(full) >= 16 {
+				taskErr.NoRetry = true
+				break
+			}
+			service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterExcludedChannels, ExcludedChannelIDs: []int{channel.Id}})
+			retryParam.ResetRetryNextTry()
+			continue
+		}
+		if taskErr != nil && service.H3SubmissionFromContext(c) != nil {
+			taskErr.NoRetry = true
+		}
+		if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil {
 			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 			break
@@ -676,7 +767,7 @@ func executeTaskSubmissionWith(
 		diagnostics.failed("submit", "missing_result", taskErr, false)
 		return nil, taskErr
 	}
-	if requestErr := c.Request.Context().Err(); requestErr != nil {
+	if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil {
 		diagnostics.cancelled("before_reserve", retryParam.GetRetry()+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
@@ -687,6 +778,9 @@ func executeTaskSubmissionWith(
 	if relayInfo.Billing != nil {
 		stage = "reserve"
 		diagnostics.reserve("reserve_start", result.Quota)
+		if err := markH3BillingUncertain(c); err != nil {
+			return nil, service.TaskErrorWrapperLocal(errors.New("failed to persist H3 billing adjustment fence"), "h3_billing_snapshot_failed", http.StatusServiceUnavailable)
+		}
 		if reserveErr := relayInfo.Billing.Reserve(result.Quota); reserveErr != nil {
 			common.SysError(common.LogText("reserve adjusted task billing error: %s", reserveErr.Error()))
 			taskErr = service.TaskErrorWrapperLocal(errors.New("insufficient quota for adjusted task cost"), string(types.ErrorCodeInsufficientUserQuota), http.StatusForbidden)
@@ -695,13 +789,20 @@ func executeTaskSubmissionWith(
 		}
 		diagnostics.reserve("reserve_complete", result.Quota)
 	}
-	if requestErr := c.Request.Context().Err(); requestErr != nil {
+	if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil {
 		diagnostics.cancelled("before_insert", retryParam.GetRetry()+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
 
 	stage = "insert"
 	task := model.InitTask(result.Platform, relayInfo)
+	if h3 := service.H3SubmissionFromContext(c); h3 != nil {
+		task = h3.Task
+		if task.SubmitTime == 0 {
+			task.SubmitTime = time.Now().Unix()
+		}
+		task.Status = model.TaskStatusNotStart
+	}
 	task.PrivateData.Execution = service.TaskExecutionSnapshotFromContext(c)
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 	task.PrivateData.BillingSource = relayInfo.BillingSource
@@ -766,7 +867,16 @@ func executeTaskSubmissionWith(
 		}
 	}
 	diagnostics.insertStart(task)
-	if insertErr := task.InsertWithContext(c.Request.Context(), insertOmits...); insertErr != nil {
+	var insertErr error
+	if service.H3SubmissionFromContext(c) != nil {
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 5*time.Second)
+		insertErr = model.CompleteH3Submission(persistCtx, task, immediateTerminal)
+		cancel()
+	} else {
+		insertErr = task.InsertWithContext(c.Request.Context(), insertOmits...)
+	}
+	if insertErr != nil {
+		_ = markH3BillingUncertain(c)
 		common.SysError(common.LogText("insert task error: %s", insertErr.Error()))
 		taskErr = service.TaskErrorWrapperLocal(errors.New("failed to persist task"), "task_insert_failed", http.StatusInternalServerError)
 		diagnostics.failed("insert", "database_error", taskErr, false)
@@ -779,6 +889,7 @@ func executeTaskSubmissionWith(
 	diagnostics.settleStart(task, result.Quota)
 
 	if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+		_ = markH3BillingUncertain(c)
 		common.SysError(common.LogText("settle task billing error: %s", settleErr.Error()))
 		taskErr = service.TaskErrorWrapperLocal(errors.New("failed to settle task billing"), "task_billing_settlement_failed", http.StatusInternalServerError)
 		diagnostics.failed("settle", "billing_error", taskErr, true)
@@ -796,7 +907,32 @@ func executeTaskSubmissionWith(
 	return &taskSubmissionOutcome{Result: result, Task: task, RelayInfo: relayInfo}, nil
 }
 
+func h3FullChannels(c *gin.Context) []int {
+	value, _ := c.Get("h3_full_channels")
+	channels, _ := value.([]int)
+	return channels
+}
+
+func h3UnknownOutcome(c *gin.Context, info *relaycommon.RelayInfo) *taskSubmissionOutcome {
+	h3 := service.H3SubmissionFromContext(c)
+	return &taskSubmissionOutcome{Result: &relay.TaskSubmitResult{Platform: h3.Task.Platform, Quota: h3.Task.Quota}, Task: h3.Task, RelayInfo: info}
+}
+
+func markH3BillingUncertain(c *gin.Context) error {
+	if h3 := service.H3SubmissionFromContext(c); h3 != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return model.MarkH3BillingUncertain(ctx, h3.Task.PrivateData.H3AdmissionID)
+	}
+	return nil
+}
+
 func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
+	if h3 := service.H3SubmissionFromContext(c); h3 != nil && h3.Unknown {
+		c.Header("X-New-Api-Task-Id", h3.Task.TaskID)
+		c.JSON(http.StatusAccepted, gin.H{"id": h3.Task.TaskID, "task_id": h3.Task.TaskID, "object": "video", "model": outcome.RelayInfo.OriginModelName, "status": "unknown", "submission_state": "unknown", "resubmittable": false, "retryable": false, "recovery": gin.H{"method": "GET", "path": "/v1/tasks/" + h3.Task.TaskID}, "error": gin.H{"code": service.H3UnknownCode, "message": "Submission status is unknown; query this task and do not submit it again"}})
+		return
+	}
 	diagnostics := newTaskPluginSubmitDiagnostics(c)
 	otherRatios := outcome.RelayInfo.PriceData.OtherRatios()
 	if otherRatios == nil {
@@ -853,6 +989,16 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 	service.RecordRequestPolicyTermination(c, taskSubmissionAPIError(taskErr))
 	service.RecordRelayError(c, taskSubmissionAPIError(taskErr), nil)
 	newTaskPluginSubmitDiagnostics(c).presentError(taskErr)
+	if taskErr.StatusCode == http.StatusTooManyRequests && taskErr.Code == service.H3CapacityCode {
+		c.Header("X-New-Api-Task-Id", "")
+		c.JSON(http.StatusTooManyRequests, gin.H{"code": taskErr.Code, "message": taskErr.Message, "data": nil, "submission_state": "not_submitted", "retryable": false, "resubmittable": true})
+		return
+	}
+	if h3 := service.H3SubmissionFromContext(c); h3 != nil && taskErr.Code == service.H3AuthRejectedCode && h3.Rejected && h3.SlotReleased && h3.RefundConfirmed {
+		c.Header("X-New-Api-Task-Id", h3.Task.TaskID)
+		c.JSON(http.StatusBadGateway, gin.H{"code": service.H3AuthRejectedCode, "message": "Upstream authentication rejected the video submission", "data": nil, "submission_state": "failed", "id": h3.Task.TaskID, "task_id": h3.Task.TaskID, "refund_confirmed": true, "retryable": false, "resubmittable": false})
+		return
+	}
 	if middleware.RespondTaskPluginError(c, taskErr) {
 		return
 	}

@@ -842,6 +842,10 @@ func AddChannel(c *gin.Context) {
 
 func DeleteChannel(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
+	if err := model.GuardH3ChannelChange(c.Request.Context(), id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	channelName := ""
 	channelProxy := ""
 	channelLookupFailed := false
@@ -882,6 +886,12 @@ func DeleteDisabledChannel(c *gin.Context) {
 		Pluck("id", &ids).Error; err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	for _, id := range ids {
+		if err := model.GuardH3ChannelChange(c.Request.Context(), id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	rows, err := model.DeleteDisabledChannel()
 	if err != nil {
@@ -1029,6 +1039,12 @@ func DeleteChannelBatch(c *gin.Context) {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
+	for _, id := range channelBatch.Ids {
+		if err := model.GuardH3ChannelChange(c.Request.Context(), id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	deletedCount, err := model.BatchDeleteChannels(channelBatch.Ids)
 	if err != nil {
 		common.ApiError(c, err)
@@ -1106,6 +1122,10 @@ func UpdateChannel(c *gin.Context) {
 	// Preserve existing ChannelInfo to ensure multi-key channels keep correct state even if the client does not send ChannelInfo in the request.
 	originChannel, err := model.GetChannelById(channel.Id, true)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.GuardH3ChannelChange(c.Request.Context(), channel.Id); err != nil {
 		common.ApiError(c, err)
 		return
 	}

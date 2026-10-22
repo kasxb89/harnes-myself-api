@@ -358,6 +358,8 @@ func migrateDB() error {
 		&UpstreamTopup{},
 		&QuotaData{},
 		&Task{},
+		&H3Account{},
+		&H3Admission{},
 		&TaskPlugin{},
 		&Model{},
 		&Vendor{},

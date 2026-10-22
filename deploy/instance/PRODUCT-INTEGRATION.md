@@ -151,6 +151,56 @@ GET  /harness/v1/video/generations/{task_id} # 轮询到完成
 - `size`：**`768P` 或 `2K`**；也可写 `resolution`。产品两个都发也没关系。
 - 可选参考图走图片字段（文生视频、图生视频、多模态参考都支持）。
 
+参考视频、音频已有 `metadata.content` / `metadata.reference_video` / `metadata.reference_audio`
+契约。下列官方格式兼容属于本地候选 `hailuo@1.2.3`，是否已部署须核对发布回执：
+
+- 推荐标准入口 `POST /harness/v1/videos`，支持 JSON 与 multipart；原有 JSON 路由继续兼容。
+- `metadata.metaso_content`、`metadata.metaso_ratio`、`metadata.metaso_resolution` 对应旧
+  `content`、`ratio`、`resolution`；同值可并用，冲突报错，不静默覆盖素材。
+- 像素 `size`：`1280x720` / `720x1280` 对应 `768P`，`1792x1024` / `1024x1792` 对应 `2K`，
+  并推导横竖比例；显式比例和分辨率优先于像素尺寸的默认推导。
+- `input_reference` 接受字符串及 `{ "image_url": "…" }`、`{ "url": "…" }`；保留原有单图首帧行为。
+  共享上游没有私有素材与平台用户的归属绑定，因此拒绝 `file_id` 与 `mm_file:`，
+  即使同对象还有合法URL；使用URL、data URL或请求内上传文件。
+- 图片最多9张，参考视频和音频各最多3段。完整参考数组示例：
+
+```json
+{
+  "model": "MiniMax-H3",
+  "prompt": "参考视频的镜头运动和音频节奏生成新视频",
+  "seconds": 8,
+  "size": "1280x720",
+  "metadata": {
+    "metaso_content": [
+      {"type":"video_url","role":"reference_video","video_url":{"url":"https://cdn.example.com/reference.mp4"}},
+      {"type":"audio_url","role":"reference_audio","audio_url":{"url":"https://cdn.example.com/reference.mp3"}}
+    ]
+  }
+}
+```
+
+multipart 文件字段为 `input_reference` / `reference_image`、`reference_video` / `video_reference`、
+`reference_audio` / `audio_reference`。多段视频重复同一个 `reference_video` 字段，以保持同字段内的顺序；
+不保证不同字段间的原始 multipart 线序。`input_reference` 单图保留20 MiB上限，
+`reference_image` 为30 MiB、参考视频为50 MiB、参考音频为15 MiB；
+全部内联素材还受宿主总量限制（默认64 MiB），桌面产品可另设更小限制。
+
+首尾帧模式不能与其它参考素材混用。现有产品发送的旧 `metadata.content` 与 data URL 保持兼容。
+通过 `/v1/responses` 使用H3时，`input`支持文本与图片；视频/音频放入上述 `metadata.content` /
+`metadata.metaso_content`，不要把 `input_video` / `input_audio` 或 `video_url` / `audio_url`
+放进Responses的 `input` 数组。本插件会在计费前明确拒绝错放素材，避免静默变成文生视频。
+参考素材时长与生成时长分开：秘塔页面标注参考视频、音频各合计不超过15秒，单视频容差15.5秒；
+当前宿主未自动探测素材时长，不宣称本地已严格验证。存在参考视频时沿用总15秒的保守预估，
+完成后按有界上游 `usage.input_seconds` 结算，缺失或非法时保留预估，不能视为0。
+完成用量只接受有界数值或非空数字字符串，布尔/数组/对象不转换为0；合法的实际0仍保留。
+轮询API错误（即使HTTP200）不等于任务失败，不用于证明上游已终止；只信任匹配任务的明确终态。
+未识别状态保留UNKNOWN，不假定任务运行或完成。
+不直接复制依赖 `ctx.mediaMetadata` 的官方插件，因为当前宿主没有提供该字段。
+
+来源：[秘塔指南](https://metaso.cn/minimax-h3/new-api-guide)、
+[官方原生插件](https://metaso.cn/minimax-h3/new-api-guide/minimax-h3-metaso.plugin.js)。
+官网UI与下载插件的规格更新不同步，本次仍保持4–15秒、768P/2K与旧默认5秒，不据UI扩到30秒。
+
 **模型名就叫 `MiniMax-H3`**，不要改成 `sora-2` 或 `Minimax-H3` —— 渠道上没有做名字映射。
 
 用户资金不足只按 **HTTP 403 + 网关 `code=insufficient_user_quota`** 识别；
@@ -235,7 +285,7 @@ Content-Type: multipart/form-data; boundary=<客户端自动生成>
 
 ### 4.4 内部图片生成请求合同（2026-10-21）
 
-`yunshu-internal-gpt-image-2` 使用 `toapis-image@1.2.0`，插件源码维护于
+`yunshu-internal-gpt-image-2` 使用 `toapis-image@1.2.1`，插件源码维护于
 `deploy/instance/toapis-image-plugin.js`。原生路径仍为：
 
 ```http
@@ -246,7 +296,7 @@ Content-Type: application/json
 {"model":"yunshu-internal-gpt-image-2","prompt":"……","n":1,"resolution":"2k","reference_images":["https://files.toapis.cn/uploads/…"]}
 ```
 
-生成请求只使用 `model`、原样 `prompt`、固定 `n=1`、`resolution`，以及可选的原样 `reference_images`。
+生成请求使用 `model`、原样 `prompt`、固定 `n=1`、`resolution`、可选比例 `size`，以及可选的原样 `reference_images`。
 `n` 可以省略，省略时按 1 张规范化；提供其他值会拒绝。参考图最多 6 个 HTTPS URL，
 本地文件须先按 4.3 上传并验证回执，文生图可省略 `reference_images`。
 
@@ -264,8 +314,15 @@ Content-Type: application/json
 `resolution` 是供应商的分辨率档位，实际宽高还取决于其输出，不根据返回图片像素反推计费档位。
 历史任务缺少已记录档位时不会补写档位或回算历史成本。
 
+`size` 为比例，不是像素，支持 `1:1`、`3:2`、`2:3`、`4:3`、`3:4`、`5:4`、`4:5`、
+`16:9`、`9:16`、`2:1`、`1:2`、`21:9`、`9:21`，可用明确的 `aspect_ratio` 别名。
+两个合法比例同时出现时必须相同；不支持的比例会在上游提交前拒绝。省略时沿用供应商默认 `1:1`。
+为兼容旧客户端，像素 `size=1024x1024` 等旧预设继续忽略，不能用于选择或计费分辨率。
+当前精确上游型号是 `gpt-image-2`，其公开规格中 4K 正方形为2880×2880、16:9为3840×2160；
+不要套用另一型号 `gpt-image-2-official` 的规格或保证4096×4096。
+
 其他生成选项继续由供应商控制。为兼容旧版客户端，
-插件忽略 `size`、`quality`、`background`、`output_format`、`output_compression`、
+插件忽略旧像素 `size`、`quality`、`background`、`output_format`、`output_compression`、
 `response_format` 及其他额外字段，不向上游透传，也不因额外字段单独拒绝旧请求。
 插件在解码与构建上游请求时均按上述字段白名单创建新请求体；上游模型固定为 `gpt-image-2`。
 旧客户端的 `size=1024x1024` 不会变成供应商的比例参数，也不用于选择或计收 2K/4K。
@@ -327,7 +384,10 @@ Authorization: Bearer <当前用户的 relay_key>
 
 `seconds` 接受整数或整数字符串；兼容 `duration`，两者同时提供时必须相等。
 客户端应使用上述精确档位，不应按模型名称推断为 4–15 秒或 1–12 秒。
-`size` 仅接受 `720x1280`、`1280x720`、`1024x1792`、`1792x1024`，不能传 `720p`、`480p` 或额外 `resolution` 字段。
+规范 `size` 接受 `720x1280`、`1280x720`、`1024x1792`、`1792x1024`。
+兼容等价的 `resolution` 像素别名；旧 `720P` 仅表示720短边，必须配合明确比例或像素尺寸选出唯一规格，
+不能把 `480p` 或型号名当成可用像素尺寸。`ratio` / `aspect_ratio` / `metadata.ratio` 同时出现时必须等价，
+并与明确 size 一致；1792×1024的精确像素比不等于16:9。
 型号名称中的分辨率是供应商线路名称，最终文件像素需以实际产物为准。
 
 JSON 的 `images` / `image_urls` 是 HTTP(S) URL 数组，`image_url` 为单 URL；
@@ -335,7 +395,10 @@ JSON 的 `images` / `image_urls` 是 HTTP(S) URL 数组，`image_url` 为单 URL
 本地素材使用 `multipart/form-data`：`images`、`videos`、`audios` 文件字段可重复，
 单个 `input_reference` 图片兼容字段优先排列；URL 字段也可重复。
 文件和 URL 合并计入每型号素材上限，超限或不支持的素材明确报错。
-`data:` URL、`metadata` 素材以及未声明字段不受支持，不能丢弃参考素材后继续生成。
+规范接口不直接接收 `data:` URL；旧客户端有界 inline 素材仅由既有宿主适配转换为上传文件。
+JSON兼容受控旧 `metadata`：`first_frame_image` / `last_frame_image`、保持prompt的参考图 `content`、
+`reference_video` / `reference_audio`，与并行旧字段冲突时拒绝；multipart不接受legacy metadata。
+未声明字段或不支持的素材明确报错，不能丢弃参考素材后继续生成。
 `gen_type` 可省略；无参考素材归为 `text_to_video`，有参考素材为 `reference_to_video`。
 每次任务只生成一条视频，`n` 省略或为 1。
 

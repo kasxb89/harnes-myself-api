@@ -398,9 +398,7 @@ func updatePricing() {
 			usageSchema, usageExamples := plugin.Meta.UsageForModel(usageModel)
 			pricing.BillingUsageSchema = jsplugin.CloneUsageSchema(usageSchema)
 			pricing.BillingUsageExamples = jsplugin.CloneUsageExamples(usageExamples)
-			if plugin.Meta.Key == "blackrxai-video" {
-				pricing.Parameters = blackrxVideoClientParameters(usageModel)
-			}
+			pricing.Parameters = taskPluginClientParameters(plugin.Meta.Key, plugin.Meta.Version, usageModel)
 		}
 		providers := pluginGeneration.PluginsByModel(model)
 		hasProviderOverride := false
@@ -470,7 +468,7 @@ func blackrxVideoClientParameters(model string) map[string]any {
 	default:
 		return nil
 	}
-	return map[string]any{
+	parameters := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"seconds": map[string]any{
@@ -481,6 +479,98 @@ func blackrxVideoClientParameters(model string) map[string]any {
 				"type": "string", "enum": []string{"1280x720", "720x1280", "1792x1024", "1024x1792"}, "default": "1280x720",
 			},
 		},
+	}
+	limits := blackrxVideoReferenceLimits(model)
+	properties := parameters["properties"].(map[string]any)
+	for index, field := range []string{"image_urls", "video_urls", "audio_urls"} {
+		items := map[string]any{"type": "string", "format": "uri", "pattern": "^https?://"}
+		if index > 0 {
+			items = map[string]any{"anyOf": []any{items, map[string]any{"type": "string", "pattern": "^/media/"}}}
+		}
+		properties[field] = map[string]any{"type": "array", "items": items, "maxItems": limits[index]}
+	}
+	properties["n"] = map[string]any{"type": "integer", "enum": []int{1}, "default": 1}
+	parameters["x-reference-limits"] = referenceLimits(limits[0], limits[1], limits[2])
+	return parameters
+}
+
+// These extensions describe aggregate URL/file limits that JSON Schema's
+// per-property maxItems cannot express. They never change usage or prices.
+func referenceLimits(images, videos, audios int) map[string]any {
+	return map[string]any{"images": images, "videos": videos, "audios": audios, "counts_include_files_and_urls": true}
+}
+
+func blackrxVideoReferenceLimits(model string) [3]int {
+	switch model {
+	case "k2-sd2.5-720p", "video-sd25-480p", "model_5", "sd2.5-720p-x2":
+		return [3]int{30, 10, 10}
+	case "lec-sz-sd2-full-480p":
+		return [3]int{30, 0, 10}
+	case "sd20-933-720p", "sd2-hn2-480-pro", "v3-sd2.0-933-720p":
+		return [3]int{9, 3, 3}
+	case "sd2-th-2.0-720p", "sd-20-9/3/3-1", "sd-20-903":
+		return [3]int{9, 0, 3}
+	case "bt-seedance-2.0":
+		return [3]int{8, 0, 0}
+	default:
+		return [3]int{9, 0, 0}
+	}
+}
+
+func taskPluginClientParameters(key, version, model string) map[string]any {
+	switch key {
+	case "blackrxai-video":
+		return blackrxVideoClientParameters(model)
+	case "toapis-image":
+		// Older installed overrides drop every size. Do not advertise new input
+		// support merely because a newer host binary was deployed.
+		if model != "yunshu-internal-gpt-image-2" || version != "1.2.1" {
+			return nil
+		}
+		ratios := []string{"1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"}
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"resolution":       map[string]any{"type": "string", "enum": []string{"1k", "2k", "4k"}, "default": "1k"},
+				"size":             map[string]any{"type": "string", "enum": ratios, "default": "1:1"},
+				"aspect_ratio":     map[string]any{"type": "string", "enum": ratios, "x-alias-for": "size"},
+				"n":                map[string]any{"type": "integer", "enum": []int{1}, "default": 1},
+				"reference_images": map[string]any{"type": "array", "items": map[string]any{"type": "string", "format": "uri", "pattern": "^https://"}, "maxItems": 6},
+			},
+			"x-reference-limits":     referenceLimits(6, 0, 0),
+			"x-size-semantics":       "aspect_ratio",
+			"x-resolution-semantics": "tariff_tier_not_exact_pixels",
+		}
+	case "hailuo":
+		if model != "MiniMax-H3" || version != "1.2.3" {
+			return nil
+		}
+		parameters := map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"seconds":    map[string]any{"type": "integer", "minimum": 4, "maximum": 15, "default": 5},
+				"resolution": map[string]any{"type": "string", "enum": []string{"768P", "2K"}, "default": "768P"},
+				"ratio":      map[string]any{"type": "string", "enum": []string{"adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"}},
+			},
+			"x-reference-limits":           referenceLimits(9, 3, 3),
+			"x-reference-frame-max-images": 2,
+			"x-reference-modes-exclusive":  true,
+			"x-reference-file-max-bytes":   map[string]int{"input_reference": 20 * 1024 * 1024, "reference_image": 30 * 1024 * 1024, "reference_video": 50 * 1024 * 1024, "reference_audio": 15 * 1024 * 1024},
+			"x-default-ratio":              map[string]string{"text": "16:9", "visual_reference": "adaptive"},
+		}
+		if parallelism := GetH3ClientConcurrencyHint(); parallelism != nil {
+			parameters["x-client-concurrency"] = map[string]any{
+				"schema":           1,
+				"atomic_admission": true,
+				"max_parallelism":  *parallelism,
+				"model":            "MiniMax-H3",
+				"scope":            "shared_account_pool",
+				"reservation":      false,
+			}
+		}
+		return parameters
+	default:
+		return nil
 	}
 }
 

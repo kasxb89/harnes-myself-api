@@ -1,9 +1,12 @@
 package model
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -12,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestPricingBlackrxParametersEnableReleasedClientsWithoutChangingBilling(t *testing.T) {
@@ -61,11 +65,173 @@ func TestPricingBlackrxParametersEnableReleasedClientsWithoutChangingBilling(t *
 		parameters := blackrxVideoClientParameters(id)
 		require.NotNil(t, parameters, id)
 		seconds := parameters["properties"].(map[string]any)["seconds"].(map[string]any)["enum"].([]int)
+		limits := parameters["x-reference-limits"].(map[string]any)
+		assert.Equal(t, true, limits["counts_include_files_and_urls"])
+		assert.Equal(t, 1, parameters["properties"].(map[string]any)["n"].(map[string]any)["default"])
 		_, examples := plugin.Meta.UsageForModel(id)
 		for _, example := range examples {
 			value, ok := example.Facts["seconds"].(int64)
 			require.True(t, ok, "integer plugin metadata uses int64")
 			assert.Contains(t, seconds, int(value), id)
+		}
+	}
+}
+
+func TestPricingMediaContractTracksInstalledPluginAndKeepsBillingFacts(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	require.NoError(t, MigrateH3Admission(DB))
+	for _, table := range []string{"h3_admissions", "h3_accounts"} {
+		require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
+	}
+	t.Cleanup(func() {
+		for _, table := range []string{"h3_admissions", "h3_accounts"} {
+			require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
+		}
+	})
+	models := []struct {
+		key, id, source, version string
+		channelType              int
+	}{
+		{"toapis-image", "yunshu-internal-gpt-image-2", "../deploy/instance/toapis-image-plugin.js", "1.2.1", constant.ChannelTypeTaskPlugin},
+		{"hailuo", "MiniMax-H3", "../plugins/tasks/hailuo/plugin.js", "1.2.3", constant.ChannelTypeMiniMax},
+	}
+	for i, fixture := range models {
+		insertPricingEndpointChannel(t, 610+i, fixture.channelType, dto.ChannelOtherSettings{})
+		insertPricingEndpointAbility(t, 610+i, fixture.id)
+		source, err := os.ReadFile(fixture.source)
+		require.NoError(t, err)
+		plugin, err := jsplugin.DefaultRegistry.Register(string(source), jsplugin.Options{})
+		require.NoError(t, err)
+		require.Equal(t, fixture.version, plugin.Meta.Version)
+		t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister(fixture.key) })
+	}
+	blackrxSource, err := os.ReadFile("../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	blackrx, err := jsplugin.DefaultRegistry.Register(string(blackrxSource), jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("blackrxai-video") })
+	insertPricingEndpointChannel(t, 612, constant.ChannelTypeTaskPlugin, dto.ChannelOtherSettings{})
+	for _, id := range blackrx.Meta.Models {
+		insertPricingEndpointAbility(t, 612, id)
+	}
+	InitChannelCache()
+	projection := GetPricing()
+	rows := pricingByModel(projection)
+	require.Len(t, rows, 17)
+	image := rows[models[0].id]
+	require.NotNil(t, image.Parameters)
+	imageProperties := image.Parameters["properties"].(map[string]any)
+	assert.Equal(t, []string{"1k", "2k", "4k"}, imageProperties["resolution"].(map[string]any)["enum"])
+	ratios := imageProperties["size"].(map[string]any)["enum"].([]string)
+	assert.Len(t, ratios, 13)
+	assert.Contains(t, ratios, "16:9")
+	assert.NotContains(t, ratios, "4096x4096")
+	assert.Equal(t, "size", imageProperties["aspect_ratio"].(map[string]any)["x-alias-for"])
+	assert.Equal(t, 6, imageProperties["reference_images"].(map[string]any)["maxItems"])
+	assert.Equal(t, "tariff_tier_not_exact_pixels", image.Parameters["x-resolution-semantics"])
+	video := rows[models[1].id]
+	require.NotNil(t, video.Parameters)
+	videoProperties := video.Parameters["properties"].(map[string]any)
+	assert.Equal(t, 4, videoProperties["seconds"].(map[string]any)["minimum"])
+	assert.Equal(t, 15, videoProperties["seconds"].(map[string]any)["maximum"])
+	assert.Equal(t, []string{"768P", "2K"}, videoProperties["resolution"].(map[string]any)["enum"])
+	assert.Equal(t, referenceLimits(9, 3, 3), video.Parameters["x-reference-limits"])
+	for _, fixture := range models {
+		plugin, ok := jsplugin.DefaultRegistry.Get(fixture.key)
+		require.True(t, ok)
+		schema, examples := plugin.Meta.UsageForModel(fixture.id)
+		assert.Equal(t, jsplugin.CloneUsageSchema(schema), rows[fixture.id].BillingUsageSchema)
+		assert.Equal(t, jsplugin.CloneUsageExamples(examples), rows[fixture.id].BillingUsageExamples)
+	}
+	assert.NotContains(t, video.Parameters, "x-client-concurrency", "unconfigured admission cannot promise parallelism")
+	// Configure synthetic independent accounts through the production operator
+	// API. A ceiling is advertised only after explicit reconciliation/enabling;
+	// adding capacity never changes the model's billing contract or price.
+	baselineBilling := make(map[string]Pricing, len(rows))
+	for id, row := range rows {
+		row.Parameters = nil
+		row.PricingVersion = "" // The response-level version is stored on the first, unordered row.
+		baselineBilling[id] = row
+	}
+	for i := range 4 {
+		channelID := 611
+		if i > 0 {
+			channelID = 612 + i
+			insertPricingEndpointChannel(t, channelID, constant.ChannelTypeMiniMax, dto.ChannelOtherSettings{})
+			insertPricingEndpointAbility(t, channelID, "MiniMax-H3")
+		}
+		require.NoError(t, DB.Model(&Channel{}).Where("id = ?", channelID).Updates(map[string]any{
+			"base_url": "https://metaso.cn/api/openai", "models": "MiniMax-H3",
+		}).Error)
+		accountID := fmt.Sprintf("pricing-fixture-%d", i)
+		require.NoError(t, ProvisionH3Account(context.Background(), accountID, channelID))
+		InvalidatePricingCache()
+		if i == 0 {
+			assert.NotContains(t, pricingByModel(GetPricing())["MiniMax-H3"].Parameters, "x-client-concurrency", "a provisioned but unreconciled account is unavailable")
+		}
+		require.NoError(t, ReconcileH3Account(context.Background(), accountID))
+		require.NoError(t, SetH3AccountEnabled(context.Background(), accountID, true))
+		InvalidatePricingCache()
+		configuredProjection := GetPricing()
+		require.Equal(t, projection[0].PricingVersion, configuredProjection[0].PricingVersion)
+		configured := pricingByModel(configuredProjection)
+		assert.Equal(t, map[string]any{
+			"schema": 1, "atomic_admission": true, "max_parallelism": 4 * (i + 1),
+			"model": "MiniMax-H3", "scope": "shared_account_pool", "reservation": false,
+		}, configured["MiniMax-H3"].Parameters["x-client-concurrency"])
+		for id, row := range configured {
+			if id != "MiniMax-H3" && row.Parameters != nil {
+				assert.NotContains(t, row.Parameters, "x-client-concurrency", id)
+			}
+			row.Parameters = nil
+			row.PricingVersion = ""
+			assert.Equal(t, baselineBilling[id], row, "capacity metadata must not change billing: %s", id)
+		}
+	}
+	// Fail only the account read: the real pricing projection must remain
+	// readable and retain its input schema while omitting the unsafe hint.
+	callback := "pricing:h3-account-read-failure"
+	require.NoError(t, DB.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "h3_accounts" {
+			tx.AddError(errors.New("synthetic private account query failure"))
+		}
+	}))
+	t.Cleanup(func() { _ = DB.Callback().Query().Remove(callback) })
+	InvalidatePricingCache()
+	failed := pricingByModel(GetPricing())
+	require.Len(t, failed, 17)
+	require.NotNil(t, failed["MiniMax-H3"].Parameters)
+	assert.NotContains(t, failed["MiniMax-H3"].Parameters, "x-client-concurrency")
+	encodedFailure, err := common.Marshal(failed)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encodedFailure), "synthetic private")
+	require.NoError(t, DB.Callback().Query().Remove(callback))
+	InvalidatePricingCache()
+	projection = GetPricing()
+	for _, row := range projection {
+		if row.ModelName == "MiniMax-H3" {
+			require.Equal(t, 16, row.Parameters["x-client-concurrency"].(map[string]any)["max_parallelism"])
+		}
+	}
+	if output := os.Getenv("TEST_MEDIA_CATALOG_OUTPUT"); output != "" {
+		encoded, err := common.Marshal(projection)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(output, encoded, 0o600))
+	}
+	// A retained pre-upgrade plugin override must not advertise a host-only
+	// contract that its actual selected source cannot fulfill.
+	for _, fixture := range models {
+		source, err := os.ReadFile(fixture.source)
+		require.NoError(t, err)
+		oldVersion := "1.2.0"
+		old := strings.Replace(string(source), fixture.version, oldVersion, 1)
+		_, err = jsplugin.DefaultRegistry.Register(old, jsplugin.Options{})
+		require.NoError(t, err)
+	}
+	InvalidatePricingCache()
+	for _, row := range GetPricing() {
+		if row.ModelName == models[0].id || row.ModelName == models[1].id {
+			assert.Nil(t, row.Parameters, "retained older plugin version must not claim the new controls")
 		}
 	}
 }

@@ -83,6 +83,17 @@ func sweepTimedOutTasks(ctx context.Context) {
 	timedOutCount := 0
 
 	for _, task := range tasks {
+		if model.IsH3Task(task) && task.PrivateData.H3AdmissionID == "" {
+			continue
+		}
+		if task.PrivateData.H3AdmissionID != "" {
+			// A local timer is not a vendor observation. In particular, a
+			// precreated task may still be reserved/sending with submit_time=0;
+			// changing it here would expose it to polling before submission and
+			// billing have completed. Only the poller or quiesced reconciliation
+			// may recover these ledger-backed tasks.
+			continue
+		}
 		isLegacy := task.SubmitTime > 0 && task.SubmitTime < model.TaskRefundLegacyCutoff
 
 		oldStatus := task.Status
@@ -168,13 +179,22 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 		taskM := make(map[string]*model.Task)
 		nullTaskIds := make([]int64, 0)
 		for _, task := range tasks {
+			if model.IsH3Task(task) && task.PrivateData.H3AdmissionID == "" {
+				continue
+			}
+			if task.PrivateData.H3AdmissionID != "" {
+				pollable, admissionErr := model.H3TaskPollable(ctx, task.PrivateData.H3AdmissionID)
+				if admissionErr != nil || !pollable || task.GetUpstreamTaskID() == "" {
+					continue
+				}
+			}
 			upstreamID := task.GetUpstreamTaskID()
 			if upstreamID == "" {
 				// 统计失败的未完成任务
 				nullTaskIds = append(nullTaskIds, task.ID)
 				continue
 			}
-			taskM[upstreamID] = task
+			taskM[fmt.Sprintf("%d:%s", task.ChannelId, upstreamID)] = task
 			taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], upstreamID)
 		}
 		if len(nullTaskIds) > 0 {
@@ -208,19 +228,34 @@ func DispatchPlatformUpdate(ctx context.Context, platform constant.TaskPlatform,
 		ctx = context.Background()
 	}
 	if platform == constant.TaskPlatformMidjourney {
-		// MJ 轮询由其自身处理，这里预留入口
 		return
 	}
-	adaptor := GetTaskAdaptorFunc(platform)
-	if batchAdaptor, ok := adaptor.(BatchTaskPollingAdaptor); ok && batchAdaptor.FetchMode() == "batch" {
-		if err := UpdateBatchTasks(ctx, batchAdaptor, taskChannelM, taskM); err != nil {
-			common.SysLog(common.LogText("UpdateBatchTasks fail: %s", err))
+	var wg sync.WaitGroup
+	for channelID, ids := range taskChannelM {
+		scoped := make(map[string]*model.Task, len(ids))
+		for _, id := range ids {
+			task := taskM[fmt.Sprintf("%d:%s", channelID, id)]
+			if task == nil {
+				task = taskM[id]
+			} // Compatibility for direct legacy callers.
+			if task != nil && task.ChannelId == channelID {
+				scoped[id] = task
+			}
 		}
-		return
+		wg.Go(func() {
+			adaptor := GetTaskAdaptorFunc(platform)
+			if batch, ok := adaptor.(BatchTaskPollingAdaptor); ok && batch.FetchMode() == "batch" {
+				if err := UpdateBatchTasks(ctx, batch, map[int][]string{channelID: ids}, scoped); err != nil {
+					common.SysLog(common.LogText("UpdateBatchTasks fail: %s", err))
+				}
+				return
+			}
+			if err := UpdateVideoTasks(ctx, platform, map[int][]string{channelID: ids}, scoped); err != nil {
+				common.SysLog(common.LogText("UpdateVideoTasks fail: %s", err))
+			}
+		})
 	}
-	if err := UpdateVideoTasks(ctx, platform, taskChannelM, taskM); err != nil {
-		common.SysLog(common.LogText("UpdateVideoTasks fail: %s", err))
-	}
+	wg.Wait()
 }
 
 func UpdateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, taskChannelM map[int][]string, taskM map[string]*model.Task) error {
@@ -251,6 +286,10 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 		var failedIDs []int64
 		for _, upstreamID := range taskIds {
 			if t, ok := taskM[upstreamID]; ok {
+				if t.PrivateData.H3AdmissionID != "" {
+					_ = model.HoldH3Unknown(ctx, t)
+					continue
+				}
 				failedIDs = append(failedIDs, t.ID)
 			}
 		}
@@ -436,6 +475,10 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 		var failedIDs []int64
 		for _, upstreamID := range taskIds {
 			if t, ok := taskM[upstreamID]; ok {
+				if t.PrivateData.H3AdmissionID != "" {
+					_ = model.HoldH3Unknown(ctx, t)
+					continue
+				}
 				failedIDs = append(failedIDs, t.ID)
 			}
 		}
@@ -532,7 +575,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems taskdto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); err == nil && responseItems.IsSuccess() {
+	if err = common.Unmarshal(responseBody, &responseItems); task.PrivateData.H3AdmissionID == "" && err == nil && responseItems.IsSuccess() {
 		logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
 		t := responseItems.Data
 		taskResult.TaskID = t.TaskID
@@ -548,6 +591,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	logger.LogDebug(ctx, "updateVideoSingleTask taskResult: %+v", taskResult)
 
 	parsedStatus := model.TaskStatus(taskResult.Status)
+	if task.PrivateData.H3AdmissionID != "" && (parsedStatus == model.TaskStatusSuccess || parsedStatus == model.TaskStatusFailure) && (resp.StatusCode/100 != 2 || taskResult.Code != 0) {
+		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, "H3 terminal task state was not confirmed")
+	}
 	if parsedStatus == model.TaskStatusUnknown || parsedStatus == "" || !knownPollStatus(parsedStatus) {
 		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, unrecognizedPollDetail(taskResult.Reason, responseBody))
 	}
@@ -611,7 +657,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
 	if isDone && snap.Status != task.Status {
-		won, err := task.UpdateWithStatus(snap.Status)
+		var won bool
+		var err error
+		if task.PrivateData.H3AdmissionID != "" {
+			won, err = model.UpdateH3TaskWithStatus(ctx, task, snap.Status, true)
+		} else {
+			won, err = task.UpdateWithStatus(snap.Status)
+		}
 		if err != nil {
 			logger.LogError(ctx, common.LogText("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
 			shouldFinalizeBilling = false
@@ -639,6 +691,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 // finalizeTerminalTask 终态统一收尾（状态 CAS 赢家调用，恰好一次）：采样 + 结算 + 失败兜底退款。
 func finalizeTerminalTask(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if task.PrivateData.H3AdmissionID != "" {
+		review, err := model.H3BillingNeedsReview(ctx, task.PrivateData.H3AdmissionID)
+		if err != nil || review {
+			logger.LogWarn(ctx, "H3 task terminal confirmed; billing requires administrator reconciliation")
+			return
+		}
+	}
 	perfmetrics.RecordTaskResult(task, taskResult)
 	billingSettled := settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 	if task.Status == model.TaskStatusFailure && !billingSettled && task.Quota != 0 {
@@ -775,6 +834,16 @@ func unrecognizedPollDetail(reason string, body []byte) string {
 }
 
 func recordPollFailure(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, class string, statusCode int, detail string) error {
+	if task.PrivateData.H3AdmissionID != "" {
+		task.PrivateData.PollFailures++
+		task.Status = model.TaskStatusUnknown
+		task.Progress = "0%"
+		task.FinishTime = 0
+		if _, err := model.UpdateH3TaskWithStatus(ctx, task, fromStatus, false); err != nil {
+			return err
+		}
+		return model.HoldH3Unknown(ctx, task)
+	}
 	task.PrivateData.PollFailures++
 	// TASK_POLL_MAX_FAILURES <= 0 disables the consecutive-failure cutoff, matching
 	// TASK_TIMEOUT_MINUTES semantics; the 24h sweep remains the only backstop.
@@ -832,6 +901,9 @@ func recordPollingTaskFailure(task *model.Task, diagnostics ...taskFailureDiagno
 }
 
 func failTaskFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, reason string, diagnostic ...taskFailureDiagnostic) error {
+	if task.PrivateData.H3AdmissionID != "" {
+		return recordPollFailure(ctx, adaptor, task, fromStatus, pollClassUnrecognized, 0, "H3 query did not establish a provider terminal state")
+	}
 	now := time.Now().Unix()
 	task.Status = model.TaskStatusFailure
 	task.Progress = taskcommon.ProgressComplete
