@@ -1,0 +1,239 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import type { VideoUsageResult } from '../schema'
+
+const now = Math.floor(Date.now() / 1000)
+const noCurrent = {
+  not_start: 0,
+  submitted: 0,
+  queued: 0,
+  in_progress: 0,
+  unknown: 0,
+  inflight: 0,
+  total_records: 0,
+}
+const noDuration = {
+  mean_seconds: null,
+  p50_seconds: null,
+  p95_seconds: null,
+  valid_samples: 0,
+  missing_samples: 1,
+  invalid_samples: 0,
+  zero_samples: 0,
+}
+const runDuration = {
+  mean_seconds: 25,
+  p50_seconds: 20,
+  p95_seconds: 40,
+  valid_samples: 2,
+  missing_samples: 3,
+  invalid_samples: 1,
+  zero_samples: 0,
+}
+const turnaround = {
+  mean_seconds: 80,
+  p50_seconds: 70,
+  p95_seconds: 100,
+  valid_samples: 3,
+  missing_samples: 2,
+  invalid_samples: 1,
+  zero_samples: 0,
+}
+const peak = {
+  value: 3,
+  interval_samples: 5,
+  excluded_intervals: 3,
+  unknown_state: 2,
+  invalid_timestamps: 1,
+  missing_finish: 0,
+  zero_length: 0,
+}
+const alice = { id: 7, username: 'alice', display_name: 'Alice' }
+const deleted = { id: 8, username: '', display_name: '' }
+export const videoPayload: VideoUsageResult = {
+  schema_version: 1,
+  as_of: now,
+  start_timestamp: now - 86400,
+  end_timestamp: now,
+  observation_complete: false,
+  limitations: ['gateway_observation_only'],
+  summary: {
+    current: {
+      not_start: 0,
+      submitted: 1,
+      queued: 2,
+      in_progress: 1,
+      unknown: 3,
+      inflight: 4,
+      total_records: 7,
+    },
+    history: {
+      task_count: 7,
+      success: 2,
+      failure: 2,
+      unresolved: 3,
+      users: 3,
+      turnaround,
+      recorded_run: runDuration,
+    },
+    peak,
+  },
+  source_coverage: { total: 7, desktop: 2, unknown: 5 },
+  client_session_duration: { status: 'not_collected', seconds: null },
+  upstream_capacity: { status: 'unknown', configured_limit: null },
+  models: [
+    {
+      model: 'MiniMax-H3',
+      current: {
+        ...noCurrent,
+        submitted: 1,
+        queued: 2,
+        in_progress: 1,
+        unknown: 2,
+        inflight: 4,
+        total_records: 6,
+      },
+      history: {
+        task_count: 6,
+        success: 2,
+        failure: 1,
+        unresolved: 3,
+        users: 2,
+        turnaround,
+        recorded_run: runDuration,
+      },
+      peak,
+    },
+    {
+      model: 'bt-seedance-2.0',
+      current: { ...noCurrent, unknown: 1, total_records: 1 },
+      history: {
+        task_count: 1,
+        success: 0,
+        failure: 1,
+        unresolved: 0,
+        users: 1,
+        turnaround: noDuration,
+        recorded_run: noDuration,
+      },
+      peak: {
+        ...peak,
+        value: null,
+        interval_samples: 0,
+        excluded_intervals: 1,
+        unknown_state: 1,
+        invalid_timestamps: 0,
+      },
+    },
+  ],
+  filter_options: {
+    models: ['MiniMax-H3', 'bt-seedance-2.0'],
+    users: [alice, deleted],
+  },
+  tasks: {
+    scope: 'history',
+    page: 1,
+    page_size: 20,
+    total: 45,
+    items: [
+      {
+        id: 101,
+        task_id: 'task-101',
+        model: 'MiniMax-H3',
+        user: alice,
+        client_source: 'desktop',
+        status: 'SUCCESS',
+        timing_quality: 'valid',
+        submitted_at: now - 200,
+        started_at: now - 150,
+        finished_at: now - 100,
+        turnaround_seconds: 100,
+        recorded_running_seconds: 50,
+        age_seconds: 100,
+        waiting_seconds: 50,
+        reported_video_seconds: 10,
+        reported_video_duration_source: 'h3_usage',
+      },
+      {
+        id: 102,
+        task_id: 'task-102',
+        model: 'bt-seedance-2.0',
+        user: deleted,
+        client_source: 'unknown',
+        status: 'FAILURE',
+        timing_quality: 'missing',
+        submitted_at: now - 95,
+        started_at: null,
+        finished_at: now - 30,
+        turnaround_seconds: 65,
+        recorded_running_seconds: null,
+        age_seconds: null,
+        waiting_seconds: null,
+        reported_video_seconds: null,
+        reported_video_duration_source: 'unknown',
+      },
+      {
+        id: 103,
+        task_id: 'task-103',
+        model: 'MiniMax-H3',
+        user: alice,
+        client_source: 'unknown',
+        status: 'SUCCESS',
+        timing_quality: 'invalid',
+        submitted_at: now - 50,
+        started_at: now - 60,
+        finished_at: now - 10,
+        turnaround_seconds: null,
+        recorded_running_seconds: null,
+        age_seconds: null,
+        waiting_seconds: null,
+        reported_video_seconds: null,
+        reported_video_duration_source: 'unknown',
+      },
+    ],
+  },
+}
+export const emptyVideoPayload: VideoUsageResult = {
+  ...videoPayload,
+  summary: {
+    current: noCurrent,
+    history: {
+      task_count: 0,
+      success: 0,
+      failure: 0,
+      unresolved: 0,
+      users: 0,
+      turnaround: { ...noDuration, missing_samples: 0 },
+      recorded_run: { ...noDuration, missing_samples: 0 },
+    },
+    peak: {
+      value: null,
+      interval_samples: 0,
+      excluded_intervals: 0,
+      unknown_state: 0,
+      invalid_timestamps: 0,
+      missing_finish: 0,
+      zero_length: 0,
+    },
+  },
+  source_coverage: { total: 0, desktop: 0, unknown: 0 },
+  models: [],
+  filter_options: { models: [], users: [] },
+  tasks: { scope: 'history', page: 1, page_size: 20, total: 0, items: [] },
+}

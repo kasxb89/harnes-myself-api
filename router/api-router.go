@@ -377,6 +377,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		apiRouter.GET("/media-operations", middleware.DisableCache(), middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetMediaOperations)
+		apiRouter.GET("/video-usage", middleware.DisableCache(), middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetVideoUsage)
 
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)

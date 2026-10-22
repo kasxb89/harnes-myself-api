@@ -375,6 +375,7 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 		{http.MethodPut, "/api/client-model-config"},
 		{http.MethodGet, "/api/client-model-config/models"},
 		{http.MethodGet, "/api/media-operations"},
+		{http.MethodGet, "/api/video-usage"},
 	} {
 		rule, ok := middleware.AccessTokenRouteRule(route.method + " " + route.path)
 		require.True(t, ok)
@@ -417,12 +418,14 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 			{"relay token", "sk-" + relayKey, http.StatusUnauthorized},
 		} {
 			t.Run(identity.name, func(t *testing.T) {
-				request := httptest.NewRequest(http.MethodGet, "/api/media-operations", nil)
-				request.Header.Set("Authorization", "Bearer "+identity.token)
-				recorder := httptest.NewRecorder()
-				engine.ServeHTTP(recorder, request)
-				assert.Equal(t, identity.status, recorder.Code, recorder.Body.String())
-				assert.Contains(t, recorder.Header().Get("Cache-Control"), "no-store")
+				for _, path := range []string{"/api/media-operations", "/api/video-usage"} {
+					request := httptest.NewRequest(http.MethodGet, path, nil)
+					request.Header.Set("Authorization", "Bearer "+identity.token)
+					recorder := httptest.NewRecorder()
+					engine.ServeHTTP(recorder, request)
+					assert.Equal(t, identity.status, recorder.Code, recorder.Body.String())
+					assert.Contains(t, recorder.Header().Get("Cache-Control"), "no-store")
+				}
 			})
 		}
 	})

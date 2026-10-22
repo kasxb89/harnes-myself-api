@@ -68,6 +68,22 @@ func GetMediaOperations(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
 	}
+	catalog := mediaOperationsCatalog()
+	result, err := model.GetMediaOperations(c.Request.Context(), filter, catalog)
+	if err != nil {
+		status, code, message := http.StatusInternalServerError, "MEDIA_OPERATIONS_QUERY_FAILED", "Failed to query logs"
+		if errors.Is(err, model.ErrMediaOperationsQueryTooBroad) {
+			status, code, message = http.StatusUnprocessableEntity, "MEDIA_OPERATIONS_QUERY_TOO_BROAD", "Narrow the time range or choose a model"
+		}
+		c.JSON(status, gin.H{"success": false, "message": message, "code": code})
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+// mediaOperationsCatalog shares explicit runtime media declarations between
+// the aggregate operations and video usage observers.
+func mediaOperationsCatalog() model.MediaOperationsCatalog {
 	catalog := model.MediaOperationsCatalog{Models: make(map[string]string), Platforms: make(map[string]string), SubmitPaths: map[string]string{"/v1/videos": "video", "/v1/video/generations": "video", "/v1/images/generations": "image", "/v1/images/edits": "image"}}
 	snapshot := jsplugin.DefaultRegistry.Snapshot()
 	keys := make(map[string]struct{})
@@ -157,14 +173,5 @@ func GetMediaOperations(c *gin.Context) {
 		}
 
 	}
-	result, err := model.GetMediaOperations(c.Request.Context(), filter, catalog)
-	if err != nil {
-		status, code, message := http.StatusInternalServerError, "MEDIA_OPERATIONS_QUERY_FAILED", "Failed to query logs"
-		if errors.Is(err, model.ErrMediaOperationsQueryTooBroad) {
-			status, code, message = http.StatusUnprocessableEntity, "MEDIA_OPERATIONS_QUERY_TOO_BROAD", "Narrow the time range or choose a model"
-		}
-		c.JSON(status, gin.H{"success": false, "message": message, "code": code})
-		return
-	}
-	common.ApiSuccess(c, result)
+	return catalog
 }

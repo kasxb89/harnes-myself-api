@@ -487,6 +487,7 @@ func RelayTaskPluginEndpoint(c *gin.Context, fallback gin.HandlerFunc) {
 }
 
 func RelayTaskFetch(c *gin.Context) {
+	service.CaptureTaskClientSource(c)
 	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
 	if err != nil {
 		respondTaskError(c, &taskdto.TaskError{
@@ -554,6 +555,7 @@ func executeTaskSubmissionWith(
 	relayInfo *relaycommon.RelayInfo,
 	submit taskSubmitAttempt,
 ) (outcome *taskSubmissionOutcome, submissionErr *taskdto.TaskError) {
+	service.CaptureTaskClientSource(c)
 	defer func() {
 		if submissionErr != nil {
 			service.RecordRelayError(c, taskSubmissionAPIError(submissionErr), relayInfo)

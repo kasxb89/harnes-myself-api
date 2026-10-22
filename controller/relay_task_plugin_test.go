@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -236,6 +237,161 @@ func TestExecuteTaskSubmissionPersistsPinnedPluginProvenance(t *testing.T) {
 	require.NotNil(t, stored.PrivateData.Execution.TaskPlugin.Author)
 	assert.Equal(t, "Community Author", stored.PrivateData.Execution.TaskPlugin.Author.Name)
 	assert.Equal(t, "upstream-private", stored.PrivateData.UpstreamTaskID)
+}
+
+func TestExecuteTaskSubmissionFreezesDeclaredClientSource(t *testing.T) {
+	for _, scenario := range []struct {
+		name, expected string
+		values         []string
+	}{
+		{"legacy", "", nil},
+		{"desktop", "desktop", []string{"desktop"}},
+		{"different case", "", []string{"Desktop"}},
+		{"whitespace", "", []string{" desktop "}},
+		{"combined", "", []string{"desktop,desktop"}},
+		{"repeated", "", []string{"desktop", "desktop"}},
+		{"unknown", "", []string{"private-client-value"}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			events := make([]string, 0, 3)
+			database := setupTaskSubmissionDatabase(t, true, &events)
+			previousLogConsumeEnabled := common.LogConsumeEnabled
+			common.LogConsumeEnabled = false
+			t.Cleanup(func() { common.LogConsumeEnabled = previousLogConsumeEnabled })
+			c := taskSubmissionTestContext()
+			for _, value := range scenario.values {
+				c.Request.Header.Add("X-Yunshu-Client", value)
+			}
+			c.Request.Header.Set("X-Preserve-Header", "unchanged")
+			outcome, taskErr := executeTaskSubmissionWith(c, taskSubmissionRelayInfo(&taskSubmissionTestBilling{events: &events}), func(ctx *gin.Context, _ *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+				assert.Empty(t, ctx.Request.Header.Values("X-Yunshu-Client"), "diagnostic declarations never reach upstream submission")
+				assert.Equal(t, "unchanged", ctx.GetHeader("X-Preserve-Header"))
+				return &relay.TaskSubmitResult{UpstreamTaskID: "private-upstream-id", Platform: "hailuo"}, nil
+			})
+			require.Nil(t, taskErr)
+			require.NotNil(t, outcome)
+			require.NotNil(t, outcome.Task.PrivateData.Execution)
+			assert.Equal(t, scenario.expected, outcome.Task.PrivateData.Execution.ClientSource)
+			var stored model.Task
+			require.NoError(t, database.Where("task_id = ?", "task_public").First(&stored).Error)
+			require.NotNil(t, stored.PrivateData.Execution)
+			assert.Equal(t, scenario.expected, stored.PrivateData.Execution.ClientSource)
+			publicJSON, err := common.Marshal(stored)
+			require.NoError(t, err)
+			assert.NotContains(t, string(publicJSON), "client_source")
+			query := taskSubmissionTestContext()
+			query.Request.Method = http.MethodGet
+			query.Request.Header.Set("X-Yunshu-Client", "desktop")
+			service.CaptureTaskClientSource(query)
+			assert.Empty(t, service.TaskExecutionSnapshotFromContext(query).ClientSource)
+			assert.Empty(t, query.Request.Header.Get("X-Yunshu-Client"))
+			require.NoError(t, database.Where("task_id = ?", "task_public").First(&stored).Error)
+			assert.Equal(t, scenario.expected, stored.PrivateData.Execution.ClientSource, "later queries do not rewrite stored provenance")
+		})
+	}
+}
+
+func TestVideoUsageHTTPSourceAndDurationContract(t *testing.T) {
+	owner, _ := setupAccessTokenAudit(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Task{}, &model.Token{}, &model.Channel{}, &model.Ability{}))
+	t.Setenv("LOG_SQL_DSN", "")
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = false
+	err := model.InitLogDB()
+	common.IsMasterNode = previousMaster
+	require.NoError(t, err)
+	previousMemory, previousConsume := common.MemoryCacheEnabled, common.LogConsumeEnabled
+	common.MemoryCacheEnabled, common.LogConsumeEnabled = false, false
+	t.Cleanup(func() { common.MemoryCacheEnabled, common.LogConsumeEnabled = previousMemory, previousConsume })
+	_, adminJWT := createAccessTokenTestSession(t, owner.Id, "video-usage-http-contract")
+	relayKey := strings.Repeat("v", 48)
+	require.NoError(t, model.DB.Create(&model.Token{UserId: owner.Id, Key: relayKey, Status: common.TokenStatusEnabled, Name: "local-video-contract", UnlimitedQuota: true, ExpiredTime: -1}).Error)
+	engine := gin.New()
+	engine.Use(middleware.RequestId())
+	engine.POST("/v1/videos", middleware.TokenAuth(), func(c *gin.Context) {
+		events := []string{}
+		info := taskSubmissionRelayInfo(&taskSubmissionTestBilling{events: &events})
+		info.UserId, info.OriginModelName, info.Action = c.GetInt("id"), "MiniMax-H3", constant.TaskActionTextToVideo
+		info.PublicTaskID = model.GenerateTaskID()
+		outcome, taskErr := executeTaskSubmissionWith(c, info, func(ctx *gin.Context, _ *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+			assert.Empty(t, ctx.GetHeader("X-Yunshu-Client"))
+			return &relay.TaskSubmitResult{UpstreamTaskID: "private-local-upstream", Platform: "hailuo"}, nil
+		})
+		if !assert.Nil(t, taskErr) {
+			respondTaskSubmissionError(c, taskErr)
+			return
+		}
+		presentTaskSubmission(c, outcome)
+	})
+	engine.GET("/api/video-usage", middleware.DisableCache(), middleware.AdminAuth(), GetVideoUsage)
+	server := httptest.NewServer(engine)
+	t.Cleanup(server.Close)
+	for _, source := range []string{"desktop", ""} {
+		request, err := http.NewRequest(http.MethodPost, server.URL+"/v1/videos", strings.NewReader(`{"model":"MiniMax-H3","prompt":"synthetic local contract"}`))
+		require.NoError(t, err)
+		request.Header.Set("Authorization", "Bearer sk-"+relayKey)
+		request.Header.Set("Content-Type", "application/json")
+		if source != "" {
+			request.Header.Set("X-Yunshu-Client", source)
+		}
+		response, err := server.Client().Do(request)
+		require.NoError(t, err)
+		body, err := io.ReadAll(response.Body)
+		require.NoError(t, response.Body.Close())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode, string(body))
+		assert.NotContains(t, string(body), "client_source")
+	}
+	var tasks []model.Task
+	require.NoError(t, model.DB.Order("id").Find(&tasks).Error)
+	require.Len(t, tasks, 2)
+	assert.Equal(t, "desktop", tasks[0].PrivateData.Execution.ClientSource)
+	assert.Empty(t, tasks[1].PrivateData.Execution.ClientSource)
+	now := time.Now().Unix()
+	for i, task := range tasks {
+		submit, start := now-100, now-90
+		if i == 1 {
+			submit, start = now-60, 0
+		}
+		require.NoError(t, model.DB.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]any{"submit_time": submit, "start_time": start, "finish_time": now - 20, "status": model.TaskStatusSuccess}).Error)
+	}
+	for _, sourceFilter := range []string{"all", "desktop"} {
+		path := fmt.Sprintf("/api/video-usage?start_timestamp=%d&end_timestamp=%d&client_source=%s", now-3600, now, sourceFilter)
+		request, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		require.NoError(t, err)
+		request.Header.Set("Authorization", "Bearer "+adminJWT)
+		request.Header.Set("X-Yunshu-Client", "desktop")
+		response, err := server.Client().Do(request)
+		require.NoError(t, err)
+		body, err := io.ReadAll(response.Body)
+		require.NoError(t, response.Body.Close())
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, response.StatusCode, string(body))
+		var envelope struct {
+			Success bool                     `json:"success"`
+			Data    model.VideoUsageResponse `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(body, &envelope))
+		require.True(t, envelope.Success)
+		assert.Equal(t, 2, envelope.Data.SourceCoverage.Total)
+		assert.Equal(t, 1, envelope.Data.SourceCoverage.Desktop)
+		assert.Equal(t, 1, envelope.Data.SourceCoverage.Unknown)
+		wantTasks, wantP50 := 2, float64(40)
+		if sourceFilter == "desktop" {
+			wantTasks, wantP50 = 1, 80
+		}
+		assert.Equal(t, wantTasks, envelope.Data.Summary.History.TaskCount)
+		require.NotNil(t, envelope.Data.Summary.History.Turnaround.P50Seconds)
+		assert.Equal(t, wantP50, *envelope.Data.Summary.History.Turnaround.P50Seconds)
+		assert.NotContains(t, string(body), "private-local-upstream")
+	}
+	var unchanged model.Task
+	require.NoError(t, model.DB.First(&unchanged, tasks[1].ID).Error)
+	assert.Empty(t, unchanged.PrivateData.Execution.ClientSource, "GET declarations must not relabel legacy tasks")
+	var after model.User
+	require.NoError(t, model.DB.First(&after, owner.Id).Error)
+	assert.Equal(t, owner.Quota, after.Quota)
+	assert.Equal(t, owner.UsedQuota, after.UsedQuota)
 }
 
 // A submit route declaring retainResult: false persists the task row for

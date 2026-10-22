@@ -142,6 +142,9 @@ type TaskExecutionSnapshot struct {
 	RequestID   string              `json:"request_id,omitempty"`
 	RequestPath string              `json:"request_path,omitempty"`
 	TaskPlugin  *TaskPluginSnapshot `json:"task_plugin,omitempty"`
+	// ClientSource is an untrusted diagnostic declaration, frozen on creation.
+	// It grants no privileges and is never filled by later polling requests.
+	ClientSource string `json:"client_source,omitempty"`
 }
 
 // TaskPluginSnapshot contains credential-free identity only. Plugin source,

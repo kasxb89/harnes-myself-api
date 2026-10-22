@@ -133,6 +133,12 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.ADMIN,
           },
           {
+            title: t('Video model usage'),
+            url: '/video-usage',
+            icon: Activity,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
             title: t('Balance ledger'),
             url: '/balance-ledger',
             icon: Wallet,

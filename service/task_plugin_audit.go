@@ -1,11 +1,44 @@
 package service
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/gin-gonic/gin"
 )
+
+const taskClientSourceContextKey = "task_client_source_capture"
+
+// CaptureTaskClientSource consumes the diagnostic declaration before any
+// outbound task hook runs. Only a single exact value on creation is retained.
+func CaptureTaskClientSource(ctx *gin.Context) {
+	if ctx == nil || ctx.Request == nil {
+		return
+	}
+	_, captured := ctx.Get(taskClientSourceContextKey)
+	count, valid := 0, true
+	for name, values := range ctx.Request.Header {
+		if !strings.EqualFold(name, "X-Yunshu-Client") {
+			continue
+		}
+		for _, value := range values {
+			count++
+			valid = valid && value == "desktop"
+		}
+		delete(ctx.Request.Header, name)
+	}
+	if captured {
+		return
+	}
+	source := ""
+	if ctx.Request.Method == http.MethodPost && count == 1 && valid {
+		source = "desktop"
+	}
+	ctx.Set(taskClientSourceContextKey, source)
+}
 
 // TaskExecutionSnapshotFromContext captures immutable request and plugin
 // provenance at submission time. It never copies plugin source or payloads.
@@ -15,6 +48,9 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 	}
 	snapshot := &model.TaskExecutionSnapshot{
 		RequestID: ctx.GetString(common.RequestIdKey),
+	}
+	if ctx.Request != nil && ctx.Request.Method == http.MethodPost && ctx.GetString(taskClientSourceContextKey) == "desktop" {
+		snapshot.ClientSource = "desktop"
 	}
 	if ctx.Request != nil && ctx.Request.URL != nil {
 		snapshot.RequestPath = ctx.Request.URL.Path
@@ -43,7 +79,7 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 		}
 	}
 
-	if snapshot.RequestID == "" && snapshot.RequestPath == "" && snapshot.TaskPlugin == nil {
+	if snapshot.RequestID == "" && snapshot.RequestPath == "" && snapshot.TaskPlugin == nil && snapshot.ClientSource == "" {
 		return nil
 	}
 	return snapshot
