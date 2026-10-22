@@ -16,13 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { VideoUsageQuery } from '../schema'
+import type { VideoProvider, VideoUsageQuery } from '../schema'
 
 export interface VideoUsageDraft {
   start?: Date
   end?: Date
   userId: string
   model: string
+  channelId: string
+  provider: 'all' | VideoProvider
   source: 'all' | 'desktop' | 'unknown'
 }
 export function initialVideoFilters(): VideoUsageDraft {
@@ -32,6 +34,8 @@ export function initialVideoFilters(): VideoUsageDraft {
     end: new Date(now),
     userId: '',
     model: '',
+    channelId: '',
+    provider: 'all',
     source: 'all',
   }
 }
@@ -56,10 +60,19 @@ export function videoQueryFromDraft(
   if (userId !== undefined && (!Number.isSafeInteger(userId) || userId <= 0)) {
     return null
   }
+  const channelId = draft.channelId ? Number(draft.channelId) : undefined
+  if (
+    channelId !== undefined &&
+    (!Number.isSafeInteger(channelId) || channelId < 0)
+  ) {
+    return null
+  }
   return {
     start_timestamp: Math.floor(start / 1000),
     end_timestamp: Math.floor(end / 1000),
     client_source: draft.source,
+    provider: draft.provider,
+    ...(channelId !== undefined ? { channel_id: channelId } : {}),
     ...(draft.model ? { model: draft.model } : {}),
     ...(userId !== undefined ? { user_id: userId } : {}),
     task_scope: 'history',

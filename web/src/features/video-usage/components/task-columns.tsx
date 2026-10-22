@@ -23,7 +23,12 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 
 import { videoStatusLabelKey } from '../labels'
-import { useVideoFormat, userOptionLabel } from '../lib/format'
+import {
+  channelOptionLabel,
+  useVideoFormat,
+  userOptionLabel,
+  videoProviderName,
+} from '../lib/format'
 import type { VideoTask } from '../schema'
 import { VideoTimingBadge } from './timing-badge'
 
@@ -54,6 +59,21 @@ export function useVideoTaskColumns(): ColumnDef<VideoTask>[] {
           <span className='font-mono text-xs break-all whitespace-normal'>
             {row.original.model || t('Unknown model')}
           </span>
+        ),
+      },
+      {
+        id: 'channel',
+        header: t('Channel / current provider'),
+        size: 220,
+        cell: ({ row }) => (
+          <div className='space-y-1 text-xs whitespace-normal'>
+            <div className='break-all'>
+              {channelOptionLabel(row.original.channel, t('Unknown channel'))}
+            </div>
+            <div className='text-muted-foreground'>
+              {videoProviderName(row.original.channel.provider) || t('Unknown')}
+            </div>
+          </div>
         ),
       },
       {

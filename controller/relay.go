@@ -773,6 +773,7 @@ func executeTaskSubmissionWith(
 		return nil, taskErr
 	}
 	durable = true
+	model.MarkVideoIngressAccepted(c.Request.Context())
 	stage = "settle"
 	diagnostics.durable(task)
 	diagnostics.settleStart(task, result.Quota)

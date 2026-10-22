@@ -24,13 +24,24 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 
 import type { VideoUsageDraft } from '../lib/filters'
-import { userOptionLabel } from '../lib/format'
-import type { VideoUser } from '../schema'
+import {
+  channelOptionLabel,
+  userOptionLabel,
+  videoProviderName,
+} from '../lib/format'
+import {
+  videoProviders,
+  type VideoChannel,
+  type VideoProvider,
+  type VideoUser,
+} from '../schema'
 
 export function VideoUsageFilters(props: {
   value: VideoUsageDraft
   models: string[]
   users: VideoUser[]
+  channels: VideoChannel[]
+  providers: VideoProvider[]
   loading: boolean
   invalid: boolean
   onChange: (value: VideoUsageDraft) => void
@@ -41,7 +52,7 @@ export function VideoUsageFilters(props: {
   return (
     <form
       aria-label={t('Video usage filters')}
-      className='grid items-end gap-3 rounded-xl border p-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto]'
+      className='grid items-end gap-3 rounded-xl border p-4 sm:grid-cols-2 xl:grid-cols-3'
       onSubmit={(event) => {
         event.preventDefault()
         if (!props.loading && !props.invalid) props.onApply()
@@ -124,6 +135,61 @@ export function VideoUsageFilters(props: {
           }}
         />
       </Field>
+      <Field>
+        <FieldLabel htmlFor='video-usage-channel'>{t('Channel')}</FieldLabel>
+        <ComboboxInput
+          id='video-usage-channel'
+          aria-label={t('Channel')}
+          allowCustomValue={false}
+          openOnFocus={false}
+          value={props.value.channelId}
+          options={[
+            { value: '', label: t('All channels') },
+            ...props.channels.map((channel) => ({
+              value: String(channel.id),
+              label: channelOptionLabel(channel, t('Unknown channel')),
+            })),
+          ]}
+          onValueChange={(channelId) =>
+            props.onChange({ ...props.value, channelId })
+          }
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor='video-usage-provider'>
+          {t('Provider (current settings)')}
+        </FieldLabel>
+        <ComboboxInput
+          id='video-usage-provider'
+          aria-label={t('Provider (current settings)')}
+          allowCustomValue={false}
+          openOnFocus={false}
+          value={props.value.provider}
+          options={[
+            { value: 'all', label: t('All providers') },
+            ...props.providers.map((provider) => ({
+              value: provider,
+              label: videoProviderName(provider) || t('Unknown'),
+            })),
+          ]}
+          onValueChange={(provider) => {
+            if (
+              provider === 'all' ||
+              videoProviders.some((item) => item === provider)
+            ) {
+              props.onChange({
+                ...props.value,
+                provider: provider as 'all' | VideoProvider,
+              })
+            }
+          }}
+        />
+      </Field>
+      <p className='text-muted-foreground text-xs sm:col-span-2 xl:col-span-3'>
+        {t(
+          'Providers reflect current channel settings, not historical supplier identity or independent accounts.'
+        )}
+      </p>
       <div className='flex gap-2'>
         <Button type='submit' disabled={props.invalid || props.loading}>
           {t('Apply filters')}

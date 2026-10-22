@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { VideoChannelTable } from './components/channel-table'
 import { VideoCurrentTable } from './components/current-table'
 import { VideoUsageFilters } from './components/filters'
 import { VideoHistoryTable } from './components/history-table'
@@ -36,6 +37,8 @@ import { VideoUsageSummary } from './components/summary'
 import { VideoTaskTable } from './components/task-table'
 import { useVideoFormat } from './lib/format'
 import { useVideoReport } from './lib/use-video-report'
+
+const VideoTrends = lazy(() => import('./components/trends'))
 
 export function VideoUsagePage() {
   const { t } = useTranslation()
@@ -81,6 +84,8 @@ function VideoUsageReport(props: { userId: number }) {
             value={state.draft}
             models={state.models}
             users={state.users}
+            channels={state.channels}
+            providers={state.providers}
             invalid={!state.parsed}
             loading={state.report.isFetching}
             onChange={state.setDraft}
@@ -152,6 +157,18 @@ function VideoUsageReport(props: { userId: number }) {
                     {t('Period summary')}
                   </TabsTrigger>
                   <TabsTrigger
+                    value='trends'
+                    className='min-h-8 flex-none px-3 whitespace-nowrap'
+                  >
+                    {t('Video trends')}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value='channels'
+                    className='min-h-8 flex-none px-3 whitespace-nowrap'
+                  >
+                    {t('Channel breakdown')}
+                  </TabsTrigger>
+                  <TabsTrigger
                     value='tasks'
                     className='min-h-8 flex-none px-3 whitespace-nowrap'
                   >
@@ -172,6 +189,25 @@ function VideoUsageReport(props: { userId: number }) {
                     )}
                   </p>
                   <VideoHistoryTable models={data.models} />
+                </TabsContent>
+                <TabsContent value='trends'>
+                  <Suspense
+                    fallback={
+                      <LoadingState
+                        inline
+                        message={t('Loading video trends')}
+                      />
+                    }
+                  >
+                    <VideoTrends
+                      trends={data.trends}
+                      ingress={data.ingress}
+                      onRecentRange={state.setRecentRange}
+                    />
+                  </Suspense>
+                </TabsContent>
+                <TabsContent value='channels'>
+                  <VideoChannelTable rows={data.channel_breakdown} />
                 </TabsContent>
                 <TabsContent value='tasks'>
                   <VideoTaskTable

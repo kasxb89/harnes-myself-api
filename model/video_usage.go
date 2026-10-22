@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net/url"
 	"regexp"
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -28,6 +30,8 @@ type VideoUsageFilter struct {
 	UserID                  int
 	ClientSource, TaskScope string
 	Page, PageSize          int
+	ChannelID               *int
+	Provider                string
 }
 type VideoUsageCurrent struct {
 	NotStart     int `json:"not_start"`
@@ -71,22 +75,23 @@ type VideoUsageUser struct {
 	DisplayName string `json:"display_name"`
 }
 type VideoUsageTask struct {
-	TimingQuality               string          `json:"timing_quality"`
-	ID                          int64           `json:"id"`
-	TaskID                      *string         `json:"task_id"`
-	Model                       string          `json:"model"`
-	User                        *VideoUsageUser `json:"user"`
-	ClientSource                string          `json:"client_source"`
-	Status                      string          `json:"status"`
-	SubmittedAt                 *int64          `json:"submitted_at"`
-	StartedAt                   *int64          `json:"started_at"`
-	FinishedAt                  *int64          `json:"finished_at"`
-	TurnaroundSeconds           *float64        `json:"turnaround_seconds"`
-	RecordedRunningSeconds      *float64        `json:"recorded_running_seconds"`
-	AgeSeconds                  *float64        `json:"age_seconds"`
-	WaitingSeconds              *float64        `json:"waiting_seconds"`
-	ReportedVideoSeconds        *float64        `json:"reported_video_seconds"`
-	ReportedVideoDurationSource string          `json:"reported_video_duration_source"`
+	Channel                     VideoUsageChannel `json:"channel"`
+	TimingQuality               string            `json:"timing_quality"`
+	ID                          int64             `json:"id"`
+	TaskID                      *string           `json:"task_id"`
+	Model                       string            `json:"model"`
+	User                        *VideoUsageUser   `json:"user"`
+	ClientSource                string            `json:"client_source"`
+	Status                      string            `json:"status"`
+	SubmittedAt                 *int64            `json:"submitted_at"`
+	StartedAt                   *int64            `json:"started_at"`
+	FinishedAt                  *int64            `json:"finished_at"`
+	TurnaroundSeconds           *float64          `json:"turnaround_seconds"`
+	RecordedRunningSeconds      *float64          `json:"recorded_running_seconds"`
+	AgeSeconds                  *float64          `json:"age_seconds"`
+	WaitingSeconds              *float64          `json:"waiting_seconds"`
+	ReportedVideoSeconds        *float64          `json:"reported_video_seconds"`
+	ReportedVideoDurationSource string            `json:"reported_video_duration_source"`
 }
 type VideoUsageModel struct {
 	Model   string            `json:"model"`
@@ -94,13 +99,48 @@ type VideoUsageModel struct {
 	History VideoUsageHistory `json:"history"`
 	Peak    VideoUsagePeak    `json:"peak"`
 }
+type VideoUsageChannel struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`
+	Provider string `json:"provider"`
+}
+type VideoUsageChannelBreakdown struct {
+	Channel VideoUsageChannel `json:"channel"`
+	Current VideoUsageCurrent `json:"current"`
+	History VideoUsageHistory `json:"history"`
+	Peak    VideoUsagePeak    `json:"peak"`
+}
+type VideoUsagePeakExclusions struct {
+	ExcludedIntervals int `json:"excluded_intervals"`
+	UnknownState      int `json:"unknown_state"`
+	InvalidTimestamps int `json:"invalid_timestamps"`
+	MissingFinish     int `json:"missing_finish"`
+	ZeroLength        int `json:"zero_length"`
+}
+type VideoUsageTrendPoint struct {
+	PeakExclusions   VideoUsagePeakExclusions `json:"peak_exclusions"`
+	StartTimestamp   int64                    `json:"start_timestamp"`
+	EndTimestamp     int64                    `json:"end_timestamp"`
+	Seconds          int64                    `json:"seconds"`
+	AcceptedTasks    int                      `json:"accepted_tasks"`
+	AcceptedTaskRate float64                  `json:"accepted_task_rate"`
+	RecordedPeak     *int                     `json:"recorded_peak"`
+}
 type VideoUsageResponse struct {
-	SchemaVersion       int      `json:"schema_version"`
-	AsOf                int64    `json:"as_of"`
-	StartTimestamp      int64    `json:"start_timestamp"`
-	EndTimestamp        int64    `json:"end_timestamp"`
-	ObservationComplete bool     `json:"observation_complete"`
-	Limitations         []string `json:"limitations"`
+	ProviderClassification string                       `json:"provider_classification"`
+	ChannelBreakdown       []VideoUsageChannelBreakdown `json:"channel_breakdown"`
+	Trends                 struct {
+		BucketSeconds int64                  `json:"bucket_seconds"`
+		Points        []VideoUsageTrendPoint `json:"points"`
+	} `json:"trends"`
+	Ingress             VideoIngressSnapshot `json:"ingress"`
+	SchemaVersion       int                  `json:"schema_version"`
+	AsOf                int64                `json:"as_of"`
+	StartTimestamp      int64                `json:"start_timestamp"`
+	EndTimestamp        int64                `json:"end_timestamp"`
+	ObservationComplete bool                 `json:"observation_complete"`
+	Limitations         []string             `json:"limitations"`
 	Summary             struct {
 		Current VideoUsageCurrent `json:"current"`
 		History VideoUsageHistory `json:"history"`
@@ -121,8 +161,10 @@ type VideoUsageResponse struct {
 	} `json:"upstream_capacity"`
 	Models        []VideoUsageModel `json:"models"`
 	FilterOptions struct {
-		Models []string         `json:"models"`
-		Users  []VideoUsageUser `json:"users"`
+		Models    []string            `json:"models"`
+		Users     []VideoUsageUser    `json:"users"`
+		Channels  []VideoUsageChannel `json:"channels"`
+		Providers []string            `json:"providers"`
 	} `json:"filter_options"`
 	Tasks struct {
 		Scope    string           `json:"scope"`
@@ -135,6 +177,7 @@ type VideoUsageResponse struct {
 
 type videoUsageRow struct {
 	UpstreamModel                     string
+	ChannelID                         int
 	ID                                int64
 	TaskID                            string
 	UserID                            int
@@ -153,7 +196,13 @@ type videoUsageAccumulator struct {
 	users           map[int]struct{}
 	turnaround, run []float64
 	events          []videoUsageIntervalEvent
+	exclusions      []videoUsageExcludedInterval
 }
+type videoUsageExcludedInterval struct {
+	start, end int64
+	category   string
+}
+
 type videoUsageIntervalEvent struct {
 	at    int64
 	delta int
@@ -235,8 +284,7 @@ func (a *videoUsageAccumulator) observe(row videoUsageRow, filter VideoUsageFilt
 	// Invalid records must remain visible quality gaps before any overlap
 	// shortcut; future submissions cannot masquerade as an observed zero peak.
 	if videoUsageTimingQuality(row, asOf) == "invalid" || row.SubmitTime == 0 {
-		a.peak.InvalidTimestamps++
-		a.peak.ExcludedIntervals++
+		a.exclude(row, filter, asOf, "invalid_timestamps")
 		return
 	}
 	if row.SubmitTime >= filter.End {
@@ -248,21 +296,18 @@ func (a *videoUsageAccumulator) observe(row videoUsageRow, filter VideoUsageFilt
 	switch row.Status {
 	case TaskStatusNotStart, TaskStatusSubmitted, TaskStatusQueued, TaskStatusInProgress, TaskStatusSuccess, TaskStatusFailure:
 	default:
-		a.peak.UnknownState++
-		a.peak.ExcludedIntervals++
+		a.exclude(row, filter, asOf, "unknown_state")
 		return
 	}
 
 	end := asOf
 	if terminal {
 		if row.FinishTime == 0 {
-			a.peak.MissingFinish++
-			a.peak.ExcludedIntervals++
+			a.exclude(row, filter, asOf, "missing_finish")
 			return
 		}
 		if row.FinishTime == row.SubmitTime {
-			a.peak.ZeroLength++
-			a.peak.ExcludedIntervals++
+			a.exclude(row, filter, asOf, "zero_length")
 			return
 		}
 		end = row.FinishTime
@@ -274,6 +319,40 @@ func (a *videoUsageAccumulator) observe(row videoUsageRow, filter VideoUsageFilt
 	}
 	a.peak.IntervalSamples++
 	a.events = append(a.events, videoUsageIntervalEvent{start, 1}, videoUsageIntervalEvent{end, -1})
+}
+
+// exclude preserves the same quality decision for totals and trend buckets.
+// Untrustworthy dates conservatively affect the whole requested window;
+// missing/unknown endings affect every bucket after their known submission.
+func (a *videoUsageAccumulator) exclude(row videoUsageRow, filter VideoUsageFilter, asOf int64, category string) {
+	a.peak.ExcludedIntervals++
+	switch category {
+	case "unknown_state":
+		a.peak.UnknownState++
+	case "invalid_timestamps":
+		a.peak.InvalidTimestamps++
+	case "missing_finish":
+		a.peak.MissingFinish++
+	case "zero_length":
+		a.peak.ZeroLength++
+	}
+	start, end := filter.Start, filter.End
+	if row.SubmitTime > 0 && row.SubmitTime <= asOf {
+		start = max(start, row.SubmitTime)
+		if category == "zero_length" {
+			end = min(end, row.SubmitTime+1)
+		}
+		if category == "invalid_timestamps" {
+			if row.FinishTime >= row.SubmitTime && row.FinishTime <= asOf {
+				end = min(end, max(row.FinishTime, row.SubmitTime+1))
+			} else {
+				start = filter.Start
+			}
+		}
+	}
+	if end > start {
+		a.exclusions = append(a.exclusions, videoUsageExcludedInterval{start, end, category})
+	}
 }
 
 func videoUsageTimingQuality(row videoUsageRow, asOf int64) string {
@@ -360,6 +439,10 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 	db := DB.WithContext(ctx).Session(&gorm.Session{Logger: logger.Discard})
 	asOf := common.GetTimestamp()
 	response := &VideoUsageResponse{SchemaVersion: 1, AsOf: asOf, StartTimestamp: filter.Start, EndTimestamp: filter.End, ObservationComplete: false, Limitations: []string{"gateway_recorded_times_not_render_duration", "tasks_recorded_after_upstream_receipt", "legacy_timestamps_may_be_provider_reported", "unknown_states_excluded_from_peak", "peak_is_not_capacity", "client_source_is_a_declaration", "legacy_client_source_unknown", "client_online_duration_not_collected", "only_h3_output_seconds_reported"}, Models: []VideoUsageModel{}}
+	response.ProviderClassification = "current_channel_host_not_historical_identity"
+	response.ChannelBreakdown = []VideoUsageChannelBreakdown{}
+	response.FilterOptions.Channels = []VideoUsageChannel{}
+	response.FilterOptions.Providers = []string{}
 	response.ClientSessionDuration.Status = "not_collected"
 	response.UpstreamCapacity.Status = "unknown"
 	response.FilterOptions.Models = []string{}
@@ -390,7 +473,7 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 	case "mysql":
 		reportedType = "JSON_TYPE(JSON_EXTRACT(IF(JSON_VALID(data), data, '{}'), '$.task.usage.output_seconds'))"
 	}
-	selectFields := "id, task_id, user_id, platform, action, status, submit_time, start_time, finish_time, SUBSTRING(" + modelExpression + ", 1, 256) AS origin_model, SUBSTRING(" + mediaOperationsJSON(db, "properties", "upstream_model_name") + ", 1, 256) AS upstream_model, SUBSTRING(" + mediaOperationsJSON(db, "private_data", "execution", "client_source") + ", 1, 33) AS client_source, SUBSTRING(" + reportedExpression + ", 1, 65) AS reported_seconds, COALESCE(" + reportedType + ", '') AS reported_type"
+	selectFields := "id, task_id, user_id, channel_id, platform, action, status, submit_time, start_time, finish_time, SUBSTRING(" + modelExpression + ", 1, 256) AS origin_model, SUBSTRING(" + mediaOperationsJSON(db, "properties", "upstream_model_name") + ", 1, 256) AS upstream_model, SUBSTRING(" + mediaOperationsJSON(db, "private_data", "execution", "client_source") + ", 1, 33) AS client_source, SUBSTRING(" + reportedExpression + ", 1, 65) AS reported_seconds, COALESCE(" + reportedType + ", '') AS reported_type"
 	query := db.Model(&Task{}).Select(selectFields).Where("platform IN ? OR "+modelExpression+" IN ? OR action IN ?", platforms, videoModels, videoActions).
 		Where("status NOT IN ? OR (submit_time >= ? AND submit_time < ?) OR (submit_time < ? AND (finish_time > ? OR finish_time <= 0 OR finish_time < submit_time))", []TaskStatus{TaskStatusSuccess, TaskStatusFailure}, filter.Start, filter.End, filter.End, filter.Start)
 	if filter.Model != "" && filter.Model != MediaOperationsUnknownModel {
@@ -398,6 +481,13 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 	}
 	if filter.UserID > 0 {
 		query = query.Where("user_id = ?", filter.UserID)
+	}
+	if filter.ChannelID != nil {
+		if *filter.ChannelID == 0 {
+			query = query.Where("channel_id IS NULL OR channel_id <= ?", 0)
+		} else {
+			query = query.Where("channel_id = ?", *filter.ChannelID)
+		}
 	}
 	rows, err := query.Limit(10001).Rows()
 	if err != nil {
@@ -437,16 +527,105 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 	if err := rows.Close(); err != nil {
 		return nil, ErrVideoUsageQueryFailed
 	}
-	var configured []struct{ Model string }
-	if err := db.Model(&Ability{}).Select("abilities.model AS model").Joins("INNER JOIN channels ON channels.id = abilities.channel_id").Where("abilities.enabled = ? AND channels.status = ? AND abilities.model IN ?", true, common.ChannelStatusEnabled, videoModels).Distinct().Limit(5001).Scan(&configured).Error; err != nil {
+	var configured []struct {
+		Model     string
+		ChannelID int
+	}
+	if err := db.Model(&Ability{}).Select("abilities.model AS model, abilities.channel_id AS channel_id").Joins("INNER JOIN channels ON channels.id = abilities.channel_id").Where("abilities.enabled = ? AND channels.status = ? AND abilities.model IN ?", true, common.ChannelStatusEnabled, videoModels).Distinct().Limit(10001).Scan(&configured).Error; err != nil {
 		return nil, ErrVideoUsageQueryFailed
 	}
-	if len(configured) > 5000 {
+	if len(configured) > 10000 {
 		return nil, ErrVideoUsageQueryTooBroad
 	}
+	var channelRecords []struct {
+		ID      int
+		Name    string
+		Status  int
+		BaseURL *string
+	}
+	if err := db.Model(&Channel{}).Select("id, name, status, base_url").Limit(5001).Scan(&channelRecords).Error; err != nil {
+		return nil, ErrVideoUsageQueryFailed
+	}
+	if len(channelRecords) > 5000 {
+		return nil, ErrVideoUsageQueryTooBroad
+	}
+	channels := map[int]VideoUsageChannel{0: {ID: 0, Status: "unknown", Provider: "unknown"}}
+	for _, record := range channelRecords {
+		if record.ID <= 0 {
+			continue
+		}
+		if len(record.Name) > 255 {
+			return nil, ErrVideoUsageQueryTooBroad
+		}
+		item := VideoUsageChannel{ID: record.ID, Name: common.MaskCredentials(record.Name), Status: "unknown", Provider: "unknown"}
+		switch record.Status {
+		case common.ChannelStatusEnabled:
+			item.Status = "enabled"
+		case common.ChannelStatusManuallyDisabled, common.ChannelStatusAutoDisabled:
+			item.Status = "disabled"
+		}
+		if record.BaseURL != nil {
+			if parsed, err := url.Parse(*record.BaseURL); err == nil && (parsed.Scheme == "https" || parsed.Scheme == "http") {
+				switch strings.ToLower(parsed.Hostname()) {
+				case "metaso.cn", "www.metaso.cn", "api.metaso.cn":
+					item.Provider = "metaso"
+				case "hi.blackrxai.com", "blackrxai.com", "www.blackrxai.com":
+					item.Provider = "blackrx"
+				case "dmxapi.cn", "www.dmxapi.cn", "api.dmxapi.cn", "dmxapi.com", "www.dmxapi.com", "api.dmxapi.com":
+					item.Provider = "dmx"
+				}
+			}
+		}
+		channels[record.ID] = item
+	}
+	observedChannels := map[int]struct{}{}
+	for _, item := range configured {
+		observedChannels[item.ChannelID] = struct{}{}
+	}
+	for index := range candidates {
+		if candidates[index].ChannelID < 0 {
+			candidates[index].ChannelID = 0
+		}
+		id := candidates[index].ChannelID
+		observedChannels[id] = struct{}{}
+		if _, exists := channels[id]; !exists {
+			channels[id] = VideoUsageChannel{ID: id, Status: "deleted", Provider: "unknown"}
+		}
+	}
+	channelEligible := func(id int) bool {
+		item := channels[id]
+		return (filter.ChannelID == nil || id == *filter.ChannelID) && (filter.Provider == "" || filter.Provider == "all" || item.Provider == filter.Provider)
+	}
+	channelIDs := make([]int, 0, len(observedChannels))
+	providerNames := map[string]struct{}{}
+	for id := range observedChannels {
+		channelIDs = append(channelIDs, id)
+	}
+	sort.Ints(channelIDs)
+	if len(channelIDs) > 5000 {
+		return nil, ErrVideoUsageQueryTooBroad
+	}
+	for _, id := range channelIDs {
+		item := channels[id]
+		response.FilterOptions.Channels = append(response.FilterOptions.Channels, item)
+		providerNames[item.Provider] = struct{}{}
+	}
+	for provider := range providerNames {
+		response.FilterOptions.Providers = append(response.FilterOptions.Providers, provider)
+	}
+	sort.Strings(response.FilterOptions.Providers)
+	filteredCandidates := make([]videoUsageRow, 0, len(candidates))
+	for _, row := range candidates {
+		if channelEligible(row.ChannelID) {
+			filteredCandidates = append(filteredCandidates, row)
+		}
+	}
+	candidates = filteredCandidates
 	names := map[string]struct{}{}
 	for _, item := range configured {
-		names[item.Model] = struct{}{}
+		if channelEligible(item.ChannelID) {
+			names[item.Model] = struct{}{}
+		}
 	}
 	userIDs := map[int]struct{}{}
 	for _, row := range candidates {
@@ -492,6 +671,13 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 		}
 	}
 	all := &videoUsageAccumulator{}
+	channelAccumulators := map[int]*videoUsageAccumulator{}
+	for _, item := range configured {
+		if channelEligible(item.ChannelID) {
+			channelAccumulators[item.ChannelID] = &videoUsageAccumulator{}
+		}
+	}
+	filteredRows := []videoUsageRow{}
 	models := map[string]*videoUsageAccumulator{}
 	for _, name := range response.FilterOptions.Models {
 		if filter.Model == "" || name == filter.Model {
@@ -513,6 +699,11 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 			continue
 		}
 		all.observe(row, filter, asOf)
+		filteredRows = append(filteredRows, row)
+		if channelAccumulators[row.ChannelID] == nil {
+			channelAccumulators[row.ChannelID] = &videoUsageAccumulator{}
+		}
+		channelAccumulators[row.ChannelID].observe(row, filter, asOf)
 		if models[row.OriginModel] == nil {
 			models[row.OriginModel] = &videoUsageAccumulator{}
 		}
@@ -526,6 +717,62 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 	response.Summary.Current = all.current
 	response.Summary.History = all.history
 	response.Summary.Peak = all.peak
+	for _, id := range channelIDs {
+		if a := channelAccumulators[id]; a != nil {
+			a.finish()
+			response.ChannelBreakdown = append(response.ChannelBreakdown, VideoUsageChannelBreakdown{Channel: channels[id], Current: a.current, History: a.history, Peak: a.peak})
+		}
+	}
+	step := max(int64(1), (filter.End-filter.Start+119)/120)
+	response.Trends.BucketSeconds = step
+	response.Trends.Points = []VideoUsageTrendPoint{}
+	for start := filter.Start; start < filter.End; start += step {
+		end := min(start+step, filter.End)
+		response.Trends.Points = append(response.Trends.Points, VideoUsageTrendPoint{StartTimestamp: start, EndTimestamp: end, Seconds: end - start})
+	}
+	for _, row := range filteredRows {
+		if row.SubmitTime >= filter.Start && row.SubmitTime < filter.End {
+			index := (row.SubmitTime - filter.Start) / step
+			response.Trends.Points[index].AcceptedTasks++
+		}
+	}
+	eventIndex, active := 0, 0
+	for index := range response.Trends.Points {
+		point := &response.Trends.Points[index]
+		for _, excluded := range all.exclusions {
+			if excluded.start < point.EndTimestamp && excluded.end > point.StartTimestamp {
+				point.PeakExclusions.ExcludedIntervals++
+				switch excluded.category {
+				case "unknown_state":
+					point.PeakExclusions.UnknownState++
+				case "invalid_timestamps":
+					point.PeakExclusions.InvalidTimestamps++
+				case "missing_finish":
+					point.PeakExclusions.MissingFinish++
+				case "zero_length":
+					point.PeakExclusions.ZeroLength++
+				}
+			}
+		}
+		point.AcceptedTaskRate = float64(point.AcceptedTasks) / float64(point.Seconds)
+		if all.peak.Value == nil {
+			continue
+		}
+		for eventIndex < len(all.events) && all.events[eventIndex].at <= point.StartTimestamp {
+			active += all.events[eventIndex].delta
+			eventIndex++
+		}
+		peak := active
+		for eventIndex < len(all.events) && all.events[eventIndex].at < point.EndTimestamp {
+			active += all.events[eventIndex].delta
+			peak = max(peak, active)
+			eventIndex++
+		}
+		if peak > 0 || point.PeakExclusions.ExcludedIntervals == 0 {
+			point.RecordedPeak = &peak
+		}
+	}
+	response.Ingress = VideoIngressForProcess(response.Trends.Points, asOf)
 	modelNames := make([]string, 0, len(models))
 	for name := range models {
 		modelNames = append(modelNames, name)
@@ -555,7 +802,7 @@ func GetVideoUsage(ctx context.Context, filter VideoUsageFilter, catalog MediaOp
 	offset := (filter.Page - 1) * filter.PageSize
 	if offset < len(selected) {
 		for _, row := range selected[offset:min(offset+filter.PageSize, len(selected))] {
-			item := VideoUsageTask{ID: row.ID, Model: row.OriginModel, ClientSource: row.ClientSource, Status: string(row.Status), ReportedVideoDurationSource: "unknown", TimingQuality: videoUsageTimingQuality(row, asOf)}
+			item := VideoUsageTask{Channel: channels[row.ChannelID], ID: row.ID, Model: row.OriginModel, ClientSource: row.ClientSource, Status: string(row.Status), ReportedVideoDurationSource: "unknown", TimingQuality: videoUsageTimingQuality(row, asOf)}
 			if videoUsagePublicID.MatchString(row.TaskID) {
 				id := row.TaskID
 				item.TaskID = &id

@@ -58,6 +58,8 @@ it.each([
     const labels = resources.translation as Record<string, string>
     expect(labels['Video client usage']).toBeTruthy()
     expect(labels['Timing missing']).toBeTruthy()
+    expect(labels['Video trends']).toBeTruthy()
+    expect(labels['Provider (current settings)']).toBeTruthy()
     const i18n = createInstance()
     await i18n.init({
       lng: 'en',
@@ -99,6 +101,19 @@ it.each([
     const declared = screen.getByRole('row', { name: /task-101/ })
     expect(
       within(declared).getByText(labels['Desktop client declaration'])
+    ).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('tab', { name: labels['Video trends'] })
+    )
+    expect(
+      await screen.findByRole('img', { name: labels['Video HTTP ingress QPS'] })
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        labels[
+          'Only the time range applies. Model, user, client source, channel and provider filters do not apply to this chart.'
+        ]
+      )
     ).toBeVisible()
   }
 )

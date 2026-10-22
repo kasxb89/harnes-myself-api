@@ -21,7 +21,7 @@ import type { PaginationState, Updater } from '@tanstack/react-table'
 import { useEffect, useState } from 'react'
 
 import { getVideoUsage, VideoUsageTooBroadError } from '../api'
-import type { VideoUser } from '../schema'
+import type { VideoChannel, VideoProvider, VideoUser } from '../schema'
 import { initialVideoFilters, videoQueryFromDraft } from './filters'
 
 export function useVideoReport(userId: number) {
@@ -34,7 +34,9 @@ export function useVideoReport(userId: number) {
   const [options, setOptions] = useState<{
     models: string[]
     users: VideoUser[]
-  }>({ models: [], users: [] })
+    channels: VideoChannel[]
+    providers: VideoProvider[]
+  }>({ models: [], users: [], channels: [], providers: [] })
   const parsed = videoQueryFromDraft(draft)
   const report = useQuery({
     queryKey: ['video-usage', userId, query],
@@ -48,7 +50,15 @@ export function useVideoReport(userId: number) {
     setOptions((previous) => {
       const users = new Map(previous.users.map((user) => [user.id, user]))
       data.filter_options.users.forEach((user) => users.set(user.id, user))
+      const channels = new Map(previous.channels.map((item) => [item.id, item]))
+      data.filter_options.channels.forEach((item) =>
+        channels.set(item.id, item)
+      )
       return {
+        channels: [...channels.values()].sort((a, b) => a.id - b.id),
+        providers: [
+          ...new Set([...previous.providers, ...data.filter_options.providers]),
+        ].sort(),
         models: [
           ...new Set([...previous.models, ...data.filter_options.models]),
         ].sort(),
@@ -72,6 +82,8 @@ export function useVideoReport(userId: number) {
       ),
     ].sort(),
     users: options.users,
+    channels: options.channels,
+    providers: options.providers,
     tooBroad: report.error instanceof VideoUsageTooBroadError,
     apply: () => {
       if (parsed) {
@@ -87,6 +99,17 @@ export function useVideoReport(userId: number) {
       setDraft(next)
       const initial = videoQueryFromDraft(next)
       if (initial) setQuery(initial)
+    },
+    setRecentRange: (seconds: 300 | 3600) => {
+      const end = new Date()
+      const start = new Date(end.getTime() - seconds * 1000)
+      setDraft((previous) => ({ ...previous, start, end }))
+      setQuery((previous) => ({
+        ...previous,
+        start_timestamp: Math.floor(start.getTime() / 1000),
+        end_timestamp: Math.floor(end.getTime() / 1000),
+        p: 1,
+      }))
     },
     setScope: (scope: 'history' | 'current') =>
       setQuery((previous) => ({ ...previous, task_scope: scope, p: 1 })),

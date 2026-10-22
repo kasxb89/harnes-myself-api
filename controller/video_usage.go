@@ -49,6 +49,18 @@ func GetVideoUsage(c *gin.Context) {
 			if filter.UserID <= 0 {
 				err = model.ErrVideoUsageQueryFailed
 			}
+		case "channel_id":
+			valueID, parseErr := strconv.Atoi(value)
+			if parseErr != nil || valueID < 0 {
+				err = model.ErrVideoUsageQueryFailed
+			} else {
+				filter.ChannelID = &valueID
+			}
+		case "provider":
+			filter.Provider = value
+			if value != "all" && value != "metaso" && value != "blackrx" && value != "dmx" && value != "unknown" {
+				err = model.ErrVideoUsageQueryFailed
+			}
 		case "client_source":
 			filter.ClientSource = value
 			if value != "all" && value != "desktop" && value != "unknown" {

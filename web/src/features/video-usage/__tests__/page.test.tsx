@@ -161,6 +161,8 @@ it('task details preserve a missing start and running duration while marking sou
   expect(declared).toHaveTextContent('Desktop client declaration')
   expect(declared).toHaveTextContent('Upstream H3 usage report')
   expect(declared).toHaveTextContent('10 s')
+  expect(declared).toHaveTextContent('H3 Metaso (#12)')
+  expect(declared).toHaveTextContent('Metaso')
   const invalid = screen.getByRole('row', { name: /task-103/ })
   expect(invalid).toHaveTextContent('Timing inconsistent')
   expect(invalid).not.toHaveTextContent('0 s')
@@ -229,6 +231,7 @@ it('narrow responses preserve previously loaded directory choices without an ext
       data: {
         ...videoPayload,
         filter_options: {
+          ...videoPayload.filter_options,
           models: ['MiniMax-H3'],
           users: [videoPayload.filter_options.users[0]],
         },
@@ -320,6 +323,14 @@ it('switching administrators clears previous data and directory choices', async 
   expect(await screen.findByRole('option', { name: 'All users' })).toBeVisible()
   expect(
     screen.queryByRole('option', { name: 'Alice (#7)' })
+  ).not.toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  await userEvent.click(screen.getByRole('combobox', { name: 'Channel' }))
+  expect(
+    await screen.findByRole('option', { name: 'All channels' })
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('option', { name: 'H3 Metaso (#12)' })
   ).not.toBeInTheDocument()
 })
 
@@ -463,4 +474,89 @@ it('a prototype-like unknown task status renders a controlled unknown label', as
   await userEvent.click(screen.getByRole('tab', { name: 'Task details' }))
   const row = screen.getByRole('row', { name: /task-101/ })
   expect(within(row).getByText('Recorded unknown states')).toBeVisible()
+})
+
+it('channel and provider filters apply explicitly while recent windows preserve all applied filters', async () => {
+  const get = mockResult()
+  renderPage()
+  await screen.findByRole('table', { name: 'Current video task records' })
+  const user = userEvent.setup()
+  for (const [field, option] of [
+    ['User', 'Alice (#7)'],
+    ['Model', 'MiniMax-H3'],
+    ['Client source', 'Desktop client declaration'],
+    ['Channel', 'H3 Metaso (#12)'],
+    ['Provider (current settings)', 'Metaso'],
+  ]) {
+    await user.click(screen.getByRole('combobox', { name: field }))
+    await user.click(await screen.findByRole('option', { name: option }))
+  }
+  expect(get).toHaveBeenCalledOnce()
+  await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+  const applied = get.mock.lastCall?.[1]?.params
+  expect(applied).toEqual(
+    expect.objectContaining({
+      user_id: 7,
+      model: 'MiniMax-H3',
+      client_source: 'desktop',
+      channel_id: 12,
+      provider: 'metaso',
+    })
+  )
+  await user.click(screen.getByRole('tab', { name: 'Video trends' }))
+  await user.click(
+    await screen.findByRole('button', { name: 'Last 5 minutes' })
+  )
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
+  const recent = get.mock.lastCall?.[1]?.params
+  expect(recent).toEqual(
+    expect.objectContaining({
+      ...applied,
+      start_timestamp: expect.any(Number),
+      end_timestamp: expect.any(Number),
+      p: 1,
+    })
+  )
+  expect(recent.end_timestamp - recent.start_timestamp).toBe(300)
+  await user.click(await screen.findByRole('button', { name: 'Last 1 hour' }))
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(4))
+  const hour = get.mock.lastCall?.[1]?.params
+  expect(hour.end_timestamp - hour.start_timestamp).toBe(3600)
+  expect(hour).toEqual(
+    expect.objectContaining({
+      channel_id: 12,
+      provider: 'metaso',
+      model: 'MiniMax-H3',
+      user_id: 7,
+      client_source: 'desktop',
+    })
+  )
+})
+
+it('a missing channel remains an explicit zero-id filter and channel rows use real provider attribution', async () => {
+  const get = mockResult()
+  renderPage()
+  await screen.findByRole('table', { name: 'Current video task records' })
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('tab', { name: 'Channel breakdown' }))
+  const table = screen.getByRole('table', { name: 'Video usage by channel' })
+  expect(
+    within(table).getByRole('row', { name: /H3 Metaso/ })
+  ).toHaveTextContent('Metaso')
+  expect(within(table).getByRole('row', { name: /H3 DMX/ })).toHaveTextContent(
+    'DMX'
+  )
+  expect(
+    within(table).getByRole('row', { name: /H3 Blackrx/ })
+  ).toHaveTextContent('Blackrx')
+  expect(
+    within(table).getByRole('row', { name: /Unknown channel/ })
+  ).toHaveTextContent('Unknown')
+  await user.click(screen.getByRole('combobox', { name: 'Channel' }))
+  await user.click(
+    await screen.findByRole('option', { name: 'Unknown channel' })
+  )
+  await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+  await waitFor(() => expect(get.mock.lastCall?.[1]?.params.channel_id).toBe(0))
 })
