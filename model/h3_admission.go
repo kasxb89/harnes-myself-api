@@ -124,7 +124,7 @@ func ReconcileH3Account(ctx context.Context, accountID string) error {
 			return err
 		}
 		var tasks []Task
-		if err := tx.Where("channel_id = ? AND status <> ?", account.ChannelID, TaskStatusSuccess).Limit(10001).Find(&tasks).Error; err != nil {
+		if err := tx.Where("channel_id = ? AND (status IS NULL OR status <> ?)", account.ChannelID, TaskStatusSuccess).Limit(10001).Find(&tasks).Error; err != nil {
 			return err
 		}
 		if len(tasks) > 10000 {
@@ -138,6 +138,22 @@ func ReconcileH3Account(ctx context.Context, accountID string) error {
 			return ErrH3AdmissionUnavailable
 		}
 		for _, task := range tasks {
+			normalizeRecovery := false
+			if task.Status == "" {
+				task.Status = TaskStatusUnknown
+				task.Progress = "0%"
+				task.FinishTime = 0
+				normalizeRecovery = true
+			} else if task.Status != TaskStatusSuccess && task.Status != TaskStatusFailure && task.Progress == "100%" {
+				task.Progress = "0%"
+				task.FinishTime = 0
+				normalizeRecovery = true
+			}
+			if normalizeRecovery {
+				if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": task.Status, "progress": task.Progress, "finish_time": task.FinishTime}).Error; err != nil {
+					return err
+				}
+			}
 			if task.Status == TaskStatusFailure && !H3LocalFailureUncertain(&task) {
 				continue
 			}

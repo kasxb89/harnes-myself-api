@@ -564,6 +564,7 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 	require.NoError(t, f.db.Migrator().DropTable(&model.H3Admission{}, &model.H3Account{}))
 	baseURL := "https://metaso.cn/api/minimax"
 	channel := &model.Channel{Id: 790, Type: constant.ChannelTypeMiniMax, Key: "synthetic-h3-account-0", BaseURL: &baseURL, Status: common.ChannelStatusEnabled, Name: "H3 pre-ledger", Models: "MiniMax-H3", Group: "default"}
+	channel.SetOtherSettings(kitdto.ChannelOtherSettings{DisableTaskPollingSleep: true})
 	require.NoError(t, f.db.Create(channel).Error)
 	require.NoError(t, f.db.Create(&model.Ability{Group: "default", Model: "MiniMax-H3", ChannelId: 790, Enabled: true}).Error)
 	now := time.Now().Unix()
@@ -577,6 +578,7 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 		{"task_legacy_unknown", model.TaskStatusUnknown, 0, "", ""},
 		{"task_legacy_timeout", model.TaskStatusFailure, now, "Task timed out", "provider-legacy-timeout"},
 		{"legacy-provider-v1", model.TaskStatusInProgress, 0, "", ""},
+		{"task_legacy_sql_null", model.TaskStatusUnknown, now, "", "provider-legacy-null"},
 		{"task_legacy_success", model.TaskStatusSuccess, now, "", "provider-success"},
 		{"task_legacy_failed", model.TaskStatusFailure, now, "provider explicitly failed", "provider-failed"},
 	} {
@@ -586,6 +588,13 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 		}
 		require.NoError(t, f.db.Create(task).Error)
 	}
+	// GORM's zero-value string is not SQL NULL; exercise the actual legacy row.
+	result := f.db.Exec("UPDATE tasks SET status = NULL WHERE task_id = ?", "task_legacy_sql_null")
+	require.NoError(t, result.Error)
+	require.EqualValues(t, 1, result.RowsAffected)
+	var nullCount int64
+	require.NoError(t, f.db.Model(&model.Task{}).Where("task_id = ? AND status IS NULL", "task_legacy_sql_null").Count(&nullCount).Error)
+	require.EqualValues(t, 1, nullCount)
 	beforeWallet, beforeToken := f.balance(t)
 	for range 2 {
 		require.NoError(t, model.MigrateH3Admission(f.db))
@@ -593,15 +602,27 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 	require.NoError(t, model.ProvisionH3Account(context.Background(), "legacy-account", 790))
 	for range 2 {
 		require.NoError(t, model.ReconcileH3Account(context.Background(), "legacy-account"))
+		assert.Equal(t, 4, f.occupied(t), "SQL NULL, unknown, timed-out and historical running rows each occupy one slot")
+		var count int64
+		require.NoError(t, f.db.Model(&model.H3Admission{}).Count(&count).Error)
+		assert.EqualValues(t, 4, count, "repeated reconciliation must not multiply reservations")
 	}
-	assert.Equal(t, 3, f.occupied(t), "unknown, timed-out and historical running rows remain occupied")
-	var count int64
-	require.NoError(t, f.db.Model(&model.H3Admission{}).Count(&count).Error)
-	assert.EqualValues(t, 3, count)
-	for _, id := range []string{"task_legacy_unknown", "task_legacy_timeout", "legacy-provider-v1"} {
+	for _, id := range []string{"task_legacy_unknown", "task_legacy_timeout", "legacy-provider-v1", "task_legacy_sql_null"} {
 		task := f.task(t, id)
 		assert.NotEmpty(t, task.PrivateData.H3AdmissionID)
 		assert.Equal(t, 123, task.Quota, "migration never rewrites old billing")
+		assert.NotEqual(t, "100%", task.Progress, "uncertain records must remain eligible for recovery")
+		assert.Zero(t, task.FinishTime)
+	}
+	assert.EqualValues(t, model.TaskStatusUnknown, f.task(t, "task_legacy_sql_null").Status)
+	assert.Equal(t, "provider-legacy-null", f.task(t, "task_legacy_sql_null").PrivateData.UpstreamTaskID)
+	assert.EqualValues(t, model.TaskStatusInProgress, f.task(t, "legacy-provider-v1").Status)
+	unfinished := make(map[string]bool)
+	for _, task := range model.GetAllUnFinishSyncTasks(100) {
+		unfinished[task.TaskID] = true
+	}
+	for _, id := range []string{"task_legacy_unknown", "task_legacy_timeout", "legacy-provider-v1", "task_legacy_sql_null"} {
+		assert.True(t, unfinished[id], "legacy progress=100 must not hide %s from the real recovery selector", id)
 	}
 	assert.Empty(t, f.task(t, "task_legacy_success").PrivateData.H3AdmissionID)
 	assert.Empty(t, f.task(t, "task_legacy_failed").PrivateData.H3AdmissionID)
@@ -610,14 +631,21 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 	assert.Equal(t, beforeToken, token)
 	require.NoError(t, model.SetH3AccountEnabled(context.Background(), "legacy-account", true))
 	model.InitChannelCache()
-	w := f.request(t, http.MethodPost, "/v1/video/generations", `{"model":"MiniMax-H3","prompt":"one remaining free fixture slot"}`, "h3routeradmin")
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
-	assert.Equal(t, 4, f.occupied(t))
-	w = f.request(t, http.MethodPost, "/v1/tasks/hailuo", `{"model":"MiniMax-H3","prompt":"must remain full"}`, "h3routeradmin")
-	assert.Equal(t, http.StatusTooManyRequests, w.Code, w.Body.String())
+	get := f.request(t, http.MethodGet, "/v1/video/generations/task_legacy_sql_null", "", "h3routeradmin")
+	require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+	assert.Contains(t, get.Body.String(), "task_legacy_sql_null")
+	service.RunTaskPollingOnce(context.Background(), nil)
+	assert.Equal(t, 4, f.occupied(t), "queued provider observations do not release legacy reservations")
+	for _, path := range []string{"/v1/video/generations", "/v1/tasks/hailuo"} {
+		w := f.request(t, http.MethodPost, path, `{"model":"MiniMax-H3","prompt":"all legacy slots remain occupied"}`, "h3routeradmin")
+		assert.Equal(t, http.StatusTooManyRequests, w.Code, w.Body.String())
+	}
+	wallet, token = f.balance(t)
+	assert.Equal(t, beforeWallet, wallet)
+	assert.Equal(t, beforeToken, token)
 	posts, gets := f.counts()
-	assert.Equal(t, 1, posts)
-	assert.Zero(t, gets)
+	assert.Zero(t, posts)
+	assert.Equal(t, 3, gets, "only the three historical rows with a known provider ID may query the fixture")
 }
 
 func TestH3AdmissionCancelledAfterReceiptRecoversSamePublicID(t *testing.T) {
