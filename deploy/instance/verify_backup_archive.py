@@ -212,10 +212,14 @@ def verify_docker(expected):
         check(record["sha256"] == value["digest"][7:] and record["size"] == value.get("size"), "OCI_DESCRIPTOR_MISMATCH")
         return record
 
-    found = set()
+    legacy_configs = set()
+    oci_configs = set()
+    oci_roots = set()
+    repo_tags = set()
     image_count = 0
     manifest_record = records.get("manifest.json", {})
     manifest = manifest_record.get("json")
+    check("manifest.json" not in records or "json" in manifest_record, "DOCKER_MANIFEST_NOT_JSON")
     if manifest is not None:
         check(isinstance(manifest, list) and manifest, "DOCKER_MANIFEST_INVALID")
         for image in manifest:
@@ -226,27 +230,46 @@ def verify_docker(expected):
             if re.fullmatch(r"[a-f0-9]{64}\.json", posixpath.basename(config_name)):
                 check(posixpath.basename(config_name)[:-5] == config["sha256"], "DOCKER_CONFIG_FILENAME_MISMATCH")
             image_id = "sha256:" + config["sha256"]
+            tags = image.get("RepoTags") or []
+            check(isinstance(tags, list) and all(isinstance(tag, str) and tag for tag in tags), "DOCKER_REPO_TAGS_INVALID")
+            for tag in tags:
+                repo_tags.add(tag)
             diffs = config["json"].get("rootfs", {}).get("diff_ids")
             check(isinstance(diffs, list) and len(diffs) == len(image["Layers"]), "DOCKER_LAYER_COUNT_MISMATCH")
             for index, layer_name in enumerate(image["Layers"]):
                 layer = resolve(layer_name)
                 check("sha256:" + layer["diff_sha256"] == diffs[index], "DOCKER_LAYER_DIFF_HASH_MISMATCH")
-            found.add(image_id)
+            legacy_configs.add(image_id)
             image_count += 1
     # OCI indexes may accompany Docker manifest.json; validate every reachable
     # descriptor as well, including its declared size and content digest.
-    visited = set()
+    visited = {}
+    manifest_types = {"application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"}
+    index_types = {"application/vnd.oci.image.index.v1+json", "application/vnd.docker.distribution.manifest.list.v2+json"}
 
-    def walk_index(value):
+    def walk_descriptor(item, stack):
+        record = descriptor(item)
+        digest = item["digest"]
+        check(digest not in stack, "OCI_DESCRIPTOR_CYCLE")
+        check("json" in record, "OCI_MANIFEST_NOT_JSON")
+        value = record["json"]
+        check(isinstance(value, dict), "OCI_MANIFEST_INVALID")
+        types = index_types if "manifests" in value else manifest_types
+        check(("mediaType" not in item or item["mediaType"] in types)
+              and ("mediaType" not in value or value["mediaType"] in types)
+              and ("mediaType" not in item or "mediaType" not in value or item["mediaType"] == value["mediaType"]), "OCI_DESCRIPTOR_MEDIA_TYPE_MISMATCH")
+        if digest not in visited:
+            visited[digest] = walk_index(value, stack | {digest})
+        return visited[digest]
+
+    def walk_index(value, stack):
         check(isinstance(value, dict) and value.get("schemaVersion") == 2, "OCI_MANIFEST_INVALID")
         if "manifests" in value:
             check(isinstance(value["manifests"], list) and value["manifests"], "OCI_INDEX_EMPTY")
+            configs = set()
             for item in value["manifests"]:
-                record = descriptor(item)
-                if record["sha256"] not in visited:
-                    visited.add(record["sha256"])
-                    check("json" in record, "OCI_MANIFEST_NOT_JSON")
-                    walk_index(record["json"])
+                configs.update(walk_descriptor(item, stack))
+            return configs
         else:
             config = descriptor(value.get("config"))
             check("json" in config and isinstance(value.get("layers"), list), "OCI_IMAGE_INVALID")
@@ -255,14 +278,37 @@ def verify_docker(expected):
             for index, item in enumerate(value["layers"]):
                 layer = descriptor(item)
                 check("sha256:" + layer["diff_sha256"] == diffs[index], "OCI_LAYER_DIFF_HASH_MISMATCH")
-            found.add("sha256:" + config["sha256"])
+            return {"sha256:" + config["sha256"]}
 
     if "index.json" in records:
         check("json" in records["index.json"], "OCI_INDEX_NOT_JSON")
-        walk_index(records["index.json"]["json"])
-    check(found == set(ids), "DOCKER_IMAGE_IDS_MISMATCH")
+        index = records["index.json"]["json"]
+        check(isinstance(index, dict) and index.get("schemaVersion") == 2
+              and isinstance(index.get("manifests"), list) and index["manifests"]
+              and index.get("mediaType", "application/vnd.oci.image.index.v1+json") in index_types, "OCI_ROOT_INDEX_INVALID")
+        for item in index["manifests"]:
+            oci_configs.update(walk_descriptor(item, set()))
+            oci_roots.add(item["digest"])
+    if manifest is not None and "index.json" in records:
+        check(legacy_configs == oci_configs, "DOCKER_OCI_CONFIG_SET_MISMATCH")
+    if "repo_tags" in expected:
+        tags = expected["repo_tags"]
+        check(isinstance(tags, list) and all(isinstance(tag, str) and tag for tag in tags)
+              and len(set(tags)) == len(tags), "DOCKER_EXPECTED_REPO_TAGS_INVALID")
+        check(manifest is not None and set(tags) == set(repo_tags), "DOCKER_REPO_TAGS_MISMATCH")
+    configs = legacy_configs if manifest is not None else oci_configs
+    expected_ids = set(ids)
+    if configs and expected_ids == configs:
+        identity_kind = "config_digest"
+    elif oci_roots and expected_ids == oci_roots:
+        identity_kind = "oci_root_digest"
+    else:
+        raise ValueError("DOCKER_IMAGE_IDS_MISMATCH")
     return {"status": "PASS", "kind": "docker", "entry_count": len(records) + len(links),
-            "image_count": len(found), "manifest_entries": image_count, "blob_count": blob_count, "image_ids": sorted(found)}
+            "image_count": len(expected_ids), "manifest_entries": image_count, "blob_count": blob_count,
+            "identity_kind": identity_kind, "image_ids": sorted(expected_ids),
+            "legacy_config_ids": sorted(legacy_configs), "oci_config_ids": sorted(oci_configs), "oci_root_ids": sorted(oci_roots),
+            "repo_tags": sorted(repo_tags)}
 
 
 def main():

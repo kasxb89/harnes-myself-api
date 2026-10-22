@@ -13,13 +13,13 @@
 
 完整备份包装清单须有 `complete:true`、完整 revision、database/configuration/creative_content/volumes/binary/image 六项组件，以及每个必要文件的字节数和 SHA256。原备份清单本身也纳入验证；不要改写历史数据库或旧清单。
 
-每条发布还须登记 `artifacts.staged_binary` 与 `artifacts.operator_dir`，分别限定为本实例根目录的 `new-api-<release>` 和 `/tmp/yunshu-api-<release>`。新版本通过 `inspect-artifacts` 生成登记值，冻结源码与依赖须绑定 `release.json` 中的完整哈希清单；操作器的运行日志可以继续写入。仅同轮构建前可尚无暂存程序，切换前两类产物必须齐备且校验通过。旧登记只能使用 `migrate-artifacts` 的明确源文件清单及原登记 SHA 做元数据迁移，不修改历史源码。未知同命名空间产物会阻断下一次备份或构建，不会按通配符自动删除。
+每条发布还须登记 `artifacts.staged_binary` 与 `artifacts.operator_dir`，分别限定为本实例根目录的 `new-api-<release>` 和 `/tmp/yunshu-api-<release>`。新版本通过 `inspect-artifacts` 生成登记值，冻结源码与依赖须绑定 `release.json` 中的完整哈希清单；候选的 `release.json` 还须绑定 `retention_ticket_sha256`、`base_sha` 和候选源码版本，操作器的运行日志可以继续写入。仅同轮构建前可尚无暂存程序，切换前两类产物必须齐备且校验通过。旧登记只能使用 `migrate-artifacts` 的明确源文件清单及原登记 SHA 做元数据迁移，不修改历史源码。未知同命名空间产物会阻断下一次备份或构建，不会按通配符自动删除。
 
 ## 异机归档与清理
 
 使用 `backup_archive.mjs archive` 接收只读 SSH 压缩 TAR 流（gzip，或显式指定 `--compression zstd`），直接写入异机的私有加密目录，不在服务器生成大型压缩包。zstd 流须有帧校验和，解码窗口最多512MiB。档案使用 AES-256-GCM，目录0700、文件0600；随机密钥独立放在操作者的私有密钥目录，并长期保留。不要把数据库、env、私有日志或密钥上传到公开对象存储或 Git。
 
-`archive` 仅代表加密传输完成。必须再执行 `verify`，从磁盘完整读取密文、验证 GCM 与压缩流校验和、逐条核对 TAR 内文件和 SHA256；硬链接必须能在档案内部还原。镜像档案还要验证配置、层与预期镜像集合。校验器只流式读取，不解包到服务目录。
+`archive` 仅代表加密传输完成。必须再执行 `verify`，从磁盘完整读取密文、验证 GCM 与压缩流校验和、逐条核对 TAR 内文件和 SHA256；硬链接必须能在档案内部还原。镜像档案还要验证全部配置、层与预期镜像集合；旧配置ID或containerd顶层manifest/index ID必须按完整集合匹配，拒绝混合与遗漏，并核对已提供的回滚标签。校验器只流式读取，不解包到服务目录。
 
 先用 `archive-manifest --plan PLAN --kind files --output EXPECTED` 从计划生成完整文件清单；存在待删镜像或容器时，再以 `--kind docker` 导出必须归档的镜像集合。文件清单同时覆盖旧备份、暂存程序和操作器全树（含日志）。
 

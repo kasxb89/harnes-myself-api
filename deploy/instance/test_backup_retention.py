@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -63,6 +64,7 @@ class RetentionTest(unittest.TestCase):
         self.addCleanup(self.host_patch.stop)
         self.key = b"a private random test key with 32 bytes minimum"
         self.configs = {}
+        self.modern_images = {}
         self.archive_count = 0
         self.releases = [self.release(char, day) for char, day in zip("abcd", (22, 21, 20, 19))]
         for index, release in enumerate(self.releases):
@@ -135,6 +137,28 @@ class RetentionTest(unittest.TestCase):
         self.configs[image_id] = config.decode()
         return image_id
 
+    def modern_image_id(self, value):
+        content = ("modern synthetic layer " + value).encode()
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w") as archive:
+            member = tarfile.TarInfo("fixture.txt")
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+        layer = stream.getvalue()
+        layer_sha = hashlib.sha256(layer).hexdigest()
+        config = json.dumps({"architecture": "amd64", "os": "linux", "rootfs": {
+            "type": "layers", "diff_ids": ["sha256:" + layer_sha]}}, sort_keys=True).encode()
+        config_sha = hashlib.sha256(config).hexdigest()
+        manifest = json.dumps({"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                               "config": {"digest": "sha256:" + config_sha, "size": len(config),
+                                          "mediaType": "application/vnd.oci.image.config.v1+json"},
+                               "layers": [{"digest": "sha256:" + layer_sha, "size": len(layer),
+                                           "mediaType": "application/vnd.oci.image.layer.v1.tar"}]}, sort_keys=True).encode()
+        image_id = "sha256:" + hashlib.sha256(manifest).hexdigest()
+        self.modern_images[image_id] = {"manifest": manifest.decode(), "config": config.decode(),
+                                        "config_sha": config_sha, "layer": layer.decode(), "layer_sha": layer_sha}
+        return image_id
+
     def archive_verification(self, plan, files_manifest=None, docker_ids=None):
         """Real tiny AES-GCM/gzip/TAR archives, real reviewed Node/Python verifiers."""
         self.archive_count += 1
@@ -166,22 +190,36 @@ with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz", format=tarfile.PAX_FOR
                 with open("/" + row["path"], "rb") as content:
                     archive.addfile(member, content)
     else:
-        configs = json.load(open(configs_path))
+        dataset = json.load(open(configs_path))
+        configs, modern = dataset["legacy"], dataset["modern"]
         manifest = []
+        objects = {}
+        roots = []
         for image_id in expected["image_ids"]:
-            filename = image_id[7:] + ".json"
-            content = configs[image_id].encode()
+            if image_id in modern:
+                image = modern[image_id]
+                filename = "blobs/sha256/" + image["config_sha"]
+                layer_name = "blobs/sha256/" + image["layer_sha"]
+                manifest.append({"Config": filename, "Layers": [layer_name], "RepoTags": []})
+                objects[filename] = image["config"].encode()
+                objects[layer_name] = image["layer"].encode()
+                objects["blobs/sha256/" + image_id[7:]] = image["manifest"].encode()
+                roots.append({"digest": image_id, "size": len(image["manifest"].encode()),
+                              "mediaType": "application/vnd.oci.image.manifest.v1+json"})
+            else:
+                filename = image_id[7:] + ".json"
+                objects[filename] = configs[image_id].encode()
+                manifest.append({"Config": filename, "Layers": [], "RepoTags": []})
+        if roots:
+            objects["index.json"] = json.dumps({"schemaVersion": 2, "manifests": roots}).encode()
+        objects["manifest.json"] = json.dumps(manifest).encode()
+        for filename, content in objects.items():
             member = tarfile.TarInfo(filename)
             member.size = len(content)
             archive.addfile(member, io.BytesIO(content))
-            manifest.append({"Config": filename, "Layers": [], "RepoTags": []})
-        content = json.dumps(manifest).encode()
-        member = tarfile.TarInfo("manifest.json")
-        member.size = len(content)
-        archive.addfile(member, io.BytesIO(content))
 '''
         configs_path = job / "fixture-configs.json"
-        configs_path.write_text(json.dumps(self.configs))
+        configs_path.write_text(json.dumps({"legacy": self.configs, "modern": self.modern_images}))
         configs_path.chmod(0o600)
         for kind, manifest in kinds:
             expected = job / (kind + ".expected.json")
@@ -389,6 +427,23 @@ with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz", format=tarfile.PAX_FOR
             subset = self.archive_verification(plan, docker_ids=required[:-1])
             with self.assertRaisesRegex(retention.Refusal, "every distinct Docker"):
                 retention.sign_archive_receipt(plan, subset, self.key)
+
+    def test_modern_manifest_image_id_signs_and_cleans_only_after_real_oci_tar_proof(self):
+        modern_id = self.modern_image_id("obsolete Docker 29 fixture")
+        self.releases[3]["image_id"] = modern_id
+        self.docker.value["containers"][1]["Image"] = modern_id
+        self.docker.value["images"][-1]["Id"] = modern_id
+        plan = self.plan()
+        self.assertEqual(retention.required_docker_image_ids(plan), [modern_id])
+        receipt = self.receipt(plan)
+        docker_proof = [item for item in receipt["archives"] if item["kind"] == "docker"][0]
+        self.assertEqual(docker_proof["verification"]["tar"]["image_ids"], [modern_id])
+        self.assertNotEqual(modern_id, "sha256:" + self.modern_images[modern_id]["config_sha"])
+        with patch.object(retention, "check_capacity", return_value={"pass": True}):
+            result = retention.apply_plan(self.root, self.registry, plan, receipt, self.key, self.docker)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(self.docker.calls[0], ("container-rm", "d" * 64))
+        self.assertTrue(all((self.root / source["path"]).is_dir() for source in plan["keep_backups"]))
 
     def test_apply_removes_only_signed_obsolete_set_and_updates_registry(self):
         plan = self.plan()

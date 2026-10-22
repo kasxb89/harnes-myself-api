@@ -56,6 +56,47 @@ for bad in [False,True]:
    m=tarfile.TarInfo(n);m.size=len(v);t.addfile(m,io.BytesIO(v))
  put('docker-bad.gz' if bad else 'docker.gz',gzip.compress(b.getvalue()))
 put('docker.manifest.json',canon({'schema':1,'image_ids':['sha256:'+sha(config)]}))
+manifest_type='application/vnd.oci.image.manifest.v1+json'
+index_type='application/vnd.oci.image.index.v1+json'
+blobs={};images=[]
+def blob(value):
+ digest=sha(value);blobs['blobs/sha256/'+digest]=value;return 'sha256:'+digest
+def desc(value,kind):return {'digest':blob(value),'size':len(value),'mediaType':kind}
+for letter in ['a','b']:
+ payload=('modern layer '+letter).encode()
+ cfg=canon({'architecture':'amd64','os':'linux','rootfs':{'type':'layers','diff_ids':['sha256:'+sha(payload)]}})
+ cfg_desc=desc(cfg,'application/vnd.oci.image.config.v1+json')
+ layer_desc=desc(payload,'application/vnd.oci.image.layer.v1.tar')
+ doc=canon({'schemaVersion':2,'mediaType':manifest_type,'config':cfg_desc,'layers':[layer_desc]})
+ root_desc=desc(doc,manifest_type)
+ images.append({'config_id':cfg_desc['digest'],'root':root_desc,'legacy':{'Config':'blobs/sha256/'+sha(cfg),'Layers':['blobs/sha256/'+sha(payload)],'RepoTags':['local/modern:'+letter]}})
+inner=canon({'schemaVersion':2,'mediaType':index_type,'manifests':[image['root'] for image in images]})
+index_root=desc(inner,index_type)
+def docker_fixture(label,roots,legacy,expected):
+ values=dict(blobs)
+ if roots is not None:values['index.json']=canon({'schemaVersion':2,'mediaType':index_type,'manifests':roots})
+ if legacy is not None:values['manifest.json']=canon(legacy)
+ b=io.BytesIO()
+ with tarfile.open(fileobj=b,mode='w',format=tarfile.PAX_FORMAT) as t:
+  for n,value in values.items():
+   m=tarfile.TarInfo(n);m.size=len(value);t.addfile(m,io.BytesIO(value))
+ put('docker-'+label+'.gz',gzip.compress(b.getvalue()))
+ put('docker-'+label+'.json',canon({'schema':1,'image_ids':expected,'repo_tags':['local/modern:a','local/modern:b']}))
+roots=[image['root'] for image in images];legacy=[image['legacy'] for image in images]
+docker_fixture('modern-manifest',roots,legacy,[item['digest'] for item in roots])
+docker_fixture('modern-index',[index_root],legacy,[index_root['digest']])
+shared=[dict(image,RepoTags=['local/modern:multi']) for image in legacy]
+docker_fixture('modern-index-shared-tag',[index_root],shared,[index_root['digest']])
+put('docker-modern-index-shared-tag.json',canon({'schema':1,'image_ids':[index_root['digest']],'repo_tags':['local/modern:multi']}))
+docker_fixture('legacy-only',None,legacy,[image['config_id'] for image in images])
+docker_fixture('config-scheme',roots,legacy,[image['config_id'] for image in images])
+docker_fixture('wrong-root',roots,legacy,['sha256:'+'0'*64])
+docker_fixture('missing-root',roots,legacy,[roots[0]['digest']])
+docker_fixture('mixed-identities',roots,legacy,[roots[0]['digest'],images[1]['config_id']])
+docker_fixture('index-child-root',[index_root],legacy,[roots[0]['digest']])
+docker_fixture('inconsistent-catalogs',roots,legacy[:1],[item['digest'] for item in roots])
+docker_fixture('wrong-tag',roots,legacy,[item['digest'] for item in roots])
+put('docker-wrong-tag.json',canon({'schema':1,'image_ids':[item['digest'] for item in roots],'repo_tags':['local/modern:a','local/modern:wrong']}))
 `, root], { encoding: 'utf8' });
 assert.equal(fixtures.status, 0, fixtures.stderr);
 let sequence = 0;
@@ -168,6 +209,22 @@ test('Docker save validates all blobs, image configs, layers and OCI descriptors
   assert.equal(receipt.tar.blob_count, 3);
   const bad = await makeArchive({ payload: 'docker-bad.gz', expected: 'docker.manifest.json', kind: 'docker' });
   await assert.rejects(verify({ metadata: bad.metadataPath }));
+});
+
+test('Docker29 manifest/index root identities and legacy/config identities require exact complete schemes', async () => {
+  for (const [label, identity] of [['modern-manifest', 'oci_root_digest'], ['modern-index', 'oci_root_digest'], ['modern-index-shared-tag', 'oci_root_digest'],
+    ['legacy-only', 'config_digest'], ['config-scheme', 'config_digest']]) {
+    const result = await makeArchive({ payload: `docker-${label}.gz`, expected: `docker-${label}.json`, kind: 'docker' });
+    const receipt = await verify({ metadata: result.metadataPath });
+    const expected = JSON.parse(await fs.readFile(path.join(root, `docker-${label}.json`)));
+    assert.equal(receipt.tar.identity_kind, identity);
+    assert.deepEqual(receipt.tar.image_ids, expected.image_ids.sort());
+    assert.deepEqual(receipt.tar.repo_tags, expected.repo_tags.sort());
+  }
+  for (const label of ['wrong-root', 'missing-root', 'mixed-identities', 'index-child-root', 'inconsistent-catalogs', 'wrong-tag']) {
+    const result = await makeArchive({ payload: `docker-${label}.gz`, expected: `docker-${label}.json`, kind: 'docker' });
+    await assert.rejects(verify({ metadata: result.metadataPath }), label);
+  }
 });
 
 test('real zstd --long=29 checksum stream verifies; codec tamper and oversized windows refuse', async () => {
