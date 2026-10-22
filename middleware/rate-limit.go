@@ -194,6 +194,23 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// AuthRefreshRateLimit keeps normal session renewal out of the password and
+// verification-code budget. Refresh credentials have high entropy; this
+// separate per-IP budget bounds retries without imposing a 20-minute lockout
+// on renewal, login, and SMS for everyone sharing an exit address.
+func AuthRefreshRateLimit() func(c *gin.Context) {
+	limit := rateLimitFactory(120, 60, "auth-refresh")
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		limit(c)
+		if c.IsAborted() && c.Writer.Status() == http.StatusTooManyRequests {
+			common.ApiErrorStatus(c, http.StatusTooManyRequests,
+				common.NewMessage("Too many requests"),
+				gin.H{"code": "AUTH_REFRESH_RATE_LIMITED"})
+		}
+	}
+}
+
 func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	if !common.CriticalRateLimitEnable {
 		return defNext

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const RefreshCookieName = "new_api_refresh"
@@ -246,17 +247,28 @@ func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*A
 		if errors.Is(err, model.ErrUserSessionInactive) {
 			return nil, nil, ErrLoginSessionRevoked
 		}
-		return nil, nil, ErrRefreshTokenInvalid
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, model.ErrUserSessionInvalid) {
+			return nil, nil, ErrRefreshTokenInvalid
+		}
+		// Storage failures do not prove that the caller's credential is invalid.
+		// Preserve the error so the controller keeps the refresh cookie intact.
+		return nil, nil, err
 	}
 	if session.Status != model.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() {
 		return nil, nil, ErrLoginSessionRevoked
 	}
 	userCache, err := model.GetUserCache(session.UserID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, ErrLoginSessionRevoked
+		}
 		return nil, nil, err
 	}
 	currentUser, err := model.GetSelfUserById(session.UserID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, ErrLoginSessionRevoked
+		}
 		return nil, nil, err
 	}
 	if userCache.Status != common.UserStatusEnabled || userCache.AuthVersion != session.UserAuthVersion ||
@@ -275,7 +287,7 @@ func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*A
 			}
 			return bundle, currentUser, nil
 		}
-		if errors.Is(err, model.ErrUserSessionRefreshReuse) {
+		if errors.Is(err, model.ErrUserSessionRefreshReuse) || errors.Is(err, model.ErrUserSessionInactive) || errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil, ErrLoginSessionRevoked
 		}
 		if errors.Is(err, model.ErrUserSessionRefreshInvalid) {

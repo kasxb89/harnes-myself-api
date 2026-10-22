@@ -166,11 +166,23 @@ func writeAuthSessionError(c *gin.Context, err error) {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		status, code = http.StatusUnauthorized, "AUTH_UNAUTHORIZED"
 	}
-	if status == http.StatusInternalServerError {
-		// The response body only carries the generic AUTH_INTERNAL_ERROR
-		// code; without this log the underlying Redis/database/session
-		// failure is indistinguishable from the client side.
-		logger.LogError(c.Request.Context(), common.LogText("auth session internal error (%s %s): %v", c.Request.Method, c.Request.URL.Path, err))
+	if status == http.StatusInternalServerError && c.Request != nil {
+		// Driver errors can contain credentials, query arguments or connection
+		// details. Keep diagnostics bounded; the logger adds the request ID.
+		logger.LogError(c.Request.Context(), common.LogText("auth_session_failure code=AUTH_INTERNAL_ERROR reason=internal_error"))
+	} else if c.Request != nil {
+		reason := "authentication_rejected"
+		switch code {
+		case "AUTH_UNAUTHORIZED":
+			reason = "invalid_credentials"
+		case "AUTH_SESSION_REVOKED":
+			reason = "session_revoked"
+		case "AUTH_SESSION_MISMATCH":
+			reason = "session_mismatch"
+		case "AUTH_REFRESH_RACE":
+			reason = "refresh_race"
+		}
+		logger.LogWarn(c.Request.Context(), common.LogText("auth_session_failure code=%s reason=%s", code, reason))
 	}
 	c.JSON(status, gin.H{"success": false, "code": code, "message": http.StatusText(status)})
 }

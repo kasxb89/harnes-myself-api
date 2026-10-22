@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,8 +20,10 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -89,6 +93,8 @@ var accessTokenHelperRoutes = map[string]authz.Permission{
 	"GET /api/audit":               authz.AuditRead,
 }
 
+var authRefreshTestSequence atomic.Uint32
+
 func newAccessTokenScopeTestEngine(t *testing.T) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -103,6 +109,87 @@ func newAccessTokenScopeTestEngine(t *testing.T) *gin.Engine {
 		SetTaskRouter(engine)
 	})
 	return engine
+}
+
+func TestAuthRefreshHasIndependentBoundedRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, backend := range []string{"memory", "redis"} {
+		t.Run(backend, func(t *testing.T) {
+			previousRedis, previousRDB := common.RedisEnabled, common.RDB
+			previousGlobal := common.GlobalApiRateLimitEnable
+			previousCritical, previousNum, previousDuration := common.CriticalRateLimitEnable, common.CriticalRateLimitNum, common.CriticalRateLimitDuration
+			previousSecure, previousTrusted := common.SessionCookieSecure, common.SessionCookieTrustedURLs
+			t.Cleanup(func() {
+				common.RedisEnabled, common.RDB = previousRedis, previousRDB
+				common.GlobalApiRateLimitEnable = previousGlobal
+				common.CriticalRateLimitEnable, common.CriticalRateLimitNum, common.CriticalRateLimitDuration = previousCritical, previousNum, previousDuration
+				common.SessionCookieSecure, common.SessionCookieTrustedURLs = previousSecure, previousTrusted
+			})
+			common.RedisEnabled, common.RDB = false, nil
+			var redisServer *miniredis.Miniredis
+			if backend == "redis" {
+				redisServer = miniredis.RunT(t)
+				client := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+				t.Cleanup(func() { _ = client.Close() })
+				common.RedisEnabled, common.RDB = true, client
+			}
+			common.GlobalApiRateLimitEnable = false
+			common.CriticalRateLimitEnable, common.CriticalRateLimitNum, common.CriticalRateLimitDuration = true, 2, 1200
+			common.SessionCookieSecure, common.SessionCookieTrustedURLs = true, nil
+			engine := gin.New()
+			require.NoError(t, engine.SetTrustedProxies(nil))
+			SetApiRouter(engine)
+			engine.GET("/security-budget", middleware.CriticalRateLimit(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			request := func(method, path, remoteAddr, origin string) *httptest.ResponseRecorder {
+				r := httptest.NewRequest(method, path, nil)
+				r.RemoteAddr = remoteAddr
+				r.Header.Set("Origin", origin)
+				w := httptest.NewRecorder()
+				engine.ServeHTTP(w, r)
+				return w
+			}
+			sequence := authRefreshTestSequence.Add(1)
+			remoteAddr := fmt.Sprintf("[2001:db8:%x:%x::1]:1234", sequence>>16, sequence&0xffff)
+			otherRemoteAddr := fmt.Sprintf("[2001:db8:%x:%x::2]:1234", sequence>>16, sequence&0xffff)
+			for range 2 {
+				require.Equal(t, http.StatusNoContent, request(http.MethodGet, "/security-budget", remoteAddr, "http://example.com").Code)
+			}
+			// Password and SMS routes retain their shared credential-attempt limit.
+			for _, path := range []string{"/api/user/login", "/api/user/phone/challenge", "/api/user/phone/login"} {
+				require.Equal(t, http.StatusTooManyRequests, request(http.MethodPost, path, remoteAddr, "http://example.com").Code)
+			}
+			// Missing credentials still reach normal authentication, never a
+			// successful session, even when the credential-attempt bucket is full.
+			for range 120 {
+				response := request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "http://example.com")
+				require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
+			}
+			response := request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "http://example.com")
+			require.Equal(t, http.StatusTooManyRequests, response.Code)
+			assert.Equal(t, "60", response.Header().Get("Retry-After"))
+			assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
+			assert.Empty(t, response.Header().Values("Set-Cookie"), "a transient limit must not clear refresh credentials")
+			assert.JSONEq(t, `{"success":false,"code":"AUTH_REFRESH_RATE_LIMITED","message":"Too many requests","message_key":"Too many requests"}`, response.Body.String())
+			assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "https://untrusted.example").Code)
+			assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/api/user/auth/refresh", otherRemoteAddr, "http://example.com").Code)
+			assert.Equal(t, http.StatusNoContent, request(http.MethodGet, "/security-budget", otherRemoteAddr, "http://example.com").Code)
+
+			common.CriticalRateLimitEnable = false
+			bounded := gin.New()
+			bounded.POST("/refresh", middleware.AuthRefreshRateLimit(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			boundedRequest := httptest.NewRequest(http.MethodPost, "/refresh", nil)
+			boundedRequest.RemoteAddr = remoteAddr
+			boundedResponse := httptest.NewRecorder()
+			bounded.ServeHTTP(boundedResponse, boundedRequest)
+			assert.Equal(t, http.StatusTooManyRequests, boundedResponse.Code, "refresh retry protection stays enabled independently")
+			if redisServer != nil {
+				redisServer.FastForward(time.Minute)
+				assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "http://example.com").Code)
+				require.NoError(t, common.RDB.Close())
+				assert.Equal(t, http.StatusInternalServerError, request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "http://example.com").Code)
+			}
+		})
+	}
 }
 
 func TestAccessTokenRouteRulesCoverEveryDashboardRoute(t *testing.T) {
