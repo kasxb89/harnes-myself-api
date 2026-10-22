@@ -824,6 +824,11 @@ func syncTaskPluginsOnceContext(ctx context.Context) error {
 		)
 		return syncErr
 	}
+	// Input parameters and usage metadata must follow the published generation,
+	// including when startup warmed pricing before the first override sync.
+	if jsplugin.DefaultRegistry.Generation().Number != generationBefore {
+		model.InvalidatePricingCache()
+	}
 	taskPluginSyncState.hashes = nextHashes
 	for key := range taskPluginSyncState.errors {
 		if !seen[key] {

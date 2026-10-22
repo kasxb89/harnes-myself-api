@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -71,6 +72,44 @@ func cleanupTaskPluginControllerRuntime(t *testing.T, key string) {
 		delete(taskPluginSyncState.errors, key)
 		taskPluginSyncState.Unlock()
 	})
+}
+
+func TestTaskPluginSyncRefreshesAlreadyWarmedClientParameters(t *testing.T) {
+	originalDB, originalMemoryCache := model.DB, common.MemoryCacheEnabled
+	setupTaskPluginControllerTest(t)
+	cleanupTaskPluginControllerRuntime(t, "blackrxai-video")
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() {
+		model.DB = originalDB
+		common.MemoryCacheEnabled = originalMemoryCache
+		model.InvalidatePricingCache()
+	})
+	require.NoError(t, model.DB.AutoMigrate(&model.Model{}, &model.Vendor{}))
+	channelSetting := `{"task_plugin_key":"blackrxai-video"}`
+	channel := model.Channel{Id: 19001, Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Key: "synthetic", Name: "pricing startup fixture", Models: "model_5", Group: "default", Setting: &channelSetting}
+	require.NoError(t, model.DB.Create(&channel).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{ChannelId: channel.Id, Group: "default", Model: "model_5", Enabled: true}).Error)
+	model.InvalidatePricingCache()
+	warmed := model.GetPricing()
+	require.Len(t, warmed, 1)
+	assert.Nil(t, warmed[0].Parameters, "the initial warm precedes plugin loading")
+	source, err := os.ReadFile("../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	compiled, err := jsplugin.CompilePlugin(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	require.NoError(t, model.SaveTaskPlugin(&model.TaskPlugin{
+		Key: compiled.Meta.Key, APIVersion: 1, Version: compiled.Meta.Version,
+		Source: model.LongText(source), SourceHash: fmt.Sprintf("%x", sha256.Sum256(source)), Enabled: true,
+	}))
+	require.NoError(t, syncTaskPluginsOnce())
+	// No artificial cache expiry, sleep, or direct invalidation here: publishing
+	// the plugin must make the next real pricing read carry its constraints.
+	fresh := model.GetPricing()
+	require.Len(t, fresh, 1)
+	assert.Equal(t, "model_5", fresh[0].ModelName)
+	require.Contains(t, fresh[0].Parameters, "properties")
+	seconds := fresh[0].Parameters["properties"].(map[string]any)["seconds"].(map[string]any)["enum"].([]int)
+	assert.Equal(t, []int{15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}, seconds)
 }
 
 func TestDeleteThirdPartyPluginReportsAssociatedChannelsAndInFlightTasks(t *testing.T) {
