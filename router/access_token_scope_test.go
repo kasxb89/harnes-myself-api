@@ -322,7 +322,7 @@ func TestCreationContentRoutesHaveExplicitPublicAndSessionBoundaries(t *testing.
 func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.AuditLog{}, &model.Option{}, &model.Channel{}, &model.Ability{}, &model.Model{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.AuditLog{}, &model.Option{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Log{}, &model.Task{}, &model.Token{}))
 	previousDB, previousLog := model.DB, model.LOG_DB
 	previousType := common.MainDatabaseType()
 	previousRedis, previousMemory, previousSecret := common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret
@@ -374,6 +374,7 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 		{http.MethodGet, "/api/client-model-config"},
 		{http.MethodPut, "/api/client-model-config"},
 		{http.MethodGet, "/api/client-model-config/models"},
+		{http.MethodGet, "/api/media-operations"},
 	} {
 		rule, ok := middleware.AccessTokenRouteRule(route.method + " " + route.path)
 		require.True(t, ok)
@@ -401,6 +402,30 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 			})
 		}
 	}
+	t.Run("media operations rejects scoped and relay credentials", func(t *testing.T) {
+		pat := model.AccessTokenPrefix + strings.Repeat("m", 43)
+		credential := model.UserAccessToken{UserId: 7411, Name: "media-admin-fixture", TokenHash: model.AccessTokenFingerprint(pat), TokenHint: model.AccessTokenHint(pat)}
+		credential.SetScopes([]string{"channel:read"})
+		require.NoError(t, db.Create(&credential).Error)
+		relayKey := strings.Repeat("r", 48)
+		require.NoError(t, db.Create(&model.Token{UserId: 7411, Key: relayKey, Status: common.TokenStatusEnabled, Name: "media-relay-fixture", UnlimitedQuota: true, ExpiredTime: -1}).Error)
+		for _, identity := range []struct {
+			name, token string
+			status      int
+		}{
+			{"scoped administrator token", pat, http.StatusForbidden},
+			{"relay token", "sk-" + relayKey, http.StatusUnauthorized},
+		} {
+			t.Run(identity.name, func(t *testing.T) {
+				request := httptest.NewRequest(http.MethodGet, "/api/media-operations", nil)
+				request.Header.Set("Authorization", "Bearer "+identity.token)
+				recorder := httptest.NewRecorder()
+				engine.ServeHTTP(recorder, request)
+				assert.Equal(t, identity.status, recorder.Code, recorder.Body.String())
+				assert.Contains(t, recorder.Header().Get("Cache-Control"), "no-store")
+			})
+		}
+	})
 	t.Run("cross origin write is denied", func(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPut, "/api/client-model-config", strings.NewReader(`{"schema_version":1,"default_chat_model":"","model_order":[]}`))
 		request.Header.Set("Content-Type", "application/json")

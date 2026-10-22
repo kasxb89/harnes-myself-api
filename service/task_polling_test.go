@@ -5,8 +5,11 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/bytedance/gopkg/util/gopool"
@@ -174,7 +178,7 @@ func TestRedactVideoResponseBodyPreservesPollingPayloadShape(t *testing.T) {
 }
 
 func TestTaskFailuresLogOnceAfterTerminalCASWithOriginalRequest(t *testing.T) {
-	for _, scenario := range []string{"upstream failure", "polling exhausted", "timeout"} {
+	for _, scenario := range []string{"upstream failure", "polling exhausted", "transport exhausted", "timeout"} {
 		t.Run(scenario, func(t *testing.T) {
 			truncate(t)
 			previousLog, previousTimeout, previousMax := constant.ErrorLogEnabled, constant.TaskTimeoutMinutes, constant.TaskPollMaxFailures
@@ -204,6 +208,9 @@ func TestTaskFailuresLogOnceAfterTerminalCASWithOriginalRequest(t *testing.T) {
 			case "polling exhausted":
 				require.NoError(t, recordPollFailure(context.Background(), adaptor, task, task.Status, pollClassTransient, http.StatusServiceUnavailable, "provider unavailable"))
 				require.NoError(t, recordPollFailure(context.Background(), adaptor, &stale, stale.Status, pollClassTransient, http.StatusServiceUnavailable, "provider unavailable"))
+			case "transport exhausted":
+				require.NoError(t, recordPollFailure(context.Background(), adaptor, task, task.Status, pollClassTransport, 0, "transport failed"))
+				require.NoError(t, recordPollFailure(context.Background(), adaptor, &stale, stale.Status, pollClassTransport, 0, "transport failed"))
 			case "timeout":
 				sweepTimedOutTasks(context.Background())
 				sweepTimedOutTasks(context.Background())
@@ -234,8 +241,130 @@ func TestTaskFailuresLogOnceAfterTerminalCASWithOriginalRequest(t *testing.T) {
 			if scenario == "polling exhausted" {
 				assert.Contains(t, logs[0].Content, "provider unavailable")
 				assert.Equal(t, float64(http.StatusServiceUnavailable), other["status_code"])
+				assert.Equal(t, "upstream_http", other["status_code_origin"])
+				assert.Equal(t, float64(http.StatusServiceUnavailable), other["upstream_http_status"])
+			} else if scenario == "timeout" || scenario == "transport exhausted" {
+				assert.Equal(t, "gateway_task_mapping", other["status_code_origin"])
+				assert.NotContains(t, other, "upstream_http_status")
+			} else {
+				assert.Equal(t, "gateway_task_mapping", other["status_code_origin"])
+				assert.Equal(t, float64(http.StatusOK), other["upstream_http_status"])
 			}
 		})
+	}
+}
+
+// This adaptor drives the real shipped parseTaskResult hook with a loopback
+// HTTP response. It never submits or contacts a billable upstream.
+type pluginFailurePollingAdaptor struct {
+	engine     *jsplugin.Engine
+	client     *http.Client
+	parseCalls int
+}
+
+func (a *pluginFailurePollingAdaptor) Init(*relaycommon.RelayInfo) {}
+
+func (a *pluginFailurePollingAdaptor) FetchTask(baseURL, _ string, task *model.Task, _ string) (*http.Response, error) {
+	return a.client.Get(baseURL + "/tasks/" + task.GetUpstreamTaskID())
+}
+
+func (a *pluginFailurePollingAdaptor) ParseTaskResult(task *model.Task, response *http.Response, body []byte) (*relaycommon.TaskInfo, error) {
+	a.parseCalls++
+	var data any
+	if err := common.Unmarshal(body, &data); err != nil {
+		return nil, err
+	}
+	var result relaycommon.TaskInfo
+	err := a.engine.CallInto(context.Background(), &result, "parseTaskResult", map[string]any{"taskId": task.GetUpstreamTaskID()}, data, map[string]any{"status": response.StatusCode})
+	return &result, err
+}
+
+func (a *pluginFailurePollingAdaptor) AdjustBillingOnComplete(*model.Task, *relaycommon.TaskInfo) int {
+	return 0
+}
+
+func TestTaskFailureDiagnosticsSeparateProviderHTTPFromTaskMapping(t *testing.T) {
+	previousLog, previousMax := constant.ErrorLogEnabled, constant.TaskPollMaxFailures
+	constant.ErrorLogEnabled, constant.TaskPollMaxFailures = true, 1
+	t.Cleanup(func() { constant.ErrorLogEnabled, constant.TaskPollMaxFailures = previousLog, previousMax })
+	for _, plugin := range []string{"blackrxai-video", "toapis-image"} {
+		source, err := os.ReadFile("../deploy/instance/" + plugin + "-plugin.js")
+		require.NoError(t, err)
+		engine, err := jsplugin.Compile(string(source), jsplugin.Options{})
+		require.NoError(t, err)
+		for _, tc := range []struct {
+			name       string
+			status     int
+			code       any
+			wantCode   string
+			wantOrigin string
+		}{
+			{name: "content policy HTTP200", status: 200, code: "content_policy_violation", wantCode: "content_policy_violation", wantOrigin: "gateway_task_mapping"},
+			{name: "resources HTTP200", status: 200, code: "insufficient_resources", wantCode: "resource_exhausted", wantOrigin: "gateway_task_mapping"},
+			{name: "unknown HTTP200", status: 200, code: "video_generation_failed", wantOrigin: "gateway_task_mapping"},
+			{name: "untrusted code HTTP200", status: 200, code: "content_policy_violation\nhttps://private.example/?key=sk-secret-canary", wantOrigin: "gateway_task_mapping"},
+			{name: "malformed code HTTP200", status: 200, code: map[string]any{"secret": "sk-secret-canary"}, wantOrigin: "gateway_task_mapping"},
+			{name: "real HTTP404", status: 404, code: "content_policy_violation", wantOrigin: "upstream_http"},
+			{name: "real HTTP503", status: 503, code: "insufficient_resources", wantOrigin: "upstream_http"},
+		} {
+			t.Run(plugin+"/"+tc.name, func(t *testing.T) {
+				truncate(t)
+				const userID, tokenID, channelID = 613, 613, 613
+				seedUser(t, userID, 1000)
+				seedToken(t, tokenID, userID, "poll-fixture-token", 1000)
+				task := makeTask(userID, channelID, 100, tokenID, BillingSourceWallet, 0)
+				task.TaskID, task.PrivateData.UpstreamTaskID = "public-diagnostic", "upstream-diagnostic"
+				task.PrivateData.Execution = &model.TaskExecutionSnapshot{RequestID: "submit-diagnostic", RequestPath: "/harness/v1/videos"}
+				require.NoError(t, model.DB.Create(task).Error)
+				stale := *task
+				body, err := common.Marshal(map[string]any{"id": task.GetUpstreamTaskID(), "object": "generation.task", "status": "failed", "error": map[string]any{"code": tc.code, "message": "generation failed"}})
+				require.NoError(t, err)
+				var requests atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+					assert.Equal(t, http.MethodGet, request.Method)
+					assert.Equal(t, "/tasks/upstream-diagnostic", request.URL.Path)
+					requests.Add(1)
+					w.WriteHeader(tc.status)
+					_, _ = w.Write(body)
+				}))
+				defer server.Close()
+				channel := &model.Channel{Id: channelID, Type: constant.ChannelTypeKling, BaseURL: &server.URL}
+				adaptor := &pluginFailurePollingAdaptor{engine: engine, client: server.Client()}
+				require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, task.GetUpstreamTaskID(), map[string]*model.Task{task.GetUpstreamTaskID(): task}))
+				require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, stale.GetUpstreamTaskID(), map[string]*model.Task{stale.GetUpstreamTaskID(): &stale}))
+				assert.EqualValues(t, 2, requests.Load())
+				var terminal model.Task
+				require.NoError(t, model.DB.First(&terminal, task.ID).Error)
+				assert.EqualValues(t, model.TaskStatusFailure, terminal.Status)
+				assert.Zero(t, terminal.Quota)
+				assert.Equal(t, 1100, getUserQuota(t, userID), "CAS loser must not refund twice")
+				assert.Equal(t, 1100, getTokenRemainQuota(t, tokenID))
+				var logs []model.Log
+				require.NoError(t, model.LOG_DB.Where("type = ?", model.LogTypeError).Find(&logs).Error)
+				require.Len(t, logs, 1)
+				assert.Equal(t, "submit-diagnostic", logs[0].RequestId)
+				other, err := common.StrToMap(logs[0].Other)
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantOrigin, other["status_code_origin"])
+				assert.Equal(t, float64(tc.status), other["upstream_http_status"])
+				if tc.status == http.StatusOK {
+					assert.Equal(t, float64(http.StatusBadGateway), other["status_code"], "legacy mapping remains compatible")
+					assert.Equal(t, "task_terminal", other["error_stage"])
+					assert.JSONEq(t, string(body), string(terminal.Data), "diagnostics must preserve the provider snapshot")
+				} else {
+					assert.Equal(t, float64(tc.status), other["status_code"])
+					assert.Equal(t, "task_poll", other["error_stage"])
+					assert.Zero(t, adaptor.parseCalls, "HTTP failures do not become business failures")
+				}
+				if tc.wantCode == "" {
+					assert.NotContains(t, other, "provider_error_code")
+				} else {
+					assert.Equal(t, tc.wantCode, other["provider_error_code"])
+				}
+				assert.NotContains(t, logs[0].Other, "secret-canary")
+				assert.NotContains(t, logs[0].Other, "private.example")
+			})
+		}
 	}
 }
 

@@ -38,6 +38,7 @@ const chineseTitles = {
   permission: '请求被拒绝',
   rate_limit: '触发请求限流',
   concurrency_limit: '并发请求超过限制',
+  generation_capacity: '生成资源不可用',
   model_unavailable: '模型不存在或不可用',
   invalid_request: '请求参数不符合要求',
   context_length: '上下文超过模型限制',

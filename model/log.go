@@ -80,14 +80,15 @@ type Log struct {
 
 // don't use iota, avoid change log type value
 const (
-	LogTypeUnknown = 0
-	LogTypeTopup   = 1
-	LogTypeConsume = 2
-	LogTypeManage  = 3
-	LogTypeSystem  = 4
-	LogTypeError   = 5
-	LogTypeRefund  = 6
-	LogTypeLogin   = 7
+	LogTypeUnknown     = 0
+	LogTypeTopup       = 1
+	LogTypeConsume     = 2
+	LogTypeManage      = 3
+	LogTypeSystem      = 4
+	LogTypeError       = 5
+	LogTypeRefund      = 6
+	LogTypeLogin       = 7
+	LogTypeClientError = 8
 )
 
 func ensureLogRequestId(log *Log) {
@@ -149,7 +150,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
+	err = LOG_DB.Model(&Log{}).Where("token_id = ? AND type <> ?", tokenId, LogTypeClientError).Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
 	return logs, err
 }
@@ -494,6 +495,9 @@ type LogFilter struct {
 }
 
 func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
+	// Client-reported failures have a separate administrator-only view. Legacy
+	// lists and exports must not expose them, even with an explicit type filter.
+	tx = tx.Where("logs.type <> ?", LogTypeClientError)
 	var err error
 	if f.Type != LogTypeUnknown {
 		tx = tx.Where("logs.type = ?", f.Type)

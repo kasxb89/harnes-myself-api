@@ -130,6 +130,7 @@ it('places the dedicated operational entries immediately below General and befor
   ).toEqual([
     'Operations dashboard',
     'Model profits',
+    'Image and video operations',
     'Balance ledger',
     'User Activity',
     'API Error Logs',
@@ -158,6 +159,9 @@ it('hides the whole operations group from ordinary users including its command s
   ).not.toBeInTheDocument()
   expect(
     within(dialog).queryByRole('option', { name: 'User Activity' })
+  ).not.toBeInTheDocument()
+  expect(
+    within(dialog).queryByRole('option', { name: 'Image and video operations' })
   ).not.toBeInTheDocument()
 })
 it('preserves existing module visibility settings in the new group and command search', async () => {

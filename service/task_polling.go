@@ -380,7 +380,11 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 			continue
 		}
 		if terminalTransition {
-			recordPollingTaskFailure(task)
+			diagnostic := TaskFailureDiagnostics{UpstreamHTTPStatus: resp.StatusCode}
+			if responseItem.Data != nil {
+				diagnostic = TaskFailureDiagnosticsFromData(task.Data, resp.StatusCode)
+			}
+			recordPollingTaskFailure(task, taskFailureDiagnostic{stage: "task_terminal", code: "task_failed", status: http.StatusBadGateway, evidence: diagnostic})
 			finalizeTerminalTask(ctx, adaptor, task, &responseItem.TaskInfo)
 		}
 	}
@@ -615,7 +619,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			logger.LogWarn(ctx, common.LogText("Task %s CAS lost or no-op update, skip billing", task.TaskID))
 			shouldFinalizeBilling = false
 		} else {
-			recordPollingTaskFailure(task)
+			recordPollingTaskFailure(task, taskFailureDiagnostic{stage: "task_terminal", code: "task_failed", status: http.StatusBadGateway, evidence: TaskFailureDiagnosticsFromData(task.Data, resp.StatusCode)})
 		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
@@ -805,10 +809,11 @@ func recordPollFailureForTasks(ctx context.Context, adaptor TaskPollingAdaptor, 
 }
 
 type taskFailureDiagnostic struct {
-	stage  string
-	code   string
-	status int
-	detail string
+	stage    string
+	code     string
+	status   int
+	detail   string
+	evidence TaskFailureDiagnostics
 }
 
 // recordPollingTaskFailure records diagnostics only; callers retain ownership
@@ -818,7 +823,12 @@ func recordPollingTaskFailure(task *model.Task, diagnostics ...taskFailureDiagno
 	if len(diagnostics) > 0 {
 		diagnostic = diagnostics[0]
 	}
-	RecordTaskFailure(task, diagnostic.stage, diagnostic.code, diagnostic.status, diagnostic.detail)
+	// Poll failures carry a response status only when FetchTask actually returned
+	// one; transport failures pass zero. Do not reuse a previous task snapshot.
+	if diagnostic.stage == "task_poll" {
+		diagnostic.evidence.UpstreamHTTPStatus = diagnostic.status
+	}
+	RecordTaskFailure(task, diagnostic.stage, diagnostic.code, diagnostic.status, diagnostic.detail, diagnostic.evidence)
 }
 
 func failTaskFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, reason string, diagnostic ...taskFailureDiagnostic) error {

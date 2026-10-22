@@ -26,6 +26,7 @@ export type ErrorReason =
   | 'permission'
   | 'rate_limit'
   | 'concurrency_limit'
+  | 'generation_capacity'
   | 'model_unavailable'
   | 'invalid_request'
   | 'context_length'
@@ -117,6 +118,8 @@ const providerReasons: Readonly<Record<string, ErrorReason>> = {
   concurrency_limit_exceeded: 'concurrency_limit',
   concurrent_limit_exceeded: 'concurrency_limit',
   too_many_concurrent_requests: 'concurrency_limit',
+  generation_resources_unavailable: 'generation_capacity',
+  resource_exhausted: 'generation_capacity',
   model_not_found: 'model_unavailable',
   model_not_available: 'model_unavailable',
   model_unavailable: 'model_unavailable',
@@ -168,6 +171,38 @@ interface ErrorEnvelope {
   providerEnvelope: boolean
   malformed: boolean
   json: boolean
+}
+
+type ErrorMetadata = Pick<
+  LogOtherData,
+  | 'error_code'
+  | 'error_type'
+  | 'status_code'
+  | 'status_code_origin'
+  | 'upstream_http_status'
+  | 'provider_error_code'
+>
+
+export function getErrorHttpStatus(other: ErrorMetadata | null): {
+  recorded: number | undefined
+  mapped: boolean
+  upstream: number | undefined
+} {
+  const observed = other?.upstream_http_status
+  const upstream =
+    typeof observed === 'number' &&
+    Number.isInteger(observed) &&
+    observed >= 100 &&
+    observed <= 599
+      ? observed
+      : undefined
+  const mapped =
+    other?.status_code_origin === 'gateway_task_mapping' ||
+    (other?.status_code_origin !== 'upstream_http' &&
+      other?.error_type === 'task_error' &&
+      (other.error_code === 'task_failed' ||
+        other.error_code === 'task_timeout'))
+  return { recorded: other?.status_code, mapped, upstream }
 }
 
 function readErrorEnvelope(content: string): ErrorEnvelope {
@@ -318,11 +353,18 @@ function messageReason(
     return 'context_length'
   }
   if (
-    /content policy violation|violat(?:es|ion).*content policy|content (?:was )?(?:blocked|filtered)|blocked by.*safety|内容.*(?:安全策略|审核不通过)/i.test(
+    /content policy violation|violat(?:es|ion).*content policy|content (?:was )?(?:blocked|filtered)|blocked by.*safety|内容.*(?:安全策略|审核不通过|未通过安全审核)|被内容策略拒绝/i.test(
       message
     )
   ) {
     return 'content_policy'
+  }
+  if (
+    /没有可用的生成资源|no (?:available )?generation resources|generation resources (?:are )?unavailable/i.test(
+      message
+    )
+  ) {
+    return 'generation_capacity'
   }
   if (
     /invalid api[ _-]?key|incorrect api[ _-]?key|authentication (?:failed|required)|unauthori[sz]ed|API key (?:is )?(?:invalid|expired|missing)/i.test(
@@ -396,7 +438,7 @@ function httpReason(
 
 export function parseErrorDiagnostics(
   content: string,
-  other: Pick<LogOtherData, 'error_code' | 'error_type' | 'status_code'> | null
+  other: ErrorMetadata | null
 ): ErrorDiagnostics | null {
   const trimmedContent = content.trim()
   const prefix = /^status_code=(\d{3}),\s*/.exec(trimmedContent)
@@ -476,6 +518,40 @@ export function parseErrorDiagnostics(
       diagnostics.upstream = true
     }
     if (diagnostics.reason !== 'unknown') return diagnostics
+    if (
+      metadataCode === 'task_failed' &&
+      other?.status_code_origin === 'gateway_task_mapping'
+    ) {
+      const observedResponse = getErrorHttpStatus(other).upstream !== undefined
+      const providerCode = other.provider_error_code
+      // Immediate task results lack an HTTP status. The gateway's normalized
+      // business codes still describe the rejection without proving its source.
+      const normalizedTaskCode =
+        providerCode === 'content_policy_violation' ||
+        providerCode === 'resource_exhausted' ||
+        providerCode === 'rate_limit_exceeded' ||
+        providerCode === 'insufficient_quota'
+      const providerReason =
+        providerCode &&
+        (observedResponse || normalizedTaskCode) &&
+        Object.hasOwn(providerReasons, providerCode)
+          ? providerReasons[providerCode]
+          : undefined
+      if (observedResponse || providerReason) {
+        if (observedResponse) {
+          diagnostics.upstream = true
+          diagnostics.source = 'upstream'
+        }
+        diagnostics.reason =
+          providerReason ??
+          messageReason(diagnostics.message, true) ??
+          'unknown'
+        if (providerReason) diagnostics.code = providerCode
+        diagnostics.balanceInsufficient =
+          diagnostics.reason === 'upstream_balance'
+        return diagnostics
+      }
+    }
   }
 
   // The standard relay stores provider error.code in metadata and only its
@@ -531,7 +607,11 @@ export function parseErrorDiagnostics(
       : undefined
   if (
     genericInvalidRequest &&
-    (textReason === 'upstream_balance' || textReason === 'context_length')
+    (textReason === 'upstream_balance' ||
+      textReason === 'context_length' ||
+      textReason === 'model_unavailable' ||
+      textReason === 'content_policy' ||
+      textReason === 'generation_capacity')
   ) {
     structuredReason = textReason
   }

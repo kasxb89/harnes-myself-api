@@ -89,6 +89,39 @@ const h3Record = usageLogSchema.parse({
   }),
 })
 
+it.each([false, true])(
+  'separates mapped task status from the observed upstream response (mobile=%s)',
+  async (mobile) => {
+    const entry = usageLogSchema.parse({
+      ...record,
+      content: 'status_code=502, Task failed',
+      other: JSON.stringify({
+        status_code: 502,
+        error_type: 'task_error',
+        error_code: 'task_failed',
+        status_code_origin: 'gateway_task_mapping',
+        upstream_http_status: 200,
+        provider_error_code: 'content_policy_violation',
+      }),
+    })
+    await renderErrors(false, mobile, entry)
+    await waitFor(() =>
+      expect(
+        within(screen.getByTitle('Click to view full details')).getByText(
+          'Content safety policy triggered'
+        )
+      ).toBeVisible()
+    )
+    await userEvent.click(screen.getByTitle('Click to view full details'))
+    const details = within(await screen.findByRole('dialog'))
+    expect(details.getByText('Gateway task status')).toBeVisible()
+    expect(details.getByText('Upstream HTTP Status')).toBeVisible()
+    expect(details.getByText('502', { exact: true })).toBeVisible()
+    expect(details.getByText('200', { exact: true })).toBeVisible()
+    expect(details.getByText('Content safety policy triggered')).toBeVisible()
+  }
+)
+
 async function renderErrors(empty = false, mobile = false, entry = record) {
   if (mobile) {
     const matchMedia = window.matchMedia

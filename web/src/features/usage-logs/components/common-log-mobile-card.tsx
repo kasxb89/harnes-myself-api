@@ -32,6 +32,7 @@ import dayjs from '@/lib/dayjs'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
+import { getErrorHttpStatus } from '../lib/error-diagnostics'
 import { formatModelName, logTokenName, parseLogOther } from '../lib/format'
 import {
   getLogTypeConfig,
@@ -68,6 +69,7 @@ export function CommonLogMobileCard<TData>(props: {
   const [selectedField, setSelectedField] = useState<FieldName | null>(null)
   const log = props.log
   const other = parseLogOther(log.other)
+  const httpStatus = getErrorHttpStatus(other)
   const displayable = isDisplayableLogType(log.type)
   const timing = isTimingLogType(log.type)
   const model = formatModelName(log)
@@ -167,7 +169,14 @@ export function CommonLogMobileCard<TData>(props: {
       {props.errorOnly && (
         <div className='flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs'>
           <span>
-            {t('HTTP Status')}: {other?.status_code ?? '—'}
+            {t(httpStatus.mapped ? 'Gateway task status' : 'HTTP Status')}:{' '}
+            {httpStatus.recorded ?? '—'}
+            {httpStatus.upstream !== undefined && (
+              <span>
+                {' '}
+                · {t('Upstream HTTP Status')}: {httpStatus.upstream}
+              </span>
+            )}
           </span>
           {log.request_id && (
             <span className='min-w-0 break-all'>

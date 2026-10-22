@@ -256,10 +256,14 @@ func TestExecuteTaskSubmissionHonorsRouteRetainResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			events := make([]string, 0, 3)
-			database, _ := openTaskDialectDatabase(t, &model.Task{}, &model.User{}, &model.Channel{})
-			previousDB := model.DB
-			model.DB = database
-			t.Cleanup(func() { model.DB = previousDB })
+			database, _ := openTaskDialectDatabase(t, &model.Task{}, &model.User{}, &model.Channel{}, &model.Log{})
+			previousDB, previousLogDB, previousErrorLog := model.DB, model.LOG_DB, constant.ErrorLogEnabled
+			model.DB, model.LOG_DB, constant.ErrorLogEnabled = database, database, true
+			t.Cleanup(func() { model.DB, model.LOG_DB, constant.ErrorLogEnabled = previousDB, previousLogDB, previousErrorLog })
+			previousRedis := common.RedisEnabled
+			common.RedisEnabled = false
+			t.Cleanup(func() { common.RedisEnabled = previousRedis })
+			require.NoError(t, database.Create(&model.User{Id: 1, Username: "diagnostic-user", Status: common.UserStatusEnabled}).Error)
 			previousLogConsumeEnabled := common.LogConsumeEnabled
 			common.LogConsumeEnabled = false
 			t.Cleanup(func() { common.LogConsumeEnabled = previousLogConsumeEnabled })
@@ -271,6 +275,9 @@ func TestExecuteTaskSubmissionHonorsRouteRetainResult(t *testing.T) {
 			})
 			info := taskSubmissionRelayInfo(&taskSubmissionTestBilling{events: &events})
 			upstream := []byte(`{"data":[{"url":"https://cdn.example/a.png"}]}`)
+			if tc.immediate != nil && tc.immediate.Status == model.TaskStatusFailure {
+				upstream = []byte(`{"status":"failed","error":{"code":"content_policy_violation","message":"rejected"}}`)
+			}
 
 			outcome, taskErr := executeTaskSubmissionWith(c, info, func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
 				return &relay.TaskSubmitResult{
@@ -282,6 +289,17 @@ func TestExecuteTaskSubmissionHonorsRouteRetainResult(t *testing.T) {
 			})
 			require.Nil(t, taskErr)
 			require.NotNil(t, outcome)
+			if tc.immediate != nil && tc.immediate.Status == model.TaskStatusFailure {
+				var logs []model.Log
+				require.NoError(t, database.Where("type = ?", model.LogTypeError).Find(&logs).Error)
+				require.Len(t, logs, 1)
+				other, err := common.StrToMap(logs[0].Other)
+				require.NoError(t, err)
+				assert.Equal(t, "gateway_task_mapping", other["status_code_origin"])
+				assert.Equal(t, "content_policy_violation", other["provider_error_code"])
+				assert.NotContains(t, other, "upstream_http_status", "submit result does not carry the actual response status")
+				assert.Equal(t, float64(http.StatusBadGateway), other["status_code"])
+			}
 			assert.JSONEq(t, string(upstream), string(outcome.Task.Data), "presenter keeps the in-memory snapshot")
 			assert.Equal(t, tc.wantDiscarded, outcome.Task.PrivateData.ResultDiscarded)
 			assert.Equal(t, !tc.wantDiscarded, outcome.Task.ResultRetrievable())

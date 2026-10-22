@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, test } from 'vitest'
 
-import { parseErrorDiagnostics } from '../error-diagnostics'
+import { getErrorHttpStatus, parseErrorDiagnostics } from '../error-diagnostics'
 
 const upstreamError = {
   error_code: 'bad_response_status_code',
@@ -545,5 +545,142 @@ describe('parseErrorDiagnostics', () => {
   test('returns null only when neither content nor useful metadata exists', () => {
     expect(parseErrorDiagnostics('   ', null)).toBeNull()
     expect(parseErrorDiagnostics('', { status_code: 0 })).toBeNull()
+  })
+
+  test.each([
+    '参考图或提示词被内容策略拒绝，请更换后重试，本次不扣积分',
+    '输入或生成内容未通过安全审核. 请修改输入后重试.',
+  ])(
+    'recognizes a task safety rejection without inventing its HTTP origin: %s',
+    (message) => {
+      expect(
+        parseErrorDiagnostics(`status_code=502, ${message}`, {
+          error_type: 'task_error',
+          error_code: 'task_failed',
+          status_code: 502,
+        })
+      ).toMatchObject({
+        reason: 'content_policy',
+        source: 'unknown',
+        upstream: false,
+      })
+    }
+  )
+
+  test('classifies an explicit generation resource rejection separately from a measured concurrency limit', () => {
+    expect(
+      parseErrorDiagnostics(
+        'status_code=502, generation_failed：当前没有可用的生成资源，稍后再试',
+        {
+          error_type: 'task_error',
+          error_code: 'task_failed',
+          status_code: 502,
+        }
+      )
+    ).toMatchObject({ reason: 'generation_capacity', source: 'unknown' })
+  })
+
+  test('lets an explicit missing-model reason refine a generic invalid-request envelope', () => {
+    expect(
+      parseErrorDiagnostics(
+        upstreamContent(
+          'invalid_request_error',
+          '模型不存在：bt-seedance-2.0',
+          'invalid_request_error'
+        ),
+        {
+          ...upstreamError,
+          status_code: 404,
+        }
+      )
+    ).toMatchObject({ reason: 'model_unavailable', source: 'upstream' })
+  })
+
+  test.each([
+    ['content_policy_violation', 'content_policy', false],
+    ['resource_exhausted', 'generation_capacity', false],
+    ['rate_limit_exceeded', 'rate_limit', false],
+    ['model_not_found', 'model_unavailable', false],
+    ['insufficient_quota', 'upstream_balance', true],
+  ])(
+    'uses the observed HTTP200 task rejection code %s without treating mapped502 as an upstream outage',
+    (code, reason, balanceInsufficient) => {
+      const metadata = {
+        error_type: 'task_error',
+        error_code: 'task_failed',
+        status_code: 502,
+        status_code_origin: 'gateway_task_mapping' as const,
+        upstream_http_status: 200,
+        provider_error_code: code,
+      }
+      expect(
+        parseErrorDiagnostics(
+          'status_code=502, Provider rejected the task',
+          metadata
+        )
+      ).toMatchObject({
+        reason,
+        source: 'upstream',
+        upstream: true,
+        balanceInsufficient,
+      })
+    }
+  )
+
+  test.each([
+    ['content_policy_violation', 'content_policy', false],
+    ['resource_exhausted', 'generation_capacity', false],
+    ['rate_limit_exceeded', 'rate_limit', false],
+    ['insufficient_quota', 'upstream_balance', true],
+  ])(
+    'keeps immediate rejection %s specific without inventing an HTTP observation',
+    (code, reason, balanceInsufficient) => {
+      const metadata = {
+        error_type: 'task_error',
+        error_code: 'task_failed',
+        status_code: 502,
+        status_code_origin: 'gateway_task_mapping' as const,
+        provider_error_code: code,
+      }
+      expect(getErrorHttpStatus(metadata).upstream).toBeUndefined()
+      expect(
+        parseErrorDiagnostics(
+          'status_code=502, Provider rejected the task',
+          metadata
+        )
+      ).toMatchObject({
+        reason,
+        source: 'unknown',
+        upstream: false,
+        balanceInsufficient,
+      })
+    }
+  )
+
+  test('keeps the cause unknown for an observed HTTP200 failed task with no specific business reason', () => {
+    const metadata = {
+      error_type: 'task_error',
+      error_code: 'task_failed',
+      status_code: 502,
+      status_code_origin: 'gateway_task_mapping' as const,
+      upstream_http_status: 200,
+    }
+    expect(
+      parseErrorDiagnostics('status_code=502, Task failed', metadata)
+    ).toMatchObject({ reason: 'unknown', source: 'upstream', upstream: true })
+  })
+
+  test('does not trust provider metadata without a valid observed response', () => {
+    const metadata = {
+      error_type: 'task_error',
+      error_code: 'task_failed',
+      status_code: 502,
+      status_code_origin: 'gateway_task_mapping' as const,
+      upstream_http_status: 0,
+      provider_error_code: 'server_error',
+    }
+    expect(
+      parseErrorDiagnostics('status_code=502, Task failed', metadata)
+    ).toMatchObject({ reason: 'unknown', source: 'unknown', upstream: false })
   })
 })

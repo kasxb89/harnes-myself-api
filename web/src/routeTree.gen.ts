@@ -43,6 +43,7 @@ import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedMediaOperationsIndexRouteImport } from './routes/_authenticated/media-operations/index'
 import { Route as AuthenticatedModelProfitsIndexRouteImport } from './routes/_authenticated/model-profits/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
@@ -255,6 +256,12 @@ const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMediaOperationsIndexRoute =
+  AuthenticatedMediaOperationsIndexRouteImport.update({
+    id: '/media-operations/',
+    path: '/media-operations/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedModelProfitsIndexRoute =
   AuthenticatedModelProfitsIndexRouteImport.update({
     id: '/model-profits/',
@@ -500,6 +507,7 @@ export interface FileRoutesByFullPath {
   '/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
+  '/media-operations/': typeof AuthenticatedMediaOperationsIndexRoute
   '/model-profits/': typeof AuthenticatedModelProfitsIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -568,6 +576,7 @@ export interface FileRoutesByTo {
   '/creation-content': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
+  '/media-operations': typeof AuthenticatedMediaOperationsIndexRoute
   '/model-profits': typeof AuthenticatedModelProfitsIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
@@ -640,6 +649,7 @@ export interface FileRoutesById {
   '/_authenticated/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
+  '/_authenticated/media-operations/': typeof AuthenticatedMediaOperationsIndexRoute
   '/_authenticated/model-profits/': typeof AuthenticatedModelProfitsIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
@@ -711,6 +721,7 @@ export interface FileRouteTypes {
     | '/creation-content/'
     | '/dashboard/'
     | '/keys/'
+    | '/media-operations/'
     | '/model-profits/'
     | '/models/'
     | '/playground/'
@@ -779,6 +790,7 @@ export interface FileRouteTypes {
     | '/creation-content'
     | '/dashboard'
     | '/keys'
+    | '/media-operations'
     | '/model-profits'
     | '/models'
     | '/playground'
@@ -850,6 +862,7 @@ export interface FileRouteTypes {
     | '/_authenticated/creation-content/'
     | '/_authenticated/dashboard/'
     | '/_authenticated/keys/'
+    | '/_authenticated/media-operations/'
     | '/_authenticated/model-profits/'
     | '/_authenticated/models/'
     | '/_authenticated/playground/'
@@ -1141,6 +1154,13 @@ declare module '@tanstack/react-router' {
       path: '/keys'
       fullPath: '/keys/'
       preLoaderRoute: typeof AuthenticatedKeysIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/media-operations/': {
+      id: '/_authenticated/media-operations/'
+      path: '/media-operations'
+      fullPath: '/media-operations/'
+      preLoaderRoute: typeof AuthenticatedMediaOperationsIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/model-profits/': {
@@ -1495,6 +1515,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCreationContentIndexRoute: typeof AuthenticatedCreationContentIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
+  AuthenticatedMediaOperationsIndexRoute: typeof AuthenticatedMediaOperationsIndexRoute
   AuthenticatedModelProfitsIndexRoute: typeof AuthenticatedModelProfitsIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
@@ -1529,6 +1550,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedCreationContentIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
+  AuthenticatedMediaOperationsIndexRoute:
+    AuthenticatedMediaOperationsIndexRoute,
   AuthenticatedModelProfitsIndexRoute: AuthenticatedModelProfitsIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,

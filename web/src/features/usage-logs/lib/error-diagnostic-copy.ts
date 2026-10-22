@@ -56,6 +56,11 @@ const errorDiagnosticKeys = {
     description:
       'Too many requests are being processed at once. Reduce concurrency and wait for existing requests to finish.',
   },
+  generation_capacity: {
+    title: 'Generation resources unavailable',
+    description:
+      'The response reports unavailable generation resources. It does not establish a configured concurrency limit.',
+  },
   model_unavailable: {
     title: 'Model does not exist or is unavailable',
     description:

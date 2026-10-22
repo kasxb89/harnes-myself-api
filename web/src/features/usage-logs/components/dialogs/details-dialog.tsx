@@ -71,7 +71,10 @@ import { cn } from '@/lib/utils'
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
 import { getErrorDiagnosticCopy } from '../../lib/error-diagnostic-copy'
-import { parseErrorDiagnostics } from '../../lib/error-diagnostics'
+import {
+  getErrorHttpStatus,
+  parseErrorDiagnostics,
+} from '../../lib/error-diagnostics'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -486,6 +489,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const other = parseLogOther(props.log.other)
+  const httpStatus = getErrorHttpStatus(other)
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -709,8 +713,17 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <>
               {other?.status_code != null && (
                 <DetailRow
-                  label={t('HTTP Status')}
+                  label={t(
+                    httpStatus.mapped ? 'Gateway task status' : 'HTTP Status'
+                  )}
                   value={String(other.status_code)}
+                  mono
+                />
+              )}
+              {httpStatus.upstream !== undefined && (
+                <DetailRow
+                  label={t('Upstream HTTP Status')}
+                  value={String(httpStatus.upstream)}
                   mono
                 />
               )}

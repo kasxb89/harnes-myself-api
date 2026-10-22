@@ -216,9 +216,47 @@ func RecordStreamError(c *gin.Context, info *relaycommon.RelayInfo) {
 	RecordRelayError(c, types.NewOpenAIError(errors.New(detail), code, status), info)
 }
 
+// TaskFailureDiagnostics carries evidence from the response that caused a task
+// failure. A missing HTTP status never means that an upstream returned 200.
+type TaskFailureDiagnostics struct {
+	UpstreamHTTPStatus int
+	ProviderErrorCode  string
+}
+
+// TaskFailureDiagnosticsFromData retains only recognized provider codes from
+// the current response snapshot. Provider text, URLs and arbitrary codes are
+// deliberately excluded from structured log metadata.
+func TaskFailureDiagnosticsFromData(data []byte, upstreamHTTPStatus int) TaskFailureDiagnostics {
+	diagnostic := TaskFailureDiagnostics{UpstreamHTTPStatus: upstreamHTTPStatus}
+	var result struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if common.Unmarshal(data, &result) == nil {
+		diagnostic.ProviderErrorCode = normalizeTaskProviderErrorCode(result.Error.Code)
+	}
+	return diagnostic
+}
+
+func normalizeTaskProviderErrorCode(code string) string {
+	switch code {
+	case "content_policy_violation", "content_filter", "content_filter_error", "moderation_blocked":
+		return "content_policy_violation"
+	case "resource_exhausted", "insufficient_resources":
+		return "resource_exhausted"
+	case "rate_limit_exceeded", "too_many_requests":
+		return "rate_limit_exceeded"
+	case "insufficient_quota":
+		return "insufficient_quota"
+	default:
+		return ""
+	}
+}
+
 // RecordTaskFailure is called only by the durable insert/status-transition
 // winner. It uses submission provenance rather than the last polling request.
-func RecordTaskFailure(task *model.Task, stage, code string, status int, detail string) {
+func RecordTaskFailure(task *model.Task, stage, code string, status int, detail string, diagnostics ...TaskFailureDiagnostics) {
 	if !constant.ErrorLogEnabled || task == nil || task.Status != model.TaskStatusFailure {
 		return
 	}
@@ -231,6 +269,19 @@ func RecordTaskFailure(task *model.Task, stage, code string, status int, detail 
 	other.SetPublic("error_type", "task_error")
 	other.SetPublic("error_code", code)
 	other.SetPublic("status_code", status)
+	other.SetPublic("status_code_origin", "gateway_task_mapping")
+	if len(diagnostics) > 0 {
+		diagnostic := diagnostics[0]
+		if diagnostic.UpstreamHTTPStatus >= 100 && diagnostic.UpstreamHTTPStatus <= 599 {
+			other.SetPublic("upstream_http_status", diagnostic.UpstreamHTTPStatus)
+			if stage == "task_poll" && status == diagnostic.UpstreamHTTPStatus {
+				other.SetPublic("status_code_origin", "upstream_http")
+			}
+		}
+		if code := normalizeTaskProviderErrorCode(diagnostic.ProviderErrorCode); code != "" {
+			other.SetPublic("provider_error_code", code)
+		}
+	}
 	if execution := task.PrivateData.Execution; execution != nil {
 		c.Set(common.RequestIdKey, execution.RequestID)
 		other.SetPublic("request_path", execution.RequestPath)

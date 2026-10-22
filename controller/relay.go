@@ -785,7 +785,7 @@ func executeTaskSubmissionWith(
 		service.MarkRequestPolicySuccess(c, nil)
 	} else {
 		policy.AddEvent(service.PolicyEvent{Decision: service.PolicyDecision{Action: "stop", Reason: "task_failed", Source: "upstream"}})
-		service.RecordTaskFailure(task, "task_submit", "task_failed", http.StatusBadGateway, "")
+		service.RecordTaskFailure(task, "task_submit", "task_failed", http.StatusBadGateway, "", service.TaskFailureDiagnosticsFromData(task.Data, 0))
 	}
 	service.LogTaskConsumption(c, relayInfo, task)
 	diagnostics.complete(task, result.Quota)

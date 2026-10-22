@@ -116,6 +116,9 @@ export interface ToolSurchargeItem {
 
 export interface LogOtherData {
   status_code?: number
+  status_code_origin?: 'gateway_task_mapping' | 'upstream_http'
+  upstream_http_status?: number
+  provider_error_code?: string
   error_code?: string
   error_type?: string
   admin_info?: {

@@ -24,6 +24,7 @@ import { CopyButton } from '@/components/copy-button'
 import dayjs from '@/lib/dayjs'
 
 import type { UsageLog } from '../../data/schema'
+import { getErrorHttpStatus } from '../../lib/error-diagnostics'
 import { parseLogOther } from '../../lib/format'
 
 /** Keep user, model, channel and the full details dialog shared with common logs. */
@@ -67,13 +68,22 @@ export function useErrorLogsColumns(
     columns.push(
       {
         id: 'error_status',
-        header: t('HTTP Status'),
+        header: t('Recorded status'),
         cell: ({ row }) => {
           const other = parseLogOther(row.original.other)
+          const status = getErrorHttpStatus(other)
           return (
-            <span className='font-mono text-xs'>
-              {other?.status_code ?? '—'}
-            </span>
+            <div className='space-y-1 font-mono text-xs'>
+              <span>
+                {status.recorded ?? '—'}
+                {status.mapped && ` (${t('Task mapping')})`}
+              </span>
+              {status.upstream !== undefined && (
+                <div>
+                  {t('Upstream HTTP Status')}: {status.upstream}
+                </div>
+              )}
+            </div>
           )
         },
         size: 100,
