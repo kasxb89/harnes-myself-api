@@ -182,7 +182,9 @@ def live_identity(snapshot):
             "Live API must be running with a full source revision label")
     return {"container_id": c["Id"], "image_id": c["Image"], "revision": revision,
             "started_at": c["State"].get("StartedAt"),
-            "mounts_sha256": digest(c.get("Mounts", []))}
+            # Docker's Mounts collection is unordered. Sort whole dictionaries
+            # into a new list, retaining duplicates, every field and nested order.
+            "mounts_sha256": digest(sorted(c.get("Mounts", []), key=canonical))}
 
 
 def tree_fingerprint(path, backup_root, verified_files=None, prefix="release-", directory=True, source_rows=None):

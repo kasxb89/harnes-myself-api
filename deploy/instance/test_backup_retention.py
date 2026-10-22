@@ -527,6 +527,44 @@ with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz", format=tarfile.PAX_FOR
         self.assertIn("remove-backup-complete", audit)
         self.assertNotIn('"event":"complete"', audit)
 
+    def test_live_mount_reordering_preserves_identity_but_actual_changes_refuse(self):
+        live = self.docker.value["containers"][0]
+        live["Mounts"] = [
+            {"Type": "bind", "Source": str(self.root / "data"), "Destination": "/data",
+             "Mode": "rw", "RW": True, "Propagation": "rprivate"},
+            {"Type": "volume", "Name": "retained-volume", "Source": "/var/lib/docker/volumes/retained/_data",
+             "Destination": "/var/lib/postgresql/data", "Driver": "local", "Mode": "",
+             "RW": True, "Propagation": ""}]
+        live["Config"]["Env"] = ["SECOND=2", "FIRST=1"]
+        original = self.docker.snapshot()
+        identity = retention.live_identity(original)
+        self.assertEqual(original, self.docker.snapshot())
+        baseline = copy.deepcopy(live["Mounts"])
+        live["Mounts"] = list(reversed(baseline))
+        reordered = self.docker.snapshot()
+        self.assertEqual(retention.live_identity(reordered), identity)
+        self.assertEqual(reordered, self.docker.snapshot())
+        self.assertEqual(live["Config"]["Env"], ["SECOND=2", "FIRST=1"])
+        live["Mounts"].append(copy.deepcopy(live["Mounts"][0]))
+        self.assertNotEqual(retention.live_identity(self.docker.snapshot()), identity)
+        live["Mounts"] = copy.deepcopy(baseline)
+        plan = self.plan()
+        receipt = self.receipt(plan)
+        for field, changed in (("Source", str(self.root / "different-data")),
+                               ("Destination", "/different-data"), ("RW", False), ("Propagation", "rshared")):
+            with self.subTest(field):
+                live["Mounts"][0][field] = changed
+                self.assertNotEqual(retention.live_identity(self.docker.snapshot()), identity)
+                with self.assertRaises(retention.Refusal):
+                    retention.apply_plan(self.root, self.registry, plan, receipt, self.key, self.docker)
+                self.assertEqual(self.docker.calls, [])
+                live["Mounts"] = copy.deepcopy(baseline)
+        live["Mounts"] = list(reversed(baseline))
+        with patch.object(retention, "check_capacity", return_value={"pass": True}):
+            result = retention.apply_plan(self.root, self.registry, plan, receipt, self.key, self.docker)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(live["Config"]["Env"], ["SECOND=2", "FIRST=1"])
+
     def test_capacity_budget_and_quantity_gate_block_next_large_operation(self):
         safe = SimpleNamespace(f_blocks=10, f_bfree=4, f_bavail=4, f_frsize=1024 ** 3)
         self.assertTrue(retention.check_capacity(self.root, 1024 ** 3, safe)["pass"])
