@@ -36,7 +36,10 @@ const { get, put, post } = vi.hoisted(() => ({
   put: vi.fn(),
   post: vi.fn(),
 }))
-vi.mock('@/lib/api', () => ({ api: { get, put, post } }))
+vi.mock('@/lib/api', async () => {
+  const { default: axios } = await import('axios')
+  return { api: { get, put, post, getUri: axios.getUri.bind(axios) } }
+})
 const clients: QueryClient[] = []
 function content(): CreationContent {
   const mode = () => ({

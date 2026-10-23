@@ -244,6 +244,9 @@ func UpdatePasskeyDomainOptions(values map[string]string, preview bool, confirma
 			if err := validateClientModelPresentationOptionWrite(tx, stored.Key); err != nil {
 				return err
 			}
+			if err := validateCustomerServiceOptionWrite(tx, stored.Key); err != nil {
+				return err
+			}
 			if isClientAnnouncementOption(stored.Key) {
 				return common.NewMessage("Client announcements must be saved separately from passkey settings")
 			}

@@ -23,12 +23,17 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { uploadAsset } from '../api'
 
 type Props = {
   kind: 'image' | 'video'
+  label?: string
+  disabled?: boolean
+  'aria-invalid'?: boolean
+  'aria-describedby'?: string
   value: string | null
   onChange: (id: string | null) => void
   onBusyChange: (busy: boolean) => void
@@ -62,14 +67,21 @@ export function AssetUpload(props: Props) {
     onSettled: () => props.onBusyChange(false),
   })
   const title =
-    props.kind === 'image' ? t('Template cover') : t('Demo video (optional)')
+    props.label ??
+    (props.kind === 'image' ? t('Template cover') : t('Demo video (optional)'))
+  const disabled = props.disabled || upload.isPending
+  const previewUrl = props.value
+    ? api.getUri({ url: `/api/creation/assets/${props.value}` })
+    : undefined
   return (
-    <Field>
+    <Field data-invalid={props['aria-invalid']}>
       <FieldLabel htmlFor={id}>{title}</FieldLabel>
       <Input
         id={id}
         type='file'
-        disabled={upload.isPending}
+        aria-invalid={props['aria-invalid']}
+        aria-describedby={props['aria-describedby']}
+        disabled={disabled}
         accept={
           props.kind === 'image'
             ? 'image/png,image/jpeg,image/webp'
@@ -91,13 +103,13 @@ export function AssetUpload(props: Props) {
         <div className='flex flex-col items-start gap-2'>
           {props.kind === 'image' ? (
             <img
-              src={`/api/creation/assets/${props.value}`}
+              src={previewUrl}
               alt={title}
               className='max-h-40 max-w-full rounded-md object-contain'
             />
           ) : (
             <video
-              src={`/api/creation/assets/${props.value}`}
+              src={previewUrl}
               controls
               preload='metadata'
               aria-label={title}
@@ -108,7 +120,7 @@ export function AssetUpload(props: Props) {
             type='button'
             variant='outline'
             size='sm'
-            disabled={upload.isPending}
+            disabled={disabled}
             onClick={() => props.onChange(null)}
           >
             {t('Remove asset')}

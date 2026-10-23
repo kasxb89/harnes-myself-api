@@ -19,6 +19,33 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Independent customer service configuration and server validation.
+  'Customer service',
+  'Customer service settings',
+  'Customer service QR code',
+  'Customer service title (optional)',
+  'Customer service description (optional)',
+  'Enable customer service QR code',
+  'Configure the QR code shown when desktop users open customer service. Save all changes together.',
+  'Enable only after uploading a QR code. Disabled settings remain saved as a draft.',
+  'Loading customer service settings...',
+  'Unable to load customer service settings',
+  'Unable to save customer service settings',
+  'Customer service settings saved',
+  'Save customer service settings',
+  'Upload PNG, JPEG or WebP, up to 10 MiB and 16 megapixels. External image links are not accepted.',
+  'Plain text only, without line breaks or control characters.',
+  'No customer service QR code configured. Users will see an unconfigured message.',
+  'Upload a PNG, JPEG or WebP customer service QR code',
+  'Upload a customer service QR code before enabling it',
+  'Customer service title must be at most 64 characters',
+  'Customer service description must be at most 256 characters',
+  'Customer service text must not contain control characters',
+  'Invalid customer service configuration',
+  'Customer service QR code must be a verified uploaded PNG, JPEG or WebP image',
+  'Failed to save customer service configuration',
+  'Use the customer service settings page to change this setting',
+  'Customer service configuration is too large',
   'Model description',
   'Model badge',
   // Exact client model description and badge settings, validation and API errors.

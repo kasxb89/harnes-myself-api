@@ -44,6 +44,7 @@ func GetStatus(c *gin.Context) {
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
 	clientModelConfig := model.CurrentClientModelConfig()
 	clientModelPresentation := model.CurrentClientModelPresentation()
+	customerService := model.PublicCustomerService()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -54,6 +55,7 @@ func GetStatus(c *gin.Context) {
 		"desktop_update":              system_setting.GetDesktopUpdateStatus(),
 		"client_model_config":         clientModelConfig,
 		"client_model_presentation":   clientModelPresentation,
+		"customer_service":            customerService,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,

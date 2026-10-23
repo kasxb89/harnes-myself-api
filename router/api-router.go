@@ -27,6 +27,9 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/client-announcements", controller.GetClientAnnouncements)
+		customerServiceRoute := apiRouter.Group("/customer-service", middleware.DisableCache(), middleware.AdminAuth())
+		customerServiceRoute.GET("", controller.GetCustomerService)
+		customerServiceRoute.PUT("", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("customer-service-save"), controller.SaveCustomerService)
 		creationRoute := apiRouter.Group("/creation")
 		{
 			creationRoute.GET("/content", controller.GetCreationContent)
