@@ -1,6 +1,13 @@
 package router
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -8,6 +15,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -56,6 +64,8 @@ var accessTokenExemptRoutes = []string{
 	"POST /api/user/register",
 	"GET /api/user/login/encryption-key",
 	"POST /api/user/login",
+	"POST /api/user/phone/challenge",
+	"POST /api/user/phone/login",
 	"POST /api/user/login/2fa",
 	"POST /api/user/login/verify",
 	"POST /api/user/login/passkey/begin",
@@ -71,6 +81,7 @@ var accessTokenExemptRoutes = []string{
 	"POST /api/user/auth/logout",
 
 	// Payment callbacks.
+	"POST /api/user/wechat/notify",
 	"POST /api/stripe/webhook",
 	"POST /api/creem/webhook",
 	"POST /api/waffo/webhook",
@@ -474,4 +485,309 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 			assert.Equal(t, http.StatusUnauthorized, recorder.Code)
 		}
 	})
+}
+
+func TestFinancialRoutesPreserveCredentialAndRoleBoundaries(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.AuditLog{}, &model.Option{}, &model.TopUp{}, &model.UpstreamTopup{}, &model.Log{}, &model.Token{}))
+	previousDB, previousLog, previousType := model.DB, model.LOG_DB, common.MainDatabaseType()
+	previousRedis, previousMemory, previousSecret := common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret
+	previousGlobal, previousCritical := common.GlobalApiRateLimitEnable, common.CriticalRateLimitEnable
+	previousPhone, previousWechat := common.PhoneLoginEnabled, common.WechatPayEnabled
+	previousTransport, previousClientTransport := http.DefaultTransport, http.DefaultClient.Transport
+	common.OptionMapRWMutex.Lock()
+	previousOptions := maps.Clone(common.OptionMap)
+	common.OptionMap = map[string]string{}
+	common.OptionMapRWMutex.Unlock()
+	model.DB, model.LOG_DB = db, db
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	common.RedisEnabled, common.MemoryCacheEnabled = false, false
+	common.SessionSecret = "isolated-financial-route-auth-test"
+	common.GlobalApiRateLimitEnable, common.CriticalRateLimitEnable = false, false
+	common.PhoneLoginEnabled, common.WechatPayEnabled = true, false
+	var outbound atomic.Int32
+	blocked := imageUploadRoundTripper(func(*http.Request) (*http.Response, error) {
+		outbound.Add(1)
+		return nil, fmt.Errorf("external requests are disabled by the financial route test")
+	})
+	http.DefaultTransport, http.DefaultClient.Transport = blocked, blocked
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = previousDB, previousLog
+		common.SetMainDatabaseType(previousType)
+		common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret = previousRedis, previousMemory, previousSecret
+		common.GlobalApiRateLimitEnable, common.CriticalRateLimitEnable = previousGlobal, previousCritical
+		common.PhoneLoginEnabled, common.WechatPayEnabled = previousPhone, previousWechat
+		http.DefaultTransport, http.DefaultClient.Transport = previousTransport, previousClientTransport
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+		assert.Zero(t, outbound.Load(), "no SMS, payment, or reconciliation request may leave this test")
+		sqlDB, err := db.DB()
+		require.NoError(t, err)
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
+	legacy := "financial-route-legacy-root"
+	sessions := map[int]*service.AuthBundle{}
+	for _, user := range []model.User{
+		{Id: 7521, Username: "finance-user", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "finance-user"},
+		{Id: 7522, Username: "finance-admin", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "finance-admin"},
+		{Id: 7523, Username: "finance-root", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "finance-root", AccessToken: &legacy},
+	} {
+		require.NoError(t, db.Create(&user).Error)
+		sessions[user.Role], err = service.CreateLoginSession(user.Id, "password", "127.0.0.1", "finance-route-test")
+		require.NoError(t, err)
+	}
+	expired, err := service.CreateLoginSession(7523, "password", "127.0.0.1", "expired-finance-test")
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.UserSession{}).Where("sid = ?", expired.Session.SID).Update("expires_at", time.Now().Unix()-1).Error)
+	revoked, err := service.CreateLoginSession(7523, "password", "127.0.0.1", "revoked-finance-test")
+	require.NoError(t, err)
+	_, err = model.RevokeUserSession(7523, revoked.Session.SID, "isolated regression")
+	require.NoError(t, err)
+	pats := map[string]string{}
+	for i, grant := range []struct {
+		name   string
+		userID int
+		scopes []string
+	}{
+		{"no scope", 7521, nil},
+		{"wallet read", 7521, []string{"wallet:read"}},
+		{"wallet write", 7521, []string{"wallet:write"}},
+		{"root PAT", 7523, []string{"billing:read", "billing:write", "model:read", "model:write", "option:read", "option:write", "wallet:read", "wallet:write"}},
+	} {
+		raw := model.AccessTokenPrefix + strings.Repeat(string(rune('a'+i)), 43)
+		pat := model.UserAccessToken{UserId: grant.userID, Name: grant.name, TokenHash: model.AccessTokenFingerprint(raw), TokenHint: model.AccessTokenHint(raw)}
+		pat.SetScopes(grant.scopes)
+		require.NoError(t, db.Create(&pat).Error)
+		pats[grant.name] = raw
+	}
+	relay := strings.Repeat("x", 48)
+	require.NoError(t, db.Create(&model.Token{UserId: 7523, Key: relay, Status: common.TokenStatusEnabled, Name: "finance-relay", UnlimitedQuota: true, ExpiredTime: -1}).Error)
+	actual := newAccessTokenScopeTestEngine(t)
+	gates := gin.New()
+	routes := []struct {
+		method, path string
+		minRole      int
+	}{
+		{http.MethodGet, "/api/balance-ledger/", common.RoleAdminUser},
+		{http.MethodGet, "/api/model-profit/", common.RoleAdminUser},
+		{http.MethodGet, "/api/model-profit/cost-rules", common.RoleAdminUser},
+		{http.MethodPut, "/api/model-profit/cost-rules", common.RoleRootUser},
+		{http.MethodGet, "/api/upstream-topup/", common.RoleAdminUser},
+		{http.MethodPost, "/api/upstream-topup/", common.RoleAdminUser},
+		{http.MethodPut, "/api/upstream-topup/:id", common.RoleAdminUser},
+		{http.MethodDelete, "/api/upstream-topup/:id", common.RoleAdminUser},
+		{http.MethodPost, "/api/wechat/reconcile", common.RoleRootUser},
+	}
+	for _, route := range routes {
+		rule, declared := middleware.AccessTokenRouteRule(route.method + " " + route.path)
+		require.True(t, declared)
+		require.Equal(t, "session", rule.Kind())
+		auth := middleware.AdminAuth()
+		if route.minRole == common.RoleRootUser {
+			auth = middleware.RootAuth()
+		}
+		// Exercise a successful gate without running any financial write.
+		gates.Handle(route.method, route.path, auth, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	}
+	request := func(engine *gin.Engine, method, path, token, body, cookie string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Origin", "https://untrusted.example")
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		if cookie != "" {
+			r.AddCookie(&http.Cookie{Name: service.RefreshCookieName, Value: cookie})
+		}
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, r)
+		return w
+	}
+	for _, route := range routes {
+		for _, actor := range []struct {
+			name, token  string
+			role, status int
+		}{
+			{"anonymous", "", 0, http.StatusUnauthorized},
+			{"ordinary", sessions[common.RoleCommonUser].AccessToken, common.RoleCommonUser, http.StatusForbidden},
+			{"administrator", sessions[common.RoleAdminUser].AccessToken, common.RoleAdminUser, http.StatusNoContent},
+			{"root", sessions[common.RoleRootUser].AccessToken, common.RoleRootUser, http.StatusNoContent},
+			{"legacy root", legacy, 0, http.StatusForbidden},
+			{"scoped root", pats["root PAT"], 0, http.StatusForbidden},
+			{"relay", "sk-" + relay, 0, http.StatusUnauthorized},
+			{"expired", expired.AccessToken, 0, http.StatusUnauthorized},
+			{"revoked", revoked.AccessToken, 0, http.StatusUnauthorized},
+		} {
+			t.Run(route.method+route.path+"/"+actor.name, func(t *testing.T) {
+				status := actor.status
+				if actor.role > 0 && actor.role < route.minRole {
+					status = http.StatusForbidden
+				}
+				path := strings.ReplaceAll(route.path, ":id", "invalid")
+				w := request(gates, route.method, path, actor.token, `{}`, "")
+				assert.Equal(t, status, w.Code, w.Body.String())
+				if status != http.StatusNoContent {
+					w = request(actual, route.method, path, actor.token, `{}`, "")
+					assert.Equal(t, status, w.Code, w.Body.String())
+					if actor.name == "legacy root" || actor.name == "scoped root" {
+						assert.Contains(t, w.Body.String(), `"code":"AUTH_SESSION_REQUIRED"`)
+					}
+				}
+			})
+		}
+		t.Run(route.method+route.path+"/cookie alone cannot authorize", func(t *testing.T) {
+			w := request(actual, route.method, strings.ReplaceAll(route.path, ":id", "invalid"), "", `{}`, sessions[common.RoleRootUser].RefreshToken)
+			assert.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
+		})
+	}
+	for _, entry := range []struct{ path, scope string }{{"/api/user/wechat/order", "wallet:read"}, {"/api/user/wechat/native", "wallet:write"}} {
+		method := http.MethodGet
+		if entry.scope == "wallet:write" {
+			method = http.MethodPost
+		}
+		rule, declared := middleware.AccessTokenRouteRule(method + " " + entry.path)
+		require.True(t, declared)
+		require.Equal(t, "scope", rule.Kind())
+		require.Equal(t, entry.scope, rule.Scope())
+		for _, actor := range []struct {
+			name, token string
+			status      int
+		}{
+			{"anonymous", "", http.StatusUnauthorized}, {"relay", "sk-" + relay, http.StatusUnauthorized},
+			{"ordinary session", sessions[common.RoleCommonUser].AccessToken, http.StatusOK},
+			{"legacy", legacy, http.StatusOK}, {"no scope", pats["no scope"], http.StatusForbidden},
+			{"wallet read", pats["wallet read"], http.StatusForbidden}, {"wallet write", pats["wallet write"], http.StatusForbidden},
+			{"expired", expired.AccessToken, http.StatusUnauthorized}, {"revoked", revoked.AccessToken, http.StatusUnauthorized},
+		} {
+			t.Run(entry.path+"/"+actor.name, func(t *testing.T) {
+				status := actor.status
+				if actor.name == "wallet read" && entry.scope == "wallet:read" || actor.name == "wallet write" && entry.scope == "wallet:write" {
+					status = http.StatusOK
+				}
+				w := request(actual, method, entry.path, actor.token, `{}`, "")
+				assert.Equal(t, status, w.Code, w.Body.String())
+				if status == http.StatusOK {
+					assert.Contains(t, w.Body.String(), `"success":false`)
+				}
+			})
+		}
+	}
+	t.Run("real controllers reject invalid financial requests without changes", func(t *testing.T) {
+		for _, entry := range []struct {
+			method, path string
+			status       int
+		}{
+			{http.MethodGet, "/api/balance-ledger/?category=invalid", http.StatusBadRequest},
+			{http.MethodGet, "/api/model-profit/", http.StatusBadRequest},
+			{http.MethodGet, "/api/model-profit/cost-rules", http.StatusOK},
+			{http.MethodPut, "/api/model-profit/cost-rules", http.StatusBadRequest},
+			{http.MethodGet, "/api/upstream-topup/", http.StatusOK},
+			{http.MethodPost, "/api/upstream-topup/", http.StatusOK},
+			{http.MethodPut, "/api/upstream-topup/invalid", http.StatusOK},
+			{http.MethodDelete, "/api/upstream-topup/invalid", http.StatusOK},
+			{http.MethodPost, "/api/wechat/reconcile", http.StatusOK},
+		} {
+			token := sessions[common.RoleAdminUser].AccessToken
+			if entry.method == http.MethodPut && entry.path == "/api/model-profit/cost-rules" || entry.path == "/api/wechat/reconcile" {
+				token = sessions[common.RoleRootUser].AccessToken
+			}
+			w := request(actual, entry.method, entry.path, token, `{}`, "")
+			assert.Equal(t, entry.status, w.Code, w.Body.String())
+			if entry.method != http.MethodGet {
+				assert.Contains(t, w.Body.String(), `"success":false`)
+			}
+		}
+		for _, table := range []any{&model.TopUp{}, &model.UpstreamTopup{}} {
+			var count int64
+			require.NoError(t, db.Model(table).Count(&count).Error)
+			assert.Zero(t, count)
+		}
+	})
+	t.Run("wallet scope cannot read another account order", func(t *testing.T) {
+		order := model.TopUp{UserId: 7521, TradeNo: "synthetic-existing-order", Amount: 500, Money: 1, Status: common.TopUpStatusPending, PaymentMethod: model.PaymentMethodWechat, PaymentProvider: model.PaymentProviderWechat}
+		require.NoError(t, db.Create(&order).Error)
+		for _, actor := range []struct {
+			name, token string
+			owns        bool
+		}{{"owner session", sessions[common.RoleCommonUser].AccessToken, true}, {"owner PAT", pats["wallet read"], true}, {"other root PAT", pats["root PAT"], false}, {"other root session", sessions[common.RoleRootUser].AccessToken, false}} {
+			w := request(actual, http.MethodGet, "/api/user/wechat/order?out_trade_no="+order.TradeNo, actor.token, "", "")
+			require.Equal(t, http.StatusOK, w.Code, actor.name+" "+w.Body.String())
+			assert.Contains(t, w.Body.String(), fmt.Sprintf(`"success":%t`, actor.owns), actor.name)
+			if !actor.owns {
+				assert.NotContains(t, w.Body.String(), order.TradeNo)
+			}
+		}
+		var after model.TopUp
+		require.NoError(t, db.First(&after, order.Id).Error)
+		assert.Equal(t, order, after)
+	})
+	t.Run("anonymous routes retain controller validation", func(t *testing.T) {
+		for _, path := range []string{"/api/user/phone/challenge", "/api/user/phone/login"} {
+			_, declared := middleware.AccessTokenRouteRule(http.MethodPost + " " + path)
+			require.False(t, declared)
+			require.Contains(t, accessTokenExemptRoutes, http.MethodPost+" "+path)
+			w := request(actual, http.MethodPost, path, "", `{}`, "")
+			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			assert.Contains(t, w.Body.String(), `"code":"PHONE_INVALID_PARAMETERS"`)
+		}
+		w := request(actual, http.MethodPost, "/api/user/wechat/notify", "", `{}`, "")
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"code":"FAIL","message":"wechat pay not enabled"}`, w.Body.String())
+	})
+	t.Run("public callback still verifies raw body signature serial and freshness", func(t *testing.T) {
+		previous := []string{common.WechatAppId, common.WechatMchId, common.WechatApiV3Key, common.WechatMerchantSerial, common.WechatMerchantKeyPath, common.WechatPlatformKeyId, common.WechatPlatformKeyPath, common.WechatNotifyUrl}
+		defer func() {
+			common.WechatPayEnabled = false
+			common.WechatAppId, common.WechatMchId, common.WechatApiV3Key, common.WechatMerchantSerial = previous[0], previous[1], previous[2], previous[3]
+			common.WechatMerchantKeyPath, common.WechatPlatformKeyId, common.WechatPlatformKeyPath, common.WechatNotifyUrl = previous[4], previous[5], previous[6], previous[7]
+		}()
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, err)
+		public, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+		require.NoError(t, err)
+		publicPath := filepath.Join(t.TempDir(), "synthetic-platform-public.pem")
+		require.NoError(t, os.WriteFile(publicPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: public}), 0o600))
+		common.WechatPayEnabled = true
+		common.WechatAppId, common.WechatMchId, common.WechatApiV3Key, common.WechatMerchantSerial = "synthetic-app", "synthetic-merchant", strings.Repeat("s", 32), "synthetic-merchant-serial"
+		common.WechatMerchantKeyPath, common.WechatPlatformKeyId, common.WechatPlatformKeyPath, common.WechatNotifyUrl = "unused-synthetic-private-key", "synthetic-platform-serial", publicPath, "https://callback.invalid"
+		const body = `{"event_type":"TRANSACTION.CLOSED"}`
+		for _, entry := range []struct {
+			name, timestamp, serial, signedBody string
+			status                              int
+		}{
+			{"valid non-settlement event", strconv.FormatInt(time.Now().Unix(), 10), "synthetic-platform-serial", body, http.StatusOK},
+			{"tampered body", strconv.FormatInt(time.Now().Unix(), 10), "synthetic-platform-serial", body + " ", http.StatusUnauthorized},
+			{"wrong serial", strconv.FormatInt(time.Now().Unix(), 10), "wrong-platform-serial", body, http.StatusUnauthorized},
+			{"stale notification", strconv.FormatInt(time.Now().Add(-24*time.Hour).Unix(), 10), "synthetic-platform-serial", body, http.StatusUnauthorized},
+			{"missing signature", strconv.FormatInt(time.Now().Unix(), 10), "synthetic-platform-serial", "", http.StatusUnauthorized},
+		} {
+			t.Run(entry.name, func(t *testing.T) {
+				r := httptest.NewRequest(http.MethodPost, "/api/user/wechat/notify", strings.NewReader(body))
+				r.Header.Set("Wechatpay-Timestamp", entry.timestamp)
+				r.Header.Set("Wechatpay-Nonce", "synthetic-notification-nonce")
+				r.Header.Set("Wechatpay-Serial", entry.serial)
+				if entry.signedBody != "" {
+					digest := sha256.Sum256([]byte(strings.Join([]string{entry.timestamp, "synthetic-notification-nonce", entry.signedBody, ""}, "\n")))
+					signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+					require.NoError(t, err)
+					r.Header.Set("Wechatpay-Signature", base64.StdEncoding.EncodeToString(signature))
+				}
+				w := httptest.NewRecorder()
+				actual.ServeHTTP(w, r)
+				assert.Equal(t, entry.status, w.Code, w.Body.String())
+				assert.Contains(t, w.Body.String(), map[bool]string{true: `"code":"SUCCESS"`, false: `"code":"FAIL"`}[entry.status == http.StatusOK])
+			})
+		}
+	})
+	t.Run("disabled account cannot reuse a live session", func(t *testing.T) {
+		require.NoError(t, db.Model(&model.User{}).Where("id = ?", 7523).Update("status", common.UserStatusDisabled).Error)
+		for _, route := range routes {
+			w := request(actual, route.method, strings.ReplaceAll(route.path, ":id", "invalid"), sessions[common.RoleRootUser].AccessToken, `{}`, "")
+			assert.Equal(t, http.StatusUnauthorized, w.Code, w.Body.String())
+		}
+	})
+
 }

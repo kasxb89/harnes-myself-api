@@ -61,6 +61,17 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/client-model-config/models":       accessTokenSessionRule,
 	"GET /api/client-model-config/presentation": accessTokenSessionRule,
 	"PUT /api/client-model-config/presentation": accessTokenSessionRule,
+	// Operational finance is managed interactively. Existing AdminAuth/RootAuth
+	// still decides the role; neither legacy nor scoped tokens grant this access.
+	"GET /api/balance-ledger/":         accessTokenSessionRule,
+	"GET /api/model-profit/":           accessTokenSessionRule,
+	"GET /api/model-profit/cost-rules": accessTokenSessionRule,
+	"PUT /api/model-profit/cost-rules": accessTokenSessionRule,
+	"GET /api/upstream-topup/":         accessTokenSessionRule,
+	"POST /api/upstream-topup/":        accessTokenSessionRule,
+	"PUT /api/upstream-topup/:id":      accessTokenSessionRule,
+	"DELETE /api/upstream-topup/:id":   accessTokenSessionRule,
+	"POST /api/wechat/reconcile":       accessTokenSessionRule,
 
 	// router/api-router.go: top level
 	"GET /api/models":                     accessTokenScopeRule("profile:read"),
@@ -103,6 +114,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"DELETE /api/user/passkey":                     accessTokenScopeRule("account_security:write"),
 	"GET /api/user/aff":                            accessTokenScopeRule("wallet:read"),
 	"GET /api/user/topup/info":                     accessTokenScopeRule("wallet:read"),
+	"GET /api/user/wechat/order":                   accessTokenScopeRule("wallet:read"),
+	"POST /api/user/wechat/native":                 accessTokenScopeRule("wallet:write"),
 	"GET /api/user/topup/self":                     accessTokenScopeRule("wallet:read"),
 	"POST /api/user/topup":                         accessTokenScopeRule("wallet:write"),
 	"POST /api/user/pay":                           accessTokenScopeRule("wallet:write"),
