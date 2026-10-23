@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { LinkProps } from '@tanstack/react-router'
 
-import type { NavItem, NavCollapsible } from '../types'
+import type { NavItem } from '../types'
 
 /**
  * Convert LinkProps['to'] to string
@@ -67,28 +67,7 @@ export function checkIsActive(
 
   // For collapsible items (NavCollapsible), check sub-items first
   if ('items' in item && item.items) {
-    const collapsibleItem = item as NavCollapsible
-    const items = collapsibleItem.items
-
-    // Check if any sub-item matches
-    if (
-      items.some((i) => {
-        if (!i?.url) return false
-        const subItemUrl = urlToString(i.url)
-        if (!subItemUrl) return false
-        if (href === subItemUrl) return true
-        const subItemUrlWithoutQuery = subItemUrl.split('?')[0]
-        const subItemUrlHasQuery = subItemUrl.includes('?')
-        if (subItemUrlWithoutQuery === hrefWithoutQuery) {
-          // If sub-item URL has no query params, pathname match is enough (href may have query params)
-          if (!subItemUrlHasQuery) return true
-          // If sub-item URL has query params, they must match exactly
-          if (subItemUrlHasQuery && href === subItemUrl) return true
-        }
-        return false
-      })
-    )
-      return true
+    return item.items.some((subItem) => checkIsActive(href, subItem))
   }
 
   // For regular link items, check the item's URL

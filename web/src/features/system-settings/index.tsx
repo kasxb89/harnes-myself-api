@@ -16,8 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Outlet } from '@tanstack/react-router'
+import { Outlet, useLocation } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
+
+import { ErrorState } from '@/components/error-state'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 export function SystemSettings() {
+  const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const location = useLocation()
+  if (!canAccessAdminRoute(user, location.pathname)) {
+    return <ErrorState title={t('Access denied')} />
+  }
   return <Outlet />
 }

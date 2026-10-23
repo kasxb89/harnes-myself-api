@@ -23,9 +23,24 @@ import {
   DASHBOARD_SECTION_IDS,
   DASHBOARD_DEFAULT_SECTION,
 } from '@/features/dashboard/section-registry'
+import { hasPermission } from '@/lib/admin-permissions'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/dashboard/$section')({
   beforeLoad: ({ params }) => {
+    const user = useAuthStore.getState().auth.user
+    if (
+      params.section === 'users' &&
+      (!user ||
+        user.role < ROLE.ADMIN ||
+        !hasPermission(user, 'operations', 'read'))
+    ) {
+      throw redirect({
+        to: '/dashboard/$section',
+        params: { section: 'models' },
+      })
+    }
     const validSections = DASHBOARD_SECTION_IDS as unknown as string[]
     if (!validSections.includes(params.section)) {
       throw redirect({

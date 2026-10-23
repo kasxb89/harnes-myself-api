@@ -28,30 +28,34 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/client-announcements", controller.GetClientAnnouncements)
 		customerServiceRoute := apiRouter.Group("/customer-service", middleware.DisableCache(), middleware.AdminAuth())
-		customerServiceRoute.GET("", controller.GetCustomerService)
-		customerServiceRoute.PUT("", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("customer-service-save"), controller.SaveCustomerService)
+		customerServiceRoute.GET("", middleware.RequirePermission(authz.CustomerServiceRead), controller.GetCustomerService)
+		customerServiceRoute.PUT("", middleware.RequirePermission(authz.CustomerServiceWrite), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("customer-service-save"), controller.SaveCustomerService)
+		customerServiceRoute.POST("/assets", middleware.RequirePermission(authz.CustomerServiceWrite), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("customer-service-upload"), controller.UploadCustomerServiceAsset)
+		announcementRoute := apiRouter.Group("/announcements", middleware.DisableCache(), middleware.AdminAuth())
+		announcementRoute.GET("", middleware.RequirePermission(authz.AnnouncementsRead), controller.GetAdminAnnouncements)
+		announcementRoute.PUT("", middleware.RequirePermission(authz.AnnouncementsWrite), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("announcements-save"), controller.SaveAdminAnnouncements)
 		creationRoute := apiRouter.Group("/creation")
 		{
 			creationRoute.GET("/content", controller.GetCreationContent)
 			creationRoute.GET("/assets/:id", controller.GetCreationAsset)
 			creationRoute.HEAD("/assets/:id", controller.GetCreationAsset)
 			creationAdmin := creationRoute.Group("/admin", middleware.AdminAuth())
-			creationAdmin.GET("/content", controller.GetAdminCreationContent)
-			creationAdmin.PUT("/content", middleware.SessionCookieOriginGuard(), controller.SaveCreationContent)
-			creationAdmin.POST("/assets", middleware.SessionCookieOriginGuard(), controller.UploadCreationAsset)
+			creationAdmin.GET("/content", middleware.RequirePermission(authz.CreationContentRead), controller.GetAdminCreationContent)
+			creationAdmin.PUT("/content", middleware.RequirePermission(authz.CreationContentWrite), middleware.SessionCookieOriginGuard(), controller.SaveCreationContent)
+			creationAdmin.POST("/assets", middleware.RequirePermission(authz.CreationContentWrite), middleware.SessionCookieOriginGuard(), controller.UploadCreationAsset)
 		}
 
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		clientModelRoute := apiRouter.Group("/client-model-config", middleware.DisableCache(), middleware.AdminAuth())
 		{
-			clientModelRoute.GET("", controller.GetClientModelConfig)
-			clientModelRoute.PUT("", middleware.SessionCookieOriginGuard(), controller.SaveClientModelConfig)
-			clientModelRoute.GET("/models", controller.GetClientModelCandidates)
-			clientModelRoute.GET("/presentation", controller.GetClientModelPresentation)
-			clientModelRoute.PUT("/presentation", middleware.SessionCookieOriginGuard(), controller.SaveClientModelPresentation)
+			clientModelRoute.GET("", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelConfig)
+			clientModelRoute.PUT("", middleware.RequirePermission(authz.ClientModelConfigWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientModelConfig)
+			clientModelRoute.GET("/models", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelCandidates)
+			clientModelRoute.GET("/presentation", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelPresentation)
+			clientModelRoute.PUT("/presentation", middleware.RequirePermission(authz.ClientModelConfigWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientModelPresentation)
 		}
-		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
+		apiRouter.GET("/status/test", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
@@ -345,18 +349,19 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
-		apiRouter.GET("/balance-ledger/", middleware.AdminAuth(), controller.GetBalanceLedger)
-		apiRouter.GET("/model-profit/", middleware.AdminAuth(), controller.GetModelProfits)
-		apiRouter.GET("/model-profit/cost-rules", middleware.AdminAuth(), controller.GetModelProfitCostRules)
+		apiRouter.GET("/operations/overview", middleware.DisableCache(), middleware.AdminAuth(), middleware.RequirePermission(authz.OperationsRead), controller.GetOperationsOverview)
+		apiRouter.GET("/balance-ledger/", middleware.AdminAuth(), middleware.RequirePermission(authz.BalanceLedgerRead), controller.GetBalanceLedger)
+		apiRouter.GET("/model-profit/", middleware.AdminAuth(), middleware.RequirePermission(authz.ModelProfitsRead), controller.GetModelProfits)
+		apiRouter.GET("/model-profit/cost-rules", middleware.AdminAuth(), middleware.RequirePermission(authz.ModelProfitsRead), controller.GetModelProfitCostRules)
 		apiRouter.PUT("/model-profit/cost-rules", middleware.RootAuth(), controller.SaveModelProfitCostRules)
 
 		upstreamTopupRoute := apiRouter.Group("/upstream-topup")
-		upstreamTopupRoute.Use(middleware.AdminAuth())
+		upstreamTopupRoute.Use(middleware.DisableCache(), middleware.AdminAuth())
 		{
-			upstreamTopupRoute.GET("/", controller.GetUpstreamTopups)
-			upstreamTopupRoute.POST("/", controller.AddUpstreamTopup)
-			upstreamTopupRoute.PUT("/:id", controller.UpdateUpstreamTopup)
-			upstreamTopupRoute.DELETE("/:id", controller.DeleteUpstreamTopup)
+			upstreamTopupRoute.GET("/", middleware.RequirePermission(authz.UpstreamTopupsRead), controller.GetUpstreamTopups)
+			upstreamTopupRoute.POST("/", middleware.RequirePermission(authz.UpstreamTopupsWrite), middleware.SessionCookieOriginGuard(), controller.AddUpstreamTopup)
+			upstreamTopupRoute.PUT("/:id", middleware.RequirePermission(authz.UpstreamTopupsWrite), middleware.SessionCookieOriginGuard(), controller.UpdateUpstreamTopup)
+			upstreamTopupRoute.DELETE("/:id", middleware.RequirePermission(authz.UpstreamTopupsWrite), middleware.SessionCookieOriginGuard(), controller.DeleteUpstreamTopup)
 		}
 
 		redemptionRoute := apiRouter.Group("/redemption")
@@ -377,28 +382,28 @@ func SetApiRouter(router *gin.Engine) {
 		clientActivityRoute.Use(middleware.DisableCache())
 		{
 			clientActivityRoute.POST("/heartbeat", middleware.UserAuth(), middleware.ClientActivityRateLimit(), controller.ClientActivityHeartbeat)
-			clientActivityRoute.GET("/summary", middleware.AdminAuth(), controller.GetClientActivitySummary)
-			clientActivityRoute.GET("/sessions", middleware.AdminAuth(), controller.GetClientActivitySessions)
-			clientActivityRoute.GET("/sessions/:id", middleware.AdminAuth(), controller.GetClientActivitySession)
+			clientActivityRoute.GET("/summary", middleware.AdminAuth(), middleware.RequirePermission(authz.UserActivityRead), controller.GetClientActivitySummary)
+			clientActivityRoute.GET("/sessions", middleware.AdminAuth(), middleware.RequirePermission(authz.UserActivityRead), controller.GetClientActivitySessions)
+			clientActivityRoute.GET("/sessions/:id", middleware.AdminAuth(), middleware.RequirePermission(authz.UserActivityRead), controller.GetClientActivitySession)
 		}
 
-		apiRouter.GET("/media-operations", middleware.DisableCache(), middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetMediaOperations)
+		apiRouter.GET("/media-operations", middleware.DisableCache(), middleware.AdminAuth(), middleware.RequirePermission(authz.MediaOperationsRead), middleware.SearchRateLimit(), controller.GetMediaOperations)
 		mediaConcurrency := apiRouter.Group("/media-concurrency", middleware.DisableCache())
 		{
-			mediaConcurrency.GET("", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetMediaConcurrency)
+			mediaConcurrency.GET("", middleware.AdminAuth(), middleware.RequirePermission(authz.MediaOperationsRead), middleware.SearchRateLimit(), controller.GetMediaConcurrency)
 			mediaConcurrency.PUT("", middleware.RootAuth(), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("media-concurrency"), controller.SaveMediaConcurrency)
 			mediaConcurrency.POST("/refresh", middleware.RootAuth(), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("media-concurrency-refresh"), controller.RefreshMediaConcurrency)
 		}
-		apiRouter.GET("/video-usage", middleware.DisableCache(), middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetVideoUsage)
+		apiRouter.GET("/video-usage", middleware.DisableCache(), middleware.AdminAuth(), middleware.RequirePermission(authz.VideoUsageRead), middleware.SearchRateLimit(), controller.GetVideoUsage)
 
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
-		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
+		logRoute.GET("/", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.GetAllLogs)
+		logRoute.GET("/stat", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
-		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
-		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
+		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.GetChannelAffinityUsageCacheStats)
+		logRoute.GET("/search", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
-		logRoute.GET("/export", middleware.AdminAuth(), controller.ExportAllLogs)
+		logRoute.GET("/export", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.ExportAllLogs)
 		logRoute.GET("/self/export", middleware.UserAuth(), controller.ExportUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
 
@@ -420,10 +425,10 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		dataRoute := apiRouter.Group("/data")
-		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
-		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
+		dataRoute.GET("/", middleware.AdminAuth(), middleware.RequirePermission(authz.OperationsRead), controller.GetAllQuotaDates)
+		dataRoute.GET("/users", middleware.AdminAuth(), middleware.RequirePermission(authz.OperationsRead), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
-		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
+		dataRoute.GET("/flow", middleware.AdminAuth(), middleware.RequirePermission(authz.OperationsRead), controller.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())

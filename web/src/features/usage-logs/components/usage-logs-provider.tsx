@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
+import { hasPermission } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -102,9 +103,13 @@ export function useUsageLogsContext() {
  * mine" is treated exactly like a regular user for that view.
  */
 export function useLogsViewScope() {
-  const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
-  const { viewScope, setViewScope } = useUsageLogsContext()
-  const canManageScope = role >= ROLE.ADMIN
+  const user = useAuthStore((state) => state.auth.user)
+  const role = user?.role ?? ROLE.GUEST
+  const { viewScope: preferredScope, setViewScope: setPreferredScope } =
+    useUsageLogsContext()
+  const canManageScope =
+    role >= ROLE.ADMIN && hasPermission(user, 'diagnostics', 'read')
+  const viewScope = canManageScope ? preferredScope : 'self'
   const viewAccess = resolveLogsViewAccess(role, viewScope)
   const isAdminView = viewAccess !== 'self'
   const isRootView = viewAccess === 'root'
@@ -112,7 +117,8 @@ export function useLogsViewScope() {
   return {
     canManageScope,
     viewScope,
-    setViewScope,
+    setViewScope: (scope: LogsViewScope) =>
+      setPreferredScope(canManageScope ? scope : 'self'),
     isAdminView,
     isRootView,
     viewAccess,

@@ -25,7 +25,7 @@ import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { ROLE } from '@/lib/roles'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getBalanceLedger } from './api'
@@ -40,7 +40,7 @@ const INITIAL_FILTERS: BalanceFilters = { p: 1, page_size: 20, category: 'all' }
 export function BalanceLedger() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const allowed = !!user && user.role >= ROLE.ADMIN
+  const allowed = canAccessAdminRoute(user, '/balance-ledger')
   const [filters, setFilters] = useState(INITIAL_FILTERS)
   const [draftUserId, setDraftUserId] = useState('')
   const [invalidUser, setInvalidUser] = useState(false)

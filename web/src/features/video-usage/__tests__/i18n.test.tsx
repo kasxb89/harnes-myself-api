@@ -68,9 +68,12 @@ it.each([
       nsSeparator: false,
       resources: { en, [language]: resources },
     })
-    useAuthStore
-      .getState()
-      .auth.setUser({ id: 1, username: 'admin', role: ROLE.ADMIN })
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'admin',
+      role: ROLE.ADMIN,
+      permissions: { admin_permissions: { video_usage: { read: true } } },
+    })
     vi.spyOn(api, 'get').mockResolvedValue({
       data: { success: true, data: videoPayload },
     })

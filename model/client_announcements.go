@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/console_setting"
@@ -427,4 +428,76 @@ func clientAnnouncementPlainText(value string) string {
 		return r
 	}, strings.ReplaceAll(text.String(), "\r\n", "\n"))
 	return strings.TrimSpace(clean)
+}
+
+// AdminAnnouncementsConfig is a narrow view of the existing announcement
+// options. It cannot carry unrelated options or server-owned timestamp metadata.
+type AdminAnnouncementsConfig struct {
+	Announcements string `json:"console_setting.announcements"`
+	Enabled       string `json:"console_setting.announcements_enabled"`
+}
+
+const MaxAdminAnnouncementsBodyBytes = 4 * 1024 * 1024
+
+func ParseAdminAnnouncementsConfig(data []byte) (AdminAnnouncementsConfig, error) {
+	invalid := AdminAnnouncementsConfig{}
+	if len(data) == 0 || len(data) > MaxAdminAnnouncementsBodyBytes || !utf8.Valid(data) {
+		return invalid, common.NewMessage("Invalid parameters")
+	}
+	var object map[string]common.RawMessage
+	if common.Unmarshal(data, &object) != nil || len(object) != 2 {
+		return invalid, common.NewMessage("Invalid parameters")
+	}
+	for key := range object {
+		if key != clientAnnouncementsOption && key != clientAnnouncementsEnabledOption {
+			return invalid, common.NewMessage("Invalid parameters")
+		}
+	}
+	var wire struct {
+		Announcements clientModelConfigField `json:"console_setting.announcements"`
+		Enabled       clientModelConfigField `json:"console_setting.announcements_enabled"`
+	}
+	if common.Unmarshal(data, &wire) != nil || !wire.Announcements.seen || !wire.Enabled.seen {
+		return invalid, common.NewMessage("Invalid parameters")
+	}
+	var config AdminAnnouncementsConfig
+	if common.Unmarshal(wire.Announcements.raw, &config.Announcements) != nil || common.Unmarshal(wire.Enabled.raw, &config.Enabled) != nil ||
+		len(config.Announcements) > clientAnnouncementsMaxBytes || (config.Enabled != "true" && config.Enabled != "false") {
+		return invalid, common.NewMessage("Invalid parameters")
+	}
+	if err := console_setting.ValidateConsoleSettings(config.Announcements, "Announcements"); err != nil {
+		return invalid, err
+	}
+	return config, nil
+}
+
+func GetAdminAnnouncementsConfig(ctx context.Context) (AdminAnnouncementsConfig, error) {
+	config := AdminAnnouncementsConfig{Announcements: "[]", Enabled: "true"}
+	if DB == nil {
+		return config, ErrClientAnnouncementsUnavailable
+	}
+	var options []Option
+	if err := DB.WithContext(ctx).Where(clause.IN{Column: clause.Column{Name: "key"}, Values: []any{clientAnnouncementsOption, clientAnnouncementsEnabledOption}}).Find(&options).Error; err != nil {
+		return config, ErrClientAnnouncementsUnavailable
+	}
+	for _, option := range options {
+		switch option.Key {
+		case clientAnnouncementsOption:
+			config.Announcements = option.Value
+		case clientAnnouncementsEnabledOption:
+			enabled, err := strconv.ParseBool(option.Value)
+			if err != nil {
+				return config, ErrClientAnnouncementsUnavailable
+			}
+			config.Enabled = strconv.FormatBool(enabled)
+		default:
+			return config, ErrClientAnnouncementsUnavailable
+		}
+	}
+	config.Announcements = ProjectClientAnnouncementsForAdmin(ctx, config.Announcements, config.Enabled == "true")
+	return config, nil
+}
+
+func SaveAdminAnnouncementsConfig(config AdminAnnouncementsConfig) error {
+	return UpdateOptionsBulk(map[string]string{clientAnnouncementsOption: config.Announcements, clientAnnouncementsEnabledOption: config.Enabled})
 }

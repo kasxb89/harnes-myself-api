@@ -33,6 +33,7 @@ import {
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 
 import { SearchProvider } from '@/context/search-provider'
+import type { AdminPermissionMatrix } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -68,20 +69,32 @@ function NavigationProbe() {
         {navGroups.map((group) => (
           <section key={group.id} aria-label={group.title}>
             <h2>{group.title}</h2>
-            {group.items.map((item) =>
-              item.url ? (
-                <a key={item.url} href={item.url}>
-                  {item.title}
-                </a>
-              ) : null
-            )}
+            {group.items.map((item) => (
+              <div key={item.title}>
+                <h3>{item.title}</h3>
+                {(
+                  item.items ??
+                  (item.type === 'chat-presets' ? (item.links ?? []) : [item])
+                ).map((child) =>
+                  child.url ? (
+                    <a key={child.url} href={child.url}>
+                      {child.title}
+                    </a>
+                  ) : null
+                )}
+              </div>
+            ))}
           </section>
         ))}
       </nav>
     </SearchProvider>
   )
 }
-async function setup(role: number = ROLE.ADMIN, adminConfig?: object) {
+async function setup(
+  role: number = ROLE.SUPER_ADMIN,
+  adminConfig?: object,
+  permissions?: AdminPermissionMatrix
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -89,7 +102,12 @@ async function setup(role: number = ROLE.ADMIN, adminConfig?: object) {
   client.setQueryData(['status'], {
     SidebarModulesAdmin: adminConfig ? JSON.stringify(adminConfig) : '',
   })
-  useAuthStore.getState().auth.setUser({ id: 1, username: 'test', role })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'test',
+    role,
+    permissions: { admin_permissions: permissions },
+  })
   const root = createRootRoute({ component: NavigationProbe })
   const router = createRouter({
     routeTree: root,
@@ -109,87 +127,109 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
 })
 
-it('places the dedicated operational entries immediately below General and before Personal for administrators', async () => {
+it('groups root navigation into nine business entries and lists each destination once', async () => {
   await setup()
-  const groups = within(screen.getByRole('navigation'))
-    .getAllByRole('heading', { level: 2 })
-    .map((heading) => heading.textContent)
-  expect(groups.indexOf('Operations management')).toBe(
-    groups.indexOf('General') + 1
-  )
-  expect(groups.indexOf('Personal')).toBe(
-    groups.indexOf('Operations management') + 1
-  )
-  const operations = screen.getByRole('region', {
-    name: 'Operations management',
-  })
   expect(
-    within(operations)
-      .getAllByRole('link')
-      .map((link) => link.textContent)
+    within(screen.getByRole('navigation'))
+      .getAllByRole('heading', { level: 2 })
+      .map((item) => item.textContent)
+  ).toEqual(['Daily work', 'Platform operations', 'Platform configuration'])
+  expect(
+    within(screen.getByRole('navigation'))
+      .getAllByRole('heading', { level: 3 })
+      .map((item) => item.textContent)
   ).toEqual([
-    'Operations dashboard',
-    'Model profits',
-    'Image and video operations',
-    'Video model usage',
-    'Balance ledger',
-    'User Activity',
-    'API Error Logs',
-    'Client model configuration',
-    'AI Creation Management',
+    'Workbench',
+    'My usage',
+    'Chat sessions',
+    'Users & assets',
+    'Business & finance',
+    'Tasks & diagnostics',
+    'Models & channels',
+    'Content & clients',
+    'System management',
   ])
-  expect(
-    within(screen.getByRole('region', { name: 'Admin' })).queryByRole('link', {
-      name: 'User Activity',
-    })
-  ).not.toBeInTheDocument()
+  const links = within(screen.getByRole('navigation'))
+    .getAllByRole('link')
+    .map((item) => item.getAttribute('href'))
+  expect(new Set(links).size).toBe(links.length)
+  expect(links).not.toEqual(
+    expect.arrayContaining(['/profile', '/security', '/wallet'])
+  )
 })
-it('hides the whole operations group from ordinary users including its command search entries', async () => {
+it('ordinary users keep their logs and cannot see nested administration links or command entries', async () => {
   await setup(ROLE.USER)
   expect(
-    screen.queryByRole('region', { name: 'Operations management' })
+    screen.queryByRole('link', { name: 'Channels' })
   ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'User Analytics' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Task Logs' })).toBeVisible()
   fireEvent.keyDown(document, { key: 'k', ctrlKey: true })
   const dialog = await screen.findByRole('dialog')
-  expect(within(dialog).getByRole('option', { name: 'Overview' })).toBeVisible()
   expect(
-    within(dialog).queryByRole('option', { name: 'Balance ledger' })
-  ).not.toBeInTheDocument()
+    within(dialog).getByRole('option', { name: /Workbench.*Overview/ })
+  ).toBeVisible()
   expect(
-    within(dialog).queryByRole('option', { name: 'Model profits' })
-  ).not.toBeInTheDocument()
-  expect(
-    within(dialog).queryByRole('option', { name: 'User Activity' })
-  ).not.toBeInTheDocument()
-  expect(
-    within(dialog).queryByRole('option', { name: 'Image and video operations' })
-  ).not.toBeInTheDocument()
-  expect(
-    within(dialog).queryByRole('option', { name: 'Video model usage' })
+    within(dialog).queryByRole('option', { name: /Business & finance/ })
   ).not.toBeInTheDocument()
 })
-it('preserves existing module visibility settings in the new group and command search', async () => {
-  await setup(ROLE.ADMIN, { admin: { enabled: true, setting: false } })
+it('administrators see only independently granted new sensitive links and search results', async () => {
+  await setup(ROLE.ADMIN, undefined, { model_profits: { read: true } })
+  expect(screen.getByRole('link', { name: 'Model profits' })).toBeVisible()
   expect(
     screen.queryByRole('link', { name: 'Balance ledger' })
   ).not.toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'User Activity' })).toBeVisible()
+  expect(
+    screen.queryByRole('link', { name: 'Customer service QR code' })
+  ).not.toBeInTheDocument()
+  fireEvent.keyDown(document, { key: 'k', ctrlKey: true })
+  const dialog = await screen.findByRole('dialog')
+  const input = within(dialog).getByRole('combobox')
+  fireEvent.change(input, { target: { value: 'Model profits' } })
+  expect(
+    await within(dialog).findByRole('option', {
+      name: /Business & finance.*Model profits/,
+    })
+  ).toBeVisible()
+  expect(
+    within(dialog).queryByRole('option', { name: /Balance ledger/ })
+  ).not.toBeInTheDocument()
+})
+it('does not expose sensitive links while administrator self permissions are not loaded', async () => {
+  await setup(ROLE.ADMIN)
+  expect(
+    screen.queryByRole('link', { name: 'Model profits' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Image and video operations' })
+  ).not.toBeInTheDocument()
+})
+it('retains the administrator role floor even if an ordinary account receives a stale capability', async () => {
+  await setup(ROLE.USER, undefined, {
+    model_profits: { read: true },
+    channel: { read: true },
+    customer_service: { read: true },
+  })
+  expect(
+    screen.queryByRole('link', { name: 'Model profits' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Channels' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Customer service QR code' })
+  ).not.toBeInTheDocument()
+})
+it('platform disablement removes empty business parents and their command entries', async () => {
+  await setup(ROLE.SUPER_ADMIN, { finance: { enabled: false } })
+  expect(
+    screen.queryByRole('heading', { name: 'Business & finance' })
+  ).not.toBeInTheDocument()
   fireEvent.keyDown(document, { key: 'k', ctrlKey: true })
   const dialog = await screen.findByRole('dialog')
   expect(
-    within(dialog).queryByRole('option', { name: 'Balance ledger' })
+    within(dialog).queryByRole('option', { name: /Model profits/ })
   ).not.toBeInTheDocument()
-  expect(
-    within(dialog).getByRole('option', { name: 'User Activity' })
-  ).toBeVisible()
-})
-it('does not leave an empty operations heading when all contributing modules are disabled', async () => {
-  await setup(ROLE.ADMIN, {
-    admin: { enabled: false },
-    console: { enabled: true, log: false },
-  })
-  expect(
-    screen.queryByRole('region', { name: 'Operations management' })
-  ).not.toBeInTheDocument()
-  expect(screen.getByRole('region', { name: 'General' })).toBeVisible()
 })

@@ -146,7 +146,12 @@ it('loads personal groups and filters choices without submitting until Search', 
 })
 
 it('loads all groups in the administrator view', async () => {
-  useAuthStore.getState().auth.setUser({ id: 1, username: 'admin', role: 10 })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: 10,
+    permissions: { admin_permissions: { diagnostics: { read: true } } },
+  })
   await renderFilter()
   await userEvent.click(screen.getByRole('combobox', { name: 'Group' }))
   expect(await screen.findByRole('option', { name: 'premium' })).toBeVisible()

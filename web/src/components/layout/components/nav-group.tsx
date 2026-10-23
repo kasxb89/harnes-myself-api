@@ -165,7 +165,7 @@ function SidebarMenuCollapsible({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsOpen(true)
     }
-  }, [isSubItemActive])
+  }, [isSubItemActive, href])
 
   return (
     <Collapsible
@@ -176,7 +176,9 @@ function SidebarMenuCollapsible({
     >
       <CollapsibleTrigger
         className='group/collapsible-trigger'
-        render={<SidebarMenuButton tooltip={item.title} />}
+        render={
+          <SidebarMenuButton tooltip={item.title} isActive={isSubItemActive} />
+        }
       >
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>

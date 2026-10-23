@@ -57,9 +57,12 @@ async function renderLogs(props: {
   enabledPlans: boolean[]
   activeSubscription: boolean
 }) {
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 1, username: 'tester', role: props.role })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'tester',
+    role: props.role,
+    permissions: { admin_permissions: { diagnostics: { read: true } } },
+  })
   const records = ['wallet', 'subscription'].map((source, index) =>
     usageLogSchema.parse({
       id: index + 1,

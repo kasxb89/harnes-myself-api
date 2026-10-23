@@ -146,19 +146,11 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 
 	assert.True(t, Can(42, common.RoleAdminUser, ChannelSensitiveWrite))
 	assert.False(t, Can(42, common.RoleAdminUser, ChannelWrite))
-	assert.Equal(t, PermissionsMap{
-		ResourceChannel: {
-			ActionRead:           true,
-			ActionOperate:        true,
-			ActionWrite:          false,
-			ActionSensitiveWrite: true,
-			ActionSecretView:     false,
-		},
-		ResourceTaskPlugin: {
-			ActionBind: false,
-		},
-		ResourceAudit: {ActionRead: false},
-	}, ExplicitUserPermissions(42))
+	expected := roleGrants(builtInRoles[1])
+	expected[ResourceChannel] = map[string]bool{
+		ActionRead: true, ActionOperate: true, ActionWrite: false, ActionSensitiveWrite: true, ActionSecretView: false,
+	}
+	assert.Equal(t, expected, ExplicitUserPermissions(42))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
 			ActionSensitiveWrite: true,
@@ -178,19 +170,9 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 		ActionSecretView:     false,
 	}}))
 	assert.False(t, Can(42, common.RoleAdminUser, ChannelSensitiveWrite))
-	assert.Equal(t, PermissionsMap{
-		ResourceChannel: {
-			ActionRead:           true,
-			ActionOperate:        true,
-			ActionWrite:          true,
-			ActionSensitiveWrite: false,
-			ActionSecretView:     false,
-		},
-		ResourceTaskPlugin: {
-			ActionBind: false,
-		},
-		ResourceAudit: {ActionRead: false},
-	}, ExplicitUserPermissions(42))
+	expected[ResourceChannel][ActionWrite] = true
+	expected[ResourceChannel][ActionSensitiveWrite] = false
+	assert.Equal(t, expected, ExplicitUserPermissions(42))
 	assert.Empty(t, ExplicitUserOverrides(42))
 }
 
@@ -319,4 +301,41 @@ func TestTaskPluginBindIsRootOnlyUntilGranted(t *testing.T) {
 	_, err = enforcer.RemovePolicy(RoleSubject(BuiltInRoleAdmin), ResourceTaskPlugin, ActionBind, EffectAllow)
 	require.NoError(t, err)
 	assert.False(t, Can(2, common.RoleAdminUser, TaskPluginBind))
+}
+
+func TestOperationalPermissionCatalogAndRevocation(t *testing.T) {
+	db := newAuthzTestDB(t)
+	require.NoError(t, Init(db))
+	resources := map[string][]string{
+		"operations": {"read"}, "model_profits": {"read"}, "balance_ledger": {"read"},
+		"upstream_topups": {"read", "write"}, "user_activity": {"read"}, "video_usage": {"read"},
+		"media_operations": {"read"}, "client_model_config": {"read", "write"},
+		"creation_content": {"read", "write"}, "customer_service": {"read", "write"},
+		"announcements": {"read", "write"}, "diagnostics": {"read"},
+	}
+	catalog := map[string]ResourceDefinition{}
+	for _, resource := range Catalog() {
+		catalog[resource.Resource] = resource
+	}
+	for resource, actions := range resources {
+		t.Run(resource, func(t *testing.T) {
+			definition, found := catalog[resource]
+			require.True(t, found, "new administration features must be assignable")
+			require.Len(t, definition.Actions, len(actions))
+			for _, action := range actions {
+				permission := Permission{Resource: resource, Action: action}
+				baseline := resource != "announcements"
+				assert.Equal(t, baseline, Can(8042, common.RoleAdminUser, permission))
+				require.NoError(t, SetUserPermissions(8042, PermissionsMap{resource: {action: true}}))
+				assert.True(t, Can(8042, common.RoleAdminUser, permission))
+				assert.False(t, Can(8042, common.RoleCommonUser, permission), "an override cannot promote an ordinary user")
+				require.NoError(t, SetUserPermissions(8042, PermissionsMap{resource: {action: false}}))
+				assert.False(t, Can(8042, common.RoleAdminUser, permission))
+				require.NoError(t, Init(db))
+				assert.False(t, Can(8042, common.RoleAdminUser, permission), "startup reseeding must preserve revocation")
+				assert.True(t, Can(8043, common.RoleRootUser, permission))
+				require.NoError(t, ClearUserPermissions(8042))
+			}
+		})
+	}
 }

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,7 +13,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"image"
+	"image/png"
 	"maps"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -110,6 +114,15 @@ var authRefreshTestSequence atomic.Uint32
 func newAccessTokenScopeTestEngine(t *testing.T) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
+	if model.DB != nil {
+		// Full HTTP fixtures must bootstrap authorization just as application startup does.
+		require.NoError(t, model.DB.AutoMigrate(&model.CasbinRule{}, &model.AuthzRole{}))
+		previousMaster := common.IsMasterNode
+		common.IsMasterNode = true
+		err := authz.Init(model.DB)
+		common.IsMasterNode = previousMaster
+		require.NoError(t, err)
+	}
 	engine := gin.New()
 	// A permission route that is also in the static table panics here.
 	require.NotPanics(t, func() {
@@ -264,8 +277,11 @@ func TestAccessTokenCatalogCoversEveryPermission(t *testing.T) {
 			}
 		}
 	}
-	for _, permission := range authz.AllPermissions() {
-		assert.True(t, scopes[service.AccessTokenScopeOf(permission)], "root catalog lacks %s", service.AccessTokenScopeOf(permission))
+	for _, resource := range authz.Catalog() {
+		for _, action := range resource.Actions {
+			permission := authz.Permission{Resource: resource.Resource, Action: action.Action}
+			assert.Equal(t, !resource.SessionOnly, scopes[service.AccessTokenScopeOf(permission)], "PAT catalog boundary for %s", service.AccessTokenScopeOf(permission))
+		}
 	}
 	for resource, count := range resources {
 		assert.Equal(t, 1, count, "resource %s appears in more than one catalog entry", resource)
@@ -790,4 +806,251 @@ func TestFinancialRoutesPreserveCredentialAndRoleBoundaries(t *testing.T) {
 		}
 	})
 
+}
+
+// This fixture exercises real HTTP gates and option/authorization persistence
+// against a fresh, explicitly named database. No provider request is permitted.
+func TestAdminFeaturePermissionBoundaries(t *testing.T) {
+	dsn := os.Getenv("TEST_ADMIN_PERMISSIONS_SQL_DSN")
+	if dsn == "" {
+		dsn = "local"
+	} else {
+		require.Contains(t, dsn, "test_admin_permissions_")
+	}
+	t.Setenv("SQL_DSN", dsn)
+	t.Setenv("LOG_SQL_DSN", "")
+	t.Setenv("CREATION_CONTENT_DIR", t.TempDir())
+	previousDB, previousLogDB, previousPath := model.DB, model.LOG_DB, common.SQLitePath
+	previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+	previousMaster, previousRedis, previousMemory := common.IsMasterNode, common.RedisEnabled, common.MemoryCacheEnabled
+	previousGlobal, previousCritical, previousSecure, previousSecret := common.GlobalApiRateLimitEnable, common.CriticalRateLimitEnable, common.SessionCookieSecure, common.SessionSecret
+	common.OptionMapRWMutex.Lock()
+	previousOptions := maps.Clone(common.OptionMap)
+	common.OptionMap = map[string]string{}
+	common.OptionMapRWMutex.Unlock()
+	common.IsMasterNode, common.RedisEnabled, common.MemoryCacheEnabled = false, false, false
+	common.GlobalApiRateLimitEnable, common.CriticalRateLimitEnable, common.SessionCookieSecure = false, false, true
+	common.SessionSecret, common.SQLitePath = "isolated-admin-permission-fixture", filepath.Join(t.TempDir(), "permissions.db")
+	require.NoError(t, model.InitDB())
+	db := model.DB
+	model.LOG_DB = db
+	common.SetDatabaseTypes(common.MainDatabaseType(), common.MainDatabaseType())
+	require.False(t, db.Migrator().HasTable(&model.User{}), "refuse a shared or previously used database")
+	models := []any{&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
+	require.NoError(t, db.AutoMigrate(models...))
+	require.NoError(t, db.AutoMigrate(models...))
+	var version string
+	query := "SELECT version()"
+	if common.MainDatabaseType() == common.DatabaseTypeSQLite {
+		query = "SELECT sqlite_version()"
+	}
+	require.NoError(t, db.Raw(query).Scan(&version).Error)
+	t.Logf("Admin permissions actual database: %s %s", common.MainDatabaseType(), version)
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		require.NoError(t, err)
+		require.NoError(t, sqlDB.Close())
+		model.DB, model.LOG_DB, common.SQLitePath = previousDB, previousLogDB, previousPath
+		common.SetDatabaseTypes(previousMain, previousLog)
+		common.IsMasterNode, common.RedisEnabled, common.MemoryCacheEnabled = previousMaster, previousRedis, previousMemory
+		common.GlobalApiRateLimitEnable, common.CriticalRateLimitEnable, common.SessionCookieSecure, common.SessionSecret = previousGlobal, previousCritical, previousSecure, previousSecret
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	transport := &customerServiceNoNetwork{}
+	previousTransport, previousClientTransport := http.DefaultTransport, http.DefaultClient.Transport
+	http.DefaultTransport, http.DefaultClient.Transport = transport, transport
+	t.Cleanup(func() {
+		http.DefaultTransport, http.DefaultClient.Transport = previousTransport, previousClientTransport
+		assert.Zero(t, transport.calls)
+	})
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
+	credentials, users := map[string]string{}, map[string]int{}
+	for _, identity := range []struct {
+		name string
+		role int
+	}{{"admin", common.RoleAdminUser}, {"root", common.RoleRootUser}, {"member", common.RoleCommonUser}} {
+		user := model.User{Username: "permission-" + identity.name, AffCode: "perm-" + identity.name, Role: identity.role, Status: common.UserStatusEnabled, AuthVersion: 1}
+		require.NoError(t, db.Create(&user).Error)
+		bundle, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "isolated-admin-permission-fixture")
+		require.NoError(t, err)
+		credentials[identity.name], users[identity.name] = bundle.AccessToken, user.Id
+	}
+
+	legacy := "admin-permission-legacy-root"
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", users["root"]).Update("access_token", legacy).Error)
+	pat := model.AccessTokenPrefix + strings.Repeat("z", 43)
+	credential := model.UserAccessToken{UserId: users["root"], Name: "unusable session-only scope fixture", TokenHash: model.AccessTokenFingerprint(pat), TokenHint: model.AccessTokenHint(pat)}
+	// Even a directly stored malicious scope cannot bypass the route session gate.
+	require.NoError(t, credential.SetScopes([]string{"customer_service:read", "customer_service:write", "announcements:read", "announcements:write", "option:write"}))
+	require.NoError(t, db.Create(&credential).Error)
+	engine := newAccessTokenScopeTestEngine(t)
+	request := func(method, path, credential, body, origin string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Origin", origin)
+		if credential != "" {
+			r.Header.Set("Authorization", "Bearer "+credential)
+		}
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, r)
+		return w
+	}
+	for _, resource := range authz.Catalog() {
+		if !resource.SessionOnly {
+			continue
+		}
+		require.NotEmpty(t, resource.GroupKey)
+		require.NotEmpty(t, resource.DescriptionKey)
+		for _, action := range resource.Actions {
+			_, err := service.NormalizeAccessTokenScopes(users["root"], common.RoleRootUser, []string{resource.Resource + ":" + action.Action})
+			assert.ErrorIs(t, err, service.ErrAccessTokenScopeInvalid, "session-only resources must never become grantable PAT scopes")
+		}
+		for _, definition := range service.AccessTokenScopeDictionary() {
+			assert.NotEqual(t, resource.Resource, definition.Resource)
+		}
+	}
+	routes := []struct {
+		method, path string
+		permission   authz.Permission
+	}{
+		{"GET", "/api/customer-service", authz.CustomerServiceRead}, {"PUT", "/api/customer-service", authz.CustomerServiceWrite}, {"POST", "/api/customer-service/assets", authz.CustomerServiceWrite},
+		{"GET", "/api/announcements", authz.AnnouncementsRead}, {"PUT", "/api/announcements", authz.AnnouncementsWrite},
+		{"GET", "/api/client-model-config", authz.ClientModelConfigRead}, {"GET", "/api/client-model-config/models", authz.ClientModelConfigRead}, {"GET", "/api/client-model-config/presentation", authz.ClientModelConfigRead},
+		{"PUT", "/api/client-model-config", authz.ClientModelConfigWrite}, {"PUT", "/api/client-model-config/presentation", authz.ClientModelConfigWrite},
+		{"GET", "/api/creation/admin/content", authz.CreationContentRead}, {"PUT", "/api/creation/admin/content", authz.CreationContentWrite}, {"POST", "/api/creation/admin/assets", authz.CreationContentWrite},
+		{"GET", "/api/balance-ledger/", authz.BalanceLedgerRead}, {"GET", "/api/model-profit/", authz.ModelProfitsRead}, {"GET", "/api/model-profit/cost-rules", authz.ModelProfitsRead},
+		{"GET", "/api/upstream-topup/", authz.UpstreamTopupsRead}, {"POST", "/api/upstream-topup/", authz.UpstreamTopupsWrite}, {"PUT", "/api/upstream-topup/1", authz.UpstreamTopupsWrite}, {"DELETE", "/api/upstream-topup/1", authz.UpstreamTopupsWrite},
+		{"GET", "/api/client-activity/summary", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions/1", authz.UserActivityRead},
+		{"GET", "/api/media-operations", authz.MediaOperationsRead}, {"GET", "/api/media-concurrency", authz.MediaOperationsRead}, {"GET", "/api/video-usage", authz.VideoUsageRead},
+		{"GET", "/api/operations/overview", authz.OperationsRead}, {"GET", "/api/data/", authz.OperationsRead}, {"GET", "/api/data/users", authz.OperationsRead}, {"GET", "/api/data/flow", authz.OperationsRead},
+		{"GET", "/api/status/test", authz.DiagnosticsRead}, {"GET", "/api/log/", authz.DiagnosticsRead}, {"GET", "/api/log/stat", authz.DiagnosticsRead}, {"GET", "/api/log/search", authz.DiagnosticsRead}, {"GET", "/api/log/export", authz.DiagnosticsRead}, {"GET", "/api/log/channel_affinity_usage_cache", authz.DiagnosticsRead},
+	}
+
+	for _, entry := range []struct{ method, path string }{{"GET", "/api/announcements"}, {"PUT", "/api/announcements"}, {"GET", "/api/customer-service"}, {"PUT", "/api/customer-service"}, {"POST", "/api/customer-service/assets"}} {
+		for _, token := range []string{legacy, pat} {
+			w := request(entry.method, entry.path, token, `{}`, "http://example.com")
+			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+			require.Contains(t, w.Body.String(), "AUTH_SESSION_REQUIRED")
+		}
+	}
+	for _, route := range routes {
+		t.Run("revocation "+route.method+" "+route.path, func(t *testing.T) {
+			require.NoError(t, authz.SetUserPermissions(users["admin"], authz.PermissionsMap{route.permission.Resource: {route.permission.Action: false}}))
+			w := request(route.method, route.path, credentials["admin"], `{}`, "http://example.com")
+			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+			assert.Contains(t, w.Body.String(), "insufficient privileges")
+			require.Equal(t, http.StatusForbidden, request(route.method, route.path, credentials["member"], `{}`, "http://example.com").Code)
+			require.NoError(t, authz.ClearUserPermissions(users["admin"]))
+		})
+	}
+	t.Run("dedicated announcement grant preserves root system boundary", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, request("GET", "/api/announcements", credentials["admin"], "", "http://example.com").Code)
+		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+			return authz.SetUserPermissionsInTx(tx, users["admin"], authz.PermissionsMap{"announcements": {"read": true, "write": true}})
+		}))
+		require.NoError(t, authz.ReloadPolicy())
+		body := `{"console_setting.announcements":"[{\"id\":1,\"title\":\"中文公告\",\"content\":\"测试内容\",\"publishDate\":\"2026-10-23T01:00:00Z\",\"type\":\"default\"}]","console_setting.announcements_enabled":"false"}`
+		w := request("PUT", "/api/announcements", credentials["admin"], body, "http://example.com")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), `updatedAt`)
+		w = request("GET", "/api/announcements", credentials["admin"], "", "http://example.com")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), "中文公告")
+		assert.Equal(t, http.StatusForbidden, request("GET", "/api/option/", credentials["admin"], "", "http://example.com").Code)
+		assert.Equal(t, http.StatusForbidden, request("PUT", "/api/announcements", credentials["admin"], body, "https://untrusted.invalid").Code)
+		before := w.Body.String()
+		for _, invalid := range []string{`{}`, `{"console_setting.announcements":"[]","console_setting.announcements_enabled":"true","SMTPToken":"forbidden"}`, `{"console_setting.announcements":null,"console_setting.announcements_enabled":"true"}`, `{"console_setting.announcements":"[]","console_setting.announcements":"[]","console_setting.announcements_enabled":"true"}`, `{"console_setting.announcements":"[]","console_setting.announcements_enabled":true}`} {
+			assert.Equal(t, http.StatusBadRequest, request("PUT", "/api/announcements", credentials["admin"], invalid, "http://example.com").Code)
+			assert.Equal(t, before, request("GET", "/api/announcements", credentials["admin"], "", "http://example.com").Body.String())
+		}
+		require.NoError(t, authz.SetUserPermissions(users["admin"], authz.PermissionsMap{"announcements": {"read": false, "write": false}}))
+		assert.Equal(t, http.StatusForbidden, request("GET", "/api/announcements", credentials["admin"], "", "http://example.com").Code)
+	})
+	t.Run("customer upload works without creation privileges", func(t *testing.T) {
+		require.NoError(t, authz.SetUserPermissions(users["admin"], authz.PermissionsMap{"creation_content": {"read": false, "write": false}, "customer_service": {"read": true, "write": true}}))
+		var pngData bytes.Buffer
+		require.NoError(t, png.Encode(&pngData, image.NewNRGBA(image.Rect(0, 0, 2, 2))))
+		for _, sample := range []struct {
+			data   []byte
+			status int
+		}{{pngData.Bytes(), http.StatusOK}, {[]byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), http.StatusBadRequest}} {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			file, err := writer.CreateFormFile("file", "二维码.png")
+			require.NoError(t, err)
+			_, err = file.Write(sample.data)
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+			r := httptest.NewRequest("POST", "/api/customer-service/assets", &body)
+			r.Header.Set("Content-Type", writer.FormDataContentType())
+			r.Header.Set("Authorization", "Bearer "+credentials["admin"])
+			r.Header.Set("Origin", "http://example.com")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, r)
+			require.Equal(t, sample.status, w.Code, w.Body.String())
+		}
+		assert.Equal(t, http.StatusForbidden, request("POST", "/api/creation/admin/assets", credentials["admin"], `{}`, "http://example.com").Code)
+		for _, path := range []string{"/api/model-profit/cost-rules", "/api/media-concurrency"} {
+			assert.Equal(t, http.StatusForbidden, request("PUT", path, credentials["admin"], `{}`, "http://example.com").Code)
+		}
+		assert.Equal(t, http.StatusForbidden, request("POST", "/api/media-concurrency/refresh", credentials["admin"], `{}`, "http://example.com").Code)
+	})
+
+	t.Run("operating data and upstream records have independent server projections", func(t *testing.T) {
+		require.NoError(t, db.Create(&model.UpstreamTopup{Upstream: "fixture-provider", AmountCents: 12345, Currency: "CNY", PaidAt: time.Now().Unix(), Note: "UPSTREAM_RECORD_PRIVATE_NOTE"}).Error)
+		require.NoError(t, db.Create(&model.TopUp{UserId: users["member"], Money: 25, TradeNo: "permission-fixture-credit", PaymentProvider: "fixture-provider", Status: common.TopUpStatusSuccess, CompleteTime: time.Now().Unix()}).Error)
+		require.NoError(t, db.Create(&model.Log{UserId: users["member"], Type: model.LogTypeConsume, Quota: 500, CreatedAt: time.Now().Unix()}).Error)
+		decode := func(w *httptest.ResponseRecorder) map[string]any {
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			var envelope struct {
+				Success bool           `json:"success"`
+				Data    map[string]any `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(w.Body.Bytes(), &envelope))
+			require.True(t, envelope.Success, w.Body.String())
+			return envelope.Data
+		}
+		require.NoError(t, authz.ClearUserPermissions(users["admin"]))
+		legacyFull := decode(request("GET", "/api/upstream-topup/", credentials["admin"], "", "http://example.com"))
+		assert.Contains(t, legacyFull, "items")
+		assert.Contains(t, legacyFull, "topup_users")
+		assert.Contains(t, legacyFull, "recent_topups")
+		assert.Equal(t, float64(500), legacyFull["consumed_quota"])
+		overview := decode(request("GET", "/api/operations/overview", credentials["admin"], "", "http://example.com"))
+		delete(legacyFull, "items")
+		assert.Equal(t, legacyFull, overview)
+		require.NoError(t, authz.SetUserPermissions(users["admin"], authz.PermissionsMap{"operations": {"read": false}, "upstream_topups": {"read": true}}))
+		records := decode(request("GET", "/api/upstream-topup/", credentials["admin"], "", "http://example.com"))
+		require.Len(t, records, 2)
+		assert.Contains(t, records, "items")
+		assert.Contains(t, records, "spent_cents")
+		assert.Equal(t, http.StatusForbidden, request("GET", "/api/operations/overview", credentials["admin"], "", "http://example.com").Code)
+		require.NoError(t, authz.SetUserPermissions(users["admin"], authz.PermissionsMap{"operations": {"read": true}, "upstream_topups": {"read": false}}))
+		w := request("GET", "/api/operations/overview", credentials["admin"], "", "http://example.com")
+		onlyOverview := decode(w)
+		assert.Equal(t, overview, onlyOverview)
+		assert.NotContains(t, w.Body.String(), "UPSTREAM_RECORD_PRIVATE_NOTE")
+		assert.Equal(t, http.StatusForbidden, request("GET", "/api/upstream-topup/", credentials["admin"], "", "http://example.com").Code)
+		for _, token := range []string{pat, legacy} {
+			w := request("GET", "/api/operations/overview", token, "", "http://example.com")
+			assert.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+			assert.Contains(t, w.Body.String(), "AUTH_SESSION_REQUIRED")
+		}
+		rootLegacy := decode(request("GET", "/api/upstream-topup/", credentials["root"], "", "http://example.com"))
+		assert.Contains(t, rootLegacy, "items")
+		delete(rootLegacy, "items")
+		assert.Equal(t, overview, rootLegacy)
+		var rows int64
+		require.NoError(t, db.Model(&model.TopUp{}).Count(&rows).Error)
+		assert.Equal(t, int64(1), rows)
+		require.NoError(t, db.Model(&model.Log{}).Count(&rows).Error)
+		assert.Equal(t, int64(1), rows)
+	})
+	for range 2 {
+		require.NoError(t, db.AutoMigrate(models...))
+		require.NoError(t, authz.ReloadPolicy())
+		assert.False(t, authz.Can(users["admin"], common.RoleAdminUser, authz.AnnouncementsRead))
+	}
 }

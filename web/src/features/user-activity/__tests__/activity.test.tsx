@@ -134,6 +134,7 @@ function setup(
     id: 1,
     username: 'admin',
     role: options.role ?? ROLE.ADMIN,
+    permissions: { admin_permissions: { user_activity: { read: true } } },
   })
   if (options.mobile) {
     const original = window.matchMedia

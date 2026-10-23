@@ -18,8 +18,34 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 export const Route = createFileRoute('/_authenticated/system-settings/')({
-  beforeLoad: () => {
+  beforeLoad: ({ location }) => {
+    const user = useAuthStore.getState().auth.user
+    const requested = new URLSearchParams(location.searchStr).get('section')
+    const available = ['customer-service', 'announcements'].find((section) =>
+      canAccessAdminRoute(user, `/system-settings/content/${section}`)
+    )
+    if (
+      requested &&
+      canAccessAdminRoute(user, `/system-settings/content/${requested}`) &&
+      ['customer-service', 'announcements'].includes(requested)
+    ) {
+      throw redirect({
+        to: '/system-settings/content/$section',
+        params: { section: requested },
+      })
+    }
+    if (user?.role !== ROLE.SUPER_ADMIN) {
+      if (!available) throw redirect({ to: '/403' })
+      throw redirect({
+        to: '/system-settings/content/$section',
+        params: { section: available },
+      })
+    }
     throw redirect({
       to: '/system-settings/site',
     })

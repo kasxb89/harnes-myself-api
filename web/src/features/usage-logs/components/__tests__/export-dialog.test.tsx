@@ -72,7 +72,12 @@ function renderExport(options: {
   useAuthStore.setState((state) => ({
     auth: {
       ...state.auth,
-      user: { id: 7, username: 'alice', role: options.role },
+      user: {
+        id: 7,
+        username: 'alice',
+        role: options.role,
+        permissions: { admin_permissions: { diagnostics: { read: true } } },
+      },
       accessToken: 'test-token',
       accessExpiresAt: Math.floor(Date.now() / 1000) + 3600,
     },

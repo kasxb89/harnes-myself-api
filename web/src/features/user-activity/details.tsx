@@ -29,8 +29,8 @@ import {
   DetailSection,
 } from '@/features/usage-logs/components/dialogs/log-detail-layout'
 import { toIntlLocale } from '@/i18n/languages'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { formatNumber } from '@/lib/format'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getActivityDetail } from './api'
@@ -43,7 +43,7 @@ export function ActivityDetails(props: {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const user = useAuthStore((state) => state.auth.user)
-  const allowed = !!user && user.role >= ROLE.ADMIN
+  const allowed = canAccessAdminRoute(user, '/user-activity')
   const query = useQuery({
     queryKey: ['client-activity', user?.id, 'detail', props.id],
     queryFn: () => {

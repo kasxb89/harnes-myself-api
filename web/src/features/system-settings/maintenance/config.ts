@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { SidebarModulesConfig as SidebarModulesAdminConfig } from '@/lib/sidebar-modules'
+
 export type HeaderNavAccessConfig = {
   enabled: boolean
   requireAuth: boolean
@@ -31,12 +33,14 @@ export type HeaderNavModulesConfig = {
   [key: string]: boolean | HeaderNavAccessConfig
 }
 
-export type SidebarSectionConfig = {
-  enabled: boolean
-  [key: string]: boolean
-}
-
-export type SidebarModulesAdminConfig = Record<string, SidebarSectionConfig>
+export {
+  SIDEBAR_MODULES_DEFAULT,
+  parseSidebarModules as parseSidebarModulesAdmin,
+} from '@/lib/sidebar-modules'
+export type {
+  SidebarSectionConfig,
+  SidebarModulesConfig as SidebarModulesAdminConfig,
+} from '@/lib/sidebar-modules'
 
 export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
   home: true,
@@ -51,38 +55,6 @@ export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
   },
   docs: true,
   about: true,
-}
-
-export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
-  chat: {
-    enabled: true,
-    playground: true,
-    chat: true,
-  },
-  console: {
-    enabled: true,
-    detail: true,
-    token: true,
-    log: true,
-    audit: true,
-    midjourney: true,
-    task: true,
-  },
-  personal: {
-    enabled: true,
-    topup: true,
-    personal: true,
-    security: true,
-  },
-  admin: {
-    enabled: true,
-    channel: true,
-    models: true,
-    redemption: true,
-    user: true,
-    setting: true,
-    subscription: true,
-  },
 }
 
 const toBoolean = (value: unknown, fallback: boolean): boolean => {
@@ -125,15 +97,6 @@ const parseAccessModule = (
   }
   return { ...fallback }
 }
-
-const cloneSidebarDefault = (): SidebarModulesAdminConfig =>
-  Object.entries(SIDEBAR_MODULES_DEFAULT).reduce<SidebarModulesAdminConfig>(
-    (acc, [section, config]) => {
-      acc[section] = { ...config }
-      return acc
-    },
-    {}
-  )
 
 export function parseHeaderNavModules(
   value: string | null | undefined
@@ -180,61 +143,6 @@ export function serializeHeaderNavModules(
   config: HeaderNavModulesConfig
 ): string {
   return JSON.stringify(config)
-}
-
-export function parseSidebarModulesAdmin(
-  value: string | null | undefined
-): SidebarModulesAdminConfig {
-  const defaults = cloneSidebarDefault()
-  // If empty string, null, or undefined, use default config
-  if (!value || value.trim() === '') return defaults
-
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>
-    const result: SidebarModulesAdminConfig = {}
-
-    Object.entries(parsed).forEach(([sectionKey, raw]) => {
-      if (!raw || typeof raw !== 'object') return
-
-      const defaultSection = defaults[sectionKey] ?? { enabled: true }
-      const sectionConfig: SidebarSectionConfig = {
-        enabled: toBoolean(
-          (raw as Record<string, unknown>).enabled,
-          defaultSection.enabled ?? true
-        ),
-      }
-
-      Object.entries(raw as Record<string, unknown>).forEach(
-        ([moduleKey, moduleValue]) => {
-          if (moduleKey === 'enabled') return
-          sectionConfig[moduleKey] = toBoolean(
-            moduleValue,
-            defaultSection[moduleKey] ?? true
-          )
-        }
-      )
-
-      result[sectionKey] = sectionConfig
-    })
-
-    // Merge defaults to ensure expected sections exist
-    Object.entries(defaults).forEach(([sectionKey, config]) => {
-      if (!result[sectionKey]) {
-        result[sectionKey] = { ...config }
-        return
-      }
-
-      Object.entries(config).forEach(([moduleKey, moduleValue]) => {
-        if (!(moduleKey in result[sectionKey])) {
-          result[sectionKey][moduleKey] = moduleValue
-        }
-      })
-    })
-
-    return result
-  } catch {
-    return defaults
-  }
 }
 
 export function serializeSidebarModulesAdmin(

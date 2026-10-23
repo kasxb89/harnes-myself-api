@@ -37,6 +37,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { ClientModelConfigPage } from '..'
 import { getClientModelPresentation } from '../api'
@@ -61,6 +63,9 @@ let saved: ClientModelPresentation
 let config: ClientModelConfig
 
 beforeEach(() => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 1, username: 'root', role: ROLE.SUPER_ADMIN })
   saved = { schema_version: 1, models: {} }
   config = structuredClone(initialConfig)
   vi.spyOn(api, 'get').mockImplementation(async (url) => {

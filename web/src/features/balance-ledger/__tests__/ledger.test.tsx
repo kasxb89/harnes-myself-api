@@ -147,6 +147,7 @@ function setup(
     id: 1,
     username: 'admin',
     role: options.role ?? ROLE.ADMIN,
+    permissions: { admin_permissions: { balance_ledger: { read: true } } },
   })
   if (options.mobile) {
     const matchMedia = window.matchMedia

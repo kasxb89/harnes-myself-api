@@ -57,9 +57,12 @@ beforeEach(async () => {
     nsSeparator: false,
     resources: { en, zhCN: zh },
   })
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 1, username: 'admin', role: ROLE.ADMIN })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: ROLE.ADMIN,
+    permissions: { admin_permissions: { media_operations: { read: true } } },
+  })
 })
 afterEach(() => {
   cleanup()
@@ -449,9 +452,14 @@ it('switching administrator accounts resets filters and the accumulated model di
     data: { success: true, data: emptyMediaPayload },
   })
   await act(async () => {
-    useAuthStore
-      .getState()
-      .auth.setUser({ id: 8, username: 'other-admin', role: ROLE.ADMIN })
+    useAuthStore.getState().auth.setUser({
+      id: 8,
+      username: 'other-admin',
+      role: ROLE.ADMIN,
+      permissions: {
+        admin_permissions: { media_operations: { read: true } },
+      },
+    })
   })
   await screen.findByText('No recorded media models')
   const user = userEvent.setup()

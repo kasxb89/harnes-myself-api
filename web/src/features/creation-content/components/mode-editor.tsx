@@ -41,6 +41,7 @@ import { TemplateEditor } from './template-editor'
 
 type Props = {
   mode: Mode
+  readOnly?: boolean
   value: ModeContent
   onChange: (value: ModeContent) => void
   onSaveTemplate: (value: Template) => Promise<void>
@@ -53,7 +54,7 @@ export function ModeEditor(props: Props) {
   const [removal, setRemoval] = useState<Removal | null>(null)
   const value = props.value
   const remove = () => {
-    if (!removal) return
+    if (props.readOnly || !removal) return
     if (removal.kind === 'category') {
       props.onChange({
         ...value,
@@ -450,7 +451,7 @@ export function ModeEditor(props: Props) {
           </Button>
         </CardContent>
       </Card>
-      {editing && (
+      {editing && !props.readOnly && (
         <TemplateEditor
           key={editing.id}
           value={editing}
@@ -460,7 +461,7 @@ export function ModeEditor(props: Props) {
         />
       )}
       <ConfirmDialog
-        open={!!removal}
+        open={!!removal && !props.readOnly}
         onOpenChange={(open) => {
           if (!open) setRemoval(null)
         }}

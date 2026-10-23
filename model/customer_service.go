@@ -138,11 +138,22 @@ func verifyCustomerServiceImage(path string) error {
 	if err != nil || int64(len(data)) != asset.Size || int64(len(data)) > creationcontent.MaxImageSize || fmt.Sprintf("cc_%x", sha256.Sum256(data)) != match[1] {
 		return ErrCustomerServiceImage
 	}
+	_, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || asset.MediaType != "image/"+format {
+		return ErrCustomerServiceImage
+	}
+	if err := validateCustomerServiceImageData(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCustomerServiceImageData(data []byte) error {
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || config.Width <= 0 || config.Height <= 0 || config.Width > MaxCustomerServiceImagePixels || config.Height > MaxCustomerServiceImagePixels/config.Width {
 		return ErrCustomerServiceImage
 	}
-	if (format != "png" && format != "jpeg" && format != "webp") || asset.MediaType != "image/"+format {
+	if format != "png" && format != "jpeg" && format != "webp" {
 		return ErrCustomerServiceImage
 	}
 	decoded, decodedFormat, err := image.Decode(bytes.NewReader(data))
@@ -211,4 +222,17 @@ func validateCustomerServiceOptionWrite(tx *gorm.DB, storedKey string) error {
 		return errCustomerServiceDedicatedAPI
 	}
 	return nil
+}
+
+// UploadCustomerServiceImage shares the immutable creation asset store while
+// admitting only fully decoded, bounded QR image formats before writing a file.
+func UploadCustomerServiceImage(reader io.Reader) (creationcontent.Asset, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, creationcontent.MaxImageSize+1))
+	if err != nil || len(data) == 0 || int64(len(data)) > creationcontent.MaxImageSize {
+		return creationcontent.Asset{}, ErrCustomerServiceImage
+	}
+	if err := validateCustomerServiceImageData(data); err != nil {
+		return creationcontent.Asset{}, err
+	}
+	return creationcontent.Default().Upload(bytes.NewReader(data))
 }

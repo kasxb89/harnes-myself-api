@@ -22,23 +22,26 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { checkIsActive } from '@/components/layout/lib/url-utils'
+import type { NavGroup } from '@/components/layout/types'
 import {
   parseSidebarModulesAdmin,
   serializeSidebarModulesAdmin,
 } from '@/features/system-settings/maintenance/config'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { useSidebarConfig } from '../use-sidebar-config'
+import {
+  useSidebarConfig,
+  useIsSidebarModuleVisible,
+} from '../use-sidebar-config'
 import { useSidebarData } from '../use-sidebar-data'
 
-beforeEach(() => {
+beforeEach(() =>
   vi.stubGlobal('localStorage', {
     getItem: () => null,
     setItem: () => undefined,
     removeItem: () => undefined,
   })
-})
-
+)
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -66,28 +69,40 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
       </QueryClientProvider>
     )
   }
-  const result = renderHook(
-    () => useSidebarConfig(useSidebarData().navGroups),
+  return renderHook(
+    () => ({
+      groups: useSidebarConfig(useSidebarData().navGroups),
+      security: useIsSidebarModuleVisible('/security'),
+      profile: useIsSidebarModuleVisible('/profile'),
+      wallet: useIsSidebarModuleVisible('/wallet'),
+    }),
     { wrapper: Wrapper }
   )
-  return result
+}
+function links(groups: NavGroup[]) {
+  return groups.flatMap((group) =>
+    group.items.flatMap(
+      (item) =>
+        item.items ??
+        (item.type === 'chat-presets' ? (item.links ?? []) : [item])
+    )
+  )
 }
 
-describe('security sidebar visibility', () => {
-  it('old configurations show Security & Access immediately after Profile and keep API Keys', () => {
+describe('business navigation compatibility', () => {
+  it('keeps account controls in the avatar menu and removes their duplicate sidebar entries', () => {
     const { result } = sidebarFor(
       { personal: { enabled: true, personal: true, topup: true } },
       { personal: { enabled: true, personal: true } }
     )
+    expect(result.current.security).toBe(true)
+    expect(result.current.profile).toBe(true)
+    expect(result.current.wallet).toBe(true)
+    expect(links(result.current.groups).map((item) => item.url)).not.toEqual(
+      expect.arrayContaining(['/profile', '/security', '/wallet'])
+    )
     expect(
-      result.current
-        .find((group) => group.id === 'personal')
-        ?.items.map((item) => item.title)
-    ).toEqual(['Wallet', 'Profile', 'Security & Access'])
-    expect(
-      result.current
-        .flatMap((group) => group.items)
-        .some((item) => item.title === 'API Keys')
+      links(result.current.groups).some((item) => item.url === '/keys')
     ).toBe(true)
   })
   it.each([
@@ -96,87 +111,146 @@ describe('security sidebar visibility', () => {
     [undefined, { personal: { enabled: true, security: false } }],
     [undefined, { personal: { enabled: false } }],
   ])(
-    'admin or user disablement hides Security & Access (%j, %j)',
+    'admin and personal disablement also controls avatar links (%j, %j)',
     (admin, user) => {
-      const { result } = sidebarFor(admin, user)
-      expect(
-        result.current
-          .flatMap((group) => group.items)
-          .some((item) => item.title === 'Security & Access')
-      ).toBe(false)
+      expect(sidebarFor(admin, user).result.current.security).toBe(false)
     }
   )
-  it('users without sidebar configuration permission retain the admin view', () => {
+  it('ignores stale personal configuration when the account cannot edit sidebar settings', () => {
     const { result } = sidebarFor(
       undefined,
-      { personal: { security: false } },
+      { personal: { security: false }, finance: { model_profits: false } },
       false
     )
+    expect(result.current.security).toBe(true)
     expect(
-      result.current
-        .flatMap((group) => group.items)
-        .some((item) => item.title === 'Security & Access')
+      links(result.current.groups).some((item) => item.url === '/model-profits')
     ).toBe(true)
+  })
+  it('does not bind new finance modules to the historical system settings toggle', () => {
+    const { result } = sidebarFor({ admin: { enabled: true, setting: false } })
+    expect(
+      links(result.current.groups).some((item) => item.url === '/model-profits')
+    ).toBe(true)
+    expect(
+      links(result.current.groups).some(
+        (item) => item.url === '/system-settings/site'
+      )
+    ).toBe(false)
+  })
+  it('retains legacy drawing visibility and active state inside the diagnostics parent', () => {
+    const { result } = sidebarFor({
+      console: { enabled: true, task: false, midjourney: true },
+    })
+    const tasks = result.current.groups
+      .flatMap((group) => group.items)
+      .find((item) => item.title === 'Tasks & diagnostics')
+    expect(
+      tasks?.items?.find((item) => item.url === '/usage-logs/task')
+    ).toBeDefined()
+    expect(
+      tasks && checkIsActive('/usage-logs/drawing?type=image', tasks)
+    ).toBe(true)
+  })
+  it('hides the consolidated task link only when both historical task modules are disabled', () => {
+    const { result } = sidebarFor({
+      console: { enabled: true, task: false, midjourney: false },
+    })
+    expect(
+      links(result.current.groups).some(
+        (item) => item.url === '/usage-logs/task'
+      )
+    ).toBe(false)
+  })
+  it('keeps audit independent when call logs are disabled', () => {
+    const config = parseSidebarModulesAdmin(
+      '{"console":{"enabled":true,"log":false}}'
+    )
+    expect(config.console.audit).toBe(true)
+    const { result } = sidebarFor(config)
+    expect(
+      links(result.current.groups).some(
+        (item) => item.url === '/usage-logs/common'
+      )
+    ).toBe(false)
+    expect(
+      links(result.current.groups).some(
+        (item) => item.url === '/usage-logs/audit'
+      )
+    ).toBe(true)
+  })
+  it('applies platform module restrictions before personal preferences can narrow them', () => {
+    const { result } = sidebarFor(
+      { finance: { enabled: true, model_profits: false } },
+      { finance: { enabled: true, model_profits: true } }
+    )
+    expect(
+      links(result.current.groups).some((item) => item.url === '/model-profits')
+    ).toBe(false)
+    expect(
+      links(result.current.groups).some(
+        (item) => item.url === '/balance-ledger'
+      )
+    ).toBe(true)
+  })
+  it('migrates an explicitly closed legacy admin section without reopening new business groups', () => {
+    const { result } = sidebarFor({ admin: { enabled: false } })
+    expect(
+      links(result.current.groups).some((item) => item.url === '/model-profits')
+    ).toBe(false)
+    expect(
+      links(result.current.groups).some((item) => item.url === '/channels')
+    ).toBe(false)
+    expect(
+      result.current.groups.find((group) => group.id === 'configuration')
+    ).toBeUndefined()
+  })
+  it('round-trips independent business toggles and preserves unknown historical fields', () => {
+    const config = parseSidebarModulesAdmin(
+      '{"admin":{"enabled":true,"channel":false,"future":false},"finance":{"enabled":true,"model_profits":false},"future":{"enabled":false,"extra":true}}'
+    )
+    const saved = parseSidebarModulesAdmin(serializeSidebarModulesAdmin(config))
+    expect(saved.models.channel).toBe(false)
+    expect(saved.finance.model_profits).toBe(false)
+    expect(saved.admin.future).toBe(false)
+    expect(saved.future).toEqual({ enabled: false, extra: true })
+  })
+  it('shows the AI playground when chat presets are disabled without exposing the presets', () => {
+    const { result } = sidebarFor({
+      chat: { enabled: true, chat: false, playground: true },
+    })
+    const chat = result.current.groups
+      .flatMap((group) => group.items)
+      .find((item) => item.type === 'chat-presets')
+    expect(chat?.type === 'chat-presets' && chat.showPresets).toBe(false)
+    expect(
+      chat?.type === 'chat-presets' && chat.links?.map((item) => item.url)
+    ).toEqual(['/playground'])
   })
 })
 
-describe('audit log sidebar entry', () => {
-  it('admin settings default Audit Logs to visible and preserve its independent toggle when saved', () => {
-    const config = parseSidebarModulesAdmin(
-      '{"console":{"enabled":true,"log":true}}'
+it('preserves the legacy call-log switch for API errors until an explicit independent override is saved', () => {
+  const hidden = sidebarFor({ console: { enabled: true, log: false } })
+  expect(
+    links(hidden.result.current.groups).some(
+      (item) => item.url === '/usage-logs/errors'
     )
-    expect(config.console.audit).toBe(true)
-    config.console.audit = false
-    const saved = parseSidebarModulesAdmin(serializeSidebarModulesAdmin(config))
-    const { result } = sidebarFor(saved)
-    const titles = result.current
-      .flatMap((group) => group.items)
-      .map((item) => item.title)
-    expect(titles).not.toContain('Audit Logs')
-    expect(titles).toContain('Usage Logs')
+  ).toBe(false)
+  hidden.unmount()
+  const shown = sidebarFor({
+    console: { enabled: true, log: false, errors: true },
   })
-
-  it('legacy configurations show a separate Audit Logs link immediately after Usage Logs', () => {
-    const { result } = sidebarFor(
-      { console: { enabled: true, log: true } },
-      { console: { enabled: true, log: true } }
+  expect(
+    links(shown.result.current.groups).some(
+      (item) => item.url === '/usage-logs/errors'
     )
-    const items =
-      result.current.find((group) => group.id === 'general')?.items ?? []
-    const usageIndex = items.findIndex((item) => item.title === 'Usage Logs')
-    expect(items[usageIndex + 1]).toMatchObject({
-      title: 'Audit Logs',
-      url: '/usage-logs/audit',
-    })
-    const selected = items.filter((item) =>
-      checkIsActive('/usage-logs/audit', item)
-    )
-    expect(selected.map((item) => item.title)).toEqual(['Audit Logs'])
+  ).toBe(true)
+})
+it('retains one operations entry when only the upstream recharge module is enabled', () => {
+  const { result } = sidebarFor({
+    finance: { enabled: true, operations: false, upstream_topups: true },
   })
-
-  it.each([
-    [{ console: { enabled: true, audit: false } }, undefined],
-    [{ console: { enabled: false } }, { console: { audit: true } }],
-    [undefined, { console: { enabled: true, audit: false } }],
-    [undefined, { console: { enabled: false } }],
-  ])(
-    'admin and personal visibility rules can hide Audit Logs (%j, %j)',
-    (admin, user) => {
-      const { result } = sidebarFor(admin, user)
-      expect(
-        result.current
-          .flatMap((group) => group.items)
-          .some((item) => item.title === 'Audit Logs')
-      ).toBe(false)
-    }
-  )
-
-  it('hiding Usage Logs does not hide the independently configured Audit Logs entry', () => {
-    const { result } = sidebarFor({ console: { enabled: true, log: false } })
-    const titles = result.current
-      .flatMap((group) => group.items)
-      .map((item) => item.title)
-    expect(titles).not.toContain('Usage Logs')
-    expect(titles).toContain('Audit Logs')
-  })
+  const items = links(result.current.groups)
+  expect(items.some((item) => item.url === '/usage-logs/operations')).toBe(true)
+  expect(items.some((item) => item.url === '/upstream-topups')).toBe(false)
 })

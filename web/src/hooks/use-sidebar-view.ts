@@ -21,15 +21,49 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
-import type { NavGroup, ResolvedSidebarView } from '@/components/layout/types'
+import type {
+  NavGroup,
+  NavItem,
+  ResolvedSidebarView,
+} from '@/components/layout/types'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
 import { useSidebarConfig } from './use-sidebar-config'
 import { useSidebarData } from './use-sidebar-data'
 
 /** Sentinel key used for the root navigation in animation `key=` props */
 const ROOT_VIEW_KEY = '__root'
+
+function filterAccessibleItems(
+  items: NavItem[],
+  user: AuthUser | null | undefined
+): NavItem[] {
+  const role = user?.role ?? ROLE.GUEST
+  return items.flatMap((item): NavItem[] => {
+    if (item.requiredRole !== undefined && role < item.requiredRole) return []
+    if (item.url && !canAccessAdminRoute(user, item.url)) return []
+    if (item.items) {
+      const children = filterAccessibleItems(item.items, user)
+      return children.length
+        ? [{ ...item, items: children as typeof item.items }]
+        : []
+    }
+    if (item.type === 'chat-presets') {
+      return [
+        {
+          ...item,
+          links: filterAccessibleItems(
+            item.links ?? [],
+            user
+          ) as typeof item.links,
+        },
+      ]
+    }
+    return [item]
+  })
+}
 
 /**
  * Resolve the active sidebar view for the current location.
@@ -47,23 +81,20 @@ const ROOT_VIEW_KEY = '__root'
 export function useSidebarView(): ResolvedSidebarView {
   const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
-  const userRole = useAuthStore((s) => s.auth.user?.role)
+  const user = useAuthStore((s) => s.auth.user)
   const rootSidebarData = useSidebarData()
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
-  const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const role = userRole ?? ROLE.GUEST
-    const isAdmin = role >= ROLE.ADMIN
-    return configFilteredRoot
-      .filter((group) => (group.id === 'admin' ? isAdmin : true))
-      .map((group) => {
-        const items = group.items.filter(
-          (item) => item.requiredRole === undefined || role >= item.requiredRole
-        )
-        return items.length === group.items.length ? group : { ...group, items }
-      })
-      .filter((group) => group.items.length > 0)
-  }, [configFilteredRoot, userRole])
+  const rootNavGroups = useMemo<NavGroup[]>(
+    () =>
+      configFilteredRoot
+        .map((group) => ({
+          ...group,
+          items: filterAccessibleItems(group.items, user),
+        }))
+        .filter((group) => group.items.length > 0),
+    [configFilteredRoot, user]
+  )
 
   const view = resolveSidebarView(pathname)
 
@@ -71,7 +102,13 @@ export function useSidebarView(): ResolvedSidebarView {
     return {
       key: view.id,
       view,
-      navGroups: view.getNavGroups(t),
+      navGroups: view
+        .getNavGroups(t)
+        .map((group) => ({
+          ...group,
+          items: filterAccessibleItems(group.items, user),
+        }))
+        .filter((group) => group.items.length > 0),
     }
   }
 

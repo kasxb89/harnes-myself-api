@@ -23,11 +23,21 @@ import {
   CONTENT_DEFAULT_SECTION,
   CONTENT_SECTION_IDS,
 } from '@/features/system-settings/content/section-registry.tsx'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute(
   '/_authenticated/system-settings/content/$section'
 )({
   beforeLoad: ({ params }) => {
+    if (
+      !canAccessAdminRoute(
+        useAuthStore.getState().auth.user,
+        `/system-settings/content/${params.section}`
+      )
+    ) {
+      throw redirect({ to: '/403' })
+    }
     const validSections = CONTENT_SECTION_IDS as unknown as string[]
     if (!validSections.includes(params.section)) {
       throw redirect({

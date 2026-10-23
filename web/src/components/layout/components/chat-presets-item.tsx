@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useLocation } from '@tanstack/react-router'
 import { ExternalLink, Loader2, ChevronRight } from 'lucide-react'
-import { useMemo, useCallback, useRef, useState } from 'react'
+import { useMemo, useCallback, useRef, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -167,8 +167,11 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
   const loadingPresetIdRef = useRef<string | null>(null)
 
   const visiblePresets = useMemo(
-    () => chatPresets.filter((preset) => preset.type !== 'fluent'),
-    [chatPresets]
+    () =>
+      item.showPresets === false
+        ? []
+        : chatPresets.filter((preset) => preset.type !== 'fluent'),
+    [chatPresets, item.showPresets]
   )
 
   const handleOpenExternal = useCallback(
@@ -223,9 +226,21 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
   )
 
   const normalizedHref = normalizeHref(href)
+  const isActive =
+    visiblePresets.some(
+      (preset) =>
+        preset.type === 'web' && normalizedHref === `/chat/${preset.id}`
+    ) || Boolean(item.links?.some((link) => normalizedHref === link.url))
+  const [isOpen, setIsOpen] = useState(isActive)
+  useEffect(() => {
+    if (isActive) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setIsOpen(true)
+    }
+  }, [isActive, normalizedHref])
 
   // Don't render if no visible presets
-  if (visiblePresets.length === 0) {
+  if (visiblePresets.length === 0 && !item.links?.length) {
     return null
   }
 
@@ -235,13 +250,26 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger
-            render={<SidebarMenuButton tooltip={item.title} />}
+            render={
+              <SidebarMenuButton tooltip={item.title} isActive={isActive} />
+            }
           >
             {item.icon && <item.icon className='h-4 w-4 shrink-0' />}
             <span className='min-w-0 flex-1 truncate'>{item.title}</span>
             <ChevronRight className='ms-auto h-4 w-4 shrink-0 opacity-70' />
           </DropdownMenuTrigger>
           <DropdownMenuContent align='start'>
+            {item.links?.map((link) => (
+              <DropdownMenuItem
+                key={link.url}
+                render={
+                  <Link to={link.url} onClick={() => setOpenMobile(false)} />
+                }
+              >
+                {link.icon && <link.icon />}
+                {link.title}
+              </DropdownMenuItem>
+            ))}
             {visiblePresets.map((preset) => (
               <DropdownPresetItem
                 key={preset.id}
@@ -259,13 +287,14 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
   // Expanded state - render collapsible menu
   return (
     <Collapsible
-      defaultOpen={normalizedHref.startsWith('/chat')}
+      open={isOpen}
+      onOpenChange={setIsOpen}
       className='group/collapsible'
       render={<SidebarMenuItem />}
     >
       <CollapsibleTrigger
         className='group/collapsible-trigger'
-        render={<SidebarMenuButton />}
+        render={<SidebarMenuButton isActive={isActive} />}
       >
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>
@@ -273,6 +302,23 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
       </CollapsibleTrigger>
       <CollapsibleContent className='CollapsibleContent'>
         <SidebarMenuSub>
+          {item.links?.map((link) => (
+            <SidebarMenuSubItem key={link.url}>
+              <SidebarMenuSubButton
+                isActive={normalizedHref === link.url}
+                render={
+                  <Link
+                    to={link.url}
+                    preload={isMobile ? false : undefined}
+                    onClick={() => setOpenMobile(false)}
+                  />
+                }
+              >
+                {link.icon && <link.icon className='shrink-0' />}
+                <span className='min-w-0 flex-1 truncate'>{link.title}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
           {visiblePresets.map((preset) => (
             <ChatMenuItem
               key={preset.id}

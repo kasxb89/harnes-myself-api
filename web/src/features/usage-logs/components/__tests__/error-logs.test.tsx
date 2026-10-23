@@ -132,9 +132,12 @@ async function renderErrors(empty = false, mobile = false, entry = record) {
         query.includes('prefers-reduced-motion'),
     }))
   }
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 1, username: 'admin', role: ROLE.ADMIN })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: ROLE.ADMIN,
+    permissions: { admin_permissions: { diagnostics: { read: true } } },
+  })
   const get = vi.spyOn(api, 'get').mockImplementation(async (url) => ({
     data: {
       success: true,

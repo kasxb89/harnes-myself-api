@@ -17,14 +17,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import type {
+  AdminPermissionMatrix,
+  PermissionCatalog,
+} from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import type { User } from '../../types'
+import { AdminPermissionEditor } from '../admin-permission-editor'
 import { UsersMutateDrawer } from '../users-mutate-drawer'
 import { UsersProvider } from '../users-provider'
 
@@ -43,29 +55,41 @@ const label = "View other accounts' audit logs"
 const description =
   'View audit records from user and admin roles. Root records are always excluded.'
 
-function renderPermissions(viewerRole: number, allowed?: boolean) {
+function renderPermissions(
+  viewerRole: number,
+  allowed?: boolean,
+  catalogState: 'ready' | 'error' | 'empty' = 'ready'
+) {
+  let failures = catalogState === 'error' ? 1 : 0
   useAuthStore
     .getState()
     .auth.setUser({ id: 1, username: 'operator', role: viewerRole })
   const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
     if (url === '/api/authz/catalog') {
+      if (failures > 0) {
+        failures--
+        throw new Error('Permission catalog unavailable in fixture')
+      }
       return {
         data: {
           success: true,
           data: {
-            resources: [
-              {
-                resource: 'audit',
-                label_key: 'Audit Logs',
-                actions: [
-                  {
-                    action: 'read',
-                    label_key: label,
-                    description_key: description,
-                  },
-                ],
-              },
-            ],
+            resources:
+              catalogState === 'empty'
+                ? []
+                : [
+                    {
+                      resource: 'audit',
+                      label_key: 'Audit Logs',
+                      actions: [
+                        {
+                          action: 'read',
+                          label_key: label,
+                          description_key: description,
+                        },
+                      ],
+                    },
+                  ],
             roles: [{ key: 'admin', grants: { audit: { read: false } } }],
           },
         },
@@ -140,9 +164,9 @@ it.each([undefined, true])(
     })
     renderPermissions(100, allowed)
     await screen.findByDisplayValue('Managed admin')
-    const toggle = await screen.findByRole('button', { name: label })
+    const toggle = await screen.findByRole('checkbox', { name: label })
     await waitFor(() =>
-      expect(toggle).toHaveAttribute('aria-pressed', String(!!allowed))
+      expect(toggle).toHaveAttribute('aria-checked', String(!!allowed))
     )
     expect(toggle).toHaveAccessibleDescription(description)
     await userEvent.click(toggle)
@@ -193,5 +217,138 @@ it('root saving an administrator without changing permissions or password does n
 it('admin cannot edit the audit permission even when the catalog is available', async () => {
   renderPermissions(10)
   await screen.findByDisplayValue('Managed admin')
-  expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('checkbox', { name: label })
+  ).not.toBeInTheDocument()
+})
+
+it('a failed catalog remains visible and blocks administrator save until retry succeeds', async () => {
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  renderPermissions(100, true, 'error')
+  await screen.findByDisplayValue('Managed admin')
+  expect(
+    await screen.findByText('Unable to load administrator permissions')
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(put).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  )
+  expect(await screen.findByRole('checkbox', { name: label })).toBeChecked()
+})
+
+it('an empty catalog cannot silently replace a saved administrator permission matrix', async () => {
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  renderPermissions(100, true, 'empty')
+  await screen.findByDisplayValue('Managed admin')
+  expect(
+    await screen.findByText('No assignable permissions are available')
+  ).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  expect(put).not.toHaveBeenCalled()
+})
+
+it('searching business groups preserves grants and editing automatically includes viewing', async () => {
+  const catalog: PermissionCatalog = {
+    resources: [
+      {
+        resource: 'customer_service',
+        label_key: 'Customer service',
+        group_key: 'content',
+        session_only: true,
+        actions: [
+          {
+            action: 'read',
+            label_key: 'View',
+            description_key: 'View QR settings',
+          },
+          {
+            action: 'write',
+            label_key: 'Edit',
+            description_key: 'Upload QR settings',
+          },
+        ],
+      },
+      {
+        resource: 'model_profits',
+        label_key: 'Model profits',
+        group_key: 'finance',
+        actions: [
+          {
+            action: 'read',
+            label_key: 'View',
+            description_key: 'View model profits',
+          },
+        ],
+      },
+      {
+        resource: 'channel',
+        label_key: 'Channels',
+        group_key: 'models',
+        actions: [
+          {
+            action: 'secret_view',
+            label_key: 'View upstream secrets',
+            description_key: 'Root gate remains active',
+            root_only: true,
+          },
+        ],
+      },
+    ],
+    roles: [],
+  }
+  function EditorFixture() {
+    const [value, setValue] = useState<AdminPermissionMatrix>({})
+    return (
+      <AdminPermissionEditor
+        catalog={catalog}
+        value={value}
+        initialValue={{}}
+        onChange={setValue}
+      />
+    )
+  }
+  render(<EditorFixture />)
+  expect(
+    screen.getByRole('checkbox', { name: /View upstream secrets/ })
+  ).toHaveAttribute('aria-disabled', 'true')
+  const search = screen.getByRole('textbox', {
+    name: 'Search administrator permissions',
+  })
+  await userEvent.type(search, 'Customer service')
+  expect(
+    screen.queryByRole('group', { name: 'Model profits' })
+  ).not.toBeInTheDocument()
+  await userEvent.click(
+    within(screen.getByRole('group', { name: 'Customer service' })).getByRole(
+      'checkbox',
+      { name: 'Edit' }
+    )
+  )
+  expect(
+    within(screen.getByRole('group', { name: 'Customer service' })).getByRole(
+      'checkbox',
+      { name: 'View' }
+    )
+  ).toBeChecked()
+  expect(screen.getByText('2 permissions granted')).toBeVisible()
+  await userEvent.clear(search)
+  await userEvent.click(
+    within(screen.getByRole('group', { name: 'Model profits' })).getByRole(
+      'checkbox',
+      { name: 'View' }
+    )
+  )
+  expect(screen.getByText('3 permissions granted')).toBeVisible()
+  const support = within(
+    screen.getByRole('group', { name: 'Customer service' })
+  )
+  await userEvent.click(support.getByRole('checkbox', { name: 'View' }))
+  expect(support.getByRole('checkbox', { name: 'Edit' })).not.toBeChecked()
+  expect(screen.getByText('1 permissions granted')).toBeVisible()
 })

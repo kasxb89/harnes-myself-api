@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation } from '@tanstack/react-query'
-import { useId } from 'react'
+import { useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -27,10 +27,14 @@ import { api } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { uploadAsset } from '../api'
+import type { CreationAsset } from '../lib/schema'
 
 type Props = {
   kind: 'image' | 'video'
+  uploadFile?: (file: File) => Promise<CreationAsset>
+  readOnly?: boolean
   label?: string
+  uploadLabel?: string
   disabled?: boolean
   'aria-invalid'?: boolean
   'aria-describedby'?: string
@@ -41,6 +45,7 @@ type Props = {
 export function AssetUpload(props: Props) {
   const { t } = useTranslation()
   const id = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
   const upload = useMutation({
     mutationFn: (file: File) => {
       const limit =
@@ -59,7 +64,7 @@ export function AssetUpload(props: Props) {
           )
         )
       }
-      return uploadAsset(file)
+      return (props.uploadFile ?? uploadAsset)(file)
     },
     onMutate: () => props.onBusyChange(true),
     onSuccess: (asset) => props.onChange(asset.id),
@@ -76,23 +81,38 @@ export function AssetUpload(props: Props) {
   return (
     <Field data-invalid={props['aria-invalid']}>
       <FieldLabel htmlFor={id}>{title}</FieldLabel>
-      <Input
-        id={id}
-        type='file'
-        aria-invalid={props['aria-invalid']}
-        aria-describedby={props['aria-describedby']}
-        disabled={disabled}
-        accept={
-          props.kind === 'image'
-            ? 'image/png,image/jpeg,image/webp'
-            : 'video/mp4,video/webm'
-        }
-        onChange={(event) => {
-          const file = event.target.files?.[0]
-          event.target.value = ''
-          if (file) upload.mutate(file)
-        }}
-      />
+      {!props.readOnly && (
+        <Input
+          ref={inputRef}
+          id={id}
+          type='file'
+          className={props.uploadLabel ? 'sr-only' : undefined}
+          tabIndex={props.uploadLabel ? -1 : undefined}
+          aria-invalid={props['aria-invalid']}
+          aria-describedby={props['aria-describedby']}
+          disabled={disabled}
+          accept={
+            props.kind === 'image'
+              ? 'image/png,image/jpeg,image/webp'
+              : 'video/mp4,video/webm'
+          }
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file) upload.mutate(file)
+          }}
+        />
+      )}
+      {!props.readOnly && props.uploadLabel && (
+        <Button
+          type='button'
+          variant='outline'
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+        >
+          {props.uploadLabel}
+        </Button>
+      )}
       <FieldDescription>
         {props.kind === 'image'
           ? t('PNG, JPEG or WebP, up to 10 MiB')
@@ -116,15 +136,17 @@ export function AssetUpload(props: Props) {
               className='max-h-48 max-w-full rounded-md'
             />
           )}
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            disabled={disabled}
-            onClick={() => props.onChange(null)}
-          >
-            {t('Remove asset')}
-          </Button>
+          {!props.readOnly && (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={disabled}
+              onClick={() => props.onChange(null)}
+            >
+              {t('Remove asset')}
+            </Button>
+          )}
         </div>
       )}
     </Field>

@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/authz"
 
 	"github.com/gin-gonic/gin"
 )
@@ -59,76 +60,59 @@ func (request *upstreamTopupRequest) normalize() *model.UpstreamTopup {
 	}
 }
 
-// GetUpstreamTopups returns the recorded upstream payments with the three
-// totals the profit view needs: what users paid this deployment, what users
-// actually consumed (all time and today), and what it paid upstream.
-func GetUpstreamTopups(c *gin.Context) {
-	topups, err := model.ListUpstreamTopups()
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
+// loadOperationsOverview reads the existing business aggregates. It never
+// returns upstream payment records or changes any billing or wallet state.
+func loadOperationsOverview() (gin.H, error) {
 	spent, err := model.SumUpstreamTopupCents()
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	received, err := model.SumCompletedTopUpMoney()
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	// Consumption is the recognised revenue: a prepaid balance is only earned
 	// once the user spends it, so the profit view cannot read top-ups alone.
 	consumed, err := model.SumUsedQuota(0, 0, 0, "", "", "", 0, "")
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 	consumedToday, err := model.SumUsedQuota(0, todayStart, 0, "", "", "", 0, "")
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	activeToday, err := model.CountConsumersSince(todayStart)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	users, err := model.GetUserGrowth(todayStart)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	topupStats, err := model.GetTopUpStats(todayStart)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	topupUsers, err := model.ListUserTopUpTotals(100)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	recentTopUps, err := model.ListRecentTopUps(30)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	daily, err := model.OperationsByDay(14)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return nil, err
 	}
 	// The series is dense and ends today, so its last point is today's row.
 	callsToday := 0
 	if len(daily) > 0 {
 		callsToday = daily[len(daily)-1].Calls
 	}
-	common.ApiSuccess(c, gin.H{
-		"items":                topups,
+	return gin.H{
 		"spent_cents":          spent,
 		"received":             received,
 		"consumed_quota":       consumed.Quota,
@@ -140,7 +124,45 @@ func GetUpstreamTopups(c *gin.Context) {
 		"topup_users":          topupUsers,
 		"recent_topups":        recentTopUps,
 		"daily":                daily,
-	})
+	}, nil
+}
+
+// GetOperationsOverview exposes business statistics independently of permission
+// to read hand-entered upstream payment records.
+func GetOperationsOverview(c *gin.Context) {
+	overview, err := loadOperationsOverview()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, overview)
+}
+
+// GetUpstreamTopups keeps the complete legacy response for administrators with
+// both permissions. A records-only operator never queries or receives customer
+// activity, balances, top-up details or other business statistics.
+func GetUpstreamTopups(c *gin.Context) {
+	topups, err := model.ListUpstreamTopups()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !authz.Can(c.GetInt("id"), c.GetInt("role"), authz.OperationsRead) {
+		spent, err := model.SumUpstreamTopupCents()
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, gin.H{"items": topups, "spent_cents": spent})
+		return
+	}
+	overview, err := loadOperationsOverview()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	overview["items"] = topups
+	common.ApiSuccess(c, overview)
 }
 
 // AddUpstreamTopup records one payment an administrator made to an upstream.

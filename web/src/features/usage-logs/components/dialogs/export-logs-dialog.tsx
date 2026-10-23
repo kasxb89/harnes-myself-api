@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
 import dayjs from '@/lib/dayjs'
 import { handleServerError } from '@/lib/handle-server-error'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { exportLogs } from '../../api'
 import {
@@ -57,6 +58,13 @@ export function ExportLogsDialog() {
   const [range, setRange] = useState<{ start?: Date; end?: Date }>({})
   const [exportedCount, setExportedCount] = useState<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const userId = useAuthStore((state) => state.auth.user?.id)
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+    },
+    [isAdminView, userId]
+  )
 
   if (!canManageScope && status?.log_export_enabled === false) return null
 
@@ -118,11 +126,13 @@ export function ExportLogsDialog() {
         {
           signal: controller.signal,
           onLog: (log) => {
+            if (controller.signal.aborted) return
             lines.push(toCsvLine(getLogCsvRow(log, isAdminView, t)))
             if (lines.length % 500 === 0) setExportedCount(lines.length - 1)
           },
         }
       )
+      if (controller.signal.aborted) return
       downloadCsv(
         `usage-logs-${dayjs(range.start).format('YYYYMMDD')}-${dayjs(range.end).format('YYYYMMDD')}.csv`,
         lines
@@ -130,7 +140,9 @@ export function ExportLogsDialog() {
       toast.success(t('Exported {{count}} logs', { count }))
       setOpen(false)
     } catch (error) {
-      handleServerError(error, t('Failed to export logs'))
+      if (!controller.signal.aborted) {
+        handleServerError(error, t('Failed to export logs'))
+      }
     } finally {
       abortRef.current = null
       setExportedCount(null)

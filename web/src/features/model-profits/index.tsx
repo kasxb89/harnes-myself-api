@@ -29,8 +29,8 @@ import { Button } from '@/components/ui/button'
 import { PortalContainerContext } from '@/components/ui/portal-container'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toIntlLocale } from '@/i18n/languages'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { formatNumber } from '@/lib/format'
-import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -49,7 +49,7 @@ export function ModelProfitsPage() {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const user = useAuthStore((state) => state.auth.user)
-  const allowed = !!user && user.role >= ROLE.ADMIN
+  const allowed = canAccessAdminRoute(user, '/model-profits')
   const [view, setView] = useState('details')
   const fullscreen = useProfitFullscreen()
   const [draft, setDraft] = useState(() => profitPreset('month'))

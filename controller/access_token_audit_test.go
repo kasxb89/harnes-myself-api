@@ -320,8 +320,15 @@ func TestAccessTokenScopeDictionaryIgnoresTheViewersGrants(t *testing.T) {
 	assert.Equal(t, "API keys / Reveal full keys", labels["api_key:reveal"])
 	assert.Equal(t, "Users / Edit", labels["user:write"])
 	assert.Equal(t, "System settings / Edit", labels["option:write"])
-	for _, permission := range authz.AllPermissions() {
-		assert.Contains(t, labels, service.AccessTokenScopeOf(permission))
+	for _, resource := range authz.Catalog() {
+		for _, action := range resource.Actions {
+			permission := authz.Permission{Resource: resource.Resource, Action: action.Action}
+			if resource.SessionOnly {
+				assert.NotContains(t, labels, service.AccessTokenScopeOf(permission))
+			} else {
+				assert.Contains(t, labels, service.AccessTokenScopeOf(permission))
+			}
+		}
 	}
 
 	response = accessTokenRequest(router, "GET", "/api/user/access_tokens/catalog", browser, "", "")

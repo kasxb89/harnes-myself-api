@@ -26,7 +26,7 @@ import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ROLE } from '@/lib/roles'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getMediaOperations, MediaQueryTooBroadError } from './api'
@@ -44,7 +44,7 @@ import { useMediaFormat } from './lib/format'
 export function MediaOperationsPage() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  if (!user || user.role < ROLE.ADMIN) {
+  if (!user || !canAccessAdminRoute(user, '/media-operations')) {
     return <ErrorState title={t('Access denied')} />
   }
   return <MediaOperationsReport key={user.id} userId={user.id} />

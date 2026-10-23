@@ -28,6 +28,7 @@ import {
   FormLabel,
 } from '@/components/ui/form'
 import { Switch } from '@/components/ui/switch'
+import { SIDEBAR_MODULE_SECTIONS } from '@/lib/sidebar-modules'
 
 import {
   SettingsControlChildren,
@@ -52,11 +53,6 @@ type SidebarModulesSectionProps = {
 
 type SidebarFormValues = SidebarModulesAdminConfig
 
-const toTitleCase = (value: string) =>
-  value
-    .replaceAll(/[_-]+/g, ' ')
-    .replaceAll(/\b\w/g, (char) => char.toUpperCase())
-
 export function SidebarModulesSection({
   config,
   initialSerialized,
@@ -64,106 +60,6 @@ export function SidebarModulesSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
 
-  const sectionMeta: Record<string, { title: string; description: string }> = {
-    chat: {
-      title: t('Chat area'),
-      description: t('Playground experiments and live conversations.'),
-    },
-    console: {
-      title: t('Console area'),
-      description: t('Dashboards, tokens, and usage analytics.'),
-    },
-    personal: {
-      title: t('Personal area'),
-      description: t('Wallet management and personal preferences.'),
-    },
-    admin: {
-      title: t('Admin area'),
-      description: t('Global configuration and administrative tools.'),
-    },
-  }
-
-  const moduleMeta: Record<
-    string,
-    Record<string, { title: string; description: string }>
-  > = {
-    chat: {
-      playground: {
-        title: t('Playground'),
-        description: t('Experiment with prompts and models in real time.'),
-      },
-      chat: {
-        title: t('Chat'),
-        description: t('Access previous conversations and start new ones.'),
-      },
-    },
-    console: {
-      detail: {
-        title: t('Dashboard'),
-        description: t('Aggregated usage metrics and trend charts.'),
-      },
-      token: {
-        title: t('Token management'),
-        description: t('Create, revoke, and audit API tokens.'),
-      },
-      log: {
-        title: t('Usage logs'),
-        description: t('Detailed request logs for investigations.'),
-      },
-      audit: {
-        title: t('Audit Logs'),
-        description: t('Login, security and access records'),
-      },
-      midjourney: {
-        title: t('Drawing logs'),
-        description: t('History of MjProxy-style image tasks.'),
-      },
-      task: {
-        title: t('Task logs'),
-        description: t('Background job tracker for queued work.'),
-      },
-    },
-    personal: {
-      topup: {
-        title: t('Wallet'),
-        description: t('Top up balance and view billing history.'),
-      },
-      personal: {
-        title: t('Profile'),
-        description: t('Personal settings and profile management.'),
-      },
-      security: {
-        title: t('Security & Access'),
-        description: t('Manage your security settings and account access'),
-      },
-    },
-    admin: {
-      channel: {
-        title: t('Channels'),
-        description: t('Configure upstream providers and routing.'),
-      },
-      models: {
-        title: t('Models'),
-        description: t('Manage catalog visibility and pricing.'),
-      },
-      redemption: {
-        title: t('Redeem codes'),
-        description: t('Create and review invite or credit codes.'),
-      },
-      user: {
-        title: t('Users'),
-        description: t('Administer user accounts and roles.'),
-      },
-      setting: {
-        title: t('System settings'),
-        description: t('Advanced platform configuration.'),
-      },
-      subscription: {
-        title: t('Subscription Management'),
-        description: t('Manage subscription plans and pricing.'),
-      },
-    },
-  }
   const formDefaults = useMemo(() => config, [config])
 
   const form = useForm<SidebarFormValues>({
@@ -190,7 +86,7 @@ export function SidebarModulesSection({
     form.reset(SIDEBAR_MODULES_DEFAULT)
   }
 
-  const sections = Object.entries(config)
+  const sections = SIDEBAR_MODULE_SECTIONS
 
   return (
     <SettingsSection title={t('Sidebar modules')}>
@@ -203,14 +99,13 @@ export function SidebarModulesSection({
             resetLabel='Reset to default'
             saveLabel='Save sidebar modules'
           />
-          {sections.map(([sectionKey, sectionConfig]) => {
-            const sectionInfo = sectionMeta[sectionKey] ?? {
-              title: toTitleCase(sectionKey),
-              description: t('Custom sidebar section'),
+          {sections.map((section) => {
+            const sectionKey = section.key
+            const sectionInfo = {
+              title: t(section.titleKey),
+              description: t(section.descriptionKey),
             }
-            const modules = Object.entries(sectionConfig).filter(
-              ([moduleKey]) => moduleKey !== 'enabled'
-            )
+            const modules = section.modules
 
             return (
               <SettingsControlGroup key={sectionKey}>
@@ -237,10 +132,11 @@ export function SidebarModulesSection({
                 />
 
                 <SettingsControlChildren className='grid gap-3 md:grid-cols-2'>
-                  {modules.map(([moduleKey]) => {
-                    const moduleInfo = moduleMeta[sectionKey]?.[moduleKey] ?? {
-                      title: toTitleCase(moduleKey),
-                      description: t('Custom module'),
+                  {modules.map((module) => {
+                    const moduleKey = module.key
+                    const moduleInfo = {
+                      title: t(module.titleKey),
+                      description: t(module.descriptionKey),
                     }
                     return (
                       <FormField

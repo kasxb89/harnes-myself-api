@@ -31,7 +31,8 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
-import { PermissionMatrix } from '@/components/permission-matrix'
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import {
@@ -64,10 +65,7 @@ import {
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  ADMIN_PERMISSION_ACTIONS,
-  ADMIN_PERMISSION_RESOURCES,
   EMPTY_PERMISSION_CATALOG,
-  hasPermission,
   normalizeAdminPermissions,
   type AdminPermissionMatrix,
 } from '@/lib/admin-permissions'
@@ -96,6 +94,7 @@ import {
   transformUserToFormDefaults,
 } from '../lib'
 import type { User } from '../types'
+import { AdminPermissionEditor } from './admin-permission-editor'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -116,6 +115,9 @@ export function UsersMutateDrawer({
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  const [loadedUserId, setLoadedUserId] = useState<number>()
+  const [userLoadError, setUserLoadError] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   // Matrix as loaded from the server; an unchanged matrix is not resubmitted so
   // routine edits of an administrator do not require step-up verification.
   const loadedPermissions = useRef<AdminPermissionMatrix | undefined>(undefined)
@@ -129,13 +131,6 @@ export function UsersMutateDrawer({
 
   const groups = groupsData?.data || []
 
-  // Permission catalog is owned by the backend; fetched once and reused.
-  const { data: permissionCatalog = EMPTY_PERMISSION_CATALOG } = useQuery({
-    queryKey: ['admin-permission-catalog'],
-    queryFn: async () => requireServerSuccess(await getPermissionCatalog()),
-    staleTime: 5 * 60 * 1000,
-  })
-
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
     defaultValues: USER_FORM_DEFAULT_VALUES,
@@ -143,23 +138,39 @@ export function UsersMutateDrawer({
 
   // Load existing data when updating
   useEffect(() => {
+    let active = true
     if (open && isUpdate && currentRow) {
+      setLoadedUserId(undefined)
+      setUserLoadError(false)
+      loadedPermissions.current = undefined
       // For update, fetch fresh data
       getUser(currentRow.id)
         .then((result) => {
+          if (!active) return
           if (result.success && result.data) {
             loadedPermissions.current = result.data.admin_permissions
             form.reset(transformUserToFormDefaults(result.data))
+            setLoadedUserId(currentRow.id)
           } else {
+            setUserLoadError(true)
             handleServerError(result, t('Failed to load'))
           }
         })
-        .catch((error) => handleServerError(error, t('Failed to load')))
+        .catch((error) => {
+          if (!active) return
+          setUserLoadError(true)
+          handleServerError(error, t('Failed to load'))
+        })
     } else if (open && !isUpdate) {
+      loadedPermissions.current = undefined
+      setUserLoadError(false)
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
-  }, [open, isUpdate, currentRow, form, t])
+    return () => {
+      active = false
+    }
+  }, [open, isUpdate, currentRow, form, t, loadAttempt])
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
@@ -168,9 +179,27 @@ export function UsersMutateDrawer({
   const currentQuotaRaw = form.watch('quota_dollars') || 0
   const selectedRole = form.watch('role')
   const canEditAdminPermissions = currentUser?.role === ROLE.SUPER_ADMIN
-  const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
+  const userReady = !isUpdate || loadedUserId === currentRow?.id
+  const targetIsAdmin =
+    (userReady ? (selectedRole ?? 0) : (currentRow?.role ?? 0)) >= ROLE.ADMIN
+  const permissionCatalogQuery = useQuery({
+    queryKey: ['admin-permission-catalog'],
+    queryFn: async () => requireServerSuccess(await getPermissionCatalog()),
+    enabled: open && canEditAdminPermissions && targetIsAdmin,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+  const permissionCatalog =
+    permissionCatalogQuery.data ?? EMPTY_PERMISSION_CATALOG
+  const permissionsReady =
+    permissionCatalogQuery.isSuccess &&
+    permissionCatalog.resources.length > 0 &&
+    !permissionCatalogQuery.isFetching
+  const permissionSaveBlocked =
+    canEditAdminPermissions && targetIsAdmin && !permissionsReady
 
   const onSubmit = async (data: UserFormValues) => {
+    if (!userReady || permissionSaveBlocked) return
     if (!isUpdate || data.password) {
       if (!accountPasswordSchema.safeParse(data.password ?? '').success) {
         form.setError('password', {
@@ -186,7 +215,9 @@ export function UsersMutateDrawer({
       const payload = transformFormDataToPayload(
         data,
         currentRow?.id,
-        permissionCatalog
+        canEditAdminPermissions && permissionsReady
+          ? permissionCatalog
+          : undefined
       )
       if (
         isUpdate &&
@@ -302,6 +333,13 @@ export function UsersMutateDrawer({
               onSubmit={form.handleSubmit(onSubmit)}
               className={sideDrawerFormClassName()}
             >
+              {userLoadError && (
+                <ErrorState
+                  title={t('Failed to load')}
+                  onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
+                  className='min-h-28'
+                />
+              )}
               {/* Basic Information */}
               <SideDrawerSection>
                 <h3 className='text-sm font-medium'>
@@ -499,18 +537,52 @@ export function UsersMutateDrawer({
                 </SideDrawerSection>
               )}
 
-              {canEditAdminPermissions &&
-                targetIsAdmin &&
-                permissionCatalog.resources.length > 0 && (
-                  <SideDrawerSection>
-                    <h3 className='text-sm font-medium'>
-                      {t('Admin Permissions')}
-                    </h3>
-                    <p className='text-muted-foreground text-xs'>
-                      {t(
-                        'Default administrator permissions can be overridden for this user.'
-                      )}
-                    </p>
+              {canEditAdminPermissions && targetIsAdmin && (
+                <SideDrawerSection>
+                  <h3 className='text-sm font-medium'>
+                    {t('Admin Permissions')}
+                  </h3>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'Default administrator permissions can be overridden for this user.'
+                    )}
+                  </p>
+                  {(permissionCatalogQuery.isPending ||
+                    permissionCatalogQuery.isFetching) && (
+                    <LoadingState
+                      message={t('Loading administrator permissions...')}
+                      className='min-h-28'
+                    />
+                  )}
+                  {!permissionCatalogQuery.isFetching &&
+                    permissionCatalogQuery.isError && (
+                      <ErrorState
+                        title={t('Unable to load administrator permissions')}
+                        description={t(
+                          'Your existing permissions have not been changed. Retry before saving.'
+                        )}
+                        onRetry={() => {
+                          void permissionCatalogQuery.refetch()
+                        }}
+                        className='min-h-28'
+                      />
+                    )}
+                  {!permissionCatalogQuery.isPending &&
+                    !permissionCatalogQuery.isFetching &&
+                    !permissionCatalogQuery.isError &&
+                    permissionCatalog.resources.length === 0 && (
+                      <ErrorState
+                        title={t('No assignable permissions are available')}
+                        description={t(
+                          'Your existing permissions have not been changed. Retry before saving.'
+                        )}
+                        onRetry={() => {
+                          void permissionCatalogQuery.refetch()
+                        }}
+                        className='min-h-28'
+                      />
+                    )}
+                  {permissionsReady && (
                     <FormField
                       control={form.control}
                       name='admin_permissions'
@@ -521,33 +593,24 @@ export function UsersMutateDrawer({
                         )
                         return (
                           <FormItem>
-                            <PermissionMatrix
-                              resources={permissionCatalog.resources}
+                            <AdminPermissionEditor
+                              catalog={permissionCatalog}
                               value={selected}
+                              initialValue={normalizeAdminPermissions(
+                                loadedPermissions.current,
+                                permissionCatalog
+                              )}
                               onChange={field.onChange}
+                              disabled={isSubmitting || !userReady}
                             />
                             <FormMessage />
                           </FormItem>
                         )
                       }}
                     />
-                    {currentUser && (
-                      <p className='text-muted-foreground text-xs'>
-                        {hasPermission(
-                          currentUser,
-                          ADMIN_PERMISSION_RESOURCES.CHANNEL,
-                          ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
-                        )
-                          ? t(
-                              'Your account can edit sensitive channel settings.'
-                            )
-                          : t(
-                              'Your account cannot edit sensitive channel settings.'
-                            )}
-                      </p>
-                    )}
-                  </SideDrawerSection>
-                )}
+                  )}
+                </SideDrawerSection>
+              )}
 
               {/* Binding Information (Read-only) */}
               {isUpdate && (
@@ -585,7 +648,11 @@ export function UsersMutateDrawer({
             <SheetClose render={<Button variant='outline' />}>
               {t('Close')}
             </SheetClose>
-            <Button form='user-form' type='submit' disabled={isSubmitting}>
+            <Button
+              form='user-form'
+              type='submit'
+              disabled={isSubmitting || !userReady || permissionSaveBlocked}
+            >
               {isSubmitting ? t('Saving...') : t('Save changes')}
             </Button>
           </SheetFooter>

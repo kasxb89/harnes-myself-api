@@ -18,15 +18,43 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { CONTENT_DEFAULT_SECTION } from '@/features/system-settings/content/section-registry.tsx'
+import {
+  CONTENT_DEFAULT_SECTION,
+  CONTENT_SECTION_IDS,
+} from '@/features/system-settings/content/section-registry.tsx'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute(
   '/_authenticated/system-settings/content/'
 )({
-  beforeLoad: () => {
+  beforeLoad: ({ location }) => {
+    const user = useAuthStore.getState().auth.user
+    const requested = new URLSearchParams(location.searchStr).get('section')
+    const preferred =
+      requested &&
+      (CONTENT_SECTION_IDS as readonly string[]).includes(requested)
+        ? requested
+        : CONTENT_DEFAULT_SECTION
+    if (
+      requested &&
+      (CONTENT_SECTION_IDS as readonly string[]).includes(requested) &&
+      !canAccessAdminRoute(user, `/system-settings/content/${requested}`)
+    ) {
+      throw redirect({ to: '/403' })
+    }
+    const section = canAccessAdminRoute(
+      user,
+      `/system-settings/content/${preferred}`
+    )
+      ? preferred
+      : ['customer-service', 'announcements'].find((item) =>
+          canAccessAdminRoute(user, `/system-settings/content/${item}`)
+        )
+    if (!section) throw redirect({ to: '/403' })
     throw redirect({
       to: '/system-settings/content/$section',
-      params: { section: CONTENT_DEFAULT_SECTION },
+      params: { section },
     })
   },
 })

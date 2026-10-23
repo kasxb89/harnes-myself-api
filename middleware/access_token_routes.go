@@ -42,8 +42,11 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// Customer support configuration requires an interactive administrator session.
-	"GET /api/customer-service": accessTokenSessionRule,
-	"PUT /api/customer-service": accessTokenSessionRule,
+	"GET /api/announcements":            accessTokenSessionRule,
+	"PUT /api/announcements":            accessTokenSessionRule,
+	"POST /api/customer-service/assets": accessTokenSessionRule,
+	"GET /api/customer-service":         accessTokenSessionRule,
+	"PUT /api/customer-service":         accessTokenSessionRule,
 	// Client presence and its administration require an interactive login.
 	"POST /api/client-activity/heartbeat":   accessTokenSessionRule,
 	"GET /api/client-activity/summary":      accessTokenSessionRule,
@@ -70,6 +73,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/model-profit/":           accessTokenSessionRule,
 	"GET /api/model-profit/cost-rules": accessTokenSessionRule,
 	"PUT /api/model-profit/cost-rules": accessTokenSessionRule,
+	"GET /api/operations/overview":     accessTokenSessionRule,
 	"GET /api/upstream-topup/":         accessTokenSessionRule,
 	"POST /api/upstream-topup/":        accessTokenSessionRule,
 	"PUT /api/upstream-topup/:id":      accessTokenSessionRule,

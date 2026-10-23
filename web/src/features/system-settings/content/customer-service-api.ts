@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { CreationAsset } from '@/features/creation-content/lib/schema'
 import { api } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
@@ -44,4 +45,17 @@ export async function saveCustomerService(
     customerServiceSchema.parse(value)
   )
   return customerServiceSchema.parse(requireServerSuccess(response.data).data)
+}
+
+export async function uploadCustomerServiceAsset(
+  file: File
+): Promise<CreationAsset> {
+  const body = new FormData()
+  body.append('file', file)
+  const response = await api.post<{
+    success: boolean
+    message?: string
+    data: CreationAsset
+  }>('/api/customer-service/assets', body)
+  return requireServerSuccess(response.data).data
 }

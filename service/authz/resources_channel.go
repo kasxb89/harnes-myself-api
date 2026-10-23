@@ -20,6 +20,7 @@ var (
 
 func init() {
 	RegisterResource(ResourceDefinition{
+		GroupKey: "models",
 		Resource: ResourceChannel,
 		LabelKey: "Channel Management",
 		Actions: []ActionDefinition{
@@ -48,6 +49,7 @@ func init() {
 			},
 			{
 				Action:         ActionSecretView,
+				RootOnly:       true,
 				LabelKey:       "View channel secrets",
 				DescriptionKey: "Reserved for viewing complete channel keys after secure verification.",
 			},

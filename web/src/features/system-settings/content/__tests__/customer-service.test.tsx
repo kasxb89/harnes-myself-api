@@ -25,6 +25,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { AssetUpload } from '@/features/creation-content/components/asset-upload'
 import { api } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { SettingsPageProvider } from '../../components/settings-page-context'
 import {
@@ -64,7 +66,25 @@ function renderSettings(content: ReactNode = <CustomerServiceSection />) {
   return { client, ...render(<Harness />) }
 }
 
+async function openDisplaySettings() {
+  const button = await screen.findByRole('button', {
+    name: 'Optional display settings',
+  })
+  if (button.getAttribute('aria-expanded') !== 'true') fireEvent.click(button)
+}
+async function findOptionalTextbox(options: { name: string }) {
+  await openDisplaySettings()
+  return screen.findByRole('textbox', options)
+}
+async function findOptionalSwitch(options: { name: string }) {
+  await openDisplaySettings()
+  return screen.findByRole('switch', options)
+}
+
 beforeEach(() => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 1, username: 'root', role: ROLE.SUPER_ADMIN })
   saved = { ...EMPTY_CUSTOMER_SERVICE }
   vi.spyOn(api, 'get').mockImplementation(async () => ({
     data: { success: true, data: { ...saved } },
@@ -107,7 +127,7 @@ test('a failed initial load offers retry without an editable empty fallback', as
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Retry' }))
   expect(
-    await screen.findByRole('textbox', {
+    await findOptionalTextbox({
       name: 'Customer service title (optional)',
     })
   ).toHaveValue('')
@@ -116,7 +136,7 @@ test('a failed initial load offers retry without an editable empty fallback', as
 test('an empty disabled configuration is explicit and unchanged settings cannot save', async () => {
   renderSettings()
   expect(
-    await screen.findByRole('switch', {
+    await findOptionalSwitch({
       name: 'Enable customer service QR code',
     })
   ).not.toBeChecked()
@@ -134,7 +154,7 @@ test('an empty disabled configuration is explicit and unchanged settings cannot 
 test('keyboard enabling without an image shows validation and does not send a save request', async () => {
   const user = userEvent.setup()
   renderSettings()
-  const toggle = await screen.findByRole('switch', {
+  const toggle = await findOptionalSwitch({
     name: 'Enable customer service QR code',
   })
   toggle.focus()
@@ -165,6 +185,15 @@ test('uploading an image reuses the creation upload and saves all fields atomica
   expect(
     await screen.findByRole('img', { name: 'Customer service QR code' })
   ).toHaveAttribute('src', assetPath)
+  await openDisplaySettings()
+  await user.clear(
+    screen.getByRole('textbox', { name: 'Customer service title (optional)' })
+  )
+  await user.clear(
+    screen.getByRole('textbox', {
+      name: 'Customer service description (optional)',
+    })
+  )
   await user.type(
     screen.getByRole('textbox', { name: 'Customer service title (optional)' }),
     'Support'
@@ -175,9 +204,9 @@ test('uploading an image reuses the creation upload and saves all fields atomica
     }),
     'Scan to contact us'
   )
-  await user.click(
+  expect(
     screen.getByRole('switch', { name: 'Enable customer service QR code' })
-  )
+  ).toBeChecked()
   await user.click(
     screen.getByRole('button', { name: 'Save customer service settings' })
   )
@@ -191,7 +220,7 @@ test('uploading an image reuses the creation upload and saves all fields atomica
     })
   )
   expect(api.post).toHaveBeenCalledWith(
-    '/api/creation/admin/assets',
+    '/api/customer-service/assets',
     expect.any(FormData)
   )
   expect(invalidation).toHaveBeenCalledWith({ queryKey: ['status'] })
@@ -211,7 +240,7 @@ test('a failed save retains the draft through a background refetch and requires 
     data: { success: false, message: 'Save rejected' },
   })
   const view = renderSettings()
-  const title = await screen.findByRole('textbox', {
+  const title = await findOptionalTextbox({
     name: 'Customer service title (optional)',
   })
   await user.type(title, 'Local draft')
@@ -247,7 +276,7 @@ test('a pending save disables editing, removal and repeated submission', async (
     })
   )
   renderSettings()
-  const title = await screen.findByRole('textbox', {
+  const title = await findOptionalTextbox({
     name: 'Customer service title (optional)',
   })
   await user.type(title, 'Pending')
@@ -287,6 +316,7 @@ test('removing an enabled QR code requires disabling before saving the empty dra
       'Upload a customer service QR code before enabling it'
     )
   ).toBeVisible()
+  await openDisplaySettings()
   await user.click(
     screen.getByRole('switch', { name: 'Enable customer service QR code' })
   )
@@ -313,6 +343,7 @@ test('previews follow the API deployment prefix and render stored titles as plai
   expect(
     await screen.findByRole('img', { name: 'Customer service QR code' })
   ).toHaveAttribute('src', `https://api.example/harness${assetPath}`)
+  await openDisplaySettings()
   expect(
     screen.getByRole('textbox', { name: 'Customer service title (optional)' })
   ).toHaveValue(saved.title)
@@ -474,7 +505,7 @@ test('a late older GET cannot overwrite the successfully saved form or cache', a
   }
   const user = userEvent.setup()
   const view = renderSettings()
-  const title = await screen.findByRole('textbox', {
+  const title = await findOptionalTextbox({
     name: 'Customer service title (optional)',
   })
   act(() => {
@@ -516,7 +547,7 @@ test('an uploading QR code disables saving until the upload finishes', async () 
   )
   renderSettings()
   await user.type(
-    await screen.findByRole('textbox', {
+    await findOptionalTextbox({
       name: 'Customer service title (optional)',
     }),
     'Draft'
@@ -547,7 +578,7 @@ test('an uploading QR code disables saving until the upload finishes', async () 
 test('a description with a line break shows an accessible error without discarding the draft', async () => {
   const user = userEvent.setup()
   renderSettings()
-  const description = await screen.findByRole('textbox', {
+  const description = await findOptionalTextbox({
     name: 'Customer service description (optional)',
   })
   fireEvent.change(description, { target: { value: 'First\nsecond' } })
@@ -559,5 +590,97 @@ test('a description with a line break shows an accessible error without discardi
   )
   expect(description).toHaveAttribute('aria-invalid', 'true')
   expect(description).toHaveValue('First\nsecond')
+  expect(api.put).not.toHaveBeenCalled()
+})
+
+test('read-only customer service permission shows the saved preview without upload, edit or save controls', async () => {
+  saved = {
+    ...saved,
+    enabled: false,
+    qr_code_url: assetPath,
+    title: 'Saved support',
+  }
+  useAuthStore.getState().auth.setUser({
+    id: 2,
+    username: 'reader',
+    role: ROLE.ADMIN,
+    permissions: {
+      admin_permissions: { customer_service: { read: true, write: false } },
+    },
+  })
+  renderSettings()
+  expect(
+    await screen.findByRole('img', { name: 'Customer service QR code' })
+  ).toBeVisible()
+  expect(
+    screen.queryByLabelText('Customer service QR code', { selector: 'input' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Remove asset' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Save customer service settings' })
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  expect(api.post).not.toHaveBeenCalled()
+  expect(api.put).not.toHaveBeenCalled()
+})
+
+test('a customer service denial performs no request or preview disclosure', () => {
+  useAuthStore.getState().auth.setUser({
+    id: 2,
+    username: 'denied',
+    role: ROLE.ADMIN,
+    permissions: { admin_permissions: {} },
+  })
+  renderSettings()
+  expect(screen.getByText('Access denied')).toBeVisible()
+  expect(api.get).not.toHaveBeenCalled()
+  expect(screen.queryByRole('img')).not.toBeInTheDocument()
+})
+
+test('the first successful upload prepares Chinese defaults and enabled draft but does not publish before saving', async () => {
+  const user = userEvent.setup()
+  renderSettings()
+  await user.upload(
+    await screen.findByLabelText('Customer service QR code', {
+      selector: 'input',
+    }),
+    new File(['png'], 'support.png', { type: 'image/png' })
+  )
+  expect(await screen.findByRole('img')).toBeVisible()
+  expect(api.post).toHaveBeenCalledWith(
+    '/api/customer-service/assets',
+    expect.any(FormData)
+  )
+  expect(api.put).not.toHaveBeenCalled()
+  await user.click(
+    screen.getByRole('button', { name: 'Save customer service settings' })
+  )
+  await waitFor(() =>
+    expect(api.put).toHaveBeenCalledWith('/api/customer-service', {
+      schema_version: 1,
+      enabled: true,
+      qr_code_url: assetPath,
+      title: '联系客服',
+      description: '请扫描二维码联系客服',
+    })
+  )
+})
+
+test('a previously disabled saved QR remains disabled after loading and replacing its image', async () => {
+  const user = userEvent.setup()
+  saved = { ...saved, enabled: false, qr_code_url: assetPath }
+  renderSettings()
+  await user.upload(
+    await screen.findByLabelText('Customer service QR code', {
+      selector: 'input',
+    }),
+    new File(['png'], 'replacement.png', { type: 'image/png' })
+  )
+  await openDisplaySettings()
+  expect(
+    screen.getByRole('switch', { name: 'Enable customer service QR code' })
+  ).not.toBeChecked()
   expect(api.put).not.toHaveBeenCalled()
 })

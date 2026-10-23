@@ -127,6 +127,7 @@ function setup(
     id: 1,
     username: 'admin',
     role: options.role ?? ROLE.ADMIN,
+    permissions: { admin_permissions: { model_profits: { read: true } } },
   })
   const get = vi.spyOn(api, 'get').mockImplementation(() => {
     if (options.pending) return new Promise(() => {})

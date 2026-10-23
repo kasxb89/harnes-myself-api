@@ -47,6 +47,7 @@ import { PresentationTable } from './presentation-table'
 
 type PresentationSectionProps = {
   onDirtyChange?: (dirty: boolean) => void
+  readOnly?: boolean
   models: ClientModelOption[]
   catalogUnavailable: boolean
   onRetryCatalog: () => void
@@ -127,7 +128,7 @@ function ClientModelPresentationForm(props: PresentationFormProps) {
     models: entries,
   }).success
   const onSave = async () => {
-    if (!valid || !dirty || save.isPending) return
+    if (props.readOnly || !valid || !dirty || save.isPending) return
     try {
       await save.mutateAsync(draft)
     } catch {
@@ -135,7 +136,7 @@ function ClientModelPresentationForm(props: PresentationFormProps) {
     }
   }
   const onApply = (entry: ClientModelPresentationEntry) => {
-    if (editing === null) return
+    if (props.readOnly || editing === null) return
     const next = { ...entries, [editing]: entry }
     if (Object.keys(entry).length === 0) delete next[editing]
     setDraft({ schema_version: 1, models: next })
@@ -195,43 +196,46 @@ function ClientModelPresentationForm(props: PresentationFormProps) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </Field>
-        <div
-          className='flex flex-wrap gap-2'
-          role='group'
-          aria-label={t('Description and badge actions')}
-        >
-          <Button
-            type='button'
-            variant='outline'
-            disabled={!dirty || save.isPending}
-            onClick={() => {
-              setDraft(props.presentation)
-              setBaseline(props.presentation)
-            }}
+        {!props.readOnly && (
+          <div
+            className='flex flex-wrap gap-2'
+            role='group'
+            aria-label={t('Description and badge actions')}
           >
-            {t('Discard description and badge changes')}
-          </Button>
-          <Button
-            type='button'
-            disabled={!dirty || !valid || save.isPending}
-            onClick={() => {
-              void onSave()
-            }}
-          >
-            {save.isPending
-              ? t('Saving...')
-              : t('Save descriptions and badges')}
-          </Button>
-        </div>
+            <Button
+              type='button'
+              variant='outline'
+              disabled={!dirty || save.isPending}
+              onClick={() => {
+                setDraft(props.presentation)
+                setBaseline(props.presentation)
+              }}
+            >
+              {t('Discard description and badge changes')}
+            </Button>
+            <Button
+              type='button'
+              disabled={!dirty || !valid || save.isPending}
+              onClick={() => {
+                void onSave()
+              }}
+            >
+              {save.isPending
+                ? t('Saving...')
+                : t('Save descriptions and badges')}
+            </Button>
+          </div>
+        )}
       </div>
       <PresentationTable
         models={props.models}
         entries={entries}
         search={search}
-        disabled={save.isPending}
+        disabled={props.readOnly || save.isPending}
+        readOnly={props.readOnly}
         onEdit={setEditing}
       />
-      {editing !== null && (
+      {!props.readOnly && editing !== null && (
         <PresentationDialog
           key={editing}
           modelId={editing}

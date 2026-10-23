@@ -24,7 +24,7 @@ import {
   isUsageLogsSectionId,
   USAGE_LOGS_DEFAULT_SECTION,
 } from '@/features/usage-logs/section-registry'
-import { ROLE } from '@/lib/roles'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6', '7'] as const
@@ -81,7 +81,7 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
     // Deployment-wide revenue and upstream error diagnostics remain admin-only.
     if (params.section === 'operations' || params.section === 'errors') {
       const { auth } = useAuthStore.getState()
-      if (!auth.user || auth.user.role < ROLE.ADMIN) {
+      if (!canAccessAdminRoute(auth.user, `/usage-logs/${params.section}`)) {
         throw redirect({ to: '/403' })
       }
     }

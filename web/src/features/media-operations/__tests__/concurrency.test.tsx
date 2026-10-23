@@ -122,9 +122,12 @@ afterEach(() => {
 })
 
 it('administrators can read actual per-key limits but cannot edit or reconcile', async () => {
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 1, username: 'admin', role: ROLE.ADMIN })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: ROLE.ADMIN,
+    permissions: { admin_permissions: { media_operations: { read: true } } },
+  })
   renderPanel()
   await screen.findByRole('table', { name: 'Media account admission pools' })
   expect(
@@ -444,9 +447,14 @@ it('losing root permission closes confirmation and losing admin permission remov
     screen.getByRole('button', { name: 'Save media concurrency' })
   )
   await act(async () => {
-    useAuthStore
-      .getState()
-      .auth.setUser({ id: 1, username: 'admin', role: ROLE.ADMIN })
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'admin',
+      role: ROLE.ADMIN,
+      permissions: {
+        admin_permissions: { media_operations: { read: true } },
+      },
+    })
   })
   expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   expect(
@@ -454,9 +462,14 @@ it('losing root permission closes confirmation and losing admin permission remov
   ).toBeDisabled()
   expect(put).not.toHaveBeenCalled()
   await act(async () => {
-    useAuthStore
-      .getState()
-      .auth.setUser({ id: 2, username: 'other', role: ROLE.ADMIN })
+    useAuthStore.getState().auth.setUser({
+      id: 2,
+      username: 'other',
+      role: ROLE.ADMIN,
+      permissions: {
+        admin_permissions: { media_operations: { read: true } },
+      },
+    })
   })
   expect(screen.getByText('Access denied')).toBeVisible()
   expect(screen.queryByText('H3 account 1')).not.toBeInTheDocument()

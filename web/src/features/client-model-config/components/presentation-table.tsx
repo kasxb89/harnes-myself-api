@@ -32,6 +32,7 @@ type PresentationTableProps = {
   entries: Record<string, ClientModelPresentationEntry>
   search: string
   disabled: boolean
+  readOnly?: boolean
   onEdit: (id: string) => void
 }
 type PresentationRow = { id: string; available: boolean; displayName: string }
@@ -100,18 +101,19 @@ export function PresentationTable(props: PresentationTableProps) {
       id: 'actions',
       header: t('Actions'),
       className: 'w-20',
-      cell: (row) => (
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          disabled={props.disabled}
-          onClick={() => props.onEdit(row.id)}
-          aria-label={t('Edit presentation for {{model}}', { model: row.id })}
-        >
-          {t('Edit')}
-        </Button>
-      ),
+      cell: (row) =>
+        props.readOnly ? null : (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={props.disabled}
+            onClick={() => props.onEdit(row.id)}
+            aria-label={t('Edit presentation for {{model}}', { model: row.id })}
+          >
+            {t('Edit')}
+          </Button>
+        ),
     },
   ]
   return (

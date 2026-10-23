@@ -79,10 +79,14 @@ export function CommandMenu() {
                     )
                   }
 
-                  return navItem.items?.map((subItem) => (
+                  const children =
+                    navItem.type === 'chat-presets'
+                      ? navItem.links
+                      : navItem.items
+                  return children?.map((subItem) => (
                     <CommandItem
                       key={`${navItem.title}-${subItem.url}`}
-                      value={`${navItem.title}-${subItem.url}`}
+                      value={`${navItem.title} ${subItem.title} ${subItem.url}`}
                       onSelect={() => {
                         runCommand(() => navigate({ to: subItem.url }))
                       }}
@@ -97,7 +101,7 @@ export function CommandMenu() {
               </CommandGroup>
             ))}
             <CommandSeparator />
-            <CommandGroup heading='Theme'>
+            <CommandGroup heading={t('Theme')}>
               <CommandItem onSelect={() => runCommand(() => setTheme('light'))}>
                 <Sun /> <span>{t('Light')}</span>
               </CommandItem>

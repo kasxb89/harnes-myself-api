@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/creationcontent"
 	"github.com/gin-gonic/gin"
 )
 
@@ -43,4 +44,25 @@ func SaveCustomerService(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, config)
+}
+
+func UploadCustomerServiceAsset(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, creationcontent.MaxImageSize+(1<<20))
+	if err := c.Request.ParseMultipartForm(1 << 20); err != nil {
+		creationContentError(c, model.ErrCustomerServiceImage)
+		return
+	}
+	defer c.Request.MultipartForm.RemoveAll()
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		creationContentError(c, model.ErrCustomerServiceImage)
+		return
+	}
+	defer file.Close()
+	asset, err := model.UploadCustomerServiceImage(file)
+	if err != nil {
+		creationContentError(c, err)
+		return
+	}
+	common.ApiSuccess(c, asset)
 }

@@ -16,8 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { SettingsPage } from '../components/settings-page'
+import { useParams } from '@tanstack/react-router'
+import { useTranslation } from 'react-i18next'
+
+import { SettingsPage, SettingsPageFrame } from '../components/settings-page'
 import type { ContentSettings, SystemOption } from '../types'
+import { AnnouncementsSettingsSection } from './announcements-settings-section'
+import { CustomerServiceSection } from './customer-service-section'
 import {
   CONTENT_DEFAULT_SECTION,
   getContentSectionContent,
@@ -83,6 +88,24 @@ function resolveContentSettings(
 }
 
 export function ContentSettings() {
+  const { t } = useTranslation()
+  const { section } = useParams({
+    from: '/_authenticated/system-settings/content/$section',
+  })
+  if (section === 'customer-service') {
+    return (
+      <SettingsPageFrame title={t('Customer service')}>
+        <CustomerServiceSection />
+      </SettingsPageFrame>
+    )
+  }
+  if (section === 'announcements') {
+    return (
+      <SettingsPageFrame title={t('Announcements')}>
+        <AnnouncementsSettingsSection />
+      </SettingsPageFrame>
+    )
+  }
   return (
     <SettingsPage
       routePath='/_authenticated/system-settings/content/$section'

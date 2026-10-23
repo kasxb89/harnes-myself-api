@@ -27,6 +27,18 @@ export const ADMIN_PERMISSION_RESOURCES = {
   AUDIT: 'audit',
   CHANNEL: 'channel',
   TASK_PLUGIN: 'task_plugin',
+  OPERATIONS: 'operations',
+  MODEL_PROFITS: 'model_profits',
+  BALANCE_LEDGER: 'balance_ledger',
+  UPSTREAM_TOPUPS: 'upstream_topups',
+  USER_ACTIVITY: 'user_activity',
+  VIDEO_USAGE: 'video_usage',
+  MEDIA_OPERATIONS: 'media_operations',
+  CLIENT_MODEL_CONFIG: 'client_model_config',
+  CREATION_CONTENT: 'creation_content',
+  CUSTOMER_SERVICE: 'customer_service',
+  ANNOUNCEMENTS: 'announcements',
+  DIAGNOSTICS: 'diagnostics',
 } as const
 
 export const ADMIN_PERMISSION_ACTIONS = {
@@ -49,11 +61,15 @@ export interface PermissionActionDef {
   action: string
   label_key: string
   description_key: string
+  root_only?: boolean
 }
 
 export interface PermissionResourceDef {
   resource: string
   label_key: string
+  group_key?: string
+  description_key?: string
+  session_only?: boolean
   actions: PermissionActionDef[]
 }
 
@@ -83,6 +99,65 @@ export function hasPermission(
   if (!user) return false
   if (user.role === ROLE.SUPER_ADMIN) return true
   return user.permissions?.admin_permissions?.[resource]?.[action] === true
+}
+
+// A single navigation/page policy keeps direct links and nested menus aligned.
+// Every privileged API independently checks its corresponding permission.
+export function canAccessAdminRoute(
+  user: AuthUser | null | undefined,
+  pathname: string
+): boolean {
+  if (!user) return false
+  if (user.role === ROLE.SUPER_ADMIN) return true
+  const path = pathname.split(/[?#]/, 1)[0].replace(/\/+$/, '') || '/'
+  const matches = (prefix: string) =>
+    path === prefix || path.startsWith(`${prefix}/`)
+  const read = (resource: string) =>
+    user.role >= ROLE.ADMIN && hasPermission(user, resource, 'read')
+
+  if (matches('/system-settings')) {
+    if (matches('/system-settings/content/customer-service')) {
+      return read('customer_service')
+    }
+    if (matches('/system-settings/content/announcements')) {
+      return read('announcements')
+    }
+    if (path === '/system-settings' || path === '/system-settings/content') {
+      return read('customer_service') || read('announcements')
+    }
+    return false
+  }
+  if (matches('/system-info') || matches('/task-plugins')) return false
+  if (matches('/usage-logs/operations')) {
+    return read('operations') || read('upstream_topups')
+  }
+  const resources: ReadonlyArray<readonly [string, string]> = [
+    ['/model-profits', 'model_profits'],
+    ['/dashboard/users', 'operations'],
+    ['/balance-ledger', 'balance_ledger'],
+    ['/upstream-topups', 'upstream_topups'],
+    ['/user-activity', 'user_activity'],
+    ['/video-usage', 'video_usage'],
+    ['/media-operations', 'media_operations'],
+    ['/client-model-config', 'client_model_config'],
+    ['/creation-content', 'creation_content'],
+    ['/usage-logs/errors', 'diagnostics'],
+    ['/client-errors', 'diagnostics'],
+    ['/channels', 'channel'],
+  ]
+  for (const [prefix, resource] of resources) {
+    if (matches(prefix)) return read(resource)
+  }
+  // The audit page narrows to /api/audit/self when global audit access is absent.
+  for (const prefix of [
+    '/users',
+    '/models',
+    '/redemption-codes',
+    '/subscriptions',
+  ]) {
+    if (matches(prefix)) return user.role >= ROLE.ADMIN
+  }
+  return true
 }
 
 // roleGrants returns the baseline grant matrix for the given role key.

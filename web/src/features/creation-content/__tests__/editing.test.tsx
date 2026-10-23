@@ -28,6 +28,9 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { CreationContentPage } from '..'
 import type { CreationContent, Template } from '../lib/schema'
 
@@ -100,6 +103,9 @@ async function openFilledTemplate(
   return dialog
 }
 beforeEach(() => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 1, username: 'root', role: ROLE.SUPER_ADMIN })
   get.mockResolvedValue({ data: { success: true, data: content() } })
   put.mockImplementation((_url: string, body: CreationContent) =>
     Promise.resolve({
@@ -590,4 +596,37 @@ describe('creation content editing', () => {
     )
     expect(put).not.toHaveBeenCalled()
   })
+})
+
+test('read-only creation content can inspect templates but cannot open editors, upload or save', async () => {
+  useAuthStore.getState().auth.setUser({
+    id: 2,
+    username: 'reader',
+    role: ROLE.ADMIN,
+    permissions: {
+      admin_permissions: { creation_content: { read: true, write: false } },
+    },
+  })
+  renderPage()
+  const add = await screen.findByRole('button', { name: 'Add template' })
+  expect(add).toBeDisabled()
+  expect(
+    screen.queryByRole('button', { name: 'Save content' })
+  ).not.toBeInTheDocument()
+  await userEvent.setup().click(add)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(put).not.toHaveBeenCalled()
+  expect(post).not.toHaveBeenCalled()
+})
+
+test('creation content denied to an administrator sends no content request', () => {
+  useAuthStore.getState().auth.setUser({
+    id: 2,
+    username: 'denied',
+    role: ROLE.ADMIN,
+    permissions: { admin_permissions: {} },
+  })
+  renderPage()
+  expect(screen.getByText('Access denied')).toBeVisible()
+  expect(get).not.toHaveBeenCalled()
 })

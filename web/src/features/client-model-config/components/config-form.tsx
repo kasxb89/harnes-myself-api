@@ -53,6 +53,7 @@ import { ModelOrderEditor } from './model-order-editor'
 
 type ConfigFormProps = {
   active?: boolean
+  readOnly?: boolean
   onDirtyChange?: (dirty: boolean) => void
   config: ClientModelConfig
   models: ClientModelOption[]
@@ -113,6 +114,7 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
   const onSubmit = async (
     values: ClientModelConfigFormValues
   ): Promise<void> => {
+    if (props.readOnly) return
     if (invalidDefault) {
       form.setError('default_chat_model', {
         message: t('Default client model must support chat'),
@@ -147,7 +149,7 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
         <FormNavigationGuard
           when={!props.onDirtyChange && form.formState.isDirty}
         />
-        {props.active !== false && (
+        {!props.readOnly && props.active !== false && (
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             onReset={() => form.reset()}
@@ -200,7 +202,7 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
                         value={field.value}
                         onValueChange={(id) => field.onChange(id ?? '')}
                         onBlur={field.onBlur}
-                        disabled={save.isPending}
+                        disabled={props.readOnly || save.isPending}
                         aria-label={t('Default chat model')}
                         className='w-full'
                       />
@@ -235,7 +237,7 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
                   value={field.value}
                   models={props.models}
                   defaultChatModel={defaultModel}
-                  disabled={save.isPending}
+                  disabled={props.readOnly || save.isPending}
                   onChange={field.onChange}
                 />
                 <FormMessage />

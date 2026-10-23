@@ -19,13 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { UserActivity } from '@/features/user-activity'
-import { ROLE } from '@/lib/roles'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/user-activity/')({
   beforeLoad: () => {
     const user = useAuthStore.getState().auth.user
-    if (!user || user.role < ROLE.ADMIN) throw redirect({ to: '/403' })
+    if (!canAccessAdminRoute(user, '/user-activity')) {
+      throw redirect({ to: '/403' })
+    }
   },
   component: UserActivity,
 })

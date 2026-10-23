@@ -33,7 +33,9 @@ import type {
   DashboardFilters,
 } from '@/features/dashboard/types'
 import { toIntlLocale } from '@/i18n/languages'
+import { hasPermission } from '@/lib/admin-permissions'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -59,10 +61,23 @@ function formatStatNumber(value: number, locale: Intl.LocalesArgument) {
 }
 
 export function LogStatCards(props: LogStatCardsProps) {
+  const user = useAuthStore((state) => state.auth.user)
+  const isAdmin = Boolean(
+    user && user.role >= ROLE.ADMIN && hasPermission(user, 'operations', 'read')
+  )
+  return (
+    <ScopedLogStatCards
+      key={`${user?.id}:${isAdmin}`}
+      {...props}
+      isAdmin={isAdmin}
+    />
+  )
+}
+
+function ScopedLogStatCards(props: LogStatCardsProps & { isAdmin: boolean }) {
   const { i18n } = useTranslation()
   const statCardsConfig = useModelStatCardsConfig()
-  const user = useAuthStore((state) => state.auth.user)
-  const isAdmin = !!(user?.role && user.role >= 10)
+  const isAdmin = props.isAdmin
   const [stats, setStats] = useState<{
     totalQuota: number
     totalCount: number

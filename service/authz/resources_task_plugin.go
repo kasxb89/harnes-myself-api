@@ -10,6 +10,7 @@ var TaskPluginBind = Permission{Resource: ResourceTaskPlugin, Action: ActionBind
 
 func init() {
 	RegisterResource(ResourceDefinition{
+		GroupKey: "system",
 		Resource: ResourceTaskPlugin,
 		LabelKey: "Task Plugin",
 		Actions: []ActionDefinition{

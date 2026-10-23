@@ -31,6 +31,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { hasPermission } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -192,12 +193,21 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
 }
 
 export function Dashboard() {
+  const user = useAuthStore((state) => state.auth.user)
+  const isAdmin = Boolean(
+    user && user.role >= ROLE.ADMIN && hasPermission(user, 'operations', 'read')
+  )
+  return <ScopedDashboard key={`${user?.id}:${isAdmin}`} isAdmin={isAdmin} />
+}
+
+function ScopedDashboard(props: { isAdmin: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const params = route.useParams()
-  const userRole = useAuthStore((state) => state.auth.user?.role)
-  const activeSection = (params.section ??
+  const requestedSection = (params.section ??
     DASHBOARD_DEFAULT_SECTION) as DashboardSectionId
+  const activeSection =
+    requestedSection === 'users' && !props.isAdmin ? 'models' : requestedSection
 
   const [modelData, setModelData] = useState<QuotaDataItem[]>([])
   const [dataLoading, setDataLoading] = useState(false)
@@ -244,7 +254,7 @@ export function Dashboard() {
   )
 
   const meta = SECTION_META[activeSection] ?? SECTION_META.overview
-  const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
+  const isAdmin = props.isAdmin
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
@@ -391,7 +401,7 @@ export function Dashboard() {
               </FadeIn>
             </>
           )}
-          {activeSection === 'users' && (
+          {activeSection === 'users' && isAdmin && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <LazyUserCharts

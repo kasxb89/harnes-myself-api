@@ -36,8 +36,10 @@ import { getOperationsSectionNavItems } from '@/features/system-settings/operati
 import { getPolicySectionNavItems } from '@/features/system-settings/request-policies/section-registry'
 import { getSecuritySectionNavItems } from '@/features/system-settings/security/section-registry.tsx'
 import { getSiteSectionNavItems } from '@/features/system-settings/site/section-registry.tsx'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
-import type { NavGroup, SidebarView } from '../types'
+import type { NavGroup, NavItem, SidebarView } from '../types'
 
 /**
  * Sidebar nav groups for the System Settings nested view.
@@ -47,7 +49,8 @@ import type { NavGroup, SidebarView } from '../types'
  * scopes the items as "administration" actions.
  */
 function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
-  return [
+  const user = useAuthStore.getState().auth.user
+  const groups: NavGroup[] = [
     {
       id: 'system-administration',
       title: t('System Administration'),
@@ -95,6 +98,23 @@ function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
       ],
     },
   ]
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.flatMap<NavItem>((item) => {
+        if (item.items) {
+          const items = item.items.filter(
+            (link) =>
+              'url' in link && canAccessAdminRoute(user, String(link.url))
+          )
+          return items.length ? [{ ...item, items }] : []
+        }
+        return 'url' in item && canAccessAdminRoute(user, String(item.url))
+          ? [item]
+          : []
+      }),
+    }))
+    .filter((group) => group.items.length > 0)
 }
 
 /**

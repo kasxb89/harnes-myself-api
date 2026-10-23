@@ -26,12 +26,28 @@ import { LoadingState } from '@/components/loading-state'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FormNavigationGuard } from '@/features/system-settings/components/form-navigation-guard'
 import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
+import { canAccessAdminRoute, hasPermission } from '@/lib/admin-permissions'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getClientModelCatalog, getClientModelConfig } from './api'
 import { ClientModelConfigForm } from './components/config-form'
 import { ClientModelPresentationSection } from './components/presentation-form'
 
 export function ClientModelConfigPage() {
+  const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  if (!canAccessAdminRoute(user, '/client-model-config')) {
+    return <ErrorState title={t('Access denied')} />
+  }
+  return (
+    <ClientModelConfigEditor
+      key={user?.id}
+      readOnly={!hasPermission(user, 'client_model_config', 'write')}
+    />
+  )
+}
+
+function ClientModelConfigEditor(props: { readOnly: boolean }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('preferences')
   const [configDirty, setConfigDirty] = useState(false)
@@ -112,6 +128,7 @@ export function ClientModelConfigPage() {
               {!pending && !error && config.data && catalog.data && (
                 <ClientModelConfigForm
                   config={config.data}
+                  readOnly={props.readOnly}
                   models={catalog.data}
                   active={tab === 'preferences'}
                   onDirtyChange={setConfigDirty}
@@ -120,6 +137,7 @@ export function ClientModelConfigPage() {
             </TabsContent>
             <TabsContent value='presentation' keepMounted>
               <ClientModelPresentationSection
+                readOnly={props.readOnly}
                 onDirtyChange={setPresentationDirty}
                 models={catalog.data ?? []}
                 catalogUnavailable={catalog.isError && !catalog.data}

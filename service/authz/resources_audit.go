@@ -6,6 +6,7 @@ var AuditRead = Permission{Resource: ResourceAudit, Action: ActionRead}
 
 func init() {
 	RegisterResource(ResourceDefinition{
+		GroupKey: "media",
 		Resource: ResourceAudit,
 		LabelKey: "Audit Logs",
 		Actions: []ActionDefinition{{

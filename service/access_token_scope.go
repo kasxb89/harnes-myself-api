@@ -133,6 +133,9 @@ func AccessTokenCatalog(userID, role int) []AccessTokenCatalogGroup {
 	}
 	if role >= common.RoleAdminUser {
 		for _, definition := range authz.Catalog() {
+			if definition.SessionOnly {
+				continue
+			}
 			resource := AccessTokenResource{Resource: definition.Resource, LabelKey: definition.LabelKey}
 			for _, action := range definition.Actions {
 				if authz.Can(userID, role, authz.Permission{Resource: definition.Resource, Action: action.Action}) {
@@ -164,6 +167,9 @@ func AccessTokenScopeDictionary() []AccessTokenResource {
 		resources = append(resources, resource)
 	}
 	for _, definition := range definitions {
+		if definition.SessionOnly {
+			continue
+		}
 		resources = append(resources, AccessTokenResource{Resource: definition.Resource, LabelKey: definition.LabelKey, Actions: definition.Actions})
 	}
 	return resources
@@ -206,7 +212,12 @@ func knownAccessTokenScope(scope string) bool {
 			return true
 		}
 	}
-	return slices.Contains(authz.AllPermissions(), authz.Permission{Resource: resourceName, Action: action})
+	for _, resource := range authz.Catalog() {
+		if resource.Resource == resourceName && !resource.SessionOnly && slices.ContainsFunc(resource.Actions, func(definition authz.ActionDefinition) bool { return definition.Action == action }) {
+			return true
+		}
+	}
+	return false
 }
 
 func AccessTokenScopeGranted(scopes []string, scope string) bool {

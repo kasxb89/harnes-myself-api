@@ -30,7 +30,9 @@ import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { canAccessAdminRoute, hasPermission } from '@/lib/admin-permissions'
 import { handleServerError } from '@/lib/handle-server-error'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { loadContent, saveContent } from './api'
 import { ModeEditor } from './components/mode-editor'
@@ -48,11 +50,16 @@ type SaveRequest = {
 }
 export function CreationContentPage() {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const allowed = canAccessAdminRoute(user, '/creation-content')
+  const canEdit = allowed && hasPermission(user, 'creation_content', 'write')
   const query = useQuery({
+    enabled: allowed,
     queryKey,
     queryFn: loadContent,
     refetchOnWindowFocus: false,
   })
+  if (!allowed) return <ErrorState title={t('Access denied')} />
   if (query.isPending) return <LoadingState />
   if (!query.data) {
     return (
@@ -64,9 +71,15 @@ export function CreationContentPage() {
       />
     )
   }
-  return <ContentEditor initial={query.data} />
+  return (
+    <ContentEditor
+      key={`${user?.id}:${canEdit}`}
+      initial={query.data}
+      readOnly={!canEdit}
+    />
+  )
 }
-function ContentEditor(props: { initial: CreationContent }) {
+function ContentEditor(props: { initial: CreationContent; readOnly: boolean }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const form = useForm<CreationContent>({
@@ -115,13 +128,16 @@ function ContentEditor(props: { initial: CreationContent }) {
   })
   const busy = save.isPending || reload.isPending
   const submit = form.handleSubmit(
-    (next) => save.mutate({ content: next, intent: 'content' }),
+    (next) => {
+      if (!props.readOnly) save.mutate({ content: next, intent: 'content' })
+    },
     () => setInvalid(true)
   )
   const saveTemplate = async (
     mode: Mode,
     template: Template
   ): Promise<void> => {
+    if (props.readOnly) throw new Error(t('Access denied'))
     const current = form.getValues()
     const existing = current[mode].templates.some(
       (item) => item.id === template.id
@@ -161,14 +177,16 @@ function ContentEditor(props: { initial: CreationContent }) {
         >
           {t('Reload content')}
         </Button>
-        <Button
-          disabled={busy || !form.formState.isDirty}
-          onClick={() => {
-            void submit()
-          }}
-        >
-          {save.isPending ? t('Saving...') : t('Save content')}
-        </Button>
+        {!props.readOnly && (
+          <Button
+            disabled={busy || !form.formState.isDirty}
+            onClick={() => {
+              void submit()
+            }}
+          >
+            {save.isPending ? t('Saving...') : t('Save content')}
+          </Button>
+        )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <section
@@ -209,7 +227,7 @@ function ContentEditor(props: { initial: CreationContent }) {
                 </AlertDescription>
               </Alert>
             )}
-            <fieldset disabled={busy} className='min-w-0'>
+            <fieldset disabled={props.readOnly || busy} className='min-w-0'>
               <Tabs defaultValue='image'>
                 <TabsList aria-label={t('Creation mode')}>
                   <TabsTrigger value='image'>{t('Images')}</TabsTrigger>
@@ -218,23 +236,29 @@ function ContentEditor(props: { initial: CreationContent }) {
                 <TabsContent value='image'>
                   <ModeEditor
                     mode='image'
+                    readOnly={props.readOnly}
                     onSaveTemplate={(next) => saveTemplate('image', next)}
                     value={value.image}
                     invalid={invalid}
-                    onChange={(next) =>
-                      form.setValue('image', next, { shouldDirty: true })
-                    }
+                    onChange={(next) => {
+                      if (!props.readOnly) {
+                        form.setValue('image', next, { shouldDirty: true })
+                      }
+                    }}
                   />
                 </TabsContent>
                 <TabsContent value='video'>
                   <ModeEditor
                     mode='video'
+                    readOnly={props.readOnly}
                     onSaveTemplate={(next) => saveTemplate('video', next)}
                     value={value.video}
                     invalid={invalid}
-                    onChange={(next) =>
-                      form.setValue('video', next, { shouldDirty: true })
-                    }
+                    onChange={(next) => {
+                      if (!props.readOnly) {
+                        form.setValue('video', next, { shouldDirty: true })
+                      }
+                    }}
                   />
                 </TabsContent>
               </Tabs>

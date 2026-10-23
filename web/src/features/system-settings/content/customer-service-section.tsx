@@ -26,6 +26,12 @@ import { toast } from 'sonner'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from '@/components/ui/collapsible'
 import {
   Field,
   FieldDescription,
@@ -36,7 +42,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { AssetUpload } from '@/features/creation-content/components/asset-upload'
+import { canAccessAdminRoute, hasPermission } from '@/lib/admin-permissions'
 import { getServerErrorMessage } from '@/lib/server-error-message'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   SettingsForm,
@@ -47,6 +55,7 @@ import { SettingsSection } from '../components/settings-section'
 import {
   loadCustomerService,
   saveCustomerService,
+  uploadCustomerServiceAsset,
 } from './customer-service-api'
 import {
   CUSTOMER_SERVICE_QUERY_KEY,
@@ -57,11 +66,19 @@ import {
 
 export function CustomerServiceSection() {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const allowed = canAccessAdminRoute(
+    user,
+    '/system-settings/content/customer-service'
+  )
+  const canEdit = allowed && hasPermission(user, 'customer_service', 'write')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const client = useQueryClient()
   const [uploading, setUploading] = useState(false)
   const pending = useRef(false)
   const query = useQuery({
     queryKey: CUSTOMER_SERVICE_QUERY_KEY,
+    enabled: allowed,
     queryFn: ({ signal }) => loadCustomerService(signal),
     meta: { errorToast: false },
   })
@@ -91,7 +108,7 @@ export function CustomerServiceSection() {
   }, [query.data, form, isDirty])
 
   const onSubmit = async (next: CustomerService): Promise<void> => {
-    if (pending.current || busy || !query.data) return
+    if (!canEdit || pending.current || busy || !query.data) return
     pending.current = true
     try {
       await mutation.mutateAsync(next)
@@ -101,6 +118,10 @@ export function CustomerServiceSection() {
       pending.current = false
     }
   }
+
+  const submit = form.handleSubmit(onSubmit, () => setAdvancedOpen(true))
+
+  if (!allowed) return <ErrorState title={t('Access denied')} />
 
   if (query.isPending) {
     return (
@@ -122,19 +143,32 @@ export function CustomerServiceSection() {
     <SettingsSection title={t('Customer service')}>
       <p className='text-muted-foreground text-sm'>
         {t(
-          'Configure the QR code shown when desktop users open customer service. Save all changes together.'
+          'Upload your customer service QR code, preview it, then save. No code changes are needed.'
         )}
       </p>
+      {value.qr_code_url && (
+        <div className='text-sm'>
+          <p className='font-medium'>{value.title || t('Customer service')}</p>
+          {value.description && (
+            <p className='text-muted-foreground'>{value.description}</p>
+          )}
+          <p className='text-muted-foreground'>
+            {t(value.enabled ? 'Enabled' : 'Disabled')}
+          </p>
+        </div>
+      )}
       <SettingsForm
         aria-label={t('Customer service settings')}
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={submit}
       >
-        <SettingsPageFormActions
-          onSave={form.handleSubmit(onSubmit)}
-          isSaving={mutation.isPending}
-          isSaveDisabled={!isDirty || uploading}
-          saveLabel='Save customer service settings'
-        />
+        {canEdit && (
+          <SettingsPageFormActions
+            onSave={submit}
+            isSaving={mutation.isPending}
+            isSaveDisabled={!isDirty || uploading}
+            saveLabel='Save customer service settings'
+          />
+        )}
         {mutation.isError && (
           <Alert variant='destructive'>
             <AlertTitle>
@@ -160,38 +194,41 @@ export function CustomerServiceSection() {
           <FieldGroup>
             <Controller
               control={form.control}
-              name='enabled'
-              render={({ field }) => (
-                <SettingsSwitchField
-                  controlId='customer-service-enabled'
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                  disabled={busy}
-                  label={t('Enable customer service QR code')}
-                  description={t(
-                    'Enable only after uploading a QR code. Disabled settings remain saved as a draft.'
-                  )}
-                />
-              )}
-            />
-            <Controller
-              control={form.control}
               name='qr_code_url'
               render={({ field }) => (
                 <Field data-invalid={!!errors.qr_code_url}>
                   <AssetUpload
                     kind='image'
+                    uploadLabel={t('Upload QR code')}
+                    uploadFile={uploadCustomerServiceAsset}
+                    readOnly={!canEdit}
                     label={t('Customer service QR code')}
                     value={
                       field.value
                         ? field.value.slice('/api/creation/assets/'.length)
                         : null
                     }
-                    onChange={(id) =>
+                    onChange={(id) => {
+                      if (!canEdit) return
+                      const firstUpload =
+                        !!id && !query.data.qr_code_url && !field.value
                       field.onChange(id ? `/api/creation/assets/${id}` : '')
-                    }
+                      if (firstUpload) {
+                        form.setValue('enabled', true, { shouldDirty: true })
+                        if (!form.getValues('title')) {
+                          form.setValue('title', '联系客服', {
+                            shouldDirty: true,
+                          })
+                        }
+                        if (!form.getValues('description')) {
+                          form.setValue('description', '请扫描二维码联系客服', {
+                            shouldDirty: true,
+                          })
+                        }
+                      }
+                    }}
                     onBusyChange={setUploading}
-                    disabled={mutation.isPending}
+                    disabled={!canEdit || mutation.isPending}
                     aria-invalid={!!errors.qr_code_url}
                     aria-describedby={
                       errors.qr_code_url
@@ -211,42 +248,86 @@ export function CustomerServiceSection() {
                 </Field>
               )}
             />
-            <Field data-invalid={!!errors.title} data-disabled={busy}>
-              <FieldLabel htmlFor='customer-service-title'>
-                {t('Customer service title (optional)')}
-              </FieldLabel>
-              <Input
-                id='customer-service-title'
-                maxLength={64}
-                aria-invalid={!!errors.title}
-                aria-describedby='customer-service-title-error'
-                {...form.register('title')}
-              />
-              <FieldError id='customer-service-title-error'>
-                {errors.title?.message && t(errors.title.message)}
-              </FieldError>
-            </Field>
-            <Field data-invalid={!!errors.description} data-disabled={busy}>
-              <FieldLabel htmlFor='customer-service-description'>
-                {t('Customer service description (optional)')}
-              </FieldLabel>
-              <Textarea
-                id='customer-service-description'
-                maxLength={256}
-                rows={3}
-                aria-invalid={!!errors.description}
-                aria-describedby='customer-service-description-help customer-service-description-error'
-                {...form.register('description')}
-              />
-              <FieldDescription id='customer-service-description-help'>
+            {canEdit ? (
+              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <CollapsibleTrigger
+                  render={<Button type='button' variant='outline' />}
+                >
+                  {t('Optional display settings')}
+                </CollapsibleTrigger>
+                <CollapsibleContent className='pt-4'>
+                  <FieldGroup>
+                    <Controller
+                      control={form.control}
+                      name='enabled'
+                      render={({ field }) => (
+                        <SettingsSwitchField
+                          controlId='customer-service-enabled'
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={busy}
+                          label={t('Enable customer service QR code')}
+                          description={t(
+                            'Enable only after uploading a QR code. Disabled settings remain saved as a draft.'
+                          )}
+                        />
+                      )}
+                    />
+                    <Field data-invalid={!!errors.title} data-disabled={busy}>
+                      <FieldLabel htmlFor='customer-service-title'>
+                        {t('Customer service title (optional)')}
+                      </FieldLabel>
+                      <Input
+                        id='customer-service-title'
+                        maxLength={64}
+                        aria-invalid={!!errors.title}
+                        aria-describedby='customer-service-title-error'
+                        {...form.register('title')}
+                      />
+                      <FieldError id='customer-service-title-error'>
+                        {errors.title?.message && t(errors.title.message)}
+                      </FieldError>
+                    </Field>
+                    <Field
+                      data-invalid={!!errors.description}
+                      data-disabled={busy}
+                    >
+                      <FieldLabel htmlFor='customer-service-description'>
+                        {t('Customer service description (optional)')}
+                      </FieldLabel>
+                      <Textarea
+                        id='customer-service-description'
+                        maxLength={256}
+                        rows={3}
+                        aria-invalid={!!errors.description}
+                        aria-describedby='customer-service-description-help customer-service-description-error'
+                        {...form.register('description')}
+                      />
+                      <FieldDescription id='customer-service-description-help'>
+                        {t(
+                          'Plain text only, without line breaks or control characters.'
+                        )}
+                      </FieldDescription>
+                      <FieldError id='customer-service-description-error'>
+                        {errors.description?.message &&
+                          t(errors.description.message)}
+                      </FieldError>
+                    </Field>
+                  </FieldGroup>
+                </CollapsibleContent>
+              </Collapsible>
+            ) : (
+              <p className='text-muted-foreground text-sm'>
                 {t(
-                  'Plain text only, without line breaks or control characters.'
+                  'Read-only access. Contact a super administrator to change these settings.'
                 )}
-              </FieldDescription>
-              <FieldError id='customer-service-description-error'>
-                {errors.description?.message && t(errors.description.message)}
-              </FieldError>
-            </Field>
+              </p>
+            )}
+            {value.qr_code_url && isDirty && (
+              <p role='status' className='text-muted-foreground text-sm'>
+                {t('QR code uploaded. Save to apply it to the client.')}
+              </p>
+            )}
             {!value.qr_code_url && (
               <FieldDescription>
                 {t(

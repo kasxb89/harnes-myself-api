@@ -31,6 +31,8 @@ import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -53,6 +55,7 @@ import {
   StatCard,
   type StatCardDetail,
 } from '@/features/dashboard/components/ui/stat-card'
+import { hasPermission } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
 import {
   formatLocalCurrencyAmount,
@@ -60,6 +63,9 @@ import {
   type CurrencyFormatOptions,
 } from '@/lib/currency'
 import { handleServerError } from '@/lib/handle-server-error'
+import { ROLE } from '@/lib/roles'
+import { requireServerSuccess } from '@/lib/server-error-message'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   ConsumptionTrendChart,
@@ -198,25 +204,51 @@ function SectionHeader(props: { title: string; description: string }) {
 export function UpstreamTopupsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const user = useAuthStore((state) => state.auth.user)
+  const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
+  const canReadOverview = isAdmin && hasPermission(user, 'operations', 'read')
+  const canReadLedger =
+    isAdmin && hasPermission(user, 'upstream_topups', 'read')
+  const canWriteLedger =
+    isAdmin && hasPermission(user, 'upstream_topups', 'write')
   const [form, setForm] = useState(EMPTY_FORM)
   const [open, setOpen] = useState(false)
 
+  const overview = useQuery({
+    queryKey: ['operations-overview', user?.id],
+    enabled: canReadOverview,
+    queryFn: async (): Promise<Omit<LedgerPayload, 'items'>> => {
+      const response = await api.get('/api/operations/overview')
+      return requireServerSuccess(response.data).data
+    },
+  })
   const ledger = useQuery({
-    queryKey: ['upstream-topups'],
-    queryFn: async (): Promise<LedgerPayload> => {
+    queryKey: ['upstream-topups', user?.id],
+    enabled: canReadLedger,
+    queryFn: async (): Promise<
+      Pick<LedgerPayload, 'items' | 'spent_cents'>
+    > => {
       const response = await api.get('/api/upstream-topup/')
-      return response.data.data as LedgerPayload
+      return requireServerSuccess(response.data).data
     },
   })
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ['upstream-topups'] })
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['upstream-topups'] }),
+      queryClient.invalidateQueries({ queryKey: ['operations-overview'] }),
+    ])
   const onError = (error: unknown) => {
     handleServerError(error)
   }
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!canWriteLedger) {
+        throw new Error(
+          t('You do not have permission to edit upstream top-ups.')
+        )
+      }
       const body = {
         upstream: form.upstream.trim(),
         amount_cents: Math.round(Number(form.amount) * 100),
@@ -226,8 +258,11 @@ export function UpstreamTopupsPage() {
           : 0,
         note: form.note,
       }
-      if (form.id > 0) await api.put(`/api/upstream-topup/${form.id}`, body)
-      else await api.post('/api/upstream-topup/', body)
+      const response =
+        form.id > 0
+          ? await api.put(`/api/upstream-topup/${form.id}`, body)
+          : await api.post('/api/upstream-topup/', body)
+      requireServerSuccess(response.data)
     },
     onSuccess: async () => {
       toast.success(t('Saved'))
@@ -239,7 +274,12 @@ export function UpstreamTopupsPage() {
 
   const remove = useMutation({
     mutationFn: async (id: number) => {
-      await api.delete(`/api/upstream-topup/${id}`)
+      if (!canWriteLedger) {
+        throw new Error(
+          t('You do not have permission to edit upstream top-ups.')
+        )
+      }
+      requireServerSuccess((await api.delete(`/api/upstream-topup/${id}`)).data)
     },
     onSuccess: async () => {
       toast.success(t('Deleted'))
@@ -248,28 +288,30 @@ export function UpstreamTopupsPage() {
     onError,
   })
 
-  const items = ledger.data?.items ?? []
-  const spentCny = (ledger.data?.spent_cents?.CNY ?? 0) / 100
-  const received = Object.values(ledger.data?.received ?? {}).reduce(
+  const overviewData = canReadOverview ? overview.data : undefined
+  const ledgerData = canReadLedger ? ledger.data : undefined
+  const items = ledgerData?.items ?? []
+  const spentCny = (overviewData?.spent_cents?.CNY ?? 0) / 100
+  const received = Object.values(overviewData?.received ?? {}).reduce(
     (sum, value) => sum + value,
     0
   )
   const consumedToday = formatQuotaWithCurrency(
-    ledger.data?.consumed_quota_today ?? 0,
+    overviewData?.consumed_quota_today ?? 0,
     MONEY_OPTIONS
   )
   const consumedTotal = formatQuotaWithCurrency(
-    ledger.data?.consumed_quota ?? 0,
+    overviewData?.consumed_quota ?? 0,
     MONEY_OPTIONS
   )
   const balance = formatQuotaWithCurrency(
-    ledger.data?.users?.balance_quota ?? 0,
+    overviewData?.users?.balance_quota ?? 0,
     MONEY_OPTIONS
   )
   const profit = received - spentCny
-  const daily = ledger.data?.daily ?? []
-  const users = ledger.data?.users
-  const topups = ledger.data?.topups
+  const daily = overviewData?.daily ?? []
+  const users = overviewData?.users
+  const topups = overviewData?.topups
   const calls = daily.map((point) => point.calls)
   const newUsersDaily = daily.map((point) => ({
     day_start: point.day_start,
@@ -284,7 +326,7 @@ export function UpstreamTopupsPage() {
     users && users.total > 0 && topups
       ? `${((topups.users_total / users.total) * 100).toFixed(0)}%`
       : '—'
-  const otherCurrencies = Object.entries(ledger.data?.spent_cents ?? {}).filter(
+  const otherCurrencies = Object.entries(ledgerData?.spent_cents ?? {}).filter(
     ([currency]) => currency !== 'CNY'
   )
 
@@ -295,333 +337,380 @@ export function UpstreamTopupsPage() {
 
   return (
     <div className='flex flex-col gap-5'>
-      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
-        <SectionHeader
-          title={t('Today')}
-          description={t('Live figures since local midnight')}
+      {canReadOverview && overview.isError && (
+        <ErrorState
+          title={t('Unable to load business overview')}
+          onRetry={() => {
+            void overview.refetch()
+          }}
         />
-        <div className='mt-4'>
-          <MetricRow>
-            <StatCard
-              title={t('User consumption')}
-              value={consumedToday}
-              description={`${t('Total')} ${consumedTotal}`}
-              icon={Wallet}
-              tone='accent-1'
-              sparklineVariant='line'
-              sparkline={daily.map((point) => point.quota)}
-              loading={ledger.isLoading}
-              compactMobile
+      )}
+      {canReadOverview && !overview.isError && (
+        <div className='contents'>
+          <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+            <SectionHeader
+              title={t('Today')}
+              description={t('Live figures since local midnight')}
             />
-            <StatCard
-              title={t('Today top-ups')}
-              value={formatLocalCurrencyAmount(topups?.money_today ?? 0)}
-              description={`${t('Top-up count')} ${topups?.count_today ?? 0} · ${t('Top-up users')} ${topups?.users_today ?? 0}`}
-              icon={CircleDollarSign}
-              tone='accent-2'
-              sparkline={topUpDaily.map((point) => point.value)}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-            <StatCard
-              title={t('New users today')}
-              value={users?.new_today ?? 0}
-              description={`${t('Total')} ${users?.total ?? 0}`}
-              icon={UserPlus}
-              tone='accent-3'
-              sparkline={newUsersDaily.map((point) => point.value)}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-            <StatCard
-              title={t('Calls today')}
-              value={ledger.data?.calls_today ?? 0}
-              description={`${t('Active users today')} ${ledger.data?.active_users_today ?? 0}`}
-              icon={Activity}
-              tone='accent-1'
-              sparkline={calls}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-          </MetricRow>
-        </div>
-      </section>
-
-      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
-        <SectionHeader
-          title={t('Consumption trend')}
-          description={t('Last 14 days')}
-        />
-        <div className='mt-4 grid gap-4 lg:grid-cols-3'>
-          <div className='flex flex-col gap-2'>
-            <span className='text-muted-foreground text-xs font-medium'>
-              {t('Daily consumption')}
-            </span>
-            <div className='h-[220px]'>
-              <ConsumptionTrendChart points={daily} />
+            <div className='mt-4'>
+              <MetricRow>
+                <StatCard
+                  title={t('User consumption')}
+                  value={consumedToday}
+                  description={`${t('Total')} ${consumedTotal}`}
+                  icon={Wallet}
+                  tone='accent-1'
+                  sparklineVariant='line'
+                  sparkline={daily.map((point) => point.quota)}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('Today top-ups')}
+                  value={formatLocalCurrencyAmount(topups?.money_today ?? 0)}
+                  description={`${t('Top-up count')} ${topups?.count_today ?? 0} · ${t('Top-up users')} ${topups?.users_today ?? 0}`}
+                  icon={CircleDollarSign}
+                  tone='accent-2'
+                  sparkline={topUpDaily.map((point) => point.value)}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('New users today')}
+                  value={users?.new_today ?? 0}
+                  description={`${t('Total')} ${users?.total ?? 0}`}
+                  icon={UserPlus}
+                  tone='accent-3'
+                  sparkline={newUsersDaily.map((point) => point.value)}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('Calls today')}
+                  value={overviewData?.calls_today ?? 0}
+                  description={`${t('Active users today')} ${overviewData?.active_users_today ?? 0}`}
+                  icon={Activity}
+                  tone='accent-1'
+                  sparkline={calls}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+              </MetricRow>
             </div>
-          </div>
-          <div className='flex flex-col gap-2'>
-            <span className='text-muted-foreground text-xs font-medium'>
-              {t('Daily top-ups')}
-            </span>
-            <div className='h-[220px]'>
-              <DailyBarChart
-                points={topUpDaily}
-                tickFormat={(value) =>
-                  value >= 100 ? value.toFixed(0) : value.toFixed(2)
-                }
+          </section>
+
+          <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+            <SectionHeader
+              title={t('Consumption trend')}
+              description={t('Last 14 days')}
+            />
+            <div className='mt-4 grid gap-4 lg:grid-cols-3'>
+              <div className='flex flex-col gap-2'>
+                <span className='text-muted-foreground text-xs font-medium'>
+                  {t('Daily consumption')}
+                </span>
+                <div className='h-[220px]'>
+                  <ConsumptionTrendChart points={daily} />
+                </div>
+              </div>
+              <div className='flex flex-col gap-2'>
+                <span className='text-muted-foreground text-xs font-medium'>
+                  {t('Daily top-ups')}
+                </span>
+                <div className='h-[220px]'>
+                  <DailyBarChart
+                    points={topUpDaily}
+                    tickFormat={(value) =>
+                      value >= 100 ? value.toFixed(0) : value.toFixed(2)
+                    }
+                  />
+                </div>
+              </div>
+              <div className='flex flex-col gap-2'>
+                <span className='text-muted-foreground text-xs font-medium'>
+                  {t('Daily new users')}
+                </span>
+                <div className='h-[220px]'>
+                  <DailyBarChart
+                    points={newUsersDaily}
+                    tickFormat={(value) => value.toFixed(0)}
+                    minInterval={1}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+            <SectionHeader
+              title={t('All time')}
+              description={t('Money, accounts, and margin')}
+            />
+            <div className='mt-4'>
+              <MetricRow>
+                <StatCard
+                  title={t('Users paid in')}
+                  value={formatLocalCurrencyAmount(received)}
+                  description={t('Completed top-ups')}
+                  icon={Receipt}
+                  tone='accent-2'
+                  details={[
+                    detail(t('Top-up count'), String(topups?.count_total ?? 0)),
+                    detail(t('Top-up users'), String(topups?.users_total ?? 0)),
+                  ]}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('User consumption')}
+                  value={consumedTotal}
+                  description={t('Recognised once users spend it')}
+                  icon={TrendingUp}
+                  tone='accent-1'
+                  details={[
+                    detail(t('Today'), consumedToday),
+                    detail(t('Calls in 14 days'), String(callsInWindow)),
+                  ]}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('Users')}
+                  value={users?.total ?? 0}
+                  description={t('Registered accounts')}
+                  icon={Users}
+                  tone='accent-3'
+                  details={[
+                    detail(t('New today'), String(users?.new_today ?? 0)),
+                    detail(t('Unused balance'), balance),
+                  ]}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('Profit')}
+                  value={formatLocalCurrencyAmount(profit)}
+                  description={t('Received minus paid upstream')}
+                  icon={PiggyBank}
+                  tone={profit >= 0 ? 'accent-3' : 'accent-2'}
+                  details={[
+                    detail(
+                      t('Paid upstream'),
+                      formatLocalCurrencyAmount(spentCny)
+                    ),
+                    detail(
+                      t('Paying users'),
+                      `${topups?.users_total ?? 0} · ${payingRate}`
+                    ),
+                  ]}
+                  loading={overview.isLoading}
+                  compactMobile
+                />
+              </MetricRow>
+            </div>
+          </section>
+
+          <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
+            <SectionHeader
+              title={t('User top-ups')}
+              description={t(
+                'Completed payments only. Amount is what the user paid.'
+              )}
+            />
+            <div className='mt-4 grid gap-5 xl:grid-cols-2'>
+              <div className='flex flex-col gap-2'>
+                <span className='text-muted-foreground text-xs font-medium'>
+                  {t('Per user')}
+                </span>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('User')}</TableHead>
+                      <TableHead className='text-right'>
+                        {t('Total paid')}
+                      </TableHead>
+                      <TableHead className='text-right'>
+                        {t('Top-up count')}
+                      </TableHead>
+                      <TableHead>{t('Last top-up')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(overviewData?.topup_users ?? []).map((row) => (
+                      <TableRow key={row.user_id}>
+                        <TableCell>
+                          {row.username || `#${row.user_id}`}
+                        </TableCell>
+                        <TableCell className='text-right tabular-nums'>
+                          {formatLocalCurrencyAmount(row.money)}
+                        </TableCell>
+                        <TableCell className='text-right tabular-nums'>
+                          {row.count}
+                        </TableCell>
+                        <TableCell>{formatDay(row.last_paid_at)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {(overviewData?.topup_users ?? []).length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          className='text-muted-foreground text-center text-sm'
+                        >
+                          {t('No completed top-ups yet')}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className='flex flex-col gap-2'>
+                <span className='text-muted-foreground text-xs font-medium'>
+                  {t('Recent top-ups')}
+                </span>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('Time')}</TableHead>
+                      <TableHead>{t('User')}</TableHead>
+                      <TableHead className='text-right'>
+                        {t('Amount')}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(overviewData?.recent_topups ?? []).map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>
+                          {formatDateTime(row.completed_at)}
+                        </TableCell>
+                        <TableCell>
+                          {row.username || `#${row.user_id}`}
+                        </TableCell>
+                        <TableCell className='text-right tabular-nums'>
+                          {formatLocalCurrencyAmount(row.money)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {(overviewData?.recent_topups ?? []).length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={3}
+                          className='text-muted-foreground text-center text-sm'
+                        >
+                          {t('No completed top-ups yet')}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {canReadLedger && (
+        <Card>
+          <CardHeader className='flex flex-row items-center justify-between gap-3'>
+            <CardTitle>{t('Upstream top-ups')}</CardTitle>
+            <Button
+              disabled={!canWriteLedger}
+              onClick={() => {
+                setForm(EMPTY_FORM)
+                setOpen(true)
+              }}
+            >
+              {t('Record a top-up')}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {ledger.isError && (
+              <ErrorState
+                title={t('Unable to load upstream top-ups')}
+                onRetry={() => {
+                  void ledger.refetch()
+                }}
               />
-            </div>
-          </div>
-          <div className='flex flex-col gap-2'>
-            <span className='text-muted-foreground text-xs font-medium'>
-              {t('Daily new users')}
-            </span>
-            <div className='h-[220px]'>
-              <DailyBarChart
-                points={newUsersDaily}
-                tickFormat={(value) => value.toFixed(0)}
-                minInterval={1}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
-        <SectionHeader
-          title={t('All time')}
-          description={t('Money, accounts, and margin')}
-        />
-        <div className='mt-4'>
-          <MetricRow>
-            <StatCard
-              title={t('Users paid in')}
-              value={formatLocalCurrencyAmount(received)}
-              description={t('Completed top-ups')}
-              icon={Receipt}
-              tone='accent-2'
-              details={[
-                detail(t('Top-up count'), String(topups?.count_total ?? 0)),
-                detail(t('Top-up users'), String(topups?.users_total ?? 0)),
-              ]}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-            <StatCard
-              title={t('User consumption')}
-              value={consumedTotal}
-              description={t('Recognised once users spend it')}
-              icon={TrendingUp}
-              tone='accent-1'
-              details={[
-                detail(t('Today'), consumedToday),
-                detail(t('Calls in 14 days'), String(callsInWindow)),
-              ]}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-            <StatCard
-              title={t('Users')}
-              value={users?.total ?? 0}
-              description={t('Registered accounts')}
-              icon={Users}
-              tone='accent-3'
-              details={[
-                detail(t('New today'), String(users?.new_today ?? 0)),
-                detail(t('Unused balance'), balance),
-              ]}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-            <StatCard
-              title={t('Profit')}
-              value={formatLocalCurrencyAmount(profit)}
-              description={t('Received minus paid upstream')}
-              icon={PiggyBank}
-              tone={profit >= 0 ? 'accent-3' : 'accent-2'}
-              details={[
-                detail(t('Paid upstream'), formatLocalCurrencyAmount(spentCny)),
-                detail(
-                  t('Paying users'),
-                  `${topups?.users_total ?? 0} · ${payingRate}`
-                ),
-              ]}
-              loading={ledger.isLoading}
-              compactMobile
-            />
-          </MetricRow>
-        </div>
-      </section>
-
-      <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
-        <SectionHeader
-          title={t('User top-ups')}
-          description={t(
-            'Completed payments only. Amount is what the user paid.'
-          )}
-        />
-        <div className='mt-4 grid gap-5 xl:grid-cols-2'>
-          <div className='flex flex-col gap-2'>
-            <span className='text-muted-foreground text-xs font-medium'>
-              {t('Per user')}
-            </span>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('User')}</TableHead>
-                  <TableHead className='text-right'>{t('Total paid')}</TableHead>
-                  <TableHead className='text-right'>{t('Top-up count')}</TableHead>
-                  <TableHead>{t('Last top-up')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(ledger.data?.topup_users ?? []).map((row) => (
-                  <TableRow key={row.user_id}>
-                    <TableCell>
-                      {row.username || `#${row.user_id}`}
-                    </TableCell>
-                    <TableCell className='text-right tabular-nums'>
-                      {formatLocalCurrencyAmount(row.money)}
-                    </TableCell>
-                    <TableCell className='text-right tabular-nums'>
-                      {row.count}
-                    </TableCell>
-                    <TableCell>{formatDay(row.last_paid_at)}</TableCell>
-                  </TableRow>
-                ))}
-                {(ledger.data?.topup_users ?? []).length === 0 && (
+            )}
+            {ledger.isPending && <LoadingState />}
+            {!ledger.isError && !ledger.isPending && (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      className='text-muted-foreground text-center text-sm'
-                    >
-                      {t('No completed top-ups yet')}
-                    </TableCell>
+                    <TableHead>{t('Upstream')}</TableHead>
+                    <TableHead>{t('Amount')}</TableHead>
+                    <TableHead>{t('Paid on')}</TableHead>
+                    <TableHead>{t('Note')}</TableHead>
+                    <TableHead className='text-right'>{t('Actions')}</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {items.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.upstream}</TableCell>
+                      <TableCell>
+                        {formatCents(item.amount_cents, item.currency)}
+                      </TableCell>
+                      <TableCell>{formatDay(item.paid_at)}</TableCell>
+                      <TableCell>{item.note}</TableCell>
+                      <TableCell className='text-right'>
+                        <Button
+                          variant='ghost'
+                          disabled={
+                            !canWriteLedger ||
+                            save.isPending ||
+                            remove.isPending
+                          }
+                          size='sm'
+                          onClick={() => {
+                            setForm({
+                              id: item.id,
+                              upstream: item.upstream,
+                              amount: (item.amount_cents / 100).toFixed(2),
+                              currency: item.currency,
+                              paidAt: dayValue(item.paid_at),
+                              note: item.note,
+                            })
+                            setOpen(true)
+                          }}
+                        >
+                          {t('Edit')}
+                        </Button>
+                        <Button
+                          variant='ghost'
+                          disabled={
+                            !canWriteLedger ||
+                            save.isPending ||
+                            remove.isPending
+                          }
+                          size='sm'
+                          onClick={() => {
+                            remove.mutate(item.id)
+                          }}
+                        >
+                          {t('Delete')}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
 
-          <div className='flex flex-col gap-2'>
-            <span className='text-muted-foreground text-xs font-medium'>
-              {t('Recent top-ups')}
-            </span>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('Time')}</TableHead>
-                  <TableHead>{t('User')}</TableHead>
-                  <TableHead className='text-right'>{t('Amount')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(ledger.data?.recent_topups ?? []).map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell>{formatDateTime(row.completed_at)}</TableCell>
-                    <TableCell>
-                      {row.username || `#${row.user_id}`}
-                    </TableCell>
-                    <TableCell className='text-right tabular-nums'>
-                      {formatLocalCurrencyAmount(row.money)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {(ledger.data?.recent_topups ?? []).length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className='text-muted-foreground text-center text-sm'
-                    >
-                      {t('No completed top-ups yet')}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </section>
+            {otherCurrencies.length > 0 && (
+              <p className='text-muted-foreground mt-3 text-sm'>
+                {t('Paid in other currencies')}:{' '}
+                {otherCurrencies
+                  .map(([currency, cents]) => formatCents(cents, currency))
+                  .join(' · ')}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader className='flex flex-row items-center justify-between gap-3'>
-          <CardTitle>{t('Upstream top-ups')}</CardTitle>
-          <Button
-            onClick={() => {
-              setForm(EMPTY_FORM)
-              setOpen(true)
-            }}
-          >
-            {t('Record a top-up')}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('Upstream')}</TableHead>
-                <TableHead>{t('Amount')}</TableHead>
-                <TableHead>{t('Paid on')}</TableHead>
-                <TableHead>{t('Note')}</TableHead>
-                <TableHead className='text-right'>{t('Actions')}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{item.upstream}</TableCell>
-                  <TableCell>
-                    {formatCents(item.amount_cents, item.currency)}
-                  </TableCell>
-                  <TableCell>{formatDay(item.paid_at)}</TableCell>
-                  <TableCell>{item.note}</TableCell>
-                  <TableCell className='text-right'>
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => {
-                        setForm({
-                          id: item.id,
-                          upstream: item.upstream,
-                          amount: (item.amount_cents / 100).toFixed(2),
-                          currency: item.currency,
-                          paidAt: dayValue(item.paid_at),
-                          note: item.note,
-                        })
-                        setOpen(true)
-                      }}
-                    >
-                      {t('Edit')}
-                    </Button>
-                    <Button
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => {
-                        remove.mutate(item.id)
-                      }}
-                    >
-                      {t('Delete')}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {otherCurrencies.length > 0 && (
-            <p className='text-muted-foreground mt-3 text-sm'>
-              {t('Paid in other currencies')}:{' '}
-              {otherCurrencies
-                .map(([currency, cents]) => formatCents(cents, currency))
-                .join(' · ')}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open && canWriteLedger} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>

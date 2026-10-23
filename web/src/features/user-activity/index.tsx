@@ -32,8 +32,8 @@ import {
   LogsFilterInput,
   LogsFilterToolbar,
 } from '@/features/usage-logs/components/logs-filter-toolbar'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import dayjs from '@/lib/dayjs'
-import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getActivitySessions, getActivitySummary } from './api'
@@ -55,7 +55,7 @@ function initialActivityFilters(): ActivityFilters {
 export function UserActivity() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const allowed = !!user && user.role >= ROLE.ADMIN
+  const allowed = canAccessAdminRoute(user, '/user-activity')
   const [filters, setFilters] = useState<ActivityFilters>(
     initialActivityFilters
   )

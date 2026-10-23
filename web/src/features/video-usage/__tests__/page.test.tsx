@@ -51,9 +51,12 @@ beforeEach(async () => {
     nsSeparator: false,
     resources: { en },
   })
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 1, username: 'admin', role: ROLE.ADMIN })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: ROLE.ADMIN,
+    permissions: { admin_permissions: { video_usage: { read: true } } },
+  })
 })
 afterEach(() => {
   cleanup()
@@ -314,9 +317,12 @@ it('switching administrators clears previous data and directory choices', async 
     data: { success: true, data: emptyVideoPayload },
   })
   await act(async () => {
-    useAuthStore
-      .getState()
-      .auth.setUser({ id: 22, username: 'other', role: ROLE.ADMIN })
+    useAuthStore.getState().auth.setUser({
+      id: 22,
+      username: 'other',
+      role: ROLE.ADMIN,
+      permissions: { admin_permissions: { video_usage: { read: true } } },
+    })
   })
   await screen.findByText('No recorded video tasks')
   await userEvent.click(screen.getByRole('combobox', { name: 'User' }))

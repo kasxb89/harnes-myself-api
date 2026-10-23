@@ -35,6 +35,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { ClientModelConfigPage } from '..'
 import {
@@ -61,6 +63,9 @@ const clients: QueryClient[] = []
 let saved: ClientModelConfig
 
 beforeEach(() => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 1, username: 'root', role: ROLE.SUPER_ADMIN })
   saved = structuredClone(initial)
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
     if (url === '/api/client-model-config') {
@@ -587,4 +592,52 @@ test('configuration actions can wrap within the viewport for long translated lab
   expect(
     within(actions).getByRole('button', { name: 'Discard changes' })
   ).toBeVisible()
+})
+
+test('read-only model configuration disables fields and exposes no save or description edit action', async () => {
+  useAuthStore.getState().auth.setUser({
+    id: 2,
+    username: 'reader',
+    role: ROLE.ADMIN,
+    permissions: {
+      admin_permissions: {
+        client_model_config: { read: true, write: false },
+      },
+    },
+  })
+  const user = userEvent.setup()
+  await setup()
+  expect(
+    screen.getByRole('combobox', { name: 'Default chat model' })
+  ).toBeDisabled()
+  expect(
+    screen.queryByRole('button', { name: 'Save client model configuration' })
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('tab', { name: 'Descriptions and badges' }))
+  expect(
+    await screen.findByRole('searchbox', { name: 'Search model IDs' })
+  ).toBeEnabled()
+  expect(
+    screen.queryByRole('button', { name: 'Save descriptions and badges' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: /Edit presentation for/ })
+  ).not.toBeInTheDocument()
+  expect(api.put).not.toHaveBeenCalled()
+})
+
+test('revoking model configuration access removes existing cached forms immediately', async () => {
+  await setup()
+  act(() =>
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'operator',
+      role: ROLE.ADMIN,
+      permissions: { admin_permissions: {} },
+    })
+  )
+  expect(screen.getByText('Access denied')).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Default chat model' })
+  ).not.toBeInTheDocument()
 })

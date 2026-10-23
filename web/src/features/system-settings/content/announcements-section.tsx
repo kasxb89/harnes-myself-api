@@ -68,7 +68,15 @@ import {
   type AnnouncementFormValues,
 } from './announcements'
 
-type AnnouncementsSectionProps = { enabled: boolean; data: string }
+type AnnouncementsSectionProps = {
+  enabled: boolean
+  data: string
+  readOnly?: boolean
+  saveSettings?: (
+    data: string,
+    enabled: boolean
+  ) => Promise<{ data: string; enabled: boolean }>
+}
 
 const ANNOUNCEMENT_FORM_ID = 'announcement-form'
 
@@ -108,6 +116,8 @@ const typeOptions = [
 export function AnnouncementsSection({
   enabled,
   data,
+  readOnly = false,
+  saveSettings,
 }: AnnouncementsSectionProps) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
@@ -115,6 +125,8 @@ export function AnnouncementsSection({
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [isEnabled, setIsEnabled] = useState(enabled)
   const [hasChanges, setHasChanges] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const busy = saving || updateOption.isPending
   const [parseError, setParseError] = useState(false)
   const loadedDataRef = useRef<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -149,10 +161,16 @@ export function AnnouncementsSection({
   }, [data, hasChanges])
 
   useEffect(() => {
-    setIsEnabled(enabled)
-  }, [enabled])
+    if (!hasChanges) setIsEnabled(enabled)
+  }, [enabled, hasChanges])
 
   const handleToggleEnabled = async (checked: boolean) => {
+    if (readOnly || busy) return
+    if (saveSettings) {
+      setIsEnabled(checked)
+      setHasChanges(true)
+      return
+    }
     try {
       await updateOption.mutateAsync({
         key: 'console_setting.announcements_enabled',
@@ -166,6 +184,7 @@ export function AnnouncementsSection({
   }
 
   const handleAdd = () => {
+    if (readOnly || busy) return
     setEditingAnnouncement(null)
     form.reset({
       title: '',
@@ -178,6 +197,7 @@ export function AnnouncementsSection({
   }
 
   const handleEdit = (announcement: Announcement) => {
+    if (readOnly || busy) return
     setEditingAnnouncement(announcement)
     form.reset({
       title: announcement.title || '',
@@ -190,12 +210,14 @@ export function AnnouncementsSection({
   }
 
   const handleDelete = (announcement: Announcement) => {
+    if (readOnly || busy) return
     setEditingAnnouncement(announcement)
     setDeleteTarget('single')
     setShowDeleteDialog(true)
   }
 
   const handleBatchDelete = () => {
+    if (readOnly || busy) return
     if (selectedIds.length === 0) {
       toast.error(t('Please select items to delete'))
       return
@@ -205,6 +227,7 @@ export function AnnouncementsSection({
   }
 
   const confirmDelete = () => {
+    if (readOnly || busy) return
     if (deleteTarget === 'single' && editingAnnouncement) {
       setAnnouncements((prev) =>
         prev.filter((item) => item.id !== editingAnnouncement.id)
@@ -228,6 +251,7 @@ export function AnnouncementsSection({
   }
 
   const handleSubmitForm = (values: AnnouncementFormValues) => {
+    if (readOnly || busy) return
     if (!editingAnnouncement && announcements.length >= MAX_ANNOUNCEMENTS) {
       toast.error(t('Maximum 100 announcements'))
       return
@@ -251,7 +275,14 @@ export function AnnouncementsSection({
   }
 
   const handleSaveAll = async () => {
-    if (parseError || announcements.length > MAX_ANNOUNCEMENTS) return
+    if (
+      readOnly ||
+      busy ||
+      parseError ||
+      announcements.length > MAX_ANNOUNCEMENTS
+    ) {
+      return
+    }
     for (const announcement of announcements) {
       const result = announcementSchema.safeParse(announcement)
       if (!result.success) {
@@ -259,15 +290,28 @@ export function AnnouncementsSection({
         return
       }
     }
+    setSaving(true)
     try {
-      await updateOption.mutateAsync({
-        key: 'console_setting.announcements',
-        value: serializeAnnouncements(announcements),
-      })
+      if (saveSettings) {
+        const saved = await saveSettings(
+          serializeAnnouncements(announcements),
+          isEnabled
+        )
+        loadedDataRef.current = saved.data
+        setAnnouncements(parseAnnouncements(saved.data))
+        setIsEnabled(saved.enabled)
+      } else {
+        await updateOption.mutateAsync({
+          key: 'console_setting.announcements',
+          value: serializeAnnouncements(announcements),
+        })
+      }
       setHasChanges(false)
       toast.success(t('Announcements saved successfully'))
     } catch (error) {
       handleServerError(error, t('Failed to save announcements'))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -291,6 +335,13 @@ export function AnnouncementsSection({
 
   return (
     <SettingsSection title={t('Announcements')}>
+      {readOnly && (
+        <p className='text-muted-foreground text-sm'>
+          {t(
+            'Read-only access. Contact a super administrator to change these settings.'
+          )}
+        </p>
+      )}
       <div className='space-y-4'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <div className='flex flex-wrap items-center gap-2'>
@@ -298,8 +349,9 @@ export function AnnouncementsSection({
               onClick={handleAdd}
               size='sm'
               disabled={
+                readOnly ||
                 parseError ||
-                updateOption.isPending ||
+                busy ||
                 announcements.length >= MAX_ANNOUNCEMENTS
               }
             >
@@ -310,7 +362,7 @@ export function AnnouncementsSection({
               onClick={handleBatchDelete}
               size='sm'
               variant='destructive'
-              disabled={selectedIds.length === 0 || updateOption.isPending}
+              disabled={readOnly || selectedIds.length === 0 || busy}
             >
               <Trash2 className='mr-2 h-4 w-4' />
               {t('Delete (')}
@@ -321,19 +373,20 @@ export function AnnouncementsSection({
               size='sm'
               variant='secondary'
               disabled={
+                readOnly ||
                 !hasChanges ||
-                updateOption.isPending ||
+                busy ||
                 parseError ||
                 announcements.length > MAX_ANNOUNCEMENTS
               }
             >
               <Save className='mr-2 h-4 w-4' />
-              {updateOption.isPending ? t('Saving...') : t('Save Settings')}
+              {busy ? t('Saving...') : t('Save Settings')}
             </Button>
           </div>
           <SettingsSwitchField
             controlId='announcements-enabled'
-            disabled={updateOption.isPending}
+            disabled={readOnly || busy}
             checked={isEnabled}
             onCheckedChange={handleToggleEnabled}
             label={t('Enabled')}
@@ -370,6 +423,7 @@ export function AnnouncementsSection({
               header: (
                 <Checkbox
                   aria-label={t('Select all announcements')}
+                  disabled={readOnly || busy}
                   checked={
                     selectedIds.length === announcements.length &&
                     announcements.length > 0
@@ -384,6 +438,7 @@ export function AnnouncementsSection({
                     title: announcementTitle(announcement),
                   })}
                   checked={selectedIds.includes(announcement.id)}
+                  disabled={readOnly || busy}
                   onCheckedChange={(checked) =>
                     toggleSelectOne(announcement.id, checked as boolean)
                   }
@@ -482,8 +537,8 @@ export function AnnouncementsSection({
                   editLabel={t('Edit')}
                   deleteLabel={t('Delete')}
                   menuLabel={t('Open menu')}
-                  editDisabled={updateOption.isPending}
-                  deleteDisabled={updateOption.isPending}
+                  editDisabled={readOnly || busy}
+                  deleteDisabled={readOnly || busy}
                   onEdit={() => handleEdit(announcement)}
                   onDelete={() => handleDelete(announcement)}
                 />
@@ -494,7 +549,7 @@ export function AnnouncementsSection({
       </div>
 
       <Dialog
-        open={showDialog}
+        open={showDialog && !readOnly}
         onOpenChange={setShowDialog}
         title={
           editingAnnouncement ? t('Edit Announcement') : t('Add Announcement')
@@ -514,7 +569,11 @@ export function AnnouncementsSection({
             >
               {t('Cancel')}
             </Button>
-            <Button type='submit' form={ANNOUNCEMENT_FORM_ID}>
+            <Button
+              type='submit'
+              form={ANNOUNCEMENT_FORM_ID}
+              disabled={readOnly || busy}
+            >
               {editingAnnouncement ? t('Update') : t('Add')}
             </Button>
           </>
@@ -690,7 +749,7 @@ export function AnnouncementsSection({
       </Dialog>
 
       <ConfirmDialog
-        open={showDeleteDialog}
+        open={showDeleteDialog && !readOnly}
         onOpenChange={setShowDeleteDialog}
         title={t('Are you sure?')}
         desc={

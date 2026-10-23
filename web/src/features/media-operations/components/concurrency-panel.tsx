@@ -25,6 +25,7 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 import { getServerErrorMessage } from '@/lib/server-error-message'
@@ -65,7 +66,11 @@ export function MediaConcurrencyPanel(props: {
     queryFn: getMediaConcurrency,
     enabled:
       props.active &&
-      Boolean(user && user.id === props.userId && user.role >= ROLE.ADMIN),
+      Boolean(
+        user &&
+        user.id === props.userId &&
+        canAccessAdminRoute(user, '/media-operations')
+      ),
     retry: false,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
@@ -104,7 +109,11 @@ export function MediaConcurrencyPanel(props: {
   const loadError = query.isError
     ? getServerErrorMessage(query.error, t('Failed to load media concurrency'))
     : undefined
-  if (!user || user.id !== props.userId || user.role < ROLE.ADMIN) {
+  if (
+    !user ||
+    user.id !== props.userId ||
+    !canAccessAdminRoute(user, '/media-operations')
+  ) {
     return <ErrorState title={t('Access denied')} />
   }
   const reload = async () => {
