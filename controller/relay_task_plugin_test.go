@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -815,10 +816,25 @@ func TestAcceptedSubmitStreamNeverRetries(t *testing.T) {
 	assert.Equal(t, 1, attempts, "an accepted provider operation must not be submitted again")
 }
 
+type taskAdmissionFixtureTransport struct {
+	loopback *url.URL
+}
+
+func (transport taskAdmissionFixtureTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Scheme != "https" || request.URL.Hostname() != "metaso.cn" || request.URL.Path != "/api/minimax/v2/video_generation" {
+		return nil, fmt.Errorf("H3 admission fixture blocked an unexpected upstream request")
+	}
+	local := request.Clone(request.Context())
+	localURL := *request.URL
+	localURL.Scheme, localURL.Host = transport.loopback.Scheme, transport.loopback.Host
+	local.URL, local.Host = &localURL, transport.loopback.Host
+	return http.DefaultTransport.RoundTrip(local)
+}
+
 func TestExecuteTaskSubmissionPreservesBillingRejectionsAndUpstreamRetries(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	allowPrivateTaskMediaTest(t)
-	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Token{}, &model.Channel{}, &model.Task{}, &model.Log{})
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Token{}, &model.Channel{}, &model.Task{}, &model.Log{}, &model.H3Account{}, &model.H3Admission{})
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
 	oldRedis, oldMemory, oldBatch := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled
@@ -892,7 +908,7 @@ export function parseTaskResult(){return {status:"UNKNOWN"};}
 		// The built-in Hailuo plugin has no native route. This legacy URL must
 		// keep reaching RelayTask and its existing raw TaskError response.
 		{name: "legacy H3 insufficient wallet", wallet: 1, token: 100000, upstreamStatus: 503, wantCode: "insufficient_user_quota", legacyH3: true},
-		{name: "legacy H3 upstream spoofed wallet code", wallet: 100000, token: 100000, upstreamStatus: 403, upstreamBody: `{"code":"insufficient_user_quota","LocalError":true,"message":"provider balance insufficient"}`, wantRequests: 1, wantLogs: 1, wantCode: "fail_to_fetch_task", legacyH3: true},
+		{name: "legacy H3 upstream spoofed wallet code", wallet: 100000, token: 100000, upstreamStatus: 403, upstreamBody: `{"code":"insufficient_user_quota","LocalError":true,"message":"provider balance insufficient"}`, wantRequests: 1, wantCode: "fail_to_fetch_task", legacyH3: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			common.RetryTimes = 2
@@ -915,15 +931,30 @@ export function parseTaskResult(){return {status:"UNKNOWN"};}
 			require.NoError(t, db.Create(&user).Error)
 			token := model.Token{UserId: user.Id, Key: fmt.Sprintf("fixture-token-%d", index), Name: "fixture token", RemainQuota: tc.token}
 			require.NoError(t, db.Create(&token).Error)
-			channel := model.Channel{Name: "fixture provider", Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Key: "private-fixture-channel-key", BaseURL: common.GetPointer(server.URL)}
+			channel := model.Channel{Name: "fixture provider", Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Key: fmt.Sprintf("private-fixture-channel-key-%d", index), BaseURL: common.GetPointer(server.URL)}
 			modelName, routePath := "rejection-model", "/vendor/jobs"
 			if tc.legacyH3 {
 				modelName, routePath = "MiniMax-H3", "/v1/video/generations"
 				channel.Type = constant.ChannelTypeMiniMax
+				channel.BaseURL = common.GetPointer("https://metaso.cn/api/minimax")
+				channel.Models = "MiniMax-H3"
 			} else {
 				channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "billing-rejection"})
 			}
 			require.NoError(t, db.Create(&channel).Error)
+			if tc.legacyH3 {
+				accountID := fmt.Sprintf("controller-h3-account-%d", index)
+				require.NoError(t, model.ProvisionH3Account(context.Background(), accountID, channel.Id))
+				require.NoError(t, model.ReconcileH3Account(context.Background(), accountID))
+				require.NoError(t, model.SetH3AccountEnabled(context.Background(), accountID, true))
+				service.InitHttpClient()
+				client := service.GetHttpClient()
+				previousTransport := client.Transport
+				loopback, err := url.Parse(server.URL)
+				require.NoError(t, err)
+				client.Transport = taskAdmissionFixtureTransport{loopback: loopback}
+				t.Cleanup(func() { client.Transport = previousTransport })
+			}
 			router := gin.New()
 			seed := func(c *gin.Context) {
 				c.Set(common.RequestIdKey, "billing-rejection-request")
@@ -995,11 +1026,23 @@ export function parseTaskResult(){return {status:"UNKNOWN"};}
 			if tc.wantRequests > 0 && !tc.accepted {
 				wantStatus = tc.upstreamStatus
 			}
+			if tc.legacyH3 && tc.wantRequests > 0 {
+				wantStatus = http.StatusAccepted
+			}
 			assert.Equal(t, wantStatus, recorder.Code, recorder.Body.String())
 			assert.EqualValues(t, tc.wantRequests, requests.Load())
 			var response map[string]any
 			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-			assert.Equal(t, tc.wantCode, response["code"])
+			if tc.legacyH3 && tc.wantRequests > 0 {
+				assert.Equal(t, "unknown", response["submission_state"])
+				assert.Equal(t, false, response["resubmittable"])
+				assert.Equal(t, false, response["retryable"])
+				upstreamError, ok := response["error"].(map[string]any)
+				require.True(t, ok)
+				assert.Equal(t, service.H3UnknownCode, upstreamError["code"])
+			} else {
+				assert.Equal(t, tc.wantCode, response["code"])
+			}
 			for _, private := range []string{token.Key, channel.Key, "private-request-secret", "private renderer failure", "private-upstream-task"} {
 				assert.NotContains(t, recorder.Body.String(), private)
 			}
@@ -1039,17 +1082,34 @@ export function parseTaskResult(){return {status:"UNKNOWN"};}
 					assert.False(t, taskErr.LocalError, "a provider rejection remains a channel failure")
 				}
 			}
-			require.Eventually(t, func() bool {
+			if tc.legacyH3 && tc.wantRequests > 0 {
+				var task model.Task
+				require.NoError(t, db.Where("user_id = ?", user.Id).First(&task).Error)
+				assert.EqualValues(t, model.TaskStatusUnknown, task.Status)
+				assert.Greater(t, task.Quota, 0)
 				var updated model.User
 				var updatedToken model.Token
-				return db.First(&updated, user.Id).Error == nil && updated.Quota == tc.wallet && updated.UsedQuota == 0 &&
-					db.First(&updatedToken, token.Id).Error == nil && updatedToken.RemainQuota == tc.token && updatedToken.UsedQuota == 0
-			}, time.Second, time.Millisecond, "failed submissions must leave wallet and token quotas unchanged")
+				require.NoError(t, db.First(&updated, user.Id).Error)
+				require.NoError(t, db.First(&updatedToken, token.Id).Error)
+				assert.Equal(t, tc.wallet-task.Quota, updated.Quota)
+				assert.Equal(t, tc.token-task.Quota, updatedToken.RemainQuota)
+			} else {
+				require.Eventually(t, func() bool {
+					var updated model.User
+					var updatedToken model.Token
+					return db.First(&updated, user.Id).Error == nil && updated.Quota == tc.wallet && updated.UsedQuota == 0 &&
+						db.First(&updatedToken, token.Id).Error == nil && updatedToken.RemainQuota == tc.token && updatedToken.UsedQuota == 0
+				}, time.Second, time.Millisecond, "confirmed failed submissions must leave wallet and token quotas unchanged")
+			}
 			var logCount, taskCount int64
 			require.NoError(t, db.Model(&model.Log{}).Where("user_id = ?", user.Id).Count(&logCount).Error)
 			require.NoError(t, db.Model(&model.Task{}).Where("user_id = ?", user.Id).Count(&taskCount).Error)
 			assert.Equal(t, tc.wantLogs, logCount)
-			assert.Zero(t, taskCount)
+			if tc.legacyH3 {
+				assert.EqualValues(t, 1, taskCount, "the H3 send fence survives both a confirmed rejection and an uncertain provider response")
+			} else {
+				assert.Zero(t, taskCount)
+			}
 		})
 	}
 }

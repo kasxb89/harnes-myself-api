@@ -54,16 +54,17 @@ func (r h3FixtureTransport) RoundTrip(request *http.Request) (*http.Response, er
 }
 
 type h3RouterFixture struct {
-	logDB       *gorm.DB
-	db          *gorm.DB
-	engine      *gin.Engine
-	mu          sync.Mutex
-	posts, gets int
-	queryMode   string
-	postMode    string
-	providerID  string
-	queryByKey  map[string]string
-	bodies      []map[string]any
+	logDB             *gorm.DB
+	db                *gorm.DB
+	engine            *gin.Engine
+	mu                sync.Mutex
+	posts, gets       int
+	queryMode         string
+	postMode          string
+	providerID        string
+	queryByKey        map[string]string
+	bodies            []map[string]any
+	historyWriteError error
 }
 
 func newH3RouterFixture(t *testing.T, accountCount int) *h3RouterFixture {
@@ -209,7 +210,18 @@ func newH3RouterFixture(t *testing.T, accountCount int) *h3RouterFixture {
 			if fixture.postMode == "timeout" {
 				time.Sleep(100 * time.Millisecond)
 			}
-			if fixture.postMode == "malformed" {
+			if fixture.postMode == "local_failure_malformed" {
+				// Reproduce a historical local FAILURE after the send fence,
+				// without establishing any provider outcome. Responses must
+				// observe it as UNKNOWN while preserving its own wire format.
+				update := fixture.db.Model(&model.Task{}).Where("user_id = ? AND status = ?", 791, model.TaskStatusUnknown).Updates(map[string]any{"status": model.TaskStatusFailure, "progress": "100%", "finish_time": time.Now().Unix(), "fail_reason": "private observer failure", "data": common.RawMessage(`{"task":{"id":"unrelated-private-provider","status":"failed"}}`)})
+				if update.Error != nil || update.RowsAffected != 1 {
+					fixture.historyWriteError = fmt.Errorf("historical fixture update: rows=%d error=%v", update.RowsAffected, update.Error)
+					http.Error(w, "loopback history fixture unavailable", http.StatusInternalServerError)
+					return
+				}
+			}
+			if fixture.postMode == "malformed" || fixture.postMode == "local_failure_malformed" {
 				_, _ = io.WriteString(w, `{"task_id":`)
 				return
 			}
@@ -458,6 +470,17 @@ func TestH3AdmissionQueryErrorThenTerminalRefundExactlyOnce(t *testing.T) {
 	wallet, token = f.balance(t)
 	assert.Equal(t, beforeWallet, wallet)
 	assert.Equal(t, beforeToken, token)
+	for _, prefix := range []string{"/v1/tasks/", "/v1/video/generations/", "/v1/videos/"} {
+		get := f.request(t, http.MethodGet, prefix+id, "", "h3routeradmin")
+		require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+		assert.Contains(t, strings.ToLower(get.Body.String()), "failed")
+		assert.Contains(t, get.Body.String(), `"provider_terminal_confirmed":true`)
+		assert.NotContains(t, get.Body.String(), "refund_confirmed")
+		assert.NotContains(t, get.Body.String(), "resubmittable")
+		if prefix == "/v1/tasks/" {
+			captureH3ReceiptFixture(t, "canonical_get_confirmed_provider_failure", get)
+		}
+	}
 	for range 3 {
 		service.RunTaskPollingOnce(context.Background(), nil)
 	}
@@ -729,6 +752,9 @@ func TestH3AdmissionUnsentFailuresReleaseWithoutDebit(t *testing.T) {
 	wallet, token := f.balance(t)
 	invalid := f.request(t, http.MethodPost, "/v1/tasks/hailuo", `{"model":"MiniMax-H3","prompt":"invalid duration must not send","seconds":99}`, "h3routeradmin")
 	assert.Equal(t, http.StatusBadRequest, invalid.Code, invalid.Body.String())
+	if id := invalid.Header().Get("X-New-Api-Task-Id"); id != "" {
+		assertH3NotSubmittedReceipt(t, invalid.Body.Bytes(), id, "not_charged", false)
+	}
 	assert.Zero(t, f.occupied(t))
 	walletAfter, tokenAfter := f.balance(t)
 	assert.Equal(t, wallet, walletAfter)
@@ -736,6 +762,7 @@ func TestH3AdmissionUnsentFailuresReleaseWithoutDebit(t *testing.T) {
 	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 0).Error)
 	insufficient := f.request(t, http.MethodPost, "/v1/video/generations", `{"model":"MiniMax-H3","prompt":"insufficient wallet must not send","seconds":5}`, "h3routeradmin")
 	assert.Equal(t, http.StatusForbidden, insufficient.Code, insufficient.Body.String())
+	assertH3NotSubmittedReceipt(t, insufficient.Body.Bytes(), insufficient.Header().Get("X-New-Api-Task-Id"), "not_charged", false)
 	assert.Zero(t, f.occupied(t))
 	walletAfter, tokenAfter = f.balance(t)
 	assert.Zero(t, walletAfter)
@@ -743,6 +770,299 @@ func TestH3AdmissionUnsentFailuresReleaseWithoutDebit(t *testing.T) {
 	posts, gets := f.counts()
 	assert.Zero(t, posts)
 	assert.Zero(t, gets)
+}
+
+// This receipt is the durable boundary that permits a separately requested
+// replacement attempt. It never instructs an automatic HTTP retry.
+func assertH3NotSubmittedReceipt(t *testing.T, data []byte, id, billing string, nested bool) {
+	t.Helper()
+	require.NotEmpty(t, id)
+	var body map[string]any
+	require.NoError(t, common.Unmarshal(data, &body))
+	if nested {
+		var ok bool
+		body, ok = body["submission_receipt"].(map[string]any)
+		require.True(t, ok, string(data))
+	}
+	assert.Equal(t, id, body["id"])
+	assert.Equal(t, id, body["task_id"])
+	assert.Equal(t, service.H3NotSentCode, body["submission_code"])
+	assert.Equal(t, "not_submitted", body["submission_state"])
+	assert.Equal(t, billing, body["billing_state"])
+	assert.Equal(t, false, body["upstream_submitted"])
+	assert.Equal(t, false, body["retryable"])
+	assert.Equal(t, true, body["resubmittable"])
+	if billing == "refunded" {
+		assert.Equal(t, true, body["refund_confirmed"])
+	} else {
+		assert.NotContains(t, body, "refund_confirmed")
+	}
+	recovery, ok := body["recovery"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, http.MethodGet, recovery["method"])
+	assert.Equal(t, "/v1/tasks/"+id, recovery["path"])
+}
+
+func captureH3ReceiptFixture(t *testing.T, name string, response *httptest.ResponseRecorder) {
+	t.Helper()
+	var body map[string]any
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+	encoded, err := common.Marshal(map[string]any{"name": name, "http_status": response.Code, "headers": map[string]string{"Content-Type": response.Header().Get("Content-Type"), "Cache-Control": response.Header().Get("Cache-Control"), "X-New-Api-Task-Id": response.Header().Get("X-New-Api-Task-Id")}, "body": body})
+	require.NoError(t, err)
+	t.Log("H3_RECEIPT_FIXTURE " + string(encoded))
+}
+
+func TestH3AdmissionUnsentReceiptsPreserveBusinessErrorsAcrossEntrypoints(t *testing.T) {
+	for _, path := range []string{"/v1/video/generations", "/v1/tasks/hailuo", "/v1/videos", "/v1/responses"} {
+		for _, source := range []string{"wallet", "token"} {
+			t.Run(path+"/"+source, func(t *testing.T) {
+				f := newH3RouterFixture(t, 1)
+				if source == "wallet" {
+					require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 0).Error)
+				} else {
+					require.NoError(t, f.db.Model(&model.Token{}).Where("id = ?", 791).Update("remain_quota", 1).Error)
+				}
+				wallet, token := f.balance(t)
+				w := f.request(t, http.MethodPost, path, `{"model":"MiniMax-H3","input":"free failure receipt","prompt":"free failure receipt","seconds":5,"stream":true}`, "h3routeradmin")
+				require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+				id := w.Header().Get("X-New-Api-Task-Id")
+				assertH3NotSubmittedReceipt(t, w.Body.Bytes(), id, "not_charged", false)
+				assert.Equal(t, "private, no-store", w.Header().Get("Cache-Control"))
+				code := "insufficient_user_quota"
+				if source == "token" {
+					code = "pre_consume_token_quota_failed"
+				}
+				var body map[string]any
+				require.NoError(t, common.Unmarshal(w.Body.Bytes(), &body))
+				assert.Equal(t, code, body["code"], "receipt must not erase the actionable original business error")
+				if path == "/v1/video/generations" && source == "wallet" {
+					captureH3ReceiptFixture(t, "post_wallet_insufficient_not_charged", w)
+				}
+				if path == "/v1/responses" {
+					errorBody, ok := body["error"].(map[string]any)
+					require.True(t, ok)
+					assert.Equal(t, code, errorBody["code"])
+					assert.NotContains(t, w.Header().Get("Content-Type"), "text/event-stream")
+				}
+				for _, prefix := range []string{"/v1/tasks/", "/v1/video/generations/", "/v1/videos/"} {
+					get := f.request(t, http.MethodGet, prefix+id, "", "h3routeradmin")
+					require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+					assertH3NotSubmittedReceipt(t, get.Body.Bytes(), id, "not_charged", true)
+					assert.Equal(t, "private, no-store", get.Header().Get("Cache-Control"))
+					if path == "/v1/video/generations" && source == "wallet" && prefix == "/v1/tasks/" {
+						captureH3ReceiptFixture(t, "canonical_get_not_charged", get)
+					}
+					denied := f.request(t, http.MethodGet, prefix+id, "", "h3routermember")
+					assert.NotEqual(t, http.StatusOK, denied.Code)
+					assert.NotContains(t, denied.Body.String(), id)
+				}
+				assert.Zero(t, f.occupied(t))
+				walletAfter, tokenAfter := f.balance(t)
+				assert.Equal(t, wallet, walletAfter)
+				assert.Equal(t, token, tokenAfter)
+				posts, gets := f.counts()
+				assert.Zero(t, posts)
+				assert.Zero(t, gets)
+			})
+		}
+	}
+}
+
+func TestH3AdmissionHistoricalReceiptRequiresExactDurableIdentityAndFinance(t *testing.T) {
+	f := newH3RouterFixture(t, 1)
+	task := &model.Task{TaskID: "task_h3_historical_unsent", Platform: "hailuo", UserId: 791, Group: "default", ChannelId: 790, Properties: model.Properties{OriginModelName: "MiniMax-H3", UpstreamModelName: "MiniMax-H3"}}
+	require.NoError(t, model.AcquireH3Admission(context.Background(), task, "synthetic-h3-account-0"))
+	require.NoError(t, model.ReleaseH3BeforeSend(context.Background(), task))
+	baseline := f.task(t, task.TaskID)
+	var ledger model.H3Admission
+	require.NoError(t, f.db.Where("id = ?", task.TaskID).First(&ledger).Error)
+	for _, prefix := range []string{"/v1/tasks/", "/v1/video/generations/", "/v1/videos/"} {
+		get := f.request(t, http.MethodGet, prefix+task.TaskID, "", "h3routeradmin")
+		require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+		assertH3NotSubmittedReceipt(t, get.Body.Bytes(), task.TaskID, "not_charged", true)
+	}
+	for _, tc := range []struct {
+		name                        string
+		taskValues, admissionValues map[string]any
+	}{
+		{name: "send_fence", admissionValues: map[string]any{"sending_at": 1}},
+		{name: "not_released", admissionValues: map[string]any{"state": model.H3Unknown}},
+		{name: "refund_pending", admissionValues: map[string]any{"billing_state": "refund_pending"}},
+		{name: "billing_uncertain", admissionValues: map[string]any{"billing_state": "settlement_uncertain"}},
+		{name: "quota_nonzero", taskValues: map[string]any{"quota": 1}},
+		{name: "task_unknown", taskValues: map[string]any{"status": model.TaskStatusUnknown}},
+		{name: "channel_mismatch", admissionValues: map[string]any{"channel_id": 999}},
+		{name: "task_db_identity_mismatch", admissionValues: map[string]any{"task_db_id": baseline.ID + 100000}},
+		{name: "provider_receipt", taskValues: map[string]any{"private_data": model.TaskPrivateData{H3AdmissionID: task.TaskID, UpstreamTaskID: "private-provider-id"}}},
+		{name: "admission_identity_mismatch", taskValues: map[string]any{"private_data": model.TaskPrivateData{H3AdmissionID: "task_other_admission"}}},
+		{name: "legacy_subscription_minimum_unproven", taskValues: map[string]any{"private_data": model.TaskPrivateData{H3AdmissionID: task.TaskID, BillingSource: "subscription", SubscriptionId: 791}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.taskValues != nil {
+				require.NoError(t, f.db.Model(&model.Task{}).Where("id = ?", baseline.ID).Updates(tc.taskValues).Error)
+			}
+			if tc.admissionValues != nil {
+				require.NoError(t, f.db.Model(&model.H3Admission{}).Where("id = ?", ledger.ID).Updates(tc.admissionValues).Error)
+			}
+			get := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "", "h3routeradmin")
+			require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+			assert.NotContains(t, get.Body.String(), "submission_receipt")
+			assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
+			assert.Contains(t, get.Body.String(), `"finished_at":0`)
+			assert.NotContains(t, get.Body.String(), "private-provider-id")
+			if tc.name == "send_fence" || tc.name == "refund_pending" {
+				captureH3ReceiptFixture(t, "canonical_get_unproven_"+tc.name, get)
+			}
+			require.NoError(t, f.db.Model(&model.Task{}).Where("id = ?", baseline.ID).Updates(map[string]any{"quota": baseline.Quota, "status": baseline.Status, "private_data": baseline.PrivateData}).Error)
+			require.NoError(t, f.db.Model(&model.H3Admission{}).Where("id = ?", ledger.ID).Updates(map[string]any{"state": ledger.State, "billing_state": ledger.BillingState, "sending_at": ledger.SendingAt, "task_db_id": ledger.TaskDBID, "channel_id": ledger.ChannelID}).Error)
+		})
+	}
+	require.NoError(t, f.db.Delete(&model.H3Admission{}, "id = ?", ledger.ID).Error)
+	legacy := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "", "h3routeradmin")
+	require.Equal(t, http.StatusOK, legacy.Code, legacy.Body.String())
+	assert.NotContains(t, legacy.Body.String(), "submission_receipt", "historical FAILURE alone is not evidence of no submission")
+	assert.Contains(t, legacy.Body.String(), `"status":"UNKNOWN"`)
+	captureH3ReceiptFixture(t, "canonical_get_legacy_no_admission", legacy)
+	responseID := "resp_" + strings.TrimPrefix(task.TaskID, "task_")
+	responseGet := f.request(t, http.MethodGet, "/v1/responses/"+responseID, "", "h3routeradmin")
+	require.Equal(t, http.StatusOK, responseGet.Code, responseGet.Body.String())
+	assert.Contains(t, responseGet.Body.String(), `"object":"response"`)
+	assert.Contains(t, responseGet.Body.String(), responseID)
+	assert.NotContains(t, responseGet.Body.String(), `"status":"failed"`)
+	assert.NotContains(t, responseGet.Body.String(), `"status":"completed"`)
+	captureH3ReceiptFixture(t, "responses_get_legacy_failure_remains_pending", responseGet)
+	missing := f.request(t, http.MethodGet, "/v1/tasks/task_does_not_exist", "", "h3routeradmin")
+	assert.Equal(t, http.StatusNotFound, missing.Code)
+	assert.NotContains(t, missing.Body.String(), "submission_receipt")
+	posts, gets := f.counts()
+	assert.Zero(t, posts)
+	assert.Zero(t, gets)
+}
+
+func TestH3AdmissionProviderTerminalProjectionDoesNotCertifyFinancialUncertainty(t *testing.T) {
+	f := newH3RouterFixture(t, 1)
+	task := &model.Task{TaskID: "task_h3_provider_terminal_projection", Platform: "hailuo", UserId: 791, Group: "default", ChannelId: 790, Properties: model.Properties{OriginModelName: "MiniMax-H3", UpstreamModelName: "MiniMax-H3"}}
+	require.NoError(t, model.AcquireH3Admission(context.Background(), task, "synthetic-h3-account-0"))
+	require.NoError(t, model.ReleaseH3BeforeSend(context.Background(), task))
+	finishTime := f.task(t, task.TaskID).FinishTime
+	for index, tc := range []struct {
+		name, providerID, data, billing string
+		quota                           int
+		confirmed                       bool
+	}{
+		{name: "exact_string", providerID: "42", data: `{"task":{"id":"42","status":"failed"}}`, billing: "reserved", confirmed: true},
+		{name: "safe_numeric_without_wire_evidence", providerID: "42", data: `{"task":{"id":42,"status":"failed"}}`, billing: "reserved"},
+		{name: "safe_numeric_exponent_without_wire_evidence", providerID: "42", data: `{"task":{"id":4.2e1,"status":"failed"}}`, billing: "reserved"},
+		{name: "large_string", providerID: "2113445600016039936", data: `{"task":{"id":"2113445600016039936","status":"cancelled"}}`, billing: "reserved", confirmed: true},
+		{name: "wrong_identity", providerID: "42", data: `{"task":{"id":"43","status":"failed"}}`, billing: "reserved"},
+		{name: "unsafe_numeric", providerID: "9007199254740993", data: `{"task":{"id":9007199254740993,"status":"failed"}}`, billing: "reserved"},
+		{name: "fractional_numeric", providerID: "42", data: `{"task":{"id":42.01,"status":"failed"}}`, billing: "reserved"},
+		{name: "rounded_fractional_numeric", providerID: "42", data: `{"task":{"id":42.000000000000000001,"status":"failed"}}`, billing: "reserved"},
+		{name: "query_error_with_task", providerID: "42", data: `{"error":{"message":"failed to query"},"task":{"id":"42","status":"failed"}}`, billing: "reserved"},
+		{name: "refund_pending", providerID: "42", data: `{"task":{"id":"42","status":"failed"}}`, billing: "refund_pending"},
+		{name: "settlement_uncertain", providerID: "42", data: `{"task":{"id":"42","status":"failed"}}`, billing: "settlement_uncertain"},
+		{name: "quota_pending", providerID: "42", data: `{"task":{"id":"42","status":"failed"}}`, billing: "reserved", quota: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			private := model.TaskPrivateData{H3AdmissionID: task.TaskID, UpstreamTaskID: tc.providerID, ResultURL: "https://fixture.invalid/failed-private-result"}
+			// MySQL reports changed rows; JSON normalization can make two
+			// adjacent inputs physically identical. A distinct fixture finish
+			// timestamp keeps the successful one-row update verifiable.
+			update := f.db.Model(&model.Task{}).Where("id = ?", task.ID).Updates(map[string]any{"private_data": private, "data": common.RawMessage(tc.data), "quota": tc.quota, "finish_time": finishTime + int64(index) + 1})
+			require.NoError(t, update.Error)
+			require.EqualValues(t, 1, update.RowsAffected)
+			require.NoError(t, f.db.Model(&model.H3Admission{}).Where("id = ?", task.TaskID).Updates(map[string]any{"sending_at": 1, "billing_state": tc.billing}).Error)
+			beforeGet := f.task(t, task.TaskID)
+			for _, prefix := range []string{"/v1/tasks/", "/v1/video/generations/", "/v1/videos/"} {
+				get := f.request(t, http.MethodGet, prefix+task.TaskID, "", "h3routeradmin")
+				require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+				assert.NotContains(t, get.Body.String(), "submission_receipt")
+				assert.NotContains(t, get.Body.String(), "refund_confirmed")
+				assert.NotContains(t, get.Body.String(), "resubmittable")
+				if tc.confirmed {
+					assert.Contains(t, get.Body.String(), `"provider_terminal_confirmed":true`)
+				} else {
+					assert.Contains(t, strings.ToLower(get.Body.String()), "unknown")
+					assert.NotContains(t, get.Body.String(), "provider_terminal_confirmed")
+					assert.NotContains(t, strings.ToLower(get.Body.String()), `"failed"`)
+					assert.NotContains(t, get.Body.String(), "FAILURE")
+					assert.NotContains(t, get.Body.String(), "failed-private-result")
+				}
+			}
+			persisted := f.task(t, task.TaskID)
+			assert.EqualValues(t, model.TaskStatusFailure, persisted.Status, "the conservative projection must not rewrite historical task data")
+			assert.Equal(t, string(beforeGet.Data), string(persisted.Data))
+		})
+	}
+}
+
+func TestH3AdmissionResponsesObserversDoNotExposeUnprovenLocalFailure(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, failure := range []string{"untrusted_terminal", "proof_unavailable", "primary_load_unavailable"} {
+			t.Run(fmt.Sprintf("stream_%t/%s", stream, failure), func(t *testing.T) {
+				f := newH3RouterFixture(t, 1)
+				f.postMode = "local_failure_malformed"
+				const callback = "h3:observer-history-proof-unavailable"
+				injected := false
+				if failure != "untrusted_terminal" {
+					require.NoError(t, f.db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+						posts, _ := f.counts()
+						if posts == 0 {
+							return
+						}
+						if (failure == "proof_unavailable" && tx.Statement.Table == "h3_receipt_task") || (failure == "primary_load_unavailable" && tx.Statement.Table == "tasks" && len(tx.Statement.Joins) == 0) {
+							injected = true
+							tx.AddError(fmt.Errorf("private observer database unavailable"))
+						}
+					}))
+					t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callback) })
+				}
+				body := fmt.Sprintf(`{"model":"MiniMax-H3","input":"free bounded observer failure fixture","seconds":5,"stream":%t}`, stream)
+				ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+				defer cancel()
+				request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body)).WithContext(ctx)
+				request.Header.Set("Content-Type", "application/json")
+				request.Header.Set("Authorization", "Bearer sk-h3routeradmin")
+				response := httptest.NewRecorder()
+				f.engine.ServeHTTP(response, request)
+				f.mu.Lock()
+				historyWriteError := f.historyWriteError
+				f.mu.Unlock()
+				require.NoError(t, historyWriteError, "the response observer fixture must first persist a genuine historical FAILURE")
+				id := response.Header().Get("X-New-Api-Task-Id")
+				require.NotEmpty(t, id)
+				assert.NotContains(t, response.Body.String(), `"code":"task_failed"`)
+				assert.NotContains(t, response.Body.String(), `"status":"failed"`)
+				assert.NotContains(t, response.Body.String(), "response.failed")
+				assert.NotContains(t, response.Body.String(), "private observer failure")
+				assert.NotContains(t, response.Body.String(), "unrelated-private-provider")
+				assert.NotContains(t, response.Body.String(), `"object":"video"`)
+				if stream {
+					assert.Contains(t, response.Body.String(), "response.created")
+					assert.Contains(t, response.Body.String(), "resp_"+strings.TrimPrefix(id, "task_"))
+				}
+				if failure != "untrusted_terminal" {
+					require.True(t, injected)
+					if stream {
+						assert.Contains(t, response.Body.String(), "response.incomplete")
+					} else {
+						assert.Contains(t, response.Body.String(), `"status":"queued"`)
+						assert.Contains(t, response.Body.String(), `"object":"response"`)
+						assert.Contains(t, response.Body.String(), "retrieval_path")
+						captureH3ReceiptFixture(t, "responses_"+failure+"_remains_recoverable", response)
+					}
+					require.NoError(t, f.db.Callback().Query().Remove(callback))
+				}
+				get := f.request(t, http.MethodGet, "/v1/tasks/"+id, "", "h3routeradmin")
+				require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+				assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
+				assert.EqualValues(t, model.TaskStatusFailure, f.task(t, id).Status, "the read-only observer must preserve the historical database row")
+				posts, gets := f.counts()
+				assert.Equal(t, 1, posts)
+				assert.Zero(t, gets)
+			})
+		}
+	}
 }
 
 func TestH3AdmissionConcurrentTerminalCASReleasesAndRefundsOneWinner(t *testing.T) {
@@ -1101,6 +1421,12 @@ func TestH3AdmissionPreSendBuildFailurePreservesRefundTruth(t *testing.T) {
 			} else {
 				require.Equal(t, http.StatusInternalServerError, w.Code, w.Body.String())
 				assert.Contains(t, w.Body.String(), "build_request_failed")
+				assertH3NotSubmittedReceipt(t, w.Body.Bytes(), id, "refunded", false)
+				captureH3ReceiptFixture(t, "post_build_failure_refunded", w)
+				get := f.request(t, http.MethodGet, "/v1/tasks/"+id, "", "h3routeradmin")
+				require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+				assertH3NotSubmittedReceipt(t, get.Body.Bytes(), id, "refunded", true)
+				captureH3ReceiptFixture(t, "canonical_get_refunded", get)
 				task := f.task(t, id)
 				assert.EqualValues(t, model.TaskStatusFailure, task.Status)
 				assert.Zero(t, task.Quota)
@@ -1110,6 +1436,116 @@ func TestH3AdmissionPreSendBuildFailurePreservesRefundTruth(t *testing.T) {
 				assert.Equal(t, beforeWallet, wallet)
 				assert.Equal(t, beforeToken, token)
 			}
+		})
+	}
+}
+
+func TestH3AdmissionUnsentProofDatabaseFailureRemainsUnknown(t *testing.T) {
+	f := newH3RouterFixture(t, 1)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 0).Error)
+	const callback = "h3:unavailable-unsent-durable-proof"
+	injected := false
+	require.NoError(t, f.db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "h3_receipt_task" && len(tx.Statement.Joins) > 0 {
+			injected = true
+			tx.AddError(fmt.Errorf("synthetic private ledger database unavailable"))
+		}
+	}))
+	t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callback) })
+	w := f.request(t, http.MethodPost, "/v1/video/generations", `{"model":"MiniMax-H3","prompt":"free proof failure","seconds":5}`, "h3routeradmin")
+	require.True(t, injected)
+	id := w.Header().Get("X-New-Api-Task-Id")
+	assertH3UnknownEnvelope(t, w, id)
+	captureH3ReceiptFixture(t, "post_unavailable_durable_proof_unknown", w)
+	get := f.request(t, http.MethodGet, "/v1/tasks/"+id, "", "h3routeradmin")
+	assert.Equal(t, http.StatusServiceUnavailable, get.Code, get.Body.String())
+	assert.NotContains(t, get.Body.String(), "submission_receipt")
+	assert.NotContains(t, get.Body.String(), "synthetic private")
+	require.NoError(t, f.db.Callback().Query().Remove(callback))
+	recovered := f.request(t, http.MethodGet, "/v1/tasks/"+id, "", "h3routeradmin")
+	require.Equal(t, http.StatusOK, recovered.Code, recovered.Body.String())
+	assertH3NotSubmittedReceipt(t, recovered.Body.Bytes(), id, "not_charged", true)
+	posts, gets := f.counts()
+	assert.Zero(t, posts)
+	assert.Zero(t, gets)
+}
+
+func TestH3AdmissionZeroPriceSubscriptionRefundIsConfirmedBeforeReceipt(t *testing.T) {
+	for _, failure := range []string{"none", "refund_confirmation", "subscription_record"} {
+		t.Run(failure, func(t *testing.T) {
+			f := newH3RouterFixture(t, 1)
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"MiniMax-H3":0}`))
+			require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("setting", `{"billing_preference":"subscription_only"}`).Error)
+			plan := &model.SubscriptionPlan{Id: 791, Title: "Free fixture subscription", TotalAmount: 1000, QuotaResetPeriod: "never"}
+			require.NoError(t, f.db.Create(plan).Error)
+			sub := &model.UserSubscription{Id: 791, UserId: 791, PlanId: plan.Id, AmountTotal: 1000, Status: "active", StartTime: time.Now().Unix(), EndTime: time.Now().Add(24 * time.Hour).Unix()}
+			require.NoError(t, f.db.Create(sub).Error)
+			injected := false
+			if failure != "none" {
+				const callback = "h3:zero-price-subscription-refund-confirmation"
+				require.NoError(t, f.db.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+					values, ok := tx.Statement.Dest.(map[string]any)
+					if failure == "refund_confirmation" && ok && tx.Statement.Table == "h3_admissions" && values["billing_state"] == "refunded" {
+						injected = true
+						tx.AddError(fmt.Errorf("synthetic private subscription refund confirmation unavailable"))
+					}
+					if record, ok := tx.Statement.Dest.(*model.SubscriptionPreConsumeRecord); failure == "subscription_record" && ok && tx.Statement.Table == "subscription_pre_consume_records" && record.Status == "refunded" {
+						injected = true
+						tx.AddError(fmt.Errorf("synthetic private subscription refund record write unavailable"))
+					}
+				}))
+				t.Cleanup(func() { _ = f.db.Callback().Update().Remove(callback) })
+			}
+			body := `{"model":"MiniMax-H3","input":"free subscription minimum refund","prompt":"free subscription minimum refund","background":true,"seconds":5,"input_reference":{"__fileRef":"request_file:input_reference","encoding":"dataUrl","mimeType":"image/png","maxBytes":1024}}`
+			w := f.request(t, http.MethodPost, "/v1/responses", body, "h3routeradmin")
+			id := w.Header().Get("X-New-Api-Task-Id")
+			require.NotEmpty(t, id, w.Body.String())
+			var preConsume model.SubscriptionPreConsumeRecord
+			require.NoError(t, f.db.Where("user_id = ?", 791).First(&preConsume).Error)
+			assert.EqualValues(t, 1, preConsume.PreConsumed, "zero-price subscription still reserves its actual minimum")
+			require.NoError(t, f.db.First(sub, sub.Id).Error)
+			if failure == "subscription_record" {
+				assert.Equal(t, "consumed", preConsume.Status)
+				assert.EqualValues(t, 1, sub.AmountUsed, "a failed refund record write must roll back the subscription credit")
+			} else {
+				assert.Equal(t, "refunded", preConsume.Status)
+				assert.Zero(t, sub.AmountUsed, "the subscription minimum must actually return")
+			}
+			get := f.request(t, http.MethodGet, "/v1/tasks/"+id, "", "h3routeradmin")
+			require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+			if failure == "none" {
+				require.Equal(t, http.StatusInternalServerError, w.Code, w.Body.String())
+				assertH3NotSubmittedReceipt(t, w.Body.Bytes(), id, "refunded", false)
+				assertH3NotSubmittedReceipt(t, get.Body.Bytes(), id, "refunded", true)
+				assert.NotContains(t, w.Body.String(), "request_file", "Responses must preserve error-message sanitization")
+				assert.Contains(t, w.Body.String(), "Task protocol request failed")
+				captureH3ReceiptFixture(t, "responses_build_failure_refunded_sanitized", w)
+			} else {
+				require.True(t, injected)
+				// Responses keeps its existing pending Response presentation for
+				// uncertain durable outcomes; it must never claim safe resubmission.
+				assert.NotContains(t, w.Body.String(), service.H3NotSentCode)
+				var response map[string]any
+				require.NoError(t, common.Unmarshal(w.Body.Bytes(), &response))
+				assert.Equal(t, "response", response["object"])
+				assert.True(t, strings.HasPrefix(response["id"].(string), "resp_"))
+				assert.NotContains(t, get.Body.String(), "submission_receipt")
+				assert.Contains(t, get.Body.String(), "UNKNOWN")
+				if failure == "subscription_record" {
+					require.NoError(t, f.db.Callback().Update().Remove("h3:zero-price-subscription-refund-confirmation"))
+					for range 2 {
+						require.NoError(t, model.RefundSubscriptionPreConsume(preConsume.RequestId))
+					}
+					require.NoError(t, f.db.First(sub, sub.Id).Error)
+					assert.Zero(t, sub.AmountUsed, "the original refund must succeed exactly once after the database recovers")
+					require.NoError(t, f.db.First(&preConsume, preConsume.Id).Error)
+					assert.Equal(t, "refunded", preConsume.Status)
+					assert.NotContains(t, get.Body.String(), "submission_receipt", "funding repair alone cannot manufacture an admission confirmation")
+				}
+			}
+			posts, gets := f.counts()
+			assert.Zero(t, posts)
+			assert.Zero(t, gets)
 		})
 	}
 }

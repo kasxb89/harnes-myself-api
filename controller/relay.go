@@ -604,7 +604,8 @@ func executeTaskSubmissionWith(
 			}
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if releaseErr := model.ReleaseH3BeforeSend(cleanupCtx, h3.Task); releaseErr != nil {
+			refundRequired := h3.Task.Quota > 0 || (relayInfo.Billing != nil && relayInfo.Billing.NeedsRefund())
+			if releaseErr := model.ReleaseH3BeforeSendWithRefund(cleanupCtx, h3.Task, refundRequired); releaseErr != nil {
 				logger.LogError(c, "failed to release unsent H3 admission")
 				service.PreserveH3Unknown(h3)
 				outcome = h3UnknownOutcome(c, relayInfo)
@@ -612,7 +613,7 @@ func executeTaskSubmissionWith(
 				return
 			}
 			h3.SlotReleased = true
-			if h3.Task.Quota > 0 {
+			if refundRequired {
 				if relayInfo.Billing != nil {
 					diagnostics.refund(stage)
 					relayInfo.Billing.Refund(c)
@@ -621,9 +622,18 @@ func executeTaskSubmissionWith(
 					service.PreserveH3Unknown(h3)
 					outcome = h3UnknownOutcome(c, relayInfo)
 					submissionErr = nil
+					return
 				}
+			}
+			receipt, receiptErr := service.H3NotSubmittedReceipt(cleanupCtx, h3.Task)
+			if receiptErr != nil || receipt == nil {
+				service.PreserveH3Unknown(h3)
+				outcome = h3UnknownOutcome(c, relayInfo)
+				submissionErr = nil
 				return
 			}
+			h3.NotSubmittedReceipt = receipt
+			return
 		}
 		if !durable && relayInfo.Billing != nil {
 			diagnostics.refund(stage)
@@ -989,6 +999,9 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 	service.RecordRequestPolicyTermination(c, taskSubmissionAPIError(taskErr))
 	service.RecordRelayError(c, taskSubmissionAPIError(taskErr), nil)
 	newTaskPluginSubmitDiagnostics(c).presentError(taskErr)
+	if respondH3NotSubmittedError(c, taskErr, false) {
+		return
+	}
 	if taskErr.StatusCode == http.StatusTooManyRequests && taskErr.Code == service.H3CapacityCode {
 		c.Header("X-New-Api-Task-Id", "")
 		c.JSON(http.StatusTooManyRequests, gin.H{"code": taskErr.Code, "message": taskErr.Message, "data": nil, "submission_state": "not_submitted", "retryable": false, "resubmittable": true})
@@ -1003,6 +1016,50 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 		return
 	}
 	respondTaskError(c, taskErr)
+}
+
+// The receipt was verified from the database after cleanup completed. Both
+// task and Responses presenters retain the original business error and HTTP
+// status while allowing clients to distinguish this from a lost submission.
+func respondH3NotSubmittedError(c *gin.Context, taskErr *taskdto.TaskError, protocol bool) bool {
+	h3 := service.H3SubmissionFromContext(c)
+	if h3 == nil || h3.Unknown || h3.NotSubmittedReceipt == nil || taskErr == nil {
+		return false
+	}
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-New-Api-Task-Id", h3.Task.TaskID)
+	body := gin.H{"code": taskErr.Code, "message": taskErr.Message, "data": taskErr.Data}
+	receipt := h3.NotSubmittedReceipt
+	body["id"], body["task_id"] = receipt.ID, receipt.TaskID
+	body["submission_code"], body["submission_state"] = receipt.SubmissionCode, receipt.SubmissionState
+	body["billing_state"], body["upstream_submitted"] = receipt.BillingState, receipt.UpstreamSubmitted
+	body["retryable"], body["resubmittable"], body["recovery"] = receipt.Retryable, receipt.Resubmittable, receipt.Recovery
+	if receipt.RefundConfirmed {
+		body["refund_confirmed"] = true
+	}
+	if protocol {
+		message := "Task protocol request failed"
+		switch taskErr.StatusCode {
+		case http.StatusBadRequest:
+			message = "Invalid task protocol request"
+			if taskErr.Code == "invalid_request" || strings.HasPrefix(taskErr.Code, "invalid_request") {
+				message = taskErr.Message
+			}
+		case http.StatusUnauthorized:
+			message = "Authentication failed"
+		case http.StatusForbidden:
+			message = "Task protocol request was denied"
+			if taskErr.Code == "insufficient_user_quota" || taskErr.Code == "pre_consume_token_quota_failed" {
+				message = taskErr.Message
+			}
+		case http.StatusTooManyRequests:
+			message = "Too many requests"
+		}
+		body["message"], body["data"] = message, nil
+		body["error"] = gin.H{"code": taskErr.Code, "type": "new_api_error", "message": message}
+	}
+	c.JSON(taskErr.StatusCode, body)
+	return true
 }
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）

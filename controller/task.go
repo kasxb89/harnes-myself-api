@@ -46,6 +46,12 @@ func GetTask(c *gin.Context) {
 		videoProxyError(c, http.StatusNotFound, "invalid_request_error", "Task not found")
 		return
 	}
+	c.Header("Cache-Control", "private, no-store")
+	receipt, providerTerminal, receiptErr := service.ProjectH3TaskSubmission(c.Request.Context(), task)
+	if receiptErr != nil {
+		videoProxyError(c, http.StatusServiceUnavailable, "server_error", "Failed to verify task submission")
+		return
+	}
 	createdAt := task.CreatedAt
 	if createdAt == 0 {
 		createdAt = task.SubmitTime
@@ -54,7 +60,7 @@ func GetTask(c *gin.Context) {
 	if task.Status == model.TaskStatusSuccess && taskFailReasonIsLegacyResultURL(task.FailReason) {
 		failReason = ""
 	}
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"task_id":     task.TaskID,
 		"platform":    task.Platform,
 		"status":      task.Status,
@@ -62,7 +68,14 @@ func GetTask(c *gin.Context) {
 		"fail_reason": failReason,
 		"created_at":  createdAt,
 		"finished_at": task.FinishTime,
-	})
+	}
+	if receipt != nil {
+		response["submission_receipt"] = receipt
+	}
+	if providerTerminal {
+		response["provider_terminal_confirmed"] = true
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func GetTaskArtifacts(c *gin.Context) {

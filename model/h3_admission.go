@@ -388,19 +388,32 @@ func UpdateH3TaskWithStatus(ctx context.Context, task *Task, from TaskStatus, te
 }
 
 func ReleaseH3BeforeSend(ctx context.Context, task *Task) error {
+	return ReleaseH3BeforeSendWithRefund(ctx, task, false)
+}
+
+// ReleaseH3BeforeSendWithRefund also accounts for funding reservations that
+// are not reflected in Task.Quota (for example a subscription minimum).
+func ReleaseH3BeforeSendWithRefund(ctx context.Context, task *Task, refundRequired bool) error {
 	return DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var admission H3Admission
 		if err := lockForUpdate(tx).Where("id = ?", task.PrivateData.H3AdmissionID).First(&admission).Error; err != nil {
 			return err
 		}
-		if admission.State != H3Reserved {
+		if admission.State != H3Reserved || admission.SendingAt != 0 || admission.ID != task.TaskID || admission.TaskDBID != task.ID || admission.ChannelID != task.ChannelId {
+			return ErrH3AdmissionUnavailable
+		}
+		var persisted Task
+		if err := tx.Where("id = ? AND task_id = ? AND user_id = ?", task.ID, task.TaskID, task.UserId).First(&persisted).Error; err != nil {
+			return err
+		}
+		if persisted.PrivateData.H3AdmissionID != admission.ID || persisted.PrivateData.UpstreamTaskID != "" || task.PrivateData.UpstreamTaskID != "" || persisted.Status != TaskStatusUnknown || persisted.Quota != task.Quota {
 			return ErrH3AdmissionUnavailable
 		}
 		billingState := "not_charged"
 		taskStatus := TaskStatusFailure
 		finishTime := time.Now().Unix()
 		progress := "100%"
-		if task.Quota > 0 {
+		if task.Quota > 0 || refundRequired {
 			billingState = "refund_pending"
 			taskStatus = TaskStatusUnknown
 			finishTime = 0
@@ -414,6 +427,55 @@ func ReleaseH3BeforeSend(ctx context.Context, task *Task) error {
 		}
 		return releaseH3Admission(tx, &admission)
 	})
+}
+
+// H3ConfirmedFailureState reads the task and its admission in one database
+// snapshot. The billing string proves a financially confirmed pre-send
+// failure. The boolean proves only a matching provider terminal failure; it
+// never promises a refund or grants permission to submit another request.
+// The caller must already have resolved a task owned by the requesting user.
+func H3ConfirmedFailureState(ctx context.Context, task *Task) (string, bool, error) {
+	if !IsH3Task(task) || task.ID <= 0 || task.TaskID == "" || task.PrivateData.H3AdmissionID != task.TaskID {
+		return "", false, nil
+	}
+	var snapshot struct {
+		Task             `gorm:"embedded"`
+		AdmissionID      string
+		AdmissionTask    int64
+		AdmissionChannel int
+		AdmissionState   string
+		BillingState     string
+		SendingAt        int64
+	}
+	taskTable := DB.NamingStrategy.TableName("Task")
+	admissionTable := DB.NamingStrategy.TableName("H3Admission")
+	err := DB.WithContext(ctx).Model(&Task{}).Table(taskTable+" AS h3_receipt_task").
+		Select("h3_receipt_task.*, h3_receipt_admission.id AS admission_id, h3_receipt_admission.task_db_id AS admission_task, h3_receipt_admission.channel_id AS admission_channel, h3_receipt_admission.state AS admission_state, h3_receipt_admission.billing_state AS billing_state, h3_receipt_admission.sending_at AS sending_at").
+		Joins("JOIN "+admissionTable+" AS h3_receipt_admission ON h3_receipt_admission.task_db_id = h3_receipt_task.id").
+		Where("h3_receipt_task.id = ? AND h3_receipt_task.task_id = ? AND h3_receipt_task.user_id = ?", task.ID, task.TaskID, task.UserId).
+		Take(&snapshot).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if !IsH3Task(&snapshot.Task) || snapshot.AdmissionID != snapshot.TaskID || snapshot.PrivateData.H3AdmissionID != snapshot.AdmissionID || snapshot.AdmissionTask != snapshot.ID || snapshot.AdmissionChannel != snapshot.ChannelId || snapshot.AdmissionState != H3Released || snapshot.Status != TaskStatusFailure || snapshot.Quota != 0 {
+		return "", false, nil
+	}
+	if snapshot.SendingAt > 0 && snapshot.PrivateData.UpstreamTaskID != "" && (snapshot.BillingState == "reserved" || snapshot.BillingState == "refunded") && !H3LocalFailureUncertain(&snapshot.Task) {
+		return "", true, nil
+	}
+	if snapshot.SendingAt != 0 || snapshot.PrivateData.UpstreamTaskID != "" || (snapshot.BillingState != "not_charged" && snapshot.BillingState != "refunded") {
+		return "", false, nil
+	}
+	// Older hosts could label a zero-price subscription reservation as
+	// not_charged. Without a durable refund confirmation that history cannot
+	// prove the subscription minimum was returned.
+	if snapshot.BillingState == "not_charged" && (snapshot.PrivateData.BillingSource == "subscription" || snapshot.PrivateData.SubscriptionId > 0) {
+		return "", false, nil
+	}
+	return snapshot.BillingState, false, nil
 }
 
 func releaseH3Admission(tx *gorm.DB, admission *H3Admission) error {
@@ -500,6 +562,9 @@ func H3LocalFailureUncertain(task *Task) bool {
 	if err := common.Unmarshal(task.Data, &envelope); err != nil || envelope.Error != nil || envelope.Task == nil {
 		return true
 	}
+	// Persisted JSON can have lost a numeric ID's original precision in
+	// redaction or database normalization. Only exact string identities can
+	// establish a terminal outcome from this historical snapshot.
 	return envelope.Task.ID == "" || envelope.Task.ID != task.GetUpstreamTaskID() || (envelope.Task.Status != "failed" && envelope.Task.Status != "cancelled")
 }
 

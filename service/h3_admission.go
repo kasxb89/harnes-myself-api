@@ -18,13 +18,69 @@ import (
 const h3SubmissionContextKey = "h3_durable_submission"
 const H3CapacityCode = "h3_account_capacity_exhausted"
 const H3UnknownCode = "h3_submission_unknown"
+const H3NotSentCode = "h3_submission_not_sent"
+
+type H3SubmissionReceipt struct {
+	ID                string `json:"id"`
+	TaskID            string `json:"task_id"`
+	SubmissionCode    string `json:"submission_code"`
+	SubmissionState   string `json:"submission_state"`
+	BillingState      string `json:"billing_state"`
+	UpstreamSubmitted bool   `json:"upstream_submitted"`
+	Retryable         bool   `json:"retryable"`
+	Resubmittable     bool   `json:"resubmittable"`
+	RefundConfirmed   bool   `json:"refund_confirmed,omitempty"`
+	Recovery          struct {
+		Method string `json:"method"`
+		Path   string `json:"path"`
+	} `json:"recovery"`
+}
+
+// H3NotSubmittedReceipt is a read-only projection of the durable send and
+// billing ledgers. It never releases capacity, changes status, or refunds.
+func H3NotSubmittedReceipt(ctx context.Context, task *model.Task) (*H3SubmissionReceipt, error) {
+	receipt, _, err := h3FailureReceipt(ctx, task)
+	return receipt, err
+}
+
+// ProjectH3TaskSubmission changes only the caller's read-only response copy.
+// A local FAILURE must not tell old clients to unlock an uncertain operation.
+// ProviderTerminalConfirmed is evidence of the original supplier task ending,
+// not evidence of a complete refund and not an instruction to retry.
+func ProjectH3TaskSubmission(ctx context.Context, task *model.Task) (*H3SubmissionReceipt, bool, error) {
+	receipt, providerTerminal, err := h3FailureReceipt(ctx, task)
+	if err != nil {
+		return nil, false, err
+	}
+	if model.IsH3Task(task) && (task.Status == model.TaskStatusFailure || task.Status == model.TaskStatusUnknown) && receipt == nil && !providerTerminal {
+		task.Status = model.TaskStatusUnknown
+		task.Progress = "0%"
+		task.FinishTime = 0
+		task.FailReason = ""
+		task.Data = nil
+		task.PrivateData.ResultURL = ""
+	}
+	return receipt, providerTerminal, nil
+}
+
+func h3FailureReceipt(ctx context.Context, task *model.Task) (*H3SubmissionReceipt, bool, error) {
+	billingState, providerTerminal, err := model.H3ConfirmedFailureState(ctx, task)
+	if err != nil || billingState == "" {
+		return nil, providerTerminal, err
+	}
+	receipt := &H3SubmissionReceipt{ID: task.TaskID, TaskID: task.TaskID, SubmissionCode: H3NotSentCode, SubmissionState: "not_submitted", BillingState: billingState, Resubmittable: true, RefundConfirmed: billingState == "refunded"}
+	receipt.Recovery.Method = http.MethodGet
+	receipt.Recovery.Path = "/v1/tasks/" + task.TaskID
+	return receipt, false, nil
+}
 
 type H3Submission struct {
-	Rejected           bool
-	RejectedHTTPStatus int
-	SlotReleased       bool
-	RefundConfirmed    bool
-	Task               *model.Task
+	Rejected            bool
+	RejectedHTTPStatus  int
+	SlotReleased        bool
+	RefundConfirmed     bool
+	Task                *model.Task
+	NotSubmittedReceipt *H3SubmissionReceipt
 	// Set before attempting the durable send fence. Even a lost DB response
 	// may mean it committed; uncertainty must not turn into a refund or retry.
 	MayHaveSent      bool

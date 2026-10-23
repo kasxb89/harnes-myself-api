@@ -517,6 +517,36 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 		return
 	}
+	receipt, providerTerminal, receiptErr := service.ProjectH3TaskSubmission(c.Request.Context(), originTask)
+	if receiptErr != nil {
+		return nil, service.TaskErrorWrapperLocal(errors.New("failed to verify task submission"), "get_task_failed", http.StatusServiceUnavailable)
+	}
+	if model.IsH3Task(originTask) {
+		c.Header("Cache-Control", "private, no-store")
+	}
+	if receipt != nil || providerTerminal {
+		defer func() {
+			if taskResp != nil {
+				return
+			}
+			var response map[string]any
+			if common.Unmarshal(respBody, &response) != nil || response == nil {
+				taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
+				return
+			}
+			if receipt != nil {
+				response["submission_receipt"] = receipt
+			}
+			if providerTerminal {
+				response["provider_terminal_confirmed"] = true
+			}
+			var marshalErr error
+			respBody, marshalErr = common.Marshal(response)
+			if marshalErr != nil {
+				taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
+			}
+		}()
+	}
 
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
