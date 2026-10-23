@@ -52,6 +52,8 @@ import type { ClientModelConfig, ClientModelOption } from '../types'
 import { ModelOrderEditor } from './model-order-editor'
 
 type ConfigFormProps = {
+  active?: boolean
+  onDirtyChange?: (dirty: boolean) => void
   config: ClientModelConfig
   models: ClientModelOption[]
 }
@@ -74,6 +76,10 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
     onError: (error) => handleServerError(error),
   })
   const isDirty = form.formState.isDirty
+  const onDirtyChange = props.onDirtyChange
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
   const reset = form.reset
   useEffect(() => {
     if (!isDirty && !save.isPending) {
@@ -138,21 +144,25 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
         className='min-w-0 space-y-4'
       >
         <FormDirtyIndicator isDirty={form.formState.isDirty} />
-        <FormNavigationGuard when={form.formState.isDirty} />
-        <SettingsPageFormActions
-          onSave={form.handleSubmit(onSubmit)}
-          onReset={() => form.reset()}
-          resetLabel='Discard changes'
-          saveLabel='Save client model configuration'
-          isSaving={save.isPending}
-          isSaveDisabled={
-            !form.formState.isDirty ||
-            invalidDefault ||
-            unavailable.length > 0 ||
-            invalidRanks
-          }
-          isResetDisabled={!form.formState.isDirty}
+        <FormNavigationGuard
+          when={!props.onDirtyChange && form.formState.isDirty}
         />
+        {props.active !== false && (
+          <SettingsPageFormActions
+            onSave={form.handleSubmit(onSubmit)}
+            onReset={() => form.reset()}
+            resetLabel='Discard changes'
+            saveLabel='Save client model configuration'
+            isSaving={save.isPending}
+            isSaveDisabled={
+              !form.formState.isDirty ||
+              invalidDefault ||
+              unavailable.length > 0 ||
+              invalidRanks
+            }
+            isResetDisabled={!form.formState.isDirty}
+          />
+        )}
         <Alert>
           <AlertDescription>
             {t(

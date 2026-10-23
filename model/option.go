@@ -239,6 +239,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if isClientModelPresentationOption(key) {
+		return errClientModelPresentationDedicatedAPI
+	}
 	if isClientAnnouncementsMetadataOption(key) {
 		return errClientAnnouncementsMetadataReadOnly
 	}
@@ -318,6 +321,9 @@ func UpdateOption(key string, value string) error {
 		if err := validateClientAnnouncementOptionWrite(tx, key, option.Key); err != nil {
 			return err
 		}
+		if err := validateClientModelPresentationOptionWrite(tx, option.Key); err != nil {
+			return err
+		}
 		option.Value = value
 		return tx.Save(&option).Error
 	}); err != nil {
@@ -363,6 +369,9 @@ func validateClientAnnouncementOptionWrite(tx *gorm.DB, requestedKey, storedKey 
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
 	for key := range values {
+		if isClientModelPresentationOption(key) {
+			return errClientModelPresentationDedicatedAPI
+		}
 		if isClientAnnouncementsMetadataOption(key) {
 			return errClientAnnouncementsMetadataReadOnly
 		}
@@ -425,6 +434,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 				return ErrModelProfitCostRulesAPI
 			}
 			if err := validateClientAnnouncementOptionWrite(tx, k, option.Key); err != nil {
+				return err
+			}
+			if err := validateClientModelPresentationOptionWrite(tx, option.Key); err != nil {
 				return err
 			}
 			option.Value = v

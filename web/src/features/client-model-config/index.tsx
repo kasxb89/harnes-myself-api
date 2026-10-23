@@ -23,13 +23,19 @@ import { useTranslation } from 'react-i18next'
 import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { LoadingState } from '@/components/loading-state'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { FormNavigationGuard } from '@/features/system-settings/components/form-navigation-guard'
 import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
 
 import { getClientModelCatalog, getClientModelConfig } from './api'
 import { ClientModelConfigForm } from './components/config-form'
+import { ClientModelPresentationSection } from './components/presentation-form'
 
 export function ClientModelConfigPage() {
   const { t } = useTranslation()
+  const [tab, setTab] = useState('preferences')
+  const [configDirty, setConfigDirty] = useState(false)
+  const [presentationDirty, setPresentationDirty] = useState(false)
   const [actions, setActions] = useState<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<HTMLSpanElement | null>(null)
   const config = useQuery({
@@ -65,28 +71,64 @@ export function ClientModelConfigPage() {
           />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='mx-auto max-w-5xl min-w-0'>
-            {pending && (
-              <LoadingState
-                message={t('Loading client model configuration...')}
-              />
-            )}
-            {!pending && error && (
-              <ErrorState
-                title={t('Failed to load client model configuration')}
-                onRetry={() => {
-                  void config.refetch()
+          <FormNavigationGuard when={configDirty || presentationDirty} />
+          <Tabs
+            value={tab}
+            onValueChange={(value) => setTab(String(value))}
+            className='mx-auto max-w-5xl min-w-0 gap-4'
+          >
+            <TabsList
+              className='h-auto w-full flex-wrap'
+              aria-label={t('Client model settings')}
+            >
+              <TabsTrigger
+                value='preferences'
+                className='h-auto whitespace-normal'
+              >
+                {t('Defaults and order')}
+              </TabsTrigger>
+              <TabsTrigger
+                value='presentation'
+                className='h-auto whitespace-normal'
+              >
+                {t('Descriptions and badges')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value='preferences' keepMounted>
+              {pending && (
+                <LoadingState
+                  message={t('Loading client model configuration...')}
+                />
+              )}
+              {!pending && error && (
+                <ErrorState
+                  title={t('Failed to load client model configuration')}
+                  onRetry={() => {
+                    void config.refetch()
+                    void catalog.refetch()
+                  }}
+                />
+              )}
+              {!pending && !error && config.data && catalog.data && (
+                <ClientModelConfigForm
+                  config={config.data}
+                  models={catalog.data}
+                  active={tab === 'preferences'}
+                  onDirtyChange={setConfigDirty}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value='presentation' keepMounted>
+              <ClientModelPresentationSection
+                onDirtyChange={setPresentationDirty}
+                models={catalog.data ?? []}
+                catalogUnavailable={catalog.isError && !catalog.data}
+                onRetryCatalog={() => {
                   void catalog.refetch()
                 }}
               />
-            )}
-            {!pending && !error && config.data && catalog.data && (
-              <ClientModelConfigForm
-                config={config.data}
-                models={catalog.data}
-              />
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>
     </SettingsPageProvider>

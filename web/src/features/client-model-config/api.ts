@@ -22,7 +22,12 @@ import type { ApiResponse } from '@/features/profile/types'
 import { api } from '@/lib/api'
 import { createServerError } from '@/lib/server-error-message'
 
-import type { ClientModelConfig, ClientModelOption } from './types'
+import { clientModelPresentationSchema } from './lib/presentation'
+import type {
+  ClientModelConfig,
+  ClientModelOption,
+  ClientModelPresentation,
+} from './types'
 
 export async function getClientModelConfig(): Promise<ClientModelConfig> {
   const response = await api.get<ApiResponse<ClientModelConfig>>(
@@ -64,4 +69,35 @@ export async function saveClientModelConfig(
     )
   }
   return response.data.data
+}
+
+export async function getClientModelPresentation(): Promise<ClientModelPresentation> {
+  const response = await api.get<ApiResponse<ClientModelPresentation>>(
+    '/api/client-model-config/presentation'
+  )
+  const parsed = clientModelPresentationSchema.safeParse(response.data.data)
+  if (!response.data.success || !parsed.success) {
+    throw createServerError(
+      response.data,
+      t('Failed to load client model presentation')
+    )
+  }
+  return parsed.data
+}
+
+export async function saveClientModelPresentation(
+  presentation: ClientModelPresentation
+): Promise<ClientModelPresentation> {
+  const response = await api.put<ApiResponse<ClientModelPresentation>>(
+    '/api/client-model-config/presentation',
+    presentation
+  )
+  const parsed = clientModelPresentationSchema.safeParse(response.data.data)
+  if (!response.data.success || !parsed.success) {
+    throw createServerError(
+      response.data,
+      t('Failed to save client model presentation')
+    )
+  }
+  return parsed.data
 }

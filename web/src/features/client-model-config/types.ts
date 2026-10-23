@@ -27,3 +27,13 @@ export type ClientModelOption = {
   display_name: string
   chat_eligible: boolean
 }
+
+export type ClientModelPresentationEntry = {
+  description?: string
+  badge?: string
+}
+
+export type ClientModelPresentation = {
+  schema_version: 1
+  models: Record<string, ClientModelPresentationEntry>
+}

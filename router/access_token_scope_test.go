@@ -375,6 +375,8 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 		{http.MethodGet, "/api/client-model-config"},
 		{http.MethodPut, "/api/client-model-config"},
 		{http.MethodGet, "/api/client-model-config/models"},
+		{http.MethodGet, "/api/client-model-config/presentation"},
+		{http.MethodPut, "/api/client-model-config/presentation"},
 		{http.MethodGet, "/api/media-operations"},
 		{http.MethodGet, "/api/video-usage"},
 	} {
@@ -391,7 +393,11 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 			{"administrator", adminSession.AccessToken, http.StatusOK},
 		} {
 			t.Run(route.method+route.path+identity.name, func(t *testing.T) {
-				request := httptest.NewRequest(route.method, route.path, strings.NewReader(`{"schema_version":1,"default_chat_model":"","model_order":[]}`))
+				body := `{"schema_version":1,"default_chat_model":"","model_order":[]}`
+				if strings.HasSuffix(route.path, "/presentation") {
+					body = `{"schema_version":1,"models":{}}`
+				}
+				request := httptest.NewRequest(route.method, route.path, strings.NewReader(body))
 				request.Header.Set("Content-Type", "application/json")
 				request.Header.Set("Origin", "http://example.com")
 				if identity.token != "" {
@@ -404,7 +410,7 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 			})
 		}
 	}
-	t.Run("media operations rejects scoped and relay credentials", func(t *testing.T) {
+	t.Run("administrator pages reject scoped and relay credentials", func(t *testing.T) {
 		pat := model.AccessTokenPrefix + strings.Repeat("m", 43)
 		credential := model.UserAccessToken{UserId: 7411, Name: "media-admin-fixture", TokenHash: model.AccessTokenFingerprint(pat), TokenHint: model.AccessTokenHint(pat)}
 		credential.SetScopes([]string{"channel:read"})
@@ -419,8 +425,15 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 			{"relay token", "sk-" + relayKey, http.StatusUnauthorized},
 		} {
 			t.Run(identity.name, func(t *testing.T) {
-				for _, path := range []string{"/api/media-operations", "/api/video-usage"} {
-					request := httptest.NewRequest(http.MethodGet, path, nil)
+				for _, route := range []struct{ method, path string }{
+					{http.MethodGet, "/api/media-operations"},
+					{http.MethodGet, "/api/video-usage"},
+					{http.MethodGet, "/api/client-model-config/presentation"},
+					{http.MethodPut, "/api/client-model-config/presentation"},
+				} {
+					request := httptest.NewRequest(route.method, route.path, strings.NewReader(`{"schema_version":1,"models":{}}`))
+					request.Header.Set("Content-Type", "application/json")
+					request.Header.Set("Origin", "http://example.com")
 					request.Header.Set("Authorization", "Bearer "+identity.token)
 					recorder := httptest.NewRecorder()
 					engine.ServeHTTP(recorder, request)
@@ -431,21 +444,34 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 		}
 	})
 	t.Run("cross origin write is denied", func(t *testing.T) {
-		request := httptest.NewRequest(http.MethodPut, "/api/client-model-config", strings.NewReader(`{"schema_version":1,"default_chat_model":"","model_order":[]}`))
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("Origin", "https://untrusted.example")
-		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
-		recorder := httptest.NewRecorder()
-		engine.ServeHTTP(recorder, request)
-		assert.Equal(t, http.StatusForbidden, recorder.Code)
+		for _, path := range []string{"/api/client-model-config", "/api/client-model-config/presentation"} {
+			request := httptest.NewRequest(http.MethodPut, path, strings.NewReader(`{"schema_version":1,"models":{}}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "https://untrusted.example")
+			request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			assert.Equal(t, http.StatusForbidden, recorder.Code)
+		}
 	})
-	t.Run("revoked administrator session cannot read configuration", func(t *testing.T) {
-		_, err := model.RevokeUserSession(7411, adminSession.Session.SID, "test revocation")
-		require.NoError(t, err)
-		request := httptest.NewRequest(http.MethodGet, "/api/client-model-config", nil)
+	t.Run("expired administrator session cannot read presentation", func(t *testing.T) {
+		require.NoError(t, db.Model(&model.UserSession{}).Where("sid = ?", adminSession.Session.SID).Update("expires_at", time.Now().Unix()-1).Error)
+		request := httptest.NewRequest(http.MethodGet, "/api/client-model-config/presentation", nil)
 		request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
 		recorder := httptest.NewRecorder()
 		engine.ServeHTTP(recorder, request)
 		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		require.NoError(t, db.Model(&model.UserSession{}).Where("sid = ?", adminSession.Session.SID).Update("expires_at", adminSession.Session.ExpiresAt).Error)
+	})
+	t.Run("revoked administrator session cannot read configuration", func(t *testing.T) {
+		_, err := model.RevokeUserSession(7411, adminSession.Session.SID, "test revocation")
+		require.NoError(t, err)
+		for _, path := range []string{"/api/client-model-config", "/api/client-model-config/presentation"} {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.Header.Set("Authorization", "Bearer "+adminSession.AccessToken)
+			recorder := httptest.NewRecorder()
+			engine.ServeHTTP(recorder, request)
+			assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		}
 	})
 }

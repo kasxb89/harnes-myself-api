@@ -43,6 +43,7 @@ func GetStatus(c *gin.Context) {
 	cs := console_setting.GetConsoleSetting()
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
 	clientModelConfig := model.CurrentClientModelConfig()
+	clientModelPresentation := model.CurrentClientModelPresentation()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -52,6 +53,7 @@ func GetStatus(c *gin.Context) {
 		"version":                     common.Version,
 		"desktop_update":              system_setting.GetDesktopUpdateStatus(),
 		"client_model_config":         clientModelConfig,
+		"client_model_presentation":   clientModelPresentation,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,

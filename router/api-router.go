@@ -45,6 +45,8 @@ func SetApiRouter(router *gin.Engine) {
 			clientModelRoute.GET("", controller.GetClientModelConfig)
 			clientModelRoute.PUT("", middleware.SessionCookieOriginGuard(), controller.SaveClientModelConfig)
 			clientModelRoute.GET("/models", controller.GetClientModelCandidates)
+			clientModelRoute.GET("/presentation", controller.GetClientModelPresentation)
+			clientModelRoute.PUT("/presentation", middleware.SessionCookieOriginGuard(), controller.SaveClientModelPresentation)
 		}
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)

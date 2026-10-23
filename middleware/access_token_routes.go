@@ -56,9 +56,11 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"PUT /api/creation/admin/content": accessTokenSessionRule,
 	"POST /api/creation/admin/assets": accessTokenSessionRule,
 	// Client model display preferences are changed through an administrator login.
-	"GET /api/client-model-config":        accessTokenSessionRule,
-	"PUT /api/client-model-config":        accessTokenSessionRule,
-	"GET /api/client-model-config/models": accessTokenSessionRule,
+	"GET /api/client-model-config":              accessTokenSessionRule,
+	"PUT /api/client-model-config":              accessTokenSessionRule,
+	"GET /api/client-model-config/models":       accessTokenSessionRule,
+	"GET /api/client-model-config/presentation": accessTokenSessionRule,
+	"PUT /api/client-model-config/presentation": accessTokenSessionRule,
 
 	// router/api-router.go: top level
 	"GET /api/models":                     accessTokenScopeRule("profile:read"),

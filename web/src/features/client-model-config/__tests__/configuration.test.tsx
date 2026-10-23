@@ -66,6 +66,11 @@ beforeEach(() => {
     if (url === '/api/client-model-config') {
       return { data: { success: true, data: saved } }
     }
+    if (url === '/api/client-model-config/presentation') {
+      return {
+        data: { success: true, data: { schema_version: 1, models: {} } },
+      }
+    }
     if (url === '/api/client-model-config/models') {
       return { data: { success: true, data: { models } } }
     }
