@@ -518,6 +518,28 @@ func blackrxVideoReferenceLimits(model string) [3]int {
 }
 
 func taskPluginClientParameters(key, version, model string) map[string]any {
+	parameters := taskPluginParameterSchema(key, version, model)
+	if parameters == nil {
+		return nil
+	}
+	kind := ""
+	if key == "blackrxai-video" && version == "1.0.2" {
+		kind = MediaVideo
+	} else if key == "toapis-image" && version == "1.2.1" {
+		kind = MediaImage
+	}
+	if kind != "" {
+		if parallelism := GetMediaClientConcurrencyHint(key, model, kind); parallelism != nil {
+			parameters["x-client-concurrency"] = map[string]any{
+				"schema": 1, "atomic_admission": true, "max_parallelism": *parallelism,
+				"model": model, "scope": "shared_account_pool", "reservation": false,
+			}
+		}
+	}
+	return parameters
+}
+
+func taskPluginParameterSchema(key, version, model string) map[string]any {
 	switch key {
 	case "blackrxai-video":
 		return blackrxVideoClientParameters(model)

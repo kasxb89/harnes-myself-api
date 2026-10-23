@@ -360,6 +360,8 @@ func migrateDB() error {
 		&Task{},
 		&H3Account{},
 		&H3Admission{},
+		&MediaPool{},
+		&MediaAdmission{},
 		&TaskPlugin{},
 		&Model{},
 		&Vendor{},
@@ -382,6 +384,9 @@ func migrateDB() error {
 		&UserAccessToken{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := MigrateMediaAdmission(DB); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {

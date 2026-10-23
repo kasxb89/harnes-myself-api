@@ -570,6 +570,46 @@ func executeTaskSubmissionWith(
 	durable := false
 	stage := "start"
 	defer func() {
+		if media := service.MediaSubmissionFromContext(c); media != nil {
+			if media.SlotReleased && media.NotSubmittedReceipt != nil {
+				return
+			}
+			if media.MayHaveSent || media.BillingUncertain {
+				if outcome == nil || submissionErr != nil {
+					service.PreserveMediaUnknown(media)
+					outcome, submissionErr = mediaUnknownOutcome(c, relayInfo), nil
+				}
+				return
+			}
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			refundRequired := media.Task.Quota > 0 || relayInfo.Billing != nil && relayInfo.Billing.NeedsRefund()
+			if err := model.ReleaseMediaUnsentWithRefund(cleanupCtx, media.Task, refundRequired); err != nil {
+				service.PreserveMediaUnknown(media)
+				outcome, submissionErr = mediaUnknownOutcome(c, relayInfo), nil
+				return
+			}
+			media.SlotReleased = true
+			if refundRequired {
+				if relayInfo.Billing != nil {
+					diagnostics.refund(stage)
+					relayInfo.Billing.Refund(c)
+				}
+				if !media.RefundConfirmed {
+					service.PreserveMediaUnknown(media)
+					outcome, submissionErr = mediaUnknownOutcome(c, relayInfo), nil
+					return
+				}
+			}
+			receipt, _, err := service.ProjectMediaTaskSubmission(cleanupCtx, media.Task)
+			if err != nil || receipt == nil {
+				service.PreserveMediaUnknown(media)
+				outcome, submissionErr = mediaUnknownOutcome(c, relayInfo), nil
+				return
+			}
+			media.NotSubmittedReceipt = receipt
+			return
+		}
 		if h3 := service.H3SubmissionFromContext(c); h3 != nil {
 			if h3.Rejected {
 				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -642,6 +682,11 @@ func executeTaskSubmissionWith(
 	}()
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			if media := service.MediaSubmissionFromContext(c); media != nil && (media.MayHaveSent || media.BillingUncertain) {
+				service.PreserveMediaUnknown(media)
+				outcome, submissionErr = mediaUnknownOutcome(c, relayInfo), nil
+				return
+			}
 			if h3 := service.H3SubmissionFromContext(c); h3 != nil && (h3.MayHaveSent || h3.BillingUncertain) {
 				service.PreserveH3Unknown(h3)
 				outcome = h3UnknownOutcome(c, relayInfo)
@@ -664,6 +709,10 @@ func executeTaskSubmissionWith(
 		RequestPath: c.Request.URL.Path,
 		Retry:       common.GetPointer(0),
 	}
+	var mediaRetryChannel *model.Channel
+	var mediaRetryKey string
+	var mediaRetryKeyIndex int
+	mediaAttemptedKeys := make(map[int]map[string]bool)
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		stage = "select_channel"
@@ -674,7 +723,13 @@ func executeTaskSubmissionWith(
 		}
 		var channel *model.Channel
 
-		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
+		if mediaRetryChannel != nil {
+			channel = mediaRetryChannel
+			mediaRetryChannel = nil
+			common.SetContextKey(c, constant.ContextKeyChannelKey, mediaRetryKey)
+			common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, mediaRetryKeyIndex)
+			policy.BeginAttempt(channel, relayInfo.UsingGroup)
+		} else if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
 			channel = lockedCh
 			policy.BeginAttempt(channel, relayInfo.UsingGroup)
 			if retryParam.GetRetry() > 0 {
@@ -689,6 +744,11 @@ func executeTaskSubmissionWith(
 			if channelErr != nil {
 				if len(h3FullChannels(c)) > 0 {
 					taskErr = service.TaskErrorWrapperLocal(model.ErrH3Capacity, service.H3CapacityCode, http.StatusTooManyRequests)
+					taskErr.NoRetry = true
+					break
+				}
+				if len(mediaFullChannels(c)) > 0 {
+					taskErr = service.TaskErrorWrapperLocal(model.ErrMediaCapacity, service.MediaCapacityCode, http.StatusTooManyRequests)
 					taskErr.NoRetry = true
 					break
 				}
@@ -714,6 +774,12 @@ func executeTaskSubmissionWith(
 
 		stage = "submit"
 		result, taskErr = submit(c, relayInfo)
+		if media := service.MediaSubmissionFromContext(c); media != nil && media.MayHaveSent && (taskErr != nil || result == nil) {
+			diagnosticErr := service.RecordMediaAttemptFailure(c, relayInfo, channel.Id, taskErr)
+			diagnostics.attemptFailed(retryParam.GetRetry()+1, channel, diagnosticErr, false)
+			service.PreserveMediaUnknown(media)
+			return mediaUnknownOutcome(c, relayInfo), nil
+		}
 		if h3 := service.H3SubmissionFromContext(c); h3 != nil && h3.MayHaveSent && !h3.Rejected && (taskErr != nil || result == nil) {
 			service.PreserveH3Unknown(h3)
 			return h3UnknownOutcome(c, relayInfo), nil
@@ -730,10 +796,42 @@ func executeTaskSubmissionWith(
 			retryParam.ResetRetryNextTry()
 			continue
 		}
+		if taskErr != nil && taskErr.Code == service.MediaCapacityCode {
+			attempted := mediaAttemptedKeys[channel.Id]
+			if attempted == nil {
+				attempted = make(map[string]bool)
+				mediaAttemptedKeys[channel.Id] = attempted
+			}
+			attempted[common.GetContextKeyString(c, constant.ContextKeyChannelKey)] = true
+			nextKey, nextIndex, nextErr := service.NextMediaAdmissionKey(c, channel, relayInfo, attempted)
+			if nextErr != nil {
+				taskErr = service.TaskErrorWrapperLocal(errors.New("Media account admission is unavailable"), "media_admission_unavailable", http.StatusServiceUnavailable)
+				taskErr.NoRetry = true
+				break
+			}
+			if nextKey != "" {
+				mediaRetryChannel, mediaRetryKey, mediaRetryKeyIndex = channel, nextKey, nextIndex
+				retryParam.ResetRetryNextTry()
+				continue
+			}
+			_, pinned, _ := service.GetChannelConstraints(c).ResolvedPin()
+			full := append(mediaFullChannels(c), channel.Id)
+			c.Set("media_full_channels", full)
+			if pinned || relayInfo.LockedChannel != nil || policy.SessionMode == "strict" || len(full) >= 64 {
+				taskErr.NoRetry = true
+				break
+			}
+			service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterExcludedChannels, ExcludedChannelIDs: []int{channel.Id}})
+			retryParam.ResetRetryNextTry()
+			continue
+		}
 		if taskErr != nil && service.H3SubmissionFromContext(c) != nil {
 			taskErr.NoRetry = true
 		}
-		if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil {
+		if taskErr != nil && service.MediaSubmissionFromContext(c) != nil {
+			taskErr.NoRetry = true
+		}
+		if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil && service.MediaSubmissionFromContext(c) == nil {
 			diagnostics.cancelled("after_submit", retryParam.GetRetry()+1)
 			taskErr = service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 			break
@@ -769,6 +867,11 @@ func executeTaskSubmissionWith(
 	}
 
 	if taskErr != nil {
+		if taskErr.Code == service.MediaCapacityCode {
+			if rejectionErr := service.RecordMediaCapacityRejection(c); rejectionErr != nil {
+				taskErr = rejectionErr
+			}
+		}
 		diagnostics.failed(stage, "task_error", taskErr, false)
 		return nil, taskErr
 	}
@@ -777,7 +880,7 @@ func executeTaskSubmissionWith(
 		diagnostics.failed("submit", "missing_result", taskErr, false)
 		return nil, taskErr
 	}
-	if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil {
+	if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil && service.MediaSubmissionFromContext(c) == nil {
 		diagnostics.cancelled("before_reserve", retryParam.GetRetry()+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
@@ -791,6 +894,9 @@ func executeTaskSubmissionWith(
 		if err := markH3BillingUncertain(c); err != nil {
 			return nil, service.TaskErrorWrapperLocal(errors.New("failed to persist H3 billing adjustment fence"), "h3_billing_snapshot_failed", http.StatusServiceUnavailable)
 		}
+		if err := markMediaBillingUncertain(c); err != nil {
+			return nil, service.TaskErrorWrapperLocal(errors.New("failed to persist media billing adjustment fence"), "media_billing_snapshot_failed", http.StatusServiceUnavailable)
+		}
 		if reserveErr := relayInfo.Billing.Reserve(result.Quota); reserveErr != nil {
 			common.SysError(common.LogText("reserve adjusted task billing error: %s", reserveErr.Error()))
 			taskErr = service.TaskErrorWrapperLocal(errors.New("insufficient quota for adjusted task cost"), string(types.ErrorCodeInsufficientUserQuota), http.StatusForbidden)
@@ -799,7 +905,7 @@ func executeTaskSubmissionWith(
 		}
 		diagnostics.reserve("reserve_complete", result.Quota)
 	}
-	if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil {
+	if requestErr := c.Request.Context().Err(); requestErr != nil && service.H3SubmissionFromContext(c) == nil && service.MediaSubmissionFromContext(c) == nil {
 		diagnostics.cancelled("before_insert", retryParam.GetRetry()+1)
 		return nil, service.TaskErrorWrapperLocal(requestErr, "request_cancelled", http.StatusRequestTimeout)
 	}
@@ -808,6 +914,13 @@ func executeTaskSubmissionWith(
 	task := model.InitTask(result.Platform, relayInfo)
 	if h3 := service.H3SubmissionFromContext(c); h3 != nil {
 		task = h3.Task
+		if task.SubmitTime == 0 {
+			task.SubmitTime = time.Now().Unix()
+		}
+		task.Status = model.TaskStatusNotStart
+	}
+	if media := service.MediaSubmissionFromContext(c); media != nil {
+		task = media.Task
 		if task.SubmitTime == 0 {
 			task.SubmitTime = time.Now().Unix()
 		}
@@ -882,11 +995,20 @@ func executeTaskSubmissionWith(
 		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 5*time.Second)
 		insertErr = model.CompleteH3Submission(persistCtx, task, immediateTerminal)
 		cancel()
+	} else if service.MediaSubmissionFromContext(c) != nil {
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 5*time.Second)
+		persistedTask := *task
+		if task.PrivateData.ResultDiscarded {
+			persistedTask.Data = nil
+		}
+		insertErr = model.CompleteMediaSubmission(persistCtx, &persistedTask, immediateTerminal)
+		cancel()
 	} else {
 		insertErr = task.InsertWithContext(c.Request.Context(), insertOmits...)
 	}
 	if insertErr != nil {
 		_ = markH3BillingUncertain(c)
+		_ = markMediaBillingUncertain(c)
 		common.SysError(common.LogText("insert task error: %s", insertErr.Error()))
 		taskErr = service.TaskErrorWrapperLocal(errors.New("failed to persist task"), "task_insert_failed", http.StatusInternalServerError)
 		diagnostics.failed("insert", "database_error", taskErr, false)
@@ -900,6 +1022,7 @@ func executeTaskSubmissionWith(
 
 	if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 		_ = markH3BillingUncertain(c)
+		_ = markMediaBillingUncertain(c)
 		common.SysError(common.LogText("settle task billing error: %s", settleErr.Error()))
 		taskErr = service.TaskErrorWrapperLocal(errors.New("failed to settle task billing"), "task_billing_settlement_failed", http.StatusInternalServerError)
 		diagnostics.failed("settle", "billing_error", taskErr, true)
@@ -923,6 +1046,27 @@ func h3FullChannels(c *gin.Context) []int {
 	return channels
 }
 
+func mediaFullChannels(c *gin.Context) []int {
+	value, _ := c.Get("media_full_channels")
+	channels, _ := value.([]int)
+	return channels
+}
+
+func mediaUnknownOutcome(c *gin.Context, info *relaycommon.RelayInfo) *taskSubmissionOutcome {
+	media := service.MediaSubmissionFromContext(c)
+	return &taskSubmissionOutcome{Result: &relay.TaskSubmitResult{Platform: media.Task.Platform, Quota: media.Task.Quota}, Task: media.Task, RelayInfo: info}
+}
+
+func markMediaBillingUncertain(c *gin.Context) error {
+	if media := service.MediaSubmissionFromContext(c); media != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		media.BillingUncertain = true
+		return model.MarkMediaBillingUncertain(ctx, media.Task.PrivateData.MediaAdmissionID)
+	}
+	return nil
+}
+
 func h3UnknownOutcome(c *gin.Context, info *relaycommon.RelayInfo) *taskSubmissionOutcome {
 	h3 := service.H3SubmissionFromContext(c)
 	return &taskSubmissionOutcome{Result: &relay.TaskSubmitResult{Platform: h3.Task.Platform, Quota: h3.Task.Quota}, Task: h3.Task, RelayInfo: info}
@@ -938,6 +1082,10 @@ func markH3BillingUncertain(c *gin.Context) error {
 }
 
 func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
+	if media := service.MediaSubmissionFromContext(c); media != nil && media.Unknown {
+		presentMediaUnknown(c, media)
+		return
+	}
 	if h3 := service.H3SubmissionFromContext(c); h3 != nil && h3.Unknown {
 		c.Header("X-New-Api-Task-Id", h3.Task.TaskID)
 		c.JSON(http.StatusAccepted, gin.H{"id": h3.Task.TaskID, "task_id": h3.Task.TaskID, "object": "video", "model": outcome.RelayInfo.OriginModelName, "status": "unknown", "submission_state": "unknown", "resubmittable": false, "retryable": false, "recovery": gin.H{"method": "GET", "path": "/v1/tasks/" + h3.Task.TaskID}, "error": gin.H{"code": service.H3UnknownCode, "message": "Submission status is unknown; query this task and do not submit it again"}})
@@ -960,9 +1108,11 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 				viewValue, valueErr := taskPluginProtocolJSONValue(view)
 				if valueErr == nil {
 					if body, callErr := pinned.Plugin.Engine.CallPath(c.Request.Context(), "native", []string{pinned.Route.Render}, requestContext.JSValue(), viewValue); callErr == nil {
-						diagnostics.present(outcome.Task, "native_presenter")
-						c.JSON(http.StatusOK, body)
-						return
+						if sanitized, sanitizeErr := service.SanitizeMediaProofFields(body); sanitizeErr == nil {
+							diagnostics.present(outcome.Task, "native_presenter")
+							c.JSON(http.StatusOK, sanitized)
+							return
+						}
 					} else {
 						logger.LogError(c, common.LogText("task plugin native submit presenter failed: %s", callErr.Error()))
 					}
@@ -999,6 +1149,9 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 	service.RecordRequestPolicyTermination(c, taskSubmissionAPIError(taskErr))
 	service.RecordRelayError(c, taskSubmissionAPIError(taskErr), nil)
 	newTaskPluginSubmitDiagnostics(c).presentError(taskErr)
+	if respondMediaNotSubmittedError(c, taskErr, false) {
+		return
+	}
 	if respondH3NotSubmittedError(c, taskErr, false) {
 		return
 	}
@@ -1016,6 +1169,36 @@ func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
 		return
 	}
 	respondTaskError(c, taskErr)
+}
+
+func presentMediaUnknown(c *gin.Context, submission *service.MediaSubmission) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-New-Api-Task-Id", submission.Task.TaskID)
+	c.JSON(http.StatusAccepted, gin.H{"id": submission.Task.TaskID, "task_id": submission.Task.TaskID,
+		"object": submission.MediaKind, "media_kind": submission.MediaKind, "model": submission.Task.Properties.OriginModelName, "status": "unknown",
+		"submission_state": "unknown", "retryable": false, "resubmittable": false,
+		"recovery": gin.H{"method": "GET", "path": "/v1/tasks/" + submission.Task.TaskID},
+		"error":    gin.H{"code": service.MediaUnknownCode, "message": "Submission status is unknown; query this task and do not submit it again"}})
+}
+
+func respondMediaNotSubmittedError(c *gin.Context, taskErr *taskdto.TaskError, protocol bool) bool {
+	media := service.MediaSubmissionFromContext(c)
+	if media == nil || media.Unknown || media.NotSubmittedReceipt == nil || taskErr == nil {
+		return false
+	}
+	receipt := media.NotSubmittedReceipt
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("X-New-Api-Task-Id", receipt.TaskID)
+	body := gin.H{"id": receipt.ID, "task_id": receipt.TaskID, "model": receipt.Model,
+		"media_kind": receipt.MediaKind,
+		"code":       taskErr.Code, "message": taskErr.Message, "data": nil,
+		"submission_state": receipt.SubmissionState, "retryable": false, "resubmittable": true,
+		"media_submission_receipt": receipt, "recovery": receipt.Recovery}
+	if protocol {
+		body["error"] = gin.H{"code": taskErr.Code, "type": "new_api_error", "message": taskErr.Message}
+	}
+	c.JSON(taskErr.StatusCode, body)
+	return true
 }
 
 // The receipt was verified from the database after cleanup completed. Both

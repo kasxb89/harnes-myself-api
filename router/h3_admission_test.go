@@ -129,7 +129,7 @@ func newH3RouterFixture(t *testing.T, accountCount int) *h3RouterFixture {
 		constant.TaskQueryLimit, constant.TaskTimeoutMinutes = previousLimit, previousTaskTimeout
 		constant.TaskPollMaxFailures = previousPollFailures
 	})
-	models := []any{&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Task{}, &model.Option{}, &model.Model{}, &model.Vendor{}, &model.UserSubscription{}, &model.SubscriptionPlan{}, &model.SubscriptionPreConsumeRecord{}, &model.H3Account{}, &model.H3Admission{}}
+	models := []any{&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Task{}, &model.Option{}, &model.Model{}, &model.Vendor{}, &model.UserSubscription{}, &model.SubscriptionPlan{}, &model.SubscriptionPreConsumeRecord{}, &model.H3Account{}, &model.H3Admission{}, &model.MediaPool{}, &model.MediaAdmission{}}
 	// This database is dedicated to this fixture, never a product database.
 	require.NoError(t, db.Migrator().DropTable(models...))
 	require.NoError(t, db.AutoMigrate(models...))
@@ -1018,13 +1018,17 @@ func TestH3AdmissionResponsesObserversDoNotExposeUnprovenLocalFailure(t *testing
 					t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callback) })
 				}
 				body := fmt.Sprintf(`{"model":"MiniMax-H3","input":"free bounded observer failure fixture","seconds":5,"stream":%t}`, stream)
-				ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body)).WithContext(ctx)
 				request.Header.Set("Content-Type", "application/json")
 				request.Header.Set("Authorization", "Bearer sk-h3routeradmin")
 				response := httptest.NewRecorder()
-				f.engine.ServeHTTP(response, request)
+				var writer http.ResponseWriter = response
+				if stream && failure == "untrusted_terminal" {
+					writer = &h3CancelAfterCreatedRecorder{ResponseRecorder: response, cancel: cancel}
+				}
+				f.engine.ServeHTTP(writer, request)
 				f.mu.Lock()
 				historyWriteError := f.historyWriteError
 				f.mu.Unlock()

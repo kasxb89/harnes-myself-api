@@ -110,10 +110,12 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	H3AdmissionID  string `json:"h3_admission_id,omitempty"`
-	Key            string `json:"key,omitempty"`
-	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
-	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
+	MediaAdmissionID string `json:"media_admission_id,omitempty"`
+	MediaKind        string `json:"media_kind,omitempty"`
+	H3AdmissionID    string `json:"h3_admission_id,omitempty"`
+	Key              string `json:"key,omitempty"`
+	UpstreamTaskID   string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
+	ResultURL        string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// Execution records safe, immutable request provenance. It lives next to
 	// other private task state so public task DTOs cannot expose it by accident.
 	Execution *TaskExecutionSnapshot `json:"execution,omitempty"`
@@ -185,7 +187,7 @@ func (t *Task) ResultRetrievable() bool {
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）
 // 旧数据没有 UpstreamTaskID 时，TaskID 本身就是上游 ID
 func (t *Task) GetUpstreamTaskID() string {
-	if t.PrivateData.H3AdmissionID != "" && t.PrivateData.UpstreamTaskID == "" && strings.HasPrefix(t.TaskID, "task_") {
+	if (t.PrivateData.H3AdmissionID != "" || t.PrivateData.MediaAdmissionID != "") && t.PrivateData.UpstreamTaskID == "" && strings.HasPrefix(t.TaskID, "task_") {
 		return ""
 	}
 	if t.PrivateData.UpstreamTaskID != "" {
@@ -219,7 +221,7 @@ func (p *TaskPrivateData) Scan(val any) error {
 
 func (p TaskPrivateData) Value() (driver.Value, error) {
 	if p.Key == "" && p.UpstreamTaskID == "" && p.ResultURL == "" &&
-		p.H3AdmissionID == "" && p.Execution == nil && p.BillingSource == "" && p.SubscriptionId == 0 &&
+		p.H3AdmissionID == "" && p.MediaAdmissionID == "" && p.MediaKind == "" && p.Execution == nil && p.BillingSource == "" && p.SubscriptionId == 0 &&
 		p.TokenId == 0 && p.NodeName == "" && p.BillingContext == nil &&
 		!p.ResponsesBackground && len(p.PluginState) == 0 && p.PollFailures == 0 &&
 		!p.ResultDiscarded {
@@ -396,6 +398,40 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	return tasks
 }
 
+// GetUnfinishedSyncTasksAfterCursor reads one bounded page without excluding
+// uncertain tasks from the durable record. A caller can rotate through those
+// records so permanently held submissions do not starve later pollable work.
+func GetUnfinishedSyncTasksAfterCursor(limit int, afterID int64) []*Task {
+	if limit <= 0 {
+		return nil
+	}
+	var tasks []*Task
+	err := DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).
+		Where("status != ?", TaskStatusSuccess).Where("id > ?", afterID).
+		Limit(limit).Order("id").Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
+// GetUnfinishedSyncTasksThroughCursor fills only the unused page budget when
+// polling wraps. The upper bound prevents returning an item from the tail page
+// again even when its task status changes while the two reads are in flight.
+func GetUnfinishedSyncTasksThroughCursor(limit int, throughID int64) []*Task {
+	if limit <= 0 || throughID <= 0 {
+		return nil
+	}
+	var tasks []*Task
+	err := DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).
+		Where("status != ?", TaskStatusSuccess).Where("id <= ?", throughID).
+		Limit(limit).Order("id").Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
 // HasUnfinishedSyncTasks reports whether at least one async (Suno/video) task is
 // still in progress. It is a cheap existence check (LIMIT 1) used to decide
 // whether the async_task_poll system task needs to run; when no task is pending
@@ -563,6 +599,9 @@ func (t *Task) UpdateQuota() error {
 // falls back to INSERT ON CONFLICT when the WHERE-guarded UPDATE matches
 // zero rows, which silently bypasses the CAS guard.
 func (t *Task) UpdateWithStatus(fromStatus TaskStatus) (bool, error) {
+	if t.PrivateData.MediaAdmissionID != "" {
+		return UpdateMediaTaskWithStatus(context.Background(), t, fromStatus, false)
+	}
 	result := DB.Model(t).Where("status = ?", fromStatus).Select("*").Updates(t)
 	if result.Error != nil {
 		return false, result.Error

@@ -112,6 +112,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	funding := s.funding
 
 	h3Submission := H3SubmissionFromContext(c)
+	mediaSubmission := MediaSubmissionFromContext(c)
 	refund := func() {
 		confirmed := true
 		// 1) 退还资金来源
@@ -141,8 +142,17 @@ func (s *BillingSession) Refund(c *gin.Context) {
 				h3Submission.RefundConfirmed = true
 			}
 		}
+		if mediaSubmission != nil && confirmed && !common.BatchUpdateEnabled && !common.RedisEnabled {
+			persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := model.ConfirmMediaRefund(persistCtx, mediaSubmission.Task); err != nil {
+				logger.LogError(c, "Media refund completed but confirmation requires administrator reconciliation")
+			} else {
+				mediaSubmission.RefundConfirmed = true
+			}
+		}
 	}
-	if h3Submission != nil {
+	if h3Submission != nil || mediaSubmission != nil {
 		refund()
 		return
 	}
@@ -223,6 +233,9 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	if err := BeginH3Billing(c); err != nil {
 		return types.NewErrorWithStatusCode(errors.New("failed to persist H3 billing preparation"), types.ErrorCodeUpdateDataError, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
 	}
+	if err := BeginMediaBilling(c); err != nil {
+		return types.NewErrorWithStatusCode(errors.New("failed to persist media billing preparation"), types.ErrorCodeUpdateDataError, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
 
 	// ---- 信任额度旁路 ----
 	if s.shouldTrust(c) {
@@ -238,6 +251,7 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
 			if strings.HasPrefix(err.Error(), "token quota is not enough,") {
 				H3BillingProvenUncharged(c)
+				MediaBillingProvenUncharged(c)
 			}
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
@@ -261,6 +275,7 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		if errors.Is(err, ErrInsufficientWalletQuota) {
 			if rollbackConfirmed {
 				H3BillingProvenUncharged(c)
+				MediaBillingProvenUncharged(c)
 			}
 			userQuota, quotaErr := model.GetUserQuota(s.relayInfo.UserId, false)
 			if quotaErr != nil {

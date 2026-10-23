@@ -377,6 +377,12 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		apiRouter.GET("/media-operations", middleware.DisableCache(), middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetMediaOperations)
+		mediaConcurrency := apiRouter.Group("/media-concurrency", middleware.DisableCache())
+		{
+			mediaConcurrency.GET("", middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetMediaConcurrency)
+			mediaConcurrency.PUT("", middleware.RootAuth(), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("media-concurrency"), controller.SaveMediaConcurrency)
+			mediaConcurrency.POST("/refresh", middleware.RootAuth(), middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("media-concurrency-refresh"), controller.RefreshMediaConcurrency)
+		}
 		apiRouter.GET("/video-usage", middleware.DisableCache(), middleware.AdminAuth(), middleware.SearchRateLimit(), controller.GetVideoUsage)
 
 		logRoute := apiRouter.Group("/log")

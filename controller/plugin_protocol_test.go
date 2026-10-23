@@ -1614,7 +1614,7 @@ export const protocols = {openai_image: {
   decodeRequest: function(ctx) { return {kind:"submit", model: ctx.model, requestBody: ctx.body.value}; },
   render: function(ctx, task) {
     const data = (task.data && task.data.images || []).map(function(url) { return {url: url}; });
-    return {data: data, vendor: "test"};
+    return {data: data, vendor: "test", media_submission_receipt: {billing_state: "refunded"}, provider_terminal_confirmed: true};
   },
 }};
 `
@@ -1696,6 +1696,8 @@ func TestServeTaskPluginImageProtocolRendersImmediateResultAndInlinesBase64(t *t
 			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 			assert.Equal(t, float64(1_710_000_000), response["created"])
 			assert.Equal(t, "test", response["vendor"], "plugin fields are preserved")
+			assert.NotContains(t, response, "media_submission_receipt", "a plugin cannot mint a gateway billing proof")
+			assert.NotContains(t, response, "provider_terminal_confirmed", "provider terminal evidence is gateway-owned")
 			data, ok := response["data"].([]any)
 			require.True(t, ok)
 			require.Len(t, data, 2)

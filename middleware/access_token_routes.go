@@ -47,6 +47,9 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/client-activity/sessions":     accessTokenSessionRule,
 	"GET /api/client-activity/sessions/:id": accessTokenSessionRule,
 	"GET /api/media-operations":             accessTokenSessionRule,
+	"GET /api/media-concurrency":            accessTokenSessionRule,
+	"PUT /api/media-concurrency":            accessTokenSessionRule,
+	"POST /api/media-concurrency/refresh":   accessTokenSessionRule,
 	"GET /api/video-usage":                  accessTokenSessionRule,
 	// Creation operations require an administrator browser session, including for legacy tokens.
 	"GET /api/creation/admin/content": accessTokenSessionRule,

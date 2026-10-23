@@ -56,7 +56,10 @@ type H3Admission struct {
 }
 
 func MigrateH3Admission(db *gorm.DB) error {
-	return db.AutoMigrate(&H3Account{}, &H3Admission{})
+	if err := db.AutoMigrate(&H3Account{}, &H3Admission{}); err != nil {
+		return err
+	}
+	return MigrateMediaAdmission(db)
 }
 
 func h3CredentialDigest(key string) string {
@@ -272,7 +275,21 @@ func acquireH3Admission(db *gorm.DB, task *Task, selectedKey string) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		// First transactional statement is the write. SQLite must not upgrade an
 		// earlier shared read snapshot while another process already holds a write.
-		result := tx.Model(&H3Account{}).Where("id = ? AND enabled = ? AND reconciled = ? AND occupied < ?", account.ID, true, true, H3AccountLimit).Updates(map[string]any{"occupied": gorm.Expr("occupied + 1"), "updated_at": time.Now().Unix()})
+		policy, err := mediaPolicyForUpdate(tx)
+		if err != nil {
+			return err
+		}
+		limit := mediaEffectiveLimit(policy, "h3:"+account.ID, MediaVideo, H3AccountLimit)
+		// Reconcile all channels sharing this selected credential before testing
+		// capacity. Legacy generic work must count even when H3 is the first
+		// endpoint used after an upgrade or a new channel was added.
+		linkedPool, err := ensureMediaPool(tx, selectedKey, MediaVideo)
+		if err != nil {
+			return err
+		}
+		limit = min(limit, mediaEffectiveLimit(policy, linkedPool.ID, MediaVideo, linkedPool.KnownLimit))
+		linkedOccupied := linkedPool.Occupied
+		result := tx.Model(&H3Account{}).Where("id = ? AND enabled = ? AND reconciled = ? AND occupied < ?", account.ID, true, true, limit-linkedOccupied).Updates(map[string]any{"occupied": gorm.Expr("occupied + 1"), "updated_at": time.Now().Unix()})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -576,6 +593,10 @@ func GetH3ClientConcurrencyHint() *int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
+	policy, err := GetMediaConcurrencyPolicy(ctx)
+	if err != nil {
+		return nil
+	}
 	var accounts []H3Account
 	if err := DB.WithContext(ctx).Where("enabled = ? AND reconciled = ?", true, true).Limit(5).Find(&accounts).Error; err != nil || len(accounts) == 0 || len(accounts) > 4 {
 		return nil
@@ -605,7 +626,17 @@ func GetH3ClientConcurrencyHint() *int {
 		if err := DB.WithContext(ctx).Model(&Ability{}).Where("channel_id = ? AND model = ? AND enabled = ?", account.ChannelID, "MiniMax-H3", true).Count(&abilities).Error; err != nil || abilities == 0 {
 			return nil
 		}
-		total += H3AccountLimit
+		limit := mediaEffectiveLimit(policy, "h3:"+account.ID, MediaVideo, H3AccountLimit)
+		var linkedPool MediaPool
+		if err := DB.WithContext(ctx).Where("identity_digest = ?", mediaIdentityDigest(channel.Key, MediaVideo)).First(&linkedPool).Error; err == nil {
+			if !linkedPool.Reconciled {
+				return nil
+			}
+			limit = min(limit, mediaEffectiveLimit(policy, linkedPool.ID, MediaVideo, linkedPool.KnownLimit))
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		total += limit
 	}
 	return &total
 }

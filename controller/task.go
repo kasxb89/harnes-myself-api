@@ -52,6 +52,12 @@ func GetTask(c *gin.Context) {
 		videoProxyError(c, http.StatusServiceUnavailable, "server_error", "Failed to verify task submission")
 		return
 	}
+	mediaReceipt, mediaTerminal, mediaErr := service.ProjectMediaTaskSubmission(c.Request.Context(), task)
+	if mediaErr != nil {
+		videoProxyError(c, http.StatusServiceUnavailable, "server_error", "Failed to verify task submission")
+		return
+	}
+	providerTerminal = providerTerminal || mediaTerminal
 	createdAt := task.CreatedAt
 	if createdAt == 0 {
 		createdAt = task.SubmitTime
@@ -62,6 +68,7 @@ func GetTask(c *gin.Context) {
 	}
 	response := gin.H{
 		"task_id":     task.TaskID,
+		"model":       task.Properties.OriginModelName,
 		"platform":    task.Platform,
 		"status":      task.Status,
 		"progress":    task.Progress,
@@ -71,6 +78,12 @@ func GetTask(c *gin.Context) {
 	}
 	if receipt != nil {
 		response["submission_receipt"] = receipt
+	}
+	if mediaReceipt != nil {
+		response["media_submission_receipt"] = mediaReceipt
+	}
+	if task.PrivateData.MediaAdmissionID != "" {
+		response["id"], response["media_kind"] = task.TaskID, task.PrivateData.MediaKind
 	}
 	if providerTerminal {
 		response["provider_terminal_confirmed"] = true

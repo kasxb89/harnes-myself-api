@@ -233,6 +233,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if taskErr := service.PrepareH3Submission(c, info, platform); taskErr != nil {
 		return nil, taskErr
 	}
+	if taskErr := service.PrepareMediaSubmission(c, info, platform); taskErr != nil {
+		return nil, taskErr
+	}
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
 		return nil, taskErr
 	}
@@ -350,6 +353,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if taskErr := service.SaveH3SubmissionBilling(c, info); taskErr != nil {
 		return nil, taskErr
 	}
+	if taskErr := service.SaveMediaSubmissionBilling(c, info); taskErr != nil {
+		return nil, taskErr
+	}
 
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
@@ -361,7 +367,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if taskErr := service.BeginH3SubmissionSend(c); taskErr != nil {
 		return nil, taskErr
 	}
-	if service.H3SubmissionFromContext(c) != nil {
+	if taskErr := service.BeginMediaSubmissionSend(c); taskErr != nil {
+		return nil, taskErr
+	}
+	if service.H3SubmissionFromContext(c) != nil || service.MediaSubmissionFromContext(c) != nil {
 		original := c.Request
 		boundedCtx, cancel := context.WithTimeout(context.WithoutCancel(original.Context()), 90*time.Second)
 		defer cancel()
@@ -403,6 +412,22 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	if taskErr := service.SaveH3ProviderReceipt(c, parsed.UpstreamTaskID, parsed.TaskData, parsed.PluginState); taskErr != nil {
+		return nil, taskErr
+	}
+	discardMediaData := false
+	if parsed.Immediate != nil && (parsed.Immediate.Status == model.TaskStatusSuccess || parsed.Immediate.Status == model.TaskStatusFailure) {
+		if value, exists := c.Get(jsplugin.ContextKeyPinnedRoute); exists {
+			if route, ok := value.(jsplugin.PinnedRoute); ok && route.Route.RetainResult != nil && !*route.Route.RetainResult {
+				discardMediaData = true
+			}
+		}
+		if value, exists := c.Get(jsplugin.ContextKeyPinnedEndpoint); exists {
+			if endpoint, ok := value.(jsplugin.PinnedEndpoint); ok && endpoint.Protocol == jsplugin.ProtocolOpenAIImage {
+				discardMediaData = true
+			}
+		}
+	}
+	if taskErr := service.SaveMediaProviderReceipt(c, parsed.UpstreamTaskID, parsed.TaskData, parsed.PluginState, discardMediaData); taskErr != nil {
 		return nil, taskErr
 	}
 
@@ -521,32 +546,46 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if receiptErr != nil {
 		return nil, service.TaskErrorWrapperLocal(errors.New("failed to verify task submission"), "get_task_failed", http.StatusServiceUnavailable)
 	}
-	if model.IsH3Task(originTask) {
+	mediaReceipt, mediaTerminal, mediaErr := service.ProjectMediaTaskSubmission(c.Request.Context(), originTask)
+	if mediaErr != nil {
+		return nil, service.TaskErrorWrapperLocal(errors.New("failed to verify task submission"), "get_task_failed", http.StatusServiceUnavailable)
+	}
+	providerTerminal = providerTerminal || mediaTerminal
+	if model.IsH3Task(originTask) || originTask.PrivateData.MediaAdmissionID != "" {
 		c.Header("Cache-Control", "private, no-store")
 	}
-	if receipt != nil || providerTerminal {
-		defer func() {
-			if taskResp != nil {
-				return
-			}
-			var response map[string]any
-			if common.Unmarshal(respBody, &response) != nil || response == nil {
-				taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
-				return
-			}
-			if receipt != nil {
-				response["submission_receipt"] = receipt
-			}
-			if providerTerminal {
-				response["provider_terminal_confirmed"] = true
-			}
-			var marshalErr error
-			respBody, marshalErr = common.Marshal(response)
-			if marshalErr != nil {
-				taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
-			}
-		}()
-	}
+	defer func() {
+		if taskResp != nil {
+			return
+		}
+		var response map[string]any
+		if common.Unmarshal(respBody, &response) != nil || response == nil {
+			taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
+			return
+		}
+		sanitized, sanitizeErr := service.SanitizeMediaProofFields(response)
+		if sanitizeErr != nil {
+			taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
+			return
+		}
+		response = sanitized.(map[string]any)
+		if receipt != nil {
+			response["submission_receipt"] = receipt
+		}
+		if mediaReceipt != nil {
+			response["media_submission_receipt"] = mediaReceipt
+			response["model"] = originTask.Properties.OriginModelName
+			response["media_kind"] = originTask.PrivateData.MediaKind
+		}
+		if providerTerminal {
+			response["provider_terminal_confirmed"] = true
+		}
+		var marshalErr error
+		respBody, marshalErr = common.Marshal(response)
+		if marshalErr != nil {
+			taskResp = service.TaskErrorWrapperLocal(errors.New("failed to present task submission"), "marshal_response_failed", http.StatusInternalServerError)
+		}
+	}()
 
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 

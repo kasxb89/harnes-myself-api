@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -19,10 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 type nativeRouteBilling struct {
@@ -73,9 +72,17 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	previousBatchUpdate := common.BatchUpdateEnabled
 	previousLogConsume := common.LogConsumeEnabled
 	previousRedisEnabled := common.RedisEnabled
-	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	previousMainType, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
+	previousMaster, previousSQLite := common.IsMasterNode, common.SQLitePath
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("LOG_SQL_DSN", "")
+	common.IsMasterNode, common.SQLitePath = false, filepath.Join(t.TempDir(), "native-kling.db")
+	require.NoError(t, model.InitDB())
+	database := model.DB
+	sqlDB, err := database.DB()
 	require.NoError(t, err)
-	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Channel{}, &model.Task{}, &model.Log{}))
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Channel{}, &model.Task{}, &model.Log{}, &model.Option{}, &model.H3Account{}, &model.H3Admission{}, &model.MediaPool{}, &model.MediaAdmission{}))
 	model.DB = database
 	model.LOG_DB = database
 	common.MemoryCacheEnabled = false
@@ -91,6 +98,8 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 		common.BatchUpdateEnabled = previousBatchUpdate
 		common.LogConsumeEnabled = previousLogConsume
 		common.RedisEnabled = previousRedisEnabled
+		common.SetDatabaseTypes(previousMainType, previousLogType)
+		common.IsMasterNode, common.SQLitePath = previousMaster, previousSQLite
 		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousModelRatios))
 	})
 	require.NoError(t, database.Create(&model.User{

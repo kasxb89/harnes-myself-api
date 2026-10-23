@@ -442,12 +442,12 @@ func streamTaskPluginProtocol(
 			taskID,
 		)
 		if loadErr == nil && exists && task != nil {
-			_, _, loadErr = service.ProjectH3TaskSubmission(loadContext, task)
+			_, _, loadErr = service.ProjectMediaTaskSubmission(loadContext, task)
 		}
 		loadContextErr := loadContext.Err()
 		cancelLoad()
 		loadElapsed := deps.now().Sub(loadStarted)
-		if (loadErr != nil || !exists || task == nil) && service.H3SubmissionFromContext(c) != nil {
+		if (loadErr != nil || !exists || task == nil) && (service.H3SubmissionFromContext(c) != nil || service.MediaSubmissionFromContext(c) != nil) {
 			// An unavailable observation cannot establish that the paid
 			// supplier operation failed. Keep the existing Responses wire
 			// recoverable instead of emitting a false terminal failure.
@@ -696,12 +696,12 @@ func waitTaskPluginProtocol(
 			taskID,
 		)
 		if err == nil && exists && task != nil {
-			_, _, err = service.ProjectH3TaskSubmission(loadContext, task)
+			_, _, err = service.ProjectMediaTaskSubmission(loadContext, task)
 		}
 		loadContextErr := loadContext.Err()
 		cancelLoad()
 		loadElapsed := deps.now().Sub(loadStarted)
-		if (err != nil || !exists || task == nil) && service.H3SubmissionFromContext(c) != nil {
+		if (err != nil || !exists || task == nil) && (service.H3SubmissionFromContext(c) != nil || service.MediaSubmissionFromContext(c) != nil) {
 			writeTaskPluginProtocolTimeoutResponse(c, machine, string(model.TaskStatusUnknown))
 			return
 		}
@@ -987,7 +987,7 @@ func retrieveTaskPluginResponse(c *gin.Context, deps pluginProtocolBridgeDeps) {
 		return
 	}
 	c.Header("Cache-Control", "private, no-store")
-	if _, _, err := service.ProjectH3TaskSubmission(c.Request.Context(), task); err != nil {
+	if _, _, err := service.ProjectMediaTaskSubmission(c.Request.Context(), task); err != nil {
 		respondPluginProtocolError(c, http.StatusServiceUnavailable, "task_protocol_error", "Task protocol request failed")
 		return
 	}
@@ -1284,6 +1284,9 @@ func writeTaskPluginProtocolEvent(c *gin.Context, event dto.PluginResponsesStrea
 }
 
 func respondPluginProtocolSubmissionError(c *gin.Context, taskErr *dto.TaskError) {
+	if respondMediaNotSubmittedError(c, taskErr, true) {
+		return
+	}
 	if respondH3NotSubmittedError(c, taskErr, true) {
 		return
 	}

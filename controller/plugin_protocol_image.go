@@ -93,6 +93,10 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 		respondPluginProtocolError(c, http.StatusInternalServerError, "task_protocol_error", "Task protocol request failed")
 		return
 	}
+	if media := service.MediaSubmissionFromContext(c); media != nil && media.Unknown {
+		presentMediaUnknown(c, media)
+		return
+	}
 	task := outcome.Task
 	if task.Status != model.TaskStatusSuccess && task.Status != model.TaskStatusFailure {
 		if taskErr = waitTaskPluginImageTask(c, task, deps); taskErr != nil {
@@ -125,6 +129,11 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 	payload, err := pinned.Plugin.Engine.CallPathWithAdmissionTimeout(c.Request.Context(), deps.admissionTimeout, "protocols", []string{pinned.Protocol, "render"}, protocolRequest.JSValue(), viewValue)
 	if err != nil {
 		logger.LogError(c, common.LogText("task protocol image render hook failed: %s", err.Error()))
+		respondPluginProtocolError(c, http.StatusInternalServerError, "task_protocol_error", "Task protocol request failed")
+		return
+	}
+	payload, err = service.SanitizeMediaProofFields(payload)
+	if err != nil {
 		respondPluginProtocolError(c, http.StatusInternalServerError, "task_protocol_error", "Task protocol request failed")
 		return
 	}
@@ -229,6 +238,9 @@ func taskPluginImageResponseFormat(request pluginruntime.ProtocolRequestContext)
 // is surfaced so a client sees the vendor reason instead of raw JSON.
 func respondTaskPluginImageError(c *gin.Context, taskErr *dto.TaskError) {
 	service.RecordRequestPolicyTermination(c, taskSubmissionAPIError(taskErr))
+	if respondMediaNotSubmittedError(c, taskErr, true) {
+		return
+	}
 	status := http.StatusInternalServerError
 	if taskErr.StatusCode >= 400 && taskErr.StatusCode <= 599 {
 		status = taskErr.StatusCode

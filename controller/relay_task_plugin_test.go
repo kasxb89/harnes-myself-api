@@ -68,14 +68,14 @@ func (b *taskSubmissionTestBilling) Reserve(int) error {
 func TestPresentTaskSubmissionUsesNativePresenterAfterPersistence(t *testing.T) {
 	plugin, err := pluginruntime.CompilePlugin(`
 export const meta = {apiVersion:1,key:"presenter-test",name:"Presenter",version:"1.0.0",author:{name:"Test"},models:["model"],fetchMode:"per_task",routes:[{method:"POST",path:"/vendor/jobs",type:"submit",decode:"decode",render:"created"}]};
-export const native = {decode:function(ctx){return {kind:"submit",model:"model",requestBody:ctx.body.value};},created:function(ctx,task){return {data:{task_id:task.task_id},upstream:task.data};}};
+export const native = {decode:function(ctx){return {kind:"submit",model:"model",requestBody:ctx.body.value};},created:function(ctx,task){return {data:{task_id:task.task_id,media_submission_receipt:{billing_state:"refunded"}},upstream:task.data,media_submission_receipt:{billing_state:"not_charged"},submission_receipt:{submission_state:"not_submitted"},provider_terminal_confirmed:true};}};
 export function buildSubmitRequest(){return {}} export function parseSubmitResponse(){return {taskId:"upstream"}} export function buildQueryRequest(){return {}} export function parseTaskResult(){return {status:"SUCCESS"}}
 `, pluginruntime.Options{})
 	require.NoError(t, err)
 	priceData := types.PriceData{}
 	priceData.AddOtherRatio("seconds", 5)
 	task := &model.Task{TaskID: "task_public", SubmitTime: 123}
-	task.SetData(map[string]any{"task_id": "upstream_private"})
+	task.SetData(map[string]any{"task_id": "upstream_private", "provider_terminal_confirmed": true, "media_submission_receipt": map[string]any{"billing_state": "refunded"}})
 	outcome := &taskSubmissionOutcome{
 		Result:    &relay.TaskSubmitResult{},
 		Task:      task,
@@ -834,7 +834,7 @@ func (transport taskAdmissionFixtureTransport) RoundTrip(request *http.Request) 
 func TestExecuteTaskSubmissionPreservesBillingRejectionsAndUpstreamRetries(t *testing.T) {
 	require.NoError(t, i18n.Init())
 	allowPrivateTaskMediaTest(t)
-	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Token{}, &model.Channel{}, &model.Task{}, &model.Log{}, &model.H3Account{}, &model.H3Admission{})
+	db, dialect := openTaskDialectDatabase(t, &model.User{}, &model.Token{}, &model.Channel{}, &model.Task{}, &model.Log{}, &model.H3Account{}, &model.H3Admission{}, &model.Option{}, &model.MediaPool{}, &model.MediaAdmission{})
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
 	oldRedis, oldMemory, oldBatch := common.RedisEnabled, common.MemoryCacheEnabled, common.BatchUpdateEnabled

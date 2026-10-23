@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -64,6 +66,8 @@ type BatchTaskResult struct {
 // 打破 service -> relay -> relay/channel -> service 的循环依赖。
 var GetTaskAdaptorFunc func(platform constant.TaskPlatform) TaskPollingAdaptor
 
+var taskPollingCursor atomic.Int64
+
 // sweepTimedOutTasks 在主轮询之前独立清理超时任务。
 // 每次最多处理 100 条，剩余的下个周期继续处理。
 // 使用 per-task CAS (UpdateWithStatus) 防止覆盖被正常轮询已推进的任务。
@@ -83,10 +87,13 @@ func sweepTimedOutTasks(ctx context.Context) {
 	timedOutCount := 0
 
 	for _, task := range tasks {
+		if model.MediaLegacyIdentityUnknown(task) {
+			continue
+		}
 		if model.IsH3Task(task) && task.PrivateData.H3AdmissionID == "" {
 			continue
 		}
-		if task.PrivateData.H3AdmissionID != "" {
+		if task.PrivateData.H3AdmissionID != "" || task.PrivateData.MediaAdmissionID != "" {
 			// A local timer is not a vendor observation. In particular, a
 			// precreated task may still be reserved/sending with submit_time=0;
 			// changing it here would expose it to polling before submission and
@@ -154,7 +161,22 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 
 	common.SysLog(common.LogText("task progress polling started"))
 	sweepTimedOutTasks(ctx)
-	allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
+	afterID := taskPollingCursor.Load()
+	allTasks := model.GetUnfinishedSyncTasksAfterCursor(constant.TaskQueryLimit, afterID)
+	nextCursor := int64(0)
+	if len(allTasks) > 0 {
+		nextCursor = allTasks[len(allTasks)-1].ID
+	}
+	if afterID > 0 && len(allTasks) < constant.TaskQueryLimit {
+		remaining := constant.TaskQueryLimit - len(allTasks)
+		wrapped := model.GetUnfinishedSyncTasksThroughCursor(remaining, afterID)
+		allTasks = append(allTasks, wrapped...)
+		nextCursor = 0
+		if len(wrapped) == remaining {
+			nextCursor = wrapped[len(wrapped)-1].ID
+		}
+	}
+	taskPollingCursor.Store(nextCursor)
 	summary.UnfinishedTasks = len(allTasks)
 	platformTask := make(map[constant.TaskPlatform][]*model.Task)
 	for _, t := range allTasks {
@@ -179,11 +201,20 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 		taskM := make(map[string]*model.Task)
 		nullTaskIds := make([]int64, 0)
 		for _, task := range tasks {
+			if model.MediaLegacyIdentityUnknown(task) {
+				continue
+			}
 			if model.IsH3Task(task) && task.PrivateData.H3AdmissionID == "" {
 				continue
 			}
 			if task.PrivateData.H3AdmissionID != "" {
 				pollable, admissionErr := model.H3TaskPollable(ctx, task.PrivateData.H3AdmissionID)
+				if admissionErr != nil || !pollable || task.GetUpstreamTaskID() == "" {
+					continue
+				}
+			}
+			if task.PrivateData.MediaAdmissionID != "" {
+				pollable, admissionErr := model.MediaTaskPollable(ctx, task.PrivateData.MediaAdmissionID)
 				if admissionErr != nil || !pollable || task.GetUpstreamTaskID() == "" {
 					continue
 				}
@@ -194,8 +225,11 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 				nullTaskIds = append(nullTaskIds, task.ID)
 				continue
 			}
-			taskM[fmt.Sprintf("%d:%s", task.ChannelId, upstreamID)] = task
-			taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], upstreamID)
+			// Provider and historical public IDs may be account-local. The DB
+			// primary key keeps every frozen task separate during dispatch.
+			dispatchID := strconv.FormatInt(task.ID, 10)
+			taskM[dispatchID] = task
+			taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], dispatchID)
 		}
 		if len(nullTaskIds) > 0 {
 			summary.NullTasksFailed += len(nullTaskIds)
@@ -234,9 +268,9 @@ func DispatchPlatformUpdate(ctx context.Context, platform constant.TaskPlatform,
 	for channelID, ids := range taskChannelM {
 		scoped := make(map[string]*model.Task, len(ids))
 		for _, id := range ids {
-			task := taskM[fmt.Sprintf("%d:%s", channelID, id)]
+			task := taskM[id]
 			if task == nil {
-				task = taskM[id]
+				task = taskM[fmt.Sprintf("%d:%s", channelID, id)]
 			} // Compatibility for direct legacy callers.
 			if task != nil && task.ChannelId == channelID {
 				scoped[id] = task
@@ -263,9 +297,18 @@ func UpdateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, task
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		err := updateBatchTasks(ctx, adaptor, channelId, taskIds, taskM)
-		if err != nil {
-			logger.LogError(ctx, common.LogText("channel #%d failed to update async tasks: %s", channelId, err.Error()))
+		// Two keys on one channel can belong to different provider accounts.
+		// Never query a mixed batch using whichever key the channel has now.
+		byKey := make(map[string][]string)
+		for _, taskID := range taskIds {
+			if task := taskM[taskID]; task != nil && !model.MediaLegacyIdentityUnknown(task) {
+				byKey[task.PrivateData.Key] = append(byKey[task.PrivateData.Key], taskID)
+			}
+		}
+		for _, ids := range byKey {
+			if err := updateBatchTasks(ctx, adaptor, channelId, ids, taskM); err != nil {
+				logger.LogError(ctx, common.LogText("channel #%d failed to update async tasks: %s", channelId, err.Error()))
+			}
 		}
 	}
 	return nil
@@ -290,6 +333,10 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 					_ = model.HoldH3Unknown(ctx, t)
 					continue
 				}
+				if t.PrivateData.MediaAdmissionID != "" {
+					_ = model.HoldMediaUnknown(ctx, t)
+					continue
+				}
 				failedIDs = append(failedIDs, t.ID)
 			}
 		}
@@ -309,8 +356,14 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 		baseURL = constant.GetChannelBaseURL(ch.Type)
 	}
 	tasks := make([]*model.Task, 0, len(taskIds))
+	tasksByUpstream := make(map[string]*model.Task, len(taskIds))
 	for _, upstreamID := range taskIds {
 		if task := taskM[upstreamID]; task != nil {
+			providerID := task.GetUpstreamTaskID()
+			if previous := tasksByUpstream[providerID]; previous != nil && previous.ID != task.ID {
+				return recordPollFailureForTasks(ctx, adaptor, []*model.Task{previous, task}, pollClassUnrecognized, 0, "Duplicate upstream task identity")
+			}
+			tasksByUpstream[providerID] = task
 			tasks = append(tasks, task)
 		}
 	}
@@ -318,9 +371,13 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 	// New API gateway, the same signal submission derives from the request.
 	info := &relaycommon.RelayInfo{}
 	info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: ch.Type, ChannelId: ch.Id, ChannelBaseUrl: baseURL, ChannelSetting: ch.GetSetting()}
-	info.ApiKey = ch.Key
+	key := ch.Key
+	if len(tasks) > 0 && tasks[0].PrivateData.Key != "" {
+		key = tasks[0].PrivateData.Key
+	}
+	info.ApiKey = key
 	adaptor.Init(info)
-	resp, err := adaptor.FetchBatchTasks(baseURL, ch.Key, tasks, proxy)
+	resp, err := adaptor.FetchBatchTasks(baseURL, key, tasks, proxy)
 	if err != nil {
 		common.SysLog(common.LogText("Get Task Do req error: %v", err))
 		return recordPollFailureForTasks(ctx, adaptor, tasks, pollClassTransport, 0, err.Error())
@@ -353,7 +410,7 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		task := taskM[upstreamID]
+		task := tasksByUpstream[upstreamID]
 		if task == nil {
 			logger.LogWarn(ctx, common.LogText("Batch task response ignored: unknown task_id=%s", upstreamID))
 			continue
@@ -361,6 +418,14 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 		snap := task.Snapshot()
 		httpClass := classifyPollHTTP(resp.StatusCode)
 		parsedStatus := model.TaskStatus(responseItem.TaskInfo.Status)
+		if (task.PrivateData.MediaAdmissionID != "" || task.PrivateData.H3AdmissionID != "") &&
+			(parsedStatus == model.TaskStatusSuccess || parsedStatus == model.TaskStatusFailure) &&
+			(resp.StatusCode/100 != 2 || responseItem.TaskInfo.Code != 0) {
+			if err := recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, "Media terminal task state was not confirmed"); err != nil {
+				return err
+			}
+			continue
+		}
 		if parsedStatus == model.TaskStatusUnknown || parsedStatus == "" || !knownPollStatus(parsedStatus) {
 			if err := recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, responseItem.TaskInfo.Reason); err != nil {
 				common.SysLog(common.LogText("UpdateSunoTask task error: %s", err.Error()))
@@ -387,7 +452,7 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 		if responseItem.TaskInfo.Progress != "" {
 			task.Progress = responseItem.TaskInfo.Progress
 		}
-		if responseItem.TaskInfo.Reason != "" || task.Status == model.TaskStatusFailure {
+		if task.Status == model.TaskStatusFailure || responseItem.TaskInfo.Reason != "" && task.PrivateData.H3AdmissionID == "" && task.PrivateData.MediaAdmissionID == "" {
 			logger.LogInfo(ctx, common.LogText("%s failed: %s", task.TaskID, task.FailReason))
 			task.Status = model.TaskStatusFailure
 			task.Progress = "100%"
@@ -409,7 +474,15 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 
 		isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
 		terminalTransition := isDone && snap.Status != task.Status
-		won, updateErr := task.UpdateWithStatus(snap.Status)
+		var won bool
+		var updateErr error
+		if task.PrivateData.MediaAdmissionID != "" {
+			won, updateErr = model.UpdateMediaTaskWithStatus(ctx, task, snap.Status, terminalTransition)
+		} else if task.PrivateData.H3AdmissionID != "" {
+			won, updateErr = model.UpdateH3TaskWithStatus(ctx, task, snap.Status, terminalTransition)
+		} else {
+			won, updateErr = task.UpdateWithStatus(snap.Status)
+		}
 		if updateErr != nil {
 			common.SysLog(common.LogText("UpdateSunoTask task error: %s", updateErr.Error()))
 			continue
@@ -479,6 +552,10 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 					_ = model.HoldH3Unknown(ctx, t)
 					continue
 				}
+				if t.PrivateData.MediaAdmissionID != "" {
+					_ = model.HoldMediaUnknown(ctx, t)
+					continue
+				}
 				failedIDs = append(failedIDs, t.ID)
 			}
 		}
@@ -542,6 +619,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		logger.LogError(ctx, common.LogText("Task %s not found in taskM", taskId))
 		return fmt.Errorf("task %s not found", taskId)
 	}
+	if model.MediaLegacyIdentityUnknown(task) {
+		return nil
+	}
 	key := ch.Key
 
 	privateData := task.PrivateData
@@ -575,7 +655,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
 	var responseItems taskdto.TaskResponse[model.Task]
-	if err = common.Unmarshal(responseBody, &responseItems); task.PrivateData.H3AdmissionID == "" && err == nil && responseItems.IsSuccess() {
+	if err = common.Unmarshal(responseBody, &responseItems); task.PrivateData.H3AdmissionID == "" && task.PrivateData.MediaAdmissionID == "" && err == nil && responseItems.IsSuccess() {
 		logger.LogDebug(ctx, "updateVideoSingleTask parsed as new api response format: %+v", responseItems)
 		t := responseItems.Data
 		taskResult.TaskID = t.TaskID
@@ -591,8 +671,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	logger.LogDebug(ctx, "updateVideoSingleTask taskResult: %+v", taskResult)
 
 	parsedStatus := model.TaskStatus(taskResult.Status)
-	if task.PrivateData.H3AdmissionID != "" && (parsedStatus == model.TaskStatusSuccess || parsedStatus == model.TaskStatusFailure) && (resp.StatusCode/100 != 2 || taskResult.Code != 0) {
-		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, "H3 terminal task state was not confirmed")
+	if (task.PrivateData.H3AdmissionID != "" || task.PrivateData.MediaAdmissionID != "") && (parsedStatus == model.TaskStatusSuccess || parsedStatus == model.TaskStatusFailure) && (resp.StatusCode/100 != 2 || taskResult.Code != 0) {
+		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, "Media terminal task state was not confirmed")
 	}
 	if parsedStatus == model.TaskStatusUnknown || parsedStatus == "" || !knownPollStatus(parsedStatus) {
 		return recordPollFailure(ctx, adaptor, task, snap.Status, pollClassUnrecognized, resp.StatusCode, unrecognizedPollDetail(taskResult.Reason, responseBody))
@@ -661,6 +741,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		var err error
 		if task.PrivateData.H3AdmissionID != "" {
 			won, err = model.UpdateH3TaskWithStatus(ctx, task, snap.Status, true)
+		} else if task.PrivateData.MediaAdmissionID != "" {
+			won, err = model.UpdateMediaTaskWithStatus(ctx, task, snap.Status, true)
 		} else {
 			won, err = task.UpdateWithStatus(snap.Status)
 		}
@@ -691,6 +773,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 // finalizeTerminalTask 终态统一收尾（状态 CAS 赢家调用，恰好一次）：采样 + 结算 + 失败兜底退款。
 func finalizeTerminalTask(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if task.PrivateData.MediaAdmissionID != "" {
+		review, err := model.MediaBillingNeedsReview(ctx, task.PrivateData.MediaAdmissionID)
+		if err != nil || review {
+			logger.LogWarn(ctx, "Media task terminal confirmed; billing requires administrator reconciliation")
+			return
+		}
+	}
 	if task.PrivateData.H3AdmissionID != "" {
 		review, err := model.H3BillingNeedsReview(ctx, task.PrivateData.H3AdmissionID)
 		if err != nil || review {
@@ -834,6 +923,14 @@ func unrecognizedPollDetail(reason string, body []byte) string {
 }
 
 func recordPollFailure(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, class string, statusCode int, detail string) error {
+	if task.PrivateData.MediaAdmissionID != "" {
+		task.PrivateData.PollFailures++
+		task.Status, task.Progress, task.FinishTime = model.TaskStatusUnknown, "0%", 0
+		if _, err := model.UpdateMediaTaskWithStatus(ctx, task, fromStatus, false); err != nil {
+			return err
+		}
+		return model.HoldMediaUnknown(ctx, task)
+	}
 	if task.PrivateData.H3AdmissionID != "" {
 		task.PrivateData.PollFailures++
 		task.Status = model.TaskStatusUnknown
@@ -901,8 +998,8 @@ func recordPollingTaskFailure(task *model.Task, diagnostics ...taskFailureDiagno
 }
 
 func failTaskFromPoll(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, fromStatus model.TaskStatus, reason string, diagnostic ...taskFailureDiagnostic) error {
-	if task.PrivateData.H3AdmissionID != "" {
-		return recordPollFailure(ctx, adaptor, task, fromStatus, pollClassUnrecognized, 0, "H3 query did not establish a provider terminal state")
+	if task.PrivateData.H3AdmissionID != "" || task.PrivateData.MediaAdmissionID != "" {
+		return recordPollFailure(ctx, adaptor, task, fromStatus, pollClassUnrecognized, 0, "Media query did not establish a provider terminal state")
 	}
 	now := time.Now().Unix()
 	task.Status = model.TaskStatusFailure

@@ -1186,6 +1186,7 @@ func renderTaskPluginQuery(
 		tasksByID[task.TaskID] = task
 	}
 	views := make([]dto.TaskView, 0, len(taskIDs))
+	var mediaTask *model.Task
 	for _, taskID := range taskIDs {
 		task := tasksByID[taskID]
 		if task == nil || !task.ResultRetrievable() {
@@ -1199,6 +1200,14 @@ func renderTaskPluginQuery(
 			)
 			abortTaskPluginRouteError(c, http.StatusNotFound)
 			return
+		}
+		_, _, projectionErr := service.ProjectMediaTaskSubmission(c.Request.Context(), task)
+		if projectionErr != nil {
+			abortTaskPluginRouteError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !multiple && task.PrivateData.MediaAdmissionID != "" {
+			mediaTask = task
 		}
 		view, viewErr := service.BuildTaskPluginView(task)
 		if viewErr != nil {
@@ -1230,6 +1239,16 @@ func renderTaskPluginQuery(
 		)
 		abortTaskPluginRouteError(c, http.StatusInternalServerError)
 		return
+	}
+	result, err = service.SanitizeMediaProofFields(result)
+	if err != nil {
+		abortTaskPluginRouteError(c, http.StatusServiceUnavailable)
+		return
+	}
+	if mediaTask != nil {
+		// Native vendor fields remain compatible. Gateway proofs belong to
+		// the exact public-model GET /v1/tasks/<id> recovery surface.
+		c.Header("Cache-Control", "private, no-store")
 	}
 	logger.LogDebug(
 		c,
@@ -1273,6 +1292,9 @@ func RespondTaskPluginError(c *gin.Context, taskErr *dto.TaskError) bool {
 			"retryable":  sanitized.Retryable,
 			"requestId":  requestID,
 		})
+		if callErr == nil {
+			body, callErr = service.SanitizeMediaProofFields(body)
+		}
 		if callErr == nil {
 			logger.LogDebug(
 				c,
