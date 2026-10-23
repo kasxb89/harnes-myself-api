@@ -84,6 +84,12 @@ func GetOptions(c *gin.Context) {
 	var options []*model.Option
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
+	announcementsEnabled := true
+	if value, exists := common.OptionMap["console_setting.announcements_enabled"]; exists {
+		if enabled, err := strconv.ParseBool(value); err == nil {
+			announcementsEnabled = enabled
+		}
+	}
 	for k, v := range common.OptionMap {
 		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
 			continue
@@ -106,6 +112,12 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
+	// Database metadata is read only after releasing the option map lock.
+	for _, option := range options {
+		if option.Key == "console_setting.announcements" {
+			option.Value = model.ProjectClientAnnouncementsForAdmin(c.Request.Context(), option.Value, announcementsEnabled)
+		}
+	}
 	// Display the same effective expressions used by pricing and settlement,
 	// including built-in defaults absent from persisted administrator options.
 	for key, values := range map[string]map[string]string{

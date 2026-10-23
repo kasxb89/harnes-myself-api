@@ -257,6 +257,8 @@ export interface ProcessedUserChartData {
 
 export interface AnnouncementItem {
   id?: number
+  title?: string
+  updatedAt?: string | null
   content: string
   publishDate?: string
   type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'

@@ -18,27 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2, Save } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import * as z from 'zod'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StaticDataTable } from '@/components/data-table/static/static-data-table'
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
 import { DateTimePicker } from '@/components/datetime-picker'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -61,41 +51,24 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toIntlLocale } from '@/i18n/languages'
-import dayjs from '@/lib/dayjs'
 import { formatTimestampRelative } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
+import { formatDateTimeObject } from '@/lib/time'
 
 import { SettingsSwitchField } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  announcementSchema,
+  announcementTitle,
+  MAX_ANNOUNCEMENTS,
+  parseAnnouncements,
+  serializeAnnouncements,
+  type Announcement,
+  type AnnouncementFormValues,
+} from './announcements'
 
-type Announcement = {
-  id: number
-  content: string
-  publishDate: string
-  type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
-  extra?: string
-}
-
-type AnnouncementsSectionProps = {
-  enabled: boolean
-  data: string
-}
-
-const announcementSchema = z.object({
-  content: z
-    .string()
-    .min(1, 'Content is required')
-    .max(500, 'Content must be less than 500 characters'),
-  publishDate: z.string().min(1, 'Publish date is required'),
-  type: z.enum(['default', 'ongoing', 'success', 'warning', 'error']),
-  extra: z
-    .string()
-    .max(100, 'Extra must be less than 100 characters')
-    .optional(),
-})
-
-type AnnouncementFormValues = z.infer<typeof announcementSchema>
+type AnnouncementsSectionProps = { enabled: boolean; data: string }
 
 const ANNOUNCEMENT_FORM_ID = 'announcement-form'
 
@@ -142,6 +115,8 @@ export function AnnouncementsSection({
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [isEnabled, setIsEnabled] = useState(enabled)
   const [hasChanges, setHasChanges] = useState(false)
+  const [parseError, setParseError] = useState(false)
+  const loadedDataRef = useRef<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [showDialog, setShowDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -152,6 +127,7 @@ export function AnnouncementsSection({
   const form = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
     defaultValues: {
+      title: '',
       content: '',
       publishDate: new Date().toISOString(),
       type: 'default',
@@ -160,20 +136,17 @@ export function AnnouncementsSection({
   })
 
   useEffect(() => {
+    if (hasChanges || loadedDataRef.current === data) return
+    loadedDataRef.current = data
     try {
-      const parsed = JSON.parse(data || '[]')
-      if (Array.isArray(parsed)) {
-        setAnnouncements(
-          parsed.map((item, idx) => ({
-            ...item,
-            id: item.id || idx + 1,
-          }))
-        )
-      }
+      setAnnouncements(parseAnnouncements(data))
+      setSelectedIds([])
+      setParseError(false)
     } catch {
       setAnnouncements([])
+      setParseError(true)
     }
-  }, [data])
+  }, [data, hasChanges])
 
   useEffect(() => {
     setIsEnabled(enabled)
@@ -195,6 +168,7 @@ export function AnnouncementsSection({
   const handleAdd = () => {
     setEditingAnnouncement(null)
     form.reset({
+      title: '',
       content: '',
       publishDate: new Date().toISOString(),
       type: 'default',
@@ -206,6 +180,7 @@ export function AnnouncementsSection({
   const handleEdit = (announcement: Announcement) => {
     setEditingAnnouncement(announcement)
     form.reset({
+      title: announcement.title || '',
       content: announcement.content,
       publishDate: announcement.publishDate,
       type: announcement.type,
@@ -253,6 +228,10 @@ export function AnnouncementsSection({
   }
 
   const handleSubmitForm = (values: AnnouncementFormValues) => {
+    if (!editingAnnouncement && announcements.length >= MAX_ANNOUNCEMENTS) {
+      toast.error(t('Maximum 100 announcements'))
+      return
+    }
     if (editingAnnouncement) {
       setAnnouncements((prev) =>
         prev.map((item) =>
@@ -261,7 +240,9 @@ export function AnnouncementsSection({
       )
       toast.success(t('Announcement updated. Click "Save Settings" to apply.'))
     } else {
-      const newId = Math.max(...announcements.map((item) => item.id), 0) + 1
+      const usedIds = new Set(announcements.map((item) => item.id))
+      let newId = 1
+      while (usedIds.has(newId)) newId++
       setAnnouncements((prev) => [...prev, { id: newId, ...values }])
       toast.success(t('Announcement added. Click "Save Settings" to apply.'))
     }
@@ -270,10 +251,18 @@ export function AnnouncementsSection({
   }
 
   const handleSaveAll = async () => {
+    if (parseError || announcements.length > MAX_ANNOUNCEMENTS) return
+    for (const announcement of announcements) {
+      const result = announcementSchema.safeParse(announcement)
+      if (!result.success) {
+        toast.error(t(result.error.issues[0].message))
+        return
+      }
+    }
     try {
       await updateOption.mutateAsync({
         key: 'console_setting.announcements',
-        value: JSON.stringify(announcements),
+        value: serializeAnnouncements(announcements),
       })
       setHasChanges(false)
       toast.success(t('Announcements saved successfully'))
@@ -305,7 +294,15 @@ export function AnnouncementsSection({
       <div className='space-y-4'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <div className='flex flex-wrap items-center gap-2'>
-            <Button onClick={handleAdd} size='sm'>
+            <Button
+              onClick={handleAdd}
+              size='sm'
+              disabled={
+                parseError ||
+                updateOption.isPending ||
+                announcements.length >= MAX_ANNOUNCEMENTS
+              }
+            >
               <Plus className='mr-2 h-4 w-4' />
               {t('Add Announcement')}
             </Button>
@@ -313,7 +310,7 @@ export function AnnouncementsSection({
               onClick={handleBatchDelete}
               size='sm'
               variant='destructive'
-              disabled={selectedIds.length === 0}
+              disabled={selectedIds.length === 0 || updateOption.isPending}
             >
               <Trash2 className='mr-2 h-4 w-4' />
               {t('Delete (')}
@@ -323,13 +320,20 @@ export function AnnouncementsSection({
               onClick={handleSaveAll}
               size='sm'
               variant='secondary'
-              disabled={!hasChanges || updateOption.isPending}
+              disabled={
+                !hasChanges ||
+                updateOption.isPending ||
+                parseError ||
+                announcements.length > MAX_ANNOUNCEMENTS
+              }
             >
               <Save className='mr-2 h-4 w-4' />
               {updateOption.isPending ? t('Saving...') : t('Save Settings')}
             </Button>
           </div>
           <SettingsSwitchField
+            controlId='announcements-enabled'
+            disabled={updateOption.isPending}
             checked={isEnabled}
             onCheckedChange={handleToggleEnabled}
             label={t('Enabled')}
@@ -337,6 +341,23 @@ export function AnnouncementsSection({
           />
         </div>
 
+        {parseError && (
+          <p role='alert' className='text-destructive text-sm'>
+            {t(
+              'Unable to read announcements. Fix the stored JSON before saving.'
+            )}
+          </p>
+        )}
+        {announcements.length >= MAX_ANNOUNCEMENTS && (
+          <p
+            role={
+              announcements.length > MAX_ANNOUNCEMENTS ? 'alert' : undefined
+            }
+            className='text-muted-foreground text-sm'
+          >
+            {t('Maximum 100 announcements')}
+          </p>
+        )}
         <StaticDataTable
           data={sortedAnnouncements}
           getRowKey={(announcement) => announcement.id}
@@ -348,6 +369,7 @@ export function AnnouncementsSection({
               id: 'select',
               header: (
                 <Checkbox
+                  aria-label={t('Select all announcements')}
                   checked={
                     selectedIds.length === announcements.length &&
                     announcements.length > 0
@@ -358,6 +380,9 @@ export function AnnouncementsSection({
               className: 'w-12',
               cell: (announcement) => (
                 <Checkbox
+                  aria-label={t('Select announcement {{title}}', {
+                    title: announcementTitle(announcement),
+                  })}
                   checked={selectedIds.includes(announcement.id)}
                   onCheckedChange={(checked) =>
                     toggleSelectOne(announcement.id, checked as boolean)
@@ -366,40 +391,75 @@ export function AnnouncementsSection({
               ),
             },
             {
-              id: 'content',
-              header: t('Content'),
-              cellClassName: 'max-w-xs truncate',
-              cell: (announcement) => announcement.content,
+              id: 'title',
+              header: t('Title'),
+              cellClassName: 'max-w-xs',
+              cell: (announcement) => (
+                <div className='max-w-xs min-w-0'>
+                  <p
+                    className='truncate font-medium'
+                    title={announcementTitle(announcement)}
+                  >
+                    {announcementTitle(announcement)}
+                  </p>
+                  <p
+                    className='text-muted-foreground truncate text-xs'
+                    title={announcement.content}
+                  >
+                    {announcement.content}
+                  </p>
+                </div>
+              ),
             },
             {
               id: 'publish-date',
               header: t('Publish Date'),
-              cell: (announcement) => (
-                <div className='flex flex-col gap-1'>
-                  <span className='text-sm font-medium'>
-                    {formatTimestampRelative(
-                      new Date(announcement.publishDate).getTime(),
-                      'milliseconds',
-                      locale
-                    )}
-                  </span>
-                  <span className='text-muted-foreground text-xs'>
-                    {dayjs(announcement.publishDate).format(
-                      'YYYY-MM-DD HH:mm:ss'
-                    )}
-                  </span>
-                </div>
-              ),
+              cell: (announcement) =>
+                Number.isFinite(Date.parse(announcement.publishDate)) ? (
+                  <div className='flex flex-col gap-1'>
+                    <span className='text-sm font-medium'>
+                      {formatTimestampRelative(
+                        Date.parse(announcement.publishDate),
+                        'milliseconds',
+                        locale
+                      )}
+                    </span>
+                    <time
+                      dateTime={announcement.publishDate}
+                      className='text-muted-foreground text-xs'
+                    >
+                      {formatDateTimeObject(new Date(announcement.publishDate))}
+                    </time>
+                  </div>
+                ) : (
+                  t('Unknown')
+                ),
+            },
+            {
+              id: 'updated-at',
+              header: t('Server update time'),
+              cell: (announcement) =>
+                announcement.updatedAt &&
+                Number.isFinite(Date.parse(announcement.updatedAt)) ? (
+                  <time
+                    dateTime={announcement.updatedAt}
+                    className='text-muted-foreground text-xs'
+                  >
+                    {formatDateTimeObject(new Date(announcement.updatedAt))}
+                  </time>
+                ) : (
+                  t('Unknown')
+                ),
             },
             {
               id: 'type',
               header: t('Type'),
               cell: (announcement) => (
                 <StatusBadge
-                  label={
+                  label={t(
                     typeOptions.find((opt) => opt.value === announcement.type)
-                      ?.label
-                  }
+                      ?.label || 'Default'
+                  )}
                   variant={
                     typeOptions.find((opt) => opt.value === announcement.type)
                       ?.badgeVariant ?? 'neutral'
@@ -422,6 +482,8 @@ export function AnnouncementsSection({
                   editLabel={t('Edit')}
                   deleteLabel={t('Delete')}
                   menuLabel={t('Open menu')}
+                  editDisabled={updateOption.isPending}
+                  deleteDisabled={updateOption.isPending}
                   onEdit={() => handleEdit(announcement)}
                   onDelete={() => handleDelete(announcement)}
                 />
@@ -466,6 +528,44 @@ export function AnnouncementsSection({
           >
             <FormField
               control={form.control}
+              name='title'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Announcement title (optional)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={t('Enter announcement title')}
+                      maxLength={120}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Maximum 120 characters. Leave blank to use a content preview.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className='rounded-lg border p-3 text-sm'>
+              <p className='font-medium'>{t('Server update time')}</p>
+              <p className='text-muted-foreground mt-1'>
+                {editingAnnouncement?.updatedAt &&
+                Number.isFinite(Date.parse(editingAnnouncement.updatedAt))
+                  ? formatDateTimeObject(
+                      new Date(editingAnnouncement.updatedAt)
+                    )
+                  : t('Unknown')}
+              </p>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                {t(
+                  'Set by the server after saving. Older announcements may have no recorded update time.'
+                )}
+              </p>
+            </div>
+            <FormField
+              control={form.control}
               name='content'
               render={({ field }) => (
                 <FormItem>
@@ -480,7 +580,10 @@ export function AnnouncementsSection({
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Maximum 500 characters. Supports Markdown and HTML.')}
+                    {t('Maximum 500 characters. Supports Markdown and HTML.')}{' '}
+                    {t(
+                      'Plain text for desktop clients; the dashboard keeps its existing rich content display.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -494,7 +597,11 @@ export function AnnouncementsSection({
                   <FormLabel>{t('Publish Date')}</FormLabel>
                   <FormControl>
                     <DateTimePicker
-                      value={field.value ? new Date(field.value) : undefined}
+                      value={
+                        Number.isFinite(Date.parse(field.value))
+                          ? new Date(field.value)
+                          : undefined
+                      }
                       onChange={(date) =>
                         field.onChange(date ? date.toISOString() : '')
                       }
@@ -524,7 +631,7 @@ export function AnnouncementsSection({
                           <div
                             className={`h-3 w-3 rounded-full ${option.color}`}
                           />
-                          {option.label}
+                          {t(option.label)}
                         </div>
                       ),
                     }))}
@@ -546,7 +653,7 @@ export function AnnouncementsSection({
                               <div
                                 className={`h-3 w-3 rounded-full ${option.color}`}
                               />
-                              {option.label}
+                              {t(option.label)}
                             </div>
                           </SelectItem>
                         ))}
@@ -582,26 +689,21 @@ export function AnnouncementsSection({
         </Form>
       </Dialog>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('Are you sure?')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteTarget === 'single'
-                ? t('This announcement will be removed from the list.')
-                : t('{{count}} announcements will be removed from the list.', {
-                    count: selectedIds.length,
-                  })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-            <AlertDialogAction variant='destructive' onClick={confirmDelete}>
-              {t('Delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title={t('Are you sure?')}
+        desc={
+          deleteTarget === 'single'
+            ? t('This announcement will be removed from the list.')
+            : t('{{count}} announcements will be removed from the list.', {
+                count: selectedIds.length,
+              })
+        }
+        confirmText={t('Delete')}
+        destructive
+        handleConfirm={confirmDelete}
+      />
     </SettingsSection>
   )
 }

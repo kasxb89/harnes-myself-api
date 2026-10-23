@@ -26,6 +26,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
+		apiRouter.GET("/client-announcements", controller.GetClientAnnouncements)
 		creationRoute := apiRouter.Group("/creation")
 		{
 			creationRoute.GET("/content", controller.GetCreationContent)

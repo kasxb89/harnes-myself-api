@@ -45,7 +45,7 @@ export function AnnouncementDetailModal({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={t('Announcement Details')}
+      title={announcement?.title?.trim() || t('Announcement Details')}
       description={
         announcement?.publishDate
           ? `${t('Published:')} ${formatDateTimeObject(new Date(announcement.publishDate))}`

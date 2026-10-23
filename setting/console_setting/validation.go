@@ -165,6 +165,9 @@ func GetApiInfo() []map[string]any {
 }
 
 func validateAnnouncements(announcementsStr string) error {
+	if len(announcementsStr) > 1024*1024 {
+		return common.NewMessage("Announcements configuration cannot exceed 1 MiB")
+	}
 	list, err := parseJSONArray(announcementsStr, "Invalid announcements format: {{error}}")
 	if err != nil {
 		return err
@@ -176,6 +179,15 @@ func validateAnnouncements(announcementsStr string) error {
 		"default": true, "ongoing": true, "success": true, "warning": true, "error": true,
 	}
 	for i, ann := range list {
+		if title, exists := ann["title"]; exists {
+			titleStr, ok := title.(string)
+			if !ok {
+				return common.NewMessage("Announcement #{{index}} title must be text", map[string]any{"index": i + 1})
+			}
+			if exceedsMaxCharacters(titleStr, 120) {
+				return common.NewMessage("Announcement #{{index}} title cannot exceed 120 characters", map[string]any{"index": i + 1})
+			}
+		}
 		content, ok := ann["content"].(string)
 		if !ok || content == "" {
 			return common.NewMessage("Announcement #{{index}} is missing the content field", map[string]any{"index": i + 1})

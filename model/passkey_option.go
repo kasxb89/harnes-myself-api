@@ -231,6 +231,19 @@ func UpdatePasskeyDomainOptions(values map[string]string, preview bool, confirma
 			if err := tx.Save(&Option{Key: key, Value: values[key]}).Error; err != nil {
 				return err
 			}
+			// Resolve the stored key after the write as MySQL collations may
+			// alias a different spelling onto a protected announcement option.
+			// Rejecting here rolls the entire existing transaction back.
+			var stored Option
+			if err := tx.Select("key").Where(&Option{Key: key}).Take(&stored).Error; err != nil {
+				return err
+			}
+			if err := validateClientAnnouncementOptionWrite(tx, key, stored.Key); err != nil {
+				return err
+			}
+			if isClientAnnouncementOption(stored.Key) {
+				return common.NewMessage("Client announcements must be saved separately from passkey settings")
+			}
 		}
 		return nil
 	})

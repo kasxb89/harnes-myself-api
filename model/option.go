@@ -12,11 +12,13 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Option struct {
@@ -237,6 +239,17 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if isClientAnnouncementsMetadataOption(key) {
+		return errClientAnnouncementsMetadataReadOnly
+	}
+	if key == clientAnnouncementsOption {
+		return console_setting.ValidateConsoleSettings(value, "Announcements")
+	}
+	if key == clientAnnouncementsEnabledOption {
+		if _, err := strconv.ParseBool(value); err != nil {
+			return common.NewMessage("Invalid parameters")
+		}
+	}
 	if err := system_setting.ValidateDesktopUpdateOption(key, value); err != nil {
 		return err
 	}
@@ -262,6 +275,12 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if isClientAnnouncementsMetadataOption(key) {
+		return errClientAnnouncementsMetadataReadOnly
+	}
+	if isClientAnnouncementOption(key) {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if strings.EqualFold(key, ModelProfitCostRulesKey) {
 		return ErrModelProfitCostRulesAPI
 	}
@@ -281,26 +300,60 @@ func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
-	// Save to database first
-	option := Option{
-		Key: key,
-	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	if err := DB.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+	// Keep a newly inserted collation alias inside the transaction so a
+	// rejected protected option cannot leave a shadow row behind.
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		option := Option{Key: key}
+		// Write before reading so concurrent SQLite writers cannot leave us
+		// trying to upgrade a stale read snapshot.
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&option).Error; err != nil {
+			return err
+		}
+		if err := tx.Where(&Option{Key: key}).Take(&option).Error; err != nil {
+			return err
+		}
+		if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
+			return ErrModelProfitCostRulesAPI
+		}
+		if err := validateClientAnnouncementOptionWrite(tx, key, option.Key); err != nil {
+			return err
+		}
+		option.Value = value
+		return tx.Save(&option).Error
+	}); err != nil {
 		return err
 	}
-	// MySQL option keys may use a case/accent-insensitive, PAD SPACE
-	// collation. Check the key actually resolved by the database as well.
-	if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
-		return ErrModelProfitCostRulesAPI
-	}
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
 	// Update OptionMap
 	return updateOptionMap(key, value)
+}
+
+// Announcement writes must use the canonical keys that trigger validation and
+// metadata updates. Test the database's own collation as MySQL can equate case,
+// accents and trailing spaces, including an alias inserted before the canonical
+// row has ever existed. The caller's transaction rolls that insertion back.
+func validateClientAnnouncementOptionWrite(tx *gorm.DB, requestedKey, storedKey string) error {
+	if isClientAnnouncementsMetadataOption(storedKey) {
+		return errClientAnnouncementsMetadataReadOnly
+	}
+	for _, canonical := range []string{clientAnnouncementsOption, clientAnnouncementsEnabledOption} {
+		if requestedKey != canonical && strings.EqualFold(strings.TrimSpace(requestedKey), canonical) {
+			return common.NewMessage("Invalid parameters")
+		}
+	}
+	if requestedKey == storedKey && isClientAnnouncementOption(storedKey) {
+		return nil
+	}
+	var protectedRows int64
+	if err := tx.Model(&Option{}).Where(&Option{Key: storedKey}).Where(clause.IN{
+		Column: clause.Column{Name: "key"},
+		Values: []any{clientAnnouncementsOption, clientAnnouncementsEnabledOption, clientAnnouncementsMetadataOption},
+	}).Count(&protectedRows).Error; err != nil {
+		return err
+	}
+	if protectedRows != 0 {
+		return common.NewMessage("Invalid parameters")
+	}
+	return nil
 }
 
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
@@ -310,6 +363,9 @@ func UpdateOption(key string, value string) error {
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
 	for key := range values {
+		if isClientAnnouncementsMetadataOption(key) {
+			return errClientAnnouncementsMetadataReadOnly
+		}
 		if strings.EqualFold(key, ModelProfitCostRulesKey) {
 			return ErrModelProfitCostRulesAPI
 		}
@@ -322,6 +378,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	for key := range values {
 		if IsPasskeyDomainOption(key) {
+			for candidate := range values {
+				if isClientAnnouncementOption(candidate) {
+					return common.NewMessage("Client announcements must be saved separately from passkey settings")
+				}
+			}
 			_, err := UpdatePasskeyDomainOptions(values, false, "")
 			return err
 		}
@@ -352,6 +413,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := updateClientAnnouncementsMetadata(tx, values); err != nil {
+			return err
+		}
 		for k, v := range values {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
@@ -359,6 +423,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 			}
 			if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
 				return ErrModelProfitCostRulesAPI
+			}
+			if err := validateClientAnnouncementOptionWrite(tx, k, option.Key); err != nil {
+				return err
 			}
 			option.Value = v
 			if err := tx.Save(&option).Error; err != nil {
@@ -382,7 +449,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey {
+	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey || isClientAnnouncementsMetadataOption(key) {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
