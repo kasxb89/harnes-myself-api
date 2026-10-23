@@ -1,5 +1,13 @@
 package i18n
 
+// Free video estimate errors never include provider responses.
+const (
+	MsgVideoQuoteInvalidRequest = "video_quote.invalid_request"
+	MsgVideoQuoteUnavailable    = "video_quote.unavailable"
+	MsgVideoQuoteAccessDenied   = "video_quote.access_denied"
+	MsgVideoQuoteInvalidAPIKey  = "video_quote.invalid_api_key"
+)
+
 // Message keys of i18n/locales/*.yaml, for text the backend translates itself:
 // errors returned to AI clients, emails and notifications. Web console messages
 // are not listed here; the web console translates them (see common.Message).
