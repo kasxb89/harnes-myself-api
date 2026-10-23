@@ -224,6 +224,10 @@ func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 
 // ClientActivityRateLimit is separate from account-security limits: ordinary
 // 30-second desktop heartbeats must keep working throughout a long session.
+func ClientWorkloadRateLimit() func(c *gin.Context) {
+	return userRateLimitFactory(120, 60, "client-workload-snapshot")
+}
+
 func ClientActivityRateLimit() func(c *gin.Context) {
 	return userRateLimitFactory(120, 60, "client-activity")
 }

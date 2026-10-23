@@ -381,6 +381,7 @@ func SetApiRouter(router *gin.Engine) {
 		clientActivityRoute := apiRouter.Group("/client-activity")
 		clientActivityRoute.Use(middleware.DisableCache())
 		{
+			clientActivityRoute.POST("/workload-snapshot", middleware.UserAuth(), middleware.ClientWorkloadRateLimit(), controller.ClientActivityWorkloadSnapshot)
 			clientActivityRoute.POST("/heartbeat", middleware.UserAuth(), middleware.ClientActivityRateLimit(), controller.ClientActivityHeartbeat)
 			clientActivityRoute.GET("/summary", middleware.AdminAuth(), middleware.RequirePermission(authz.UserActivityRead), controller.GetClientActivitySummary)
 			clientActivityRoute.GET("/sessions", middleware.AdminAuth(), middleware.RequirePermission(authz.UserActivityRead), controller.GetClientActivitySessions)

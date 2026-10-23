@@ -34,7 +34,13 @@ import { formatNumber } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getActivityDetail } from './api'
-import { ActivityDuration, ActivityStatus, ActivityTimestamp } from './display'
+import {
+  ActivityDuration,
+  ActivityStatus,
+  ActivityTimestamp,
+  ObservationStatus,
+} from './display'
+import { WorkloadDetails } from './workload-details'
 
 export function ActivityDetails(props: {
   id: number | null
@@ -46,11 +52,11 @@ export function ActivityDetails(props: {
   const allowed = canAccessAdminRoute(user, '/user-activity')
   const query = useQuery({
     queryKey: ['client-activity', user?.id, 'detail', props.id],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (props.id === null) {
         throw new Error(t('Client activity session not found'))
       }
-      return getActivityDetail(props.id)
+      return getActivityDetail(props.id, signal)
     },
     enabled: allowed && props.id !== null,
     retry: false,
@@ -85,7 +91,7 @@ export function ActivityDetails(props: {
       }}
       title={t('Client session details')}
       description={t(
-        'Only software presence and model usage metadata are shown. Conversation content is not collected.'
+        'Software presence, safe workload identifiers and account model usage are shown. Conversation content is not collected.'
       )}
       contentClassName='min-w-0 sm:max-w-3xl max-sm:w-[calc(100vw-1.5rem)] max-sm:max-w-[calc(100vw-1.5rem)]'
       bodyClassName='space-y-4'
@@ -130,6 +136,15 @@ export function ActivityDetails(props: {
               value={<ActivityDuration seconds={session.foreground_seconds} />}
             />
           </DetailSection>
+          <DetailSection label={t('Observation status')}>
+            <ObservationStatus status={session.observation_detail} />
+            <p className='text-muted-foreground mt-2 text-xs'>
+              {t(
+                'Heartbeat expiry is not an explicit client exit and does not prove an upstream task ended.'
+              )}
+            </p>
+          </DetailSection>
+          <WorkloadDetails workload={data.workload} />
           <DetailSection label={t('Observed session timeline')}>
             <ol className='space-y-3'>
               {events.map((event) => (

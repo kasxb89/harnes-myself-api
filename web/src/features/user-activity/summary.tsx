@@ -24,16 +24,18 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
 import type { ClientActivitySummary } from './types'
+import { WorkloadSummary } from './workload-summary'
 
 export function ActivitySummary(props: {
   summary?: ClientActivitySummary
+  history?: boolean
   loading: boolean
   error: boolean
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const data = props.summary
-  const cards = [
+  const presence = [
     {
       title: t('Currently online users'),
       value: data?.online_users,
@@ -55,6 +57,14 @@ export function ActivitySummary(props: {
       icon: AppWindow,
     },
     {
+      title: t('Online client processes'),
+      value: data?.runtime_sessions,
+      description: t('Client processes are not conversation sessions'),
+      icon: Monitor,
+    },
+  ]
+  const period = [
+    {
       title: t('Client sessions started in range'),
       value: data?.started_sessions,
       description: t('Sessions started in the selected period'),
@@ -67,23 +77,59 @@ export function ActivitySummary(props: {
       icon: Activity,
     },
   ]
+  const cards = (items: typeof presence) =>
+    items.map((card) => (
+      <StatCard
+        key={card.title}
+        title={card.title}
+        value={
+          card.value === undefined
+            ? t('Not collected')
+            : formatNumber(card.value, locale)
+        }
+        description={card.description}
+        icon={card.icon}
+        loading={props.loading}
+        error={props.error}
+        compactMobile
+      />
+    ))
   return (
-    <div
-      className='grid grid-cols-2 gap-3 rounded-xl border p-3 sm:grid-cols-3 sm:gap-5 sm:p-4 xl:grid-cols-5'
-      aria-label={t('Client activity summary')}
-    >
-      {cards.map((card) => (
-        <StatCard
-          key={card.title}
-          title={card.title}
-          value={formatNumber(card.value, locale)}
-          description={card.description}
-          icon={card.icon}
-          loading={props.loading}
-          error={props.error}
-          compactMobile
-        />
-      ))}
+    <div className='space-y-4' aria-label={t('Client activity summary')}>
+      <section aria-label={t('Global current presence')} className='space-y-2'>
+        <h2 className='text-sm font-medium'>{t('Global current presence')}</h2>
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Current online counts and workload are global and do not follow the user or date filters.'
+          )}
+        </p>
+        <div className='grid grid-cols-2 gap-3 rounded-xl border p-3 sm:gap-5 sm:p-4 xl:grid-cols-4'>
+          {cards(presence)}
+        </div>
+      </section>
+      <WorkloadSummary
+        workload={data?.workload}
+        loading={props.loading}
+        error={props.error}
+      />
+      {(props.history ?? true) && (
+        <section
+          aria-label={t('Selected-period activity')}
+          className='space-y-2'
+        >
+          <h2 className='text-sm font-medium'>
+            {t('Selected-period activity')}
+          </h2>
+          <p className='text-muted-foreground text-xs'>
+            {t(
+              'Period metrics retain session-start counting. Durations are cumulative for those sessions, regardless of the history list time basis.'
+            )}
+          </p>
+          <div className='grid grid-cols-2 gap-3 rounded-xl border p-3 sm:gap-5 sm:p-4'>
+            {cards(period)}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

@@ -23,7 +23,7 @@ import { toIntlLocale } from '@/i18n/languages'
 import dayjs from '@/lib/dayjs'
 import { formatNumber } from '@/lib/format'
 
-import type { ClientActivitySession } from './types'
+import type { ClientActivitySession, WorkloadObservationStatus } from './types'
 
 export function ActivityTimestamp(props: { value: number }) {
   if (!props.value) return <span>—</span>
@@ -73,4 +73,29 @@ export function ActivityStatus(props: {
     )
   }
   return <StatusBadge variant='neutral' label={t('Offline')} copyable={false} />
+}
+
+export function ObservationStatus(props: {
+  status?: WorkloadObservationStatus
+}) {
+  const { t } = useTranslation()
+  const labels: Record<WorkloadObservationStatus, string> = {
+    live: t('Current observation'),
+    unknown: t('State unknown'),
+    ended: t('Explicitly ended'),
+    expired: t('Observation expired'),
+    not_reported: t('Not in latest report'),
+    not_collected: t('Not collected'),
+  }
+  return (
+    <StatusBadge
+      variant={props.status === 'live' ? 'success' : 'neutral'}
+      label={
+        props.status
+          ? (labels[props.status] ?? t('Not collected'))
+          : t('Not collected')
+      }
+      copyable={false}
+    />
+  )
 }

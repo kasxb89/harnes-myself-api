@@ -24,7 +24,12 @@ import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
-import { ActivityDuration, ActivityStatus, ActivityTimestamp } from './display'
+import {
+  ActivityDuration,
+  ActivityStatus,
+  ActivityTimestamp,
+  ObservationStatus,
+} from './display'
 import type { ClientActivitySession } from './types'
 
 export function useActivityColumns(
@@ -52,7 +57,14 @@ export function useActivityColumns(
       {
         accessorKey: 'status',
         header: t('Client status'),
-        cell: ({ row }) => <ActivityStatus status={row.original.status} />,
+        cell: ({ row }) => (
+          <div className='space-y-1'>
+            <ActivityStatus status={row.original.status} />
+            {row.original.observation_detail && (
+              <ObservationStatus status={row.original.observation_detail} />
+            )}
+          </div>
+        ),
         size: 160,
       },
       {

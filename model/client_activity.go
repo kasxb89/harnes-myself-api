@@ -41,12 +41,13 @@ type ClientActivityHeartbeat struct {
 
 type ClientActivityView struct {
 	ClientActivitySession
-	Username    string `json:"username"`
-	Online      bool   `json:"online"`
-	Status      string `json:"status"`
-	ModelCalls  int64  `json:"model_calls"`
-	ModelErrors int64  `json:"model_errors"`
-	LastModelAt int64  `json:"last_model_at"`
+	Username          string `json:"username"`
+	Online            bool   `json:"online"`
+	Status            string `json:"status"`
+	ModelCalls        int64  `json:"model_calls"`
+	ModelErrors       int64  `json:"model_errors"`
+	LastModelAt       int64  `json:"last_model_at"`
+	ObservationDetail string `json:"observation_detail"`
 }
 
 type ClientActivityModelUsage struct {
@@ -63,24 +64,28 @@ type ClientActivityUsage struct {
 }
 
 type ClientActivityFilter struct {
-	Username string
-	Status   string
-	Start    int64
-	End      int64
+	Scope     string
+	TimeBasis string
+	Username  string
+	Status    string
+	Start     int64
+	End       int64
 }
 
 type ClientActivitySummary struct {
-	ServerTime               int64 `json:"server_time"`
-	HeartbeatIntervalSeconds int64 `json:"heartbeat_interval_seconds"`
-	OnlineTimeoutSeconds     int64 `json:"online_timeout_seconds"`
-	OnlineUsers              int64 `json:"online_users"`
-	ForegroundUsers          int64 `json:"foreground_users"`
-	StartedSessions          int64 `json:"started_sessions"`
-	ActiveUsers              int64 `json:"active_users"`
-	OnlineSeconds            int64 `json:"online_seconds"`
-	ForegroundSeconds        int64 `json:"foreground_seconds"`
-	ModelCalls               int64 `json:"model_calls"`
-	ModelErrors              int64 `json:"model_errors"`
+	ServerTime               int64                  `json:"server_time"`
+	HeartbeatIntervalSeconds int64                  `json:"heartbeat_interval_seconds"`
+	OnlineTimeoutSeconds     int64                  `json:"online_timeout_seconds"`
+	OnlineUsers              int64                  `json:"online_users"`
+	RuntimeSessions          int64                  `json:"runtime_sessions"`
+	Workload                 *ClientWorkloadSummary `json:"workload,omitempty"`
+	ForegroundUsers          int64                  `json:"foreground_users"`
+	StartedSessions          int64                  `json:"started_sessions"`
+	ActiveUsers              int64                  `json:"active_users"`
+	OnlineSeconds            int64                  `json:"online_seconds"`
+	ForegroundSeconds        int64                  `json:"foreground_seconds"`
+	ModelCalls               int64                  `json:"model_calls"`
+	ModelErrors              int64                  `json:"model_errors"`
 }
 
 // RecordClientActivity uses server time and the previous foreground state. Gaps
@@ -132,26 +137,43 @@ func RecordClientActivity(userID int, heartbeat ClientActivityHeartbeat, now int
 }
 
 func clientActivityQuery(filter ClientActivityFilter, now int64) *gorm.DB {
-	query := DB.Model(&ClientActivitySession{}).Where("started_at >= ? AND started_at <= ?", filter.Start, filter.End)
+	return clientActivityQueryDB(DB, filter, now)
+}
+
+func clientActivityQueryDB(db *gorm.DB, filter ClientActivityFilter, now int64) *gorm.DB {
+	query := db.Model(&ClientActivitySession{})
+	if filter.Scope == "live" {
+		query = query.Where("ended_at = 0 AND last_seen_at > ? AND last_seen_at <= ?", now-ClientActivityTimeoutSeconds, now)
+	} else if filter.Scope == "history" && filter.TimeBasis == "last_seen" {
+		query = query.Where("last_seen_at >= ? AND last_seen_at <= ?", filter.Start, filter.End)
+	} else {
+		query = query.Where("started_at >= ? AND started_at <= ?", filter.Start, filter.End)
+	}
 	if filter.Username != "" {
-		query = query.Where("user_id IN (?)", DB.Model(&User{}).Select("id").Where("username = ?", filter.Username))
+		query = query.Where("user_id IN (?)", db.Model(&User{}).Select("id").Where("username = ?", filter.Username))
 	}
 	switch filter.Status {
 	case "online":
-		query = query.Where("ended_at = 0 AND last_seen_at > ?", now-ClientActivityTimeoutSeconds)
+		query = query.Where("ended_at = 0 AND last_seen_at > ? AND last_seen_at <= ?", now-ClientActivityTimeoutSeconds, now)
 	case "foreground":
-		query = query.Where("ended_at = 0 AND last_seen_at > ? AND foreground = ?", now-ClientActivityTimeoutSeconds, true)
+		query = query.Where("ended_at = 0 AND last_seen_at > ? AND last_seen_at <= ? AND foreground = ?", now-ClientActivityTimeoutSeconds, now, true)
 	case "background":
-		query = query.Where("ended_at = 0 AND last_seen_at > ? AND foreground = ?", now-ClientActivityTimeoutSeconds, false)
+		query = query.Where("ended_at = 0 AND last_seen_at > ? AND last_seen_at <= ? AND foreground = ?", now-ClientActivityTimeoutSeconds, now, false)
 	case "offline":
-		query = query.Where("ended_at <> 0 OR last_seen_at <= ?", now-ClientActivityTimeoutSeconds)
+		query = query.Where("ended_at <> 0 OR last_seen_at <= ? OR last_seen_at > ?", now-ClientActivityTimeoutSeconds, now)
 	}
 	return query
 }
 
 func clientActivityView(session ClientActivitySession, username string, now int64) ClientActivityView {
 	view := ClientActivityView{ClientActivitySession: session, Username: username, Status: "offline"}
-	view.Online = session.EndedAt == 0 && session.LastSeenAt > now-ClientActivityTimeoutSeconds
+	view.Online = session.EndedAt == 0 && session.LastSeenAt > now-ClientActivityTimeoutSeconds && session.LastSeenAt <= now
+	view.ObservationDetail = "expired"
+	if session.EndedAt != 0 {
+		view.ObservationDetail = "ended"
+	} else if view.Online && session.LastSeenAt <= now {
+		view.ObservationDetail = "live"
+	}
 	if view.Online {
 		view.Status = "background"
 		if session.Foreground {
@@ -201,33 +223,104 @@ func ListClientActivitySessions(filter ClientActivityFilter, offset, limit int, 
 }
 
 func GetClientActivitySession(id int, now int64) (*ClientActivityView, ClientActivityUsage, error) {
-	var session ClientActivitySession
-	if err := DB.First(&session, id).Error; err != nil {
+	view, err := getClientActivitySessionDB(DB, id, now)
+	if err != nil {
 		return nil, ClientActivityUsage{}, err
+	}
+	usage, err := populateClientActivityUsage(view)
+	return view, usage, err
+}
+
+func getClientActivitySessionDB(db *gorm.DB, id int, now int64) (*ClientActivityView, error) {
+	var session ClientActivitySession
+	if err := db.First(&session, id).Error; err != nil {
+		return nil, err
 	}
 	var username string
-	if err := DB.Model(&User{}).Where("id = ?", session.UserID).Select("username").Scan(&username).Error; err != nil {
-		return nil, ClientActivityUsage{}, err
+	if err := db.Model(&User{}).Where("id = ?", session.UserID).Select("username").Scan(&username).Error; err != nil {
+		return nil, err
 	}
 	view := clientActivityView(session, username, now)
-	end := session.LastSeenAt
-	if session.EndedAt > 0 {
-		end = session.EndedAt
+	return &view, nil
+}
+
+func populateClientActivityUsage(view *ClientActivityView) (ClientActivityUsage, error) {
+	end := view.LastSeenAt
+	if view.EndedAt > 0 {
+		end = view.EndedAt
 	}
-	usage, err := ClientActivityUsageForUser(session.UserID, session.StartedAt, end)
+	usage, err := ClientActivityUsageForUser(view.UserID, view.StartedAt, end)
 	if err != nil {
-		return nil, usage, err
+		return usage, err
 	}
 	view.ModelCalls, view.ModelErrors = usage.Calls, usage.Errors
 	for _, item := range usage.Models {
 		view.LastModelAt = max(view.LastModelAt, item.LastCalledAt)
 	}
-	return &view, usage, nil
+	return usage, nil
+}
+
+// GetClientActivitySessionWithWorkload composes presence and telemetry from one
+// main-database snapshot. Gateway log usage is a separate window projection and
+// deliberately runs after that transaction, including when LOG_DB == DB.
+func GetClientActivitySessionWithWorkload(id int, now int64) (view *ClientActivityView, usage ClientActivityUsage, workload *ClientWorkloadDetail, err error) {
+	err = clientActivityReadTransaction(func(tx *gorm.DB) error {
+		view, err = getClientActivitySessionDB(tx, id, now)
+		if err != nil {
+			return err
+		}
+		workload, err = getClientWorkloadDetail(tx, view.UserID, view.SessionID, now)
+		return err
+	})
+	if err != nil {
+		return nil, usage, nil, err
+	}
+	usage, err = populateClientActivityUsage(view)
+	return view, usage, workload, err
 }
 
 func GetClientActivitySummary(filter ClientActivityFilter, now int64) (*ClientActivitySummary, error) {
+	summary, err := getClientActivitySummaryDB(DB, filter, now)
+	if err != nil {
+		return nil, err
+	}
+	err = populateClientActivitySummaryUsage(summary, filter)
+	return summary, err
+}
+
+// GetClientActivitySummaryWithWorkload preserves one main-database version for
+// all presence counters and workload coverage. Logs retain their independent
+// aggregate-period semantics rather than pretending to share this transaction.
+func GetClientActivitySummaryWithWorkload(filter ClientActivityFilter, now int64) (summary *ClientActivitySummary, err error) {
+	err = clientActivityReadTransaction(func(tx *gorm.DB) error {
+		summary, err = getClientActivitySummaryDB(tx, filter, now)
+		if err != nil {
+			return err
+		}
+		summary.Workload, err = getClientWorkloadSummary(tx, now)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	err = populateClientActivitySummaryUsage(summary, filter)
+	return summary, err
+}
+
+func populateClientActivitySummaryUsage(summary *ClientActivitySummary, filter ClientActivityFilter) error {
+	usage, err := ClientActivityUsageForUser(0, filter.Start, filter.End)
+	if err != nil {
+		return err
+	}
+	summary.ModelCalls, summary.ModelErrors = usage.Calls, usage.Errors
+	return nil
+}
+
+func getClientActivitySummaryDB(db *gorm.DB, filter ClientActivityFilter, now int64) (*ClientActivitySummary, error) {
 	summary := ClientActivitySummary{ServerTime: now, HeartbeatIntervalSeconds: ClientActivityHeartbeatSeconds, OnlineTimeoutSeconds: ClientActivityTimeoutSeconds}
-	query := clientActivityQuery(filter, now)
+	periodFilter := filter
+	periodFilter.Scope, periodFilter.TimeBasis = "history", "started"
+	query := clientActivityQueryDB(db, periodFilter, now)
 	if err := query.Count(&summary.StartedSessions).Error; err != nil {
 		return nil, err
 	}
@@ -235,22 +328,20 @@ func GetClientActivitySummary(filter ClientActivityFilter, now int64) (*ClientAc
 		return nil, err
 	}
 	var durations struct{ OnlineSeconds, ForegroundSeconds int64 }
-	if err := clientActivityQuery(filter, now).Select("COALESCE(SUM(online_seconds), 0) AS online_seconds, COALESCE(SUM(foreground_seconds), 0) AS foreground_seconds").Scan(&durations).Error; err != nil {
+	if err := clientActivityQueryDB(db, periodFilter, now).Select("COALESCE(SUM(online_seconds), 0) AS online_seconds, COALESCE(SUM(foreground_seconds), 0) AS foreground_seconds").Scan(&durations).Error; err != nil {
 		return nil, err
 	}
 	summary.OnlineSeconds, summary.ForegroundSeconds = durations.OnlineSeconds, durations.ForegroundSeconds
-	online := DB.Model(&ClientActivitySession{}).Where("ended_at = 0 AND last_seen_at > ?", now-ClientActivityTimeoutSeconds)
+	online := db.Model(&ClientActivitySession{}).Where("ended_at = 0 AND last_seen_at > ? AND last_seen_at <= ?", now-ClientActivityTimeoutSeconds, now)
+	if err := db.Model(&ClientActivitySession{}).Where("ended_at = 0 AND last_seen_at > ? AND last_seen_at <= ?", now-ClientActivityTimeoutSeconds, now).Count(&summary.RuntimeSessions).Error; err != nil {
+		return nil, err
+	}
 	if err := online.Distinct("user_id").Count(&summary.OnlineUsers).Error; err != nil {
 		return nil, err
 	}
 	if err := online.Where("foreground = ?", true).Distinct("user_id").Count(&summary.ForegroundUsers).Error; err != nil {
 		return nil, err
 	}
-	usage, err := ClientActivityUsageForUser(0, filter.Start, filter.End)
-	if err != nil {
-		return nil, err
-	}
-	summary.ModelCalls, summary.ModelErrors = usage.Calls, usage.Errors
 	return &summary, nil
 }
 

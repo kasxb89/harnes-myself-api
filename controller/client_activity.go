@@ -2,11 +2,13 @@ package controller
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -43,7 +45,7 @@ func ClientActivityHeartbeat(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"server_time": now, "heartbeat_interval_seconds": model.ClientActivityHeartbeatSeconds, "online_timeout_seconds": model.ClientActivityTimeoutSeconds})
 }
 
-func clientActivityFilterFromQuery(c *gin.Context) (model.ClientActivityFilter, error) {
+func clientActivityFilterFromQuery(c *gin.Context, now int64) (model.ClientActivityFilter, error) {
 	var filter model.ClientActivityFilter
 	var err error
 	if value := c.Query("start_timestamp"); value != "" {
@@ -58,8 +60,12 @@ func clientActivityFilterFromQuery(c *gin.Context) (model.ClientActivityFilter, 
 			return filter, err
 		}
 	}
-	filter.Start, filter.End, err = model.ValidateClientActivityRange(filter.Start, filter.End, common.GetTimestamp())
+	filter.Start, filter.End, err = model.ValidateClientActivityRange(filter.Start, filter.End, now)
 	filter.Username, filter.Status = c.Query("username"), c.Query("status")
+	filter.Scope, filter.TimeBasis = c.Query("scope"), c.Query("time_basis")
+	if (filter.Scope != "" && filter.Scope != "live" && filter.Scope != "history") || (filter.TimeBasis != "" && filter.TimeBasis != "started" && filter.TimeBasis != "last_seen") || (filter.Scope != "history" && filter.TimeBasis != "") || (filter.Scope == "live" && filter.Status == "offline") {
+		return filter, errors.New("invalid client activity scope")
+	}
 	if filter.Status != "" && filter.Status != "all" && filter.Status != "online" && filter.Status != "foreground" && filter.Status != "background" && filter.Status != "offline" {
 		return filter, errors.New("invalid client activity status")
 	}
@@ -67,13 +73,14 @@ func clientActivityFilterFromQuery(c *gin.Context) (model.ClientActivityFilter, 
 }
 
 func GetClientActivitySummary(c *gin.Context) {
-	filter, err := clientActivityFilterFromQuery(c)
+	now := common.GetTimestamp()
+	filter, err := clientActivityFilterFromQuery(c, now)
 	if err != nil {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
 	}
 	filter.Username, filter.Status = "", ""
-	summary, err := model.GetClientActivitySummary(filter, common.GetTimestamp())
+	summary, err := model.GetClientActivitySummaryWithWorkload(filter, now)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -82,7 +89,8 @@ func GetClientActivitySummary(c *gin.Context) {
 }
 
 func GetClientActivitySessions(c *gin.Context) {
-	filter, err := clientActivityFilterFromQuery(c)
+	now := common.GetTimestamp()
+	filter, err := clientActivityFilterFromQuery(c, now)
 	if err != nil {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
@@ -92,7 +100,7 @@ func GetClientActivitySessions(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
 	}
-	items, total, err := model.ListClientActivitySessions(filter, page.GetStartIdx(), page.GetPageSize(), common.GetTimestamp())
+	items, total, err := model.ListClientActivitySessions(filter, page.GetStartIdx(), page.GetPageSize(), now)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -108,7 +116,8 @@ func GetClientActivitySession(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
 	}
-	session, usage, err := model.GetClientActivitySession(id, common.GetTimestamp())
+	now := common.GetTimestamp()
+	session, usage, workload, err := model.GetClientActivitySessionWithWorkload(id, now)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Client activity session not found"))
 		return
@@ -117,5 +126,55 @@ func GetClientActivitySession(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"session": session, "usage": usage})
+	common.ApiSuccess(c, gin.H{"session": session, "usage": usage, "workload": workload})
+}
+
+// ClientActivityWorkloadSnapshot is an observation-only, independently limited
+// interactive-login endpoint. Its failures have no media/account side effects.
+func ClientActivityWorkloadSnapshot(c *gin.Context) {
+	if c.ContentType() != "application/json" {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"), gin.H{"code": "ACTIVITY_SNAPSHOT_INVALID"})
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(c.Request.Body, model.MaxClientWorkloadBodyBytes+1))
+	if len(data) > model.MaxClientWorkloadBodyBytes {
+		common.ApiErrorStatus(c, http.StatusRequestEntityTooLarge, common.NewMessage("Invalid parameters"), gin.H{"code": "ACTIVITY_SNAPSHOT_TOO_LARGE"})
+		return
+	}
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"), gin.H{"code": "ACTIVITY_SNAPSHOT_INVALID"})
+		return
+	}
+	input, err := model.ParseClientWorkloadSnapshot(data)
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"), gin.H{"code": "ACTIVITY_SNAPSHOT_INVALID"})
+		return
+	}
+	identity, ok := middleware.GetSessionAuthIdentity(c)
+	if !ok {
+		common.ApiErrorStatus(c, http.StatusUnauthorized, common.NewMessage("Unauthorized, invalid access token"))
+		return
+	}
+	ack, err := model.RecordClientWorkload(identity, input, common.GetTimestamp())
+	if err != nil {
+		status, code := http.StatusInternalServerError, "ACTIVITY_SNAPSHOT_UNAVAILABLE"
+		if errors.Is(err, model.ErrClientWorkloadInvalid) {
+			status, code = http.StatusBadRequest, "ACTIVITY_SNAPSHOT_INVALID"
+		}
+		if errors.Is(err, model.ErrUserSessionInactive) {
+			status, code = http.StatusUnauthorized, "AUTH_SESSION_REVOKED"
+		}
+		if errors.Is(err, model.ErrClientWorkloadConflict) {
+			status, code = http.StatusConflict, "ACTIVITY_SEQUENCE_CONFLICT"
+		}
+		if errors.Is(err, model.ErrClientWorkloadCapacity) {
+			status, code = http.StatusTooManyRequests, "ACTIVITY_SNAPSHOT_CAPACITY"
+		}
+		if errors.Is(err, model.ErrClientWorkloadRuntimeEnded) {
+			status, code = http.StatusConflict, "ACTIVITY_RUNTIME_ENDED"
+		}
+		common.ApiErrorStatus(c, status, common.NewMessage("Failed to save"), gin.H{"code": code})
+		return
+	}
+	common.ApiSuccess(c, ack)
 }

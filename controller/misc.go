@@ -51,10 +51,16 @@ func GetStatus(c *gin.Context) {
 	legalSetting := system_setting.GetLegalSettings()
 
 	data := gin.H{
-		"version":                     common.Version,
-		"desktop_update":              system_setting.GetDesktopUpdateStatus(),
-		"client_model_config":         clientModelConfig,
-		"client_model_presentation":   clientModelPresentation,
+		"version":                   common.Version,
+		"desktop_update":            system_setting.GetDesktopUpdateStatus(),
+		"client_model_config":       clientModelConfig,
+		"client_model_presentation": clientModelPresentation,
+		"client_activity_workload": gin.H{
+			"schema_version":             1,
+			"snapshot_path":              "/api/client-activity/workload-snapshot",
+			"heartbeat_interval_seconds": 30,
+			"workload_timeout_seconds":   90,
+		},
 		"customer_service":            customerService,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,

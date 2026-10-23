@@ -29,23 +29,49 @@ import type {
   ClientActivitySummary,
 } from './types'
 
-async function requestActivity<T>(path: string, params?: object): Promise<T> {
-  const response = await api.get<ApiResponse<T>>(path, { params })
+async function requestActivity<T>(
+  path: string,
+  params?: object,
+  signal?: AbortSignal
+): Promise<T> {
+  const response = await api.get<ApiResponse<T>>(path, {
+    params,
+    signal,
+    disableDuplicate: true,
+  })
   if (!response.data.success || !response.data.data) {
     throw createServerError(response.data, t('Failed to load client activity'))
   }
   return response.data.data
 }
 export function getActivitySessions(
-  params: ActivityFilters
+  params: ActivityFilters,
+  signal?: AbortSignal
 ): Promise<{ items: ClientActivitySession[]; total: number }> {
-  return requestActivity('/api/client-activity/sessions', params)
+  if (params.scope === 'live') {
+    const {
+      start_timestamp: _start,
+      end_timestamp: _end,
+      time_basis: _basis,
+      ...live
+    } = params
+    return requestActivity('/api/client-activity/sessions', live, signal)
+  }
+  return requestActivity('/api/client-activity/sessions', params, signal)
 }
 export function getActivitySummary(
-  params: Pick<ActivityFilters, 'start_timestamp' | 'end_timestamp'>
+  params: Pick<ActivityFilters, 'start_timestamp' | 'end_timestamp'>,
+  signal?: AbortSignal
 ): Promise<ClientActivitySummary> {
-  return requestActivity('/api/client-activity/summary', params)
+  return requestActivity('/api/client-activity/summary', params, signal)
 }
-export function getActivityDetail(id: number): Promise<ClientActivityDetail> {
-  return requestActivity(`/api/client-activity/sessions/${id}`)
+export function getActivityDetail(
+  id: number,
+  signal?: AbortSignal
+): Promise<ClientActivityDetail> {
+  return requestActivity(
+    `/api/client-activity/sessions/${id}`,
+    undefined,
+    signal
+  )
 }
