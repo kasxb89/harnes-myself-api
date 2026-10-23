@@ -396,6 +396,7 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 		CreatedAt: time.Now().Unix(),
 		UpdatedAt: time.Now().Unix(),
 		PrivateData: model.TaskPrivateData{
+			Key:            "sk-test",
 			UpstreamTaskID: upstreamID,
 		},
 	}

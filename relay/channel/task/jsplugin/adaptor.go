@@ -1022,12 +1022,24 @@ func (a *TaskAdaptor) BuildContentRequest(ctx context.Context, task *model.Task,
 	}
 	hookContext["upstreamTaskId"] = task.GetUpstreamTaskID()
 	hookContext["artifactKey"] = artifactKey
-	hookContext["baseUrl"] = a.info.ChannelBaseUrl
-	hookContext["clientRequest"] = jsonValue(clientRequest)
-	if err = a.applyUpstreamCredentials(hookContext, a.info.ChannelType, a.info.ApiKey, a.info.ChannelSetting.Proxy); err != nil {
-		return nil, err
+	trustedRoute := a.mediaTaskRouteTrusted(task)
+	fetchContext := pluginruntime.WithFetcher(ctx, nil)
+	if trustedRoute {
+		hookContext["baseUrl"] = a.info.ChannelBaseUrl
+		key := a.info.ApiKey
+		if task != nil && task.PrivateData.Key != "" {
+			key = task.PrivateData.Key
+		}
+		if err = a.applyUpstreamCredentials(hookContext, a.info.ChannelType, key, a.info.ChannelSetting.Proxy); err != nil {
+			return nil, err
+		}
+		fetchContext = pluginruntime.WithFetcher(ctx, a.hookFetcher(a.info.ChannelBaseUrl, a.info.ChannelSetting.Proxy))
+	} else {
+		// Old successes may contain a signed CDN URL. Give the pure content
+		// hook its saved data only, never a guessed channel origin or credential.
+		hookContext["baseUrl"] = ""
 	}
-	fetchContext := pluginruntime.WithFetcher(ctx, a.hookFetcher(a.info.ChannelBaseUrl, a.info.ChannelSetting.Proxy))
+	hookContext["clientRequest"] = jsonValue(clientRequest)
 	descriptor, err := a.requestDescriptor(fetchContext, "buildContentRequest", hookContext)
 	if err != nil {
 		return nil, err
@@ -1041,6 +1053,9 @@ func (a *TaskAdaptor) BuildContentRequest(ctx context.Context, task *model.Task,
 	}
 	if method != http.MethodGet && method != http.MethodHead && method != http.MethodPost {
 		return nil, fmt.Errorf("plugin returned an unsupported artifact request method")
+	}
+	if !trustedRoute && !descriptor.Credentialless {
+		return nil, fmt.Errorf("original media execution route is unconfirmed")
 	}
 	if descriptor.Credentialless {
 		if method != http.MethodGet && method != http.MethodHead {
@@ -1109,6 +1124,18 @@ func taskArtifactContext(task *model.Task) (map[string]any, error) {
 }
 
 func (a *TaskAdaptor) queryContext(task *model.Task, key, baseURL, proxy string) (map[string]any, error) {
+	if !a.mediaTaskRouteTrusted(task) {
+		return nil, fmt.Errorf("original media execution route is unconfirmed")
+	}
+	if task != nil && task.ID > 0 && task.PrivateData.RouteDigest != "" && a.info != nil {
+		expectedBaseURL := a.info.ChannelBaseUrl
+		if expectedBaseURL == "" {
+			expectedBaseURL = constant.GetChannelBaseURL(a.info.ChannelType)
+		}
+		if baseURL != expectedBaseURL || proxy != a.info.ChannelSetting.Proxy {
+			return nil, fmt.Errorf("media query route does not match its execution context")
+		}
+	}
 	ctx := map[string]any{
 		"taskId":        "",
 		"publicTaskId":  "",
@@ -1152,6 +1179,13 @@ func (a *TaskAdaptor) queryContext(task *model.Task, key, baseURL, proxy string)
 		return nil, err
 	}
 	return ctx, nil
+}
+
+func (a *TaskAdaptor) mediaTaskRouteTrusted(task *model.Task) bool {
+	if task == nil || task.ID == 0 || !model.TaskRequiresMediaRouteBinding(task) {
+		return true
+	}
+	return a.info != nil && a.info.HasChannelMeta() && task.PrivateData.Key != "" && task.PrivateData.RouteDigest != "" && task.PrivateData.RouteDigest == model.MediaTaskPluginRouteDigest(a.info.ChannelMeta, a.plugin.Meta)
 }
 
 func (a *TaskAdaptor) batchQueryContext(key, baseURL, proxy string, tasks []map[string]any) (map[string]any, error) {

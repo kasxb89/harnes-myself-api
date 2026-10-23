@@ -126,13 +126,6 @@ func ReconcileH3Account(ctx context.Context, accountID string) error {
 		if err := tx.Model(&H3Account{}).Where("id = ? AND enabled = ?", account.ID, false).Update("updated_at", time.Now().Unix()).Error; err != nil {
 			return err
 		}
-		var tasks []Task
-		if err := tx.Where("channel_id = ? AND (status IS NULL OR status <> ?)", account.ChannelID, TaskStatusSuccess).Limit(10001).Find(&tasks).Error; err != nil {
-			return err
-		}
-		if len(tasks) > 10000 {
-			return ErrH3AdmissionUnavailable
-		}
 		var channel Channel
 		if err := tx.First(&channel, account.ChannelID).Error; err != nil {
 			return err
@@ -140,67 +133,101 @@ func ReconcileH3Account(ctx context.Context, accountID string) error {
 		if channel.ChannelInfo.IsMultiKey || h3CredentialDigest(channel.Key) != account.CredentialDigest || h3ConfigurationDigest(&channel) != account.ConfigurationDigest {
 			return ErrH3AdmissionUnavailable
 		}
-		for _, task := range tasks {
-			normalizeRecovery := false
-			if task.Status == "" {
-				task.Status = TaskStatusUnknown
-				task.Progress = "0%"
-				task.FinishTime = 0
-				normalizeRecovery = true
-			} else if task.Status != TaskStatusSuccess && task.Status != TaskStatusFailure && task.Progress == "100%" {
-				task.Progress = "0%"
-				task.FinishTime = 0
-				normalizeRecovery = true
+		var cursor int64
+		for {
+			var tasks []Task
+			if err := lockForUpdate(tx).Where("id > ? AND (status IS NULL OR status <> ? OR id IN (?))", cursor, TaskStatusSuccess, tx.Model(&H3Admission{}).Select("task_db_id").Where("account_id = ? AND state <> ?", account.ID, H3Released)).Order("id").Limit(500).Find(&tasks).Error; err != nil {
+				return err
 			}
-			if normalizeRecovery {
-				if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": task.Status, "progress": task.Progress, "finish_time": task.FinishTime}).Error; err != nil {
+			for _, task := range tasks {
+				cursor = task.ID
+				var existing H3Admission
+				err := tx.Where("task_db_id = ?", task.ID).First(&existing).Error
+				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+					return err
+				}
+				hasAdmission := err == nil
+				if IsH3Task(&task) && !hasAdmission && strings.TrimSpace(task.PrivateData.Key) == "" {
+					return ErrH3AdmissionUnavailable
+				}
+				sameCredential := strings.TrimSpace(task.PrivateData.Key) != "" && h3CredentialDigest(task.PrivateData.Key) == account.CredentialDigest
+				if task.ChannelId != account.ChannelID && !sameCredential && (!hasAdmission || existing.AccountID != account.ID) {
+					continue
+				}
+				if !IsH3Task(&task) {
+					if hasAdmission && existing.AccountID == account.ID {
+						return ErrH3AdmissionUnavailable
+					}
+					continue
+				}
+				// Validate identity before normalizing status or creating any ledger.
+				// A current channel key is never evidence of a historical selection.
+				if !sameCredential || task.PrivateData.MediaAdmissionID != "" {
+					return ErrH3AdmissionUnavailable
+				}
+				if hasAdmission {
+					expectedID := task.TaskID
+					if expectedID == "" {
+						expectedID = fmt.Sprintf("legacy-h3-%d", task.ID)
+					}
+					if existing.AccountID != account.ID || existing.ChannelID != task.ChannelId || task.PrivateData.H3AdmissionID != existing.ID || existing.ID != expectedID ||
+						(task.PrivateData.H3IdentityDigest != "" && task.PrivateData.H3IdentityDigest != account.CredentialDigest) ||
+						(task.PrivateData.H3IdentityDigest == "" && (existing.BillingState == "legacy" || existing.BillingState == "legacy_uncertain")) {
+						return ErrH3AdmissionUnavailable
+					}
+				} else if task.PrivateData.H3AdmissionID != "" {
+					return ErrH3AdmissionUnavailable
+				}
+				if task.Status == TaskStatusSuccess {
+					if hasAdmission && existing.State != H3Released {
+						return ErrH3AdmissionUnavailable
+					}
+					continue
+				}
+				if task.Status == TaskStatusFailure && !H3LocalFailureUncertain(&task) && !hasAdmission {
+					continue
+				}
+				if task.Status == "" {
+					task.Status = TaskStatusUnknown
+				}
+				if task.Status != TaskStatusFailure && task.Progress == "100%" {
+					task.Progress, task.FinishTime = "0%", 0
+				}
+				if hasAdmission {
+					if existing.State == H3Sending && task.PrivateData.UpstreamTaskID != "" {
+						if err := tx.Model(&H3Admission{}).Where("id = ? AND state = ?", existing.ID, H3Sending).Updates(map[string]any{"state": H3Unknown, "updated_at": time.Now().Unix()}).Error; err != nil {
+							return err
+						}
+					}
+					if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": task.Status, "progress": task.Progress, "finish_time": task.FinishTime}).Error; err != nil {
+						return err
+					}
+					continue
+				}
+				id := task.TaskID
+				if id == "" {
+					id = fmt.Sprintf("legacy-h3-%d", task.ID)
+				}
+				admission := H3Admission{ID: id, TaskDBID: task.ID, AccountID: account.ID, ChannelID: task.ChannelId, State: H3Unknown, BillingState: "legacy", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}
+				if task.Status == TaskStatusFailure {
+					admission.BillingState = "legacy_uncertain"
+					task.Status = TaskStatusUnknown
+				}
+				if task.Status == TaskStatusUnknown || task.Progress == "100%" {
+					task.Progress, task.FinishTime = "0%", 0
+				}
+				if err := tx.Create(&admission).Error; err != nil {
+					return err
+				}
+				task.PrivateData.H3AdmissionID = id
+				task.PrivateData.H3IdentityDigest = account.CredentialDigest
+				// No route snapshot is manufactured for historical work.
+				if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"private_data": task.PrivateData, "status": task.Status, "progress": task.Progress, "finish_time": task.FinishTime}).Error; err != nil {
 					return err
 				}
 			}
-			if task.Status == TaskStatusFailure && !H3LocalFailureUncertain(&task) {
-				continue
-			}
-			var existing H3Admission
-			err := tx.Where("task_db_id = ?", task.ID).First(&existing).Error
-			if err == nil {
-				if existing.AccountID != account.ID {
-					return ErrH3AdmissionUnavailable
-				}
-				if existing.State == H3Sending && task.PrivateData.UpstreamTaskID != "" {
-					if err := tx.Model(&H3Admission{}).Where("id = ? AND state = ?", existing.ID, H3Sending).Updates(map[string]any{"state": H3Unknown, "updated_at": time.Now().Unix()}).Error; err != nil {
-						return err
-					}
-				}
-				continue
-			}
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-			// The dedicated channel is asserted to be an H3 account by provisioning.
-			id := task.TaskID
-			if id == "" {
-				id = fmt.Sprintf("legacy-h3-%d", task.ID)
-			}
-			admission := H3Admission{ID: id, TaskDBID: task.ID, AccountID: account.ID, ChannelID: account.ChannelID, State: H3Active, BillingState: "legacy", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}
-			if task.PrivateData.UpstreamTaskID == "" && strings.HasPrefix(task.TaskID, "task_") {
-				admission.State = H3Unknown
-			}
-			if task.Status == TaskStatusFailure {
-				admission.State = H3Unknown
-				admission.BillingState = "legacy_uncertain"
-				task.Status = TaskStatusUnknown
-				task.Progress = "0%"
-				task.FinishTime = 0
-			}
-			if err := tx.Create(&admission).Error; err != nil {
-				return err
-			}
-			task.PrivateData.H3AdmissionID = id
-			if task.PrivateData.Key == "" {
-				task.PrivateData.Key = channel.Key
-			}
-			if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"private_data": task.PrivateData, "status": task.Status, "progress": task.Progress, "finish_time": task.FinishTime}).Error; err != nil {
-				return err
+			if len(tasks) < 500 {
+				break
 			}
 		}
 		var occupied int64
@@ -310,6 +337,12 @@ func acquireH3Admission(db *gorm.DB, task *Task, selectedKey string) error {
 		if channel.Status != common.ChannelStatusEnabled || channel.ChannelInfo.IsMultiKey || account.ConfigurationDigest != h3ConfigurationDigest(&channel) || account.CredentialDigest != h3CredentialDigest(channel.Key) {
 			return ErrH3AdmissionUnavailable
 		}
+		routeDigest := MediaTaskRouteDigest(&channel, task.Platform)
+		if routeDigest == "" || task.PrivateData.RouteDigest != "" && task.PrivateData.RouteDigest != routeDigest {
+			return ErrH3AdmissionUnavailable
+		}
+		task.PrivateData.RouteDigest = routeDigest
+		task.PrivateData.H3IdentityDigest = account.CredentialDigest
 		task.Status = TaskStatusUnknown
 		task.SubmitTime = 0
 		task.Progress = "0%"

@@ -208,15 +208,25 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		}
 	}
 
-	channel, err := model.CacheGetChannel(task.ChannelId)
-	if err != nil {
-		return &taskMediaProxyError{
-			status: http.StatusServiceUnavailable, code: "artifact_plugin_unavailable",
-			message: "Artifact channel is unavailable", err: err,
+	proxy := ""
+	var client = service.GetSSRFProtectedHTTPClient()
+	if !descriptor.Credentialless {
+		channel, err := model.CacheGetChannel(task.ChannelId)
+		if err != nil {
+			return &taskMediaProxyError{status: http.StatusServiceUnavailable, code: "artifact_plugin_unavailable", message: "Artifact channel is unavailable", err: err}
+		}
+		if model.TaskRequiresMediaRouteBinding(task) && !model.MediaTaskRouteMatches(task, channel) {
+			return &taskMediaProxyError{status: http.StatusServiceUnavailable, code: "artifact_plugin_unavailable", message: "Original media execution route is unconfirmed", err: errTaskMediaRequestRejected}
+		}
+		setting := channel.GetSetting()
+		proxy = strings.TrimSpace(setting.Proxy)
+		if proxy != "" {
+			client, err = service.GetHttpClientWithProxySettings(proxy, setting)
+			if err != nil {
+				return &taskMediaProxyError{status: http.StatusInternalServerError, code: "artifact_internal_error", message: "Failed to create artifact proxy client", err: err}
+			}
 		}
 	}
-	setting := channel.GetSetting()
-	proxy := strings.TrimSpace(setting.Proxy)
 	if err := validateTaskMediaURL(rawURL, proxy); err != nil {
 		return &taskMediaProxyError{
 			status: http.StatusBadGateway, code: "artifact_request_rejected",
@@ -224,16 +234,6 @@ func proxyTaskMedia(c *gin.Context, task *model.Task, descriptor *relaychannel.T
 		}
 	}
 
-	client := service.GetSSRFProtectedHTTPClient()
-	if proxy != "" {
-		client, err = service.GetHttpClientWithProxySettings(proxy, setting)
-		if err != nil {
-			return &taskMediaProxyError{
-				status: http.StatusInternalServerError, code: "artifact_internal_error",
-				message: "Failed to create artifact proxy client", err: err,
-			}
-		}
-	}
 	if client == nil {
 		client = http.DefaultClient
 	}

@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -381,7 +383,7 @@ func TaskMediaKind(task *Task) string {
 	if task.PrivateData.MediaKind == MediaImage || task.PrivateData.MediaKind == MediaVideo {
 		return task.PrivateData.MediaKind
 	}
-	plugin, ok := jsplugin.DefaultRegistry.Generation().Get(string(task.Platform))
+	plugin, ok := mediaTaskPlugin(task.Platform)
 	if !ok {
 		return ""
 	}
@@ -407,6 +409,27 @@ func TaskMediaKind(task *Task) string {
 	return ""
 }
 
+// TaskRequiresMediaRouteBinding preserves the known product media identity
+// even if a later registry generation removes its schema or protocol claims.
+func TaskRequiresMediaRouteBinding(task *Task) bool {
+	if task == nil {
+		return false
+	}
+	if task.PrivateData.MediaAdmissionID != "" || task.PrivateData.H3AdmissionID != "" || task.PrivateData.RouteDigest != "" || TaskMediaKind(task) != "" || IsH3Task(task) {
+		return true
+	}
+	keys := []string{string(task.Platform)}
+	if execution := task.PrivateData.Execution; execution != nil && execution.TaskPlugin != nil {
+		keys = append(keys, execution.TaskPlugin.Key)
+	}
+	for _, key := range keys {
+		if key == "blackrxai-video" || key == "toapis-image" || key == "hailuo" || key == "35" {
+			return true
+		}
+	}
+	return false
+}
+
 func ensureMediaPool(tx *gorm.DB, key, kind string) (*MediaPool, error) {
 	if strings.TrimSpace(key) == "" || (kind != MediaVideo && kind != MediaImage) {
 		return nil, ErrMediaAdmissionUnavailable
@@ -424,99 +447,139 @@ func ensureMediaPool(tx *gorm.DB, key, kind string) (*MediaPool, error) {
 	}
 	// Import again before each acquisition: adding another channel with the
 	// same credential must not introduce previously invisible legacy work.
-	if err := reconcileMediaPool(tx, &pool, key); err != nil {
+	if err := reconcileMediaPool(tx, &pool); err != nil {
 		return nil, err
 	}
 	return &pool, nil
 }
 
 func MediaLegacyIdentityUnknown(task *Task) bool {
-	return task != nil && !IsH3Task(task) && task.Status != TaskStatusSuccess && task.PrivateData.Key == "" && TaskMediaKind(task) != ""
+	if task == nil || IsH3Task(task) || task.Status == TaskStatusSuccess || strings.TrimSpace(task.PrivateData.Key) != "" {
+		return false
+	}
+	_, known := mediaTaskPlugin(task.Platform)
+	return TaskRequiresMediaRouteBinding(task) || !known
+}
+
+func mediaTaskPlugin(platform constant.TaskPlatform) (*jsplugin.LoadedPlugin, bool) {
+	generation := jsplugin.DefaultRegistry.Generation()
+	if plugin, known := generation.Get(string(platform)); known {
+		return plugin, true
+	}
+	channelType, err := strconv.Atoi(string(platform))
+	if err != nil {
+		return nil, false
+	}
+	return generation.GetByChannelType(channelType)
 }
 
 // Without an immutable selected credential, a historical channel's current
 // key cannot establish which upstream account still owns the paid work. A key
 // rotation can otherwise cause a different channel to overbook the old key.
-func guardMediaLegacyIdentity(tx *gorm.DB, kind string) error {
-	var tasks []Task
-	if err := tx.Where("status IS NULL OR status <> ?", TaskStatusSuccess).
-		Where("id NOT IN (?)", tx.Model(&MediaAdmission{}).Select("task_db_id").Where("task_db_id IS NOT NULL")).
-		Where("id NOT IN (?)", tx.Model(&H3Admission{}).Select("task_db_id").Where("task_db_id IS NOT NULL")).
-		Limit(10001).Find(&tasks).Error; err != nil {
-		return err
+// MediaLegacyProviderTerminalConfirmed recognizes only the historical wire
+// snapshots whose failed state the old host persisted from these providers.
+// It excludes stopped work from capacity reconciliation; it does not attest to
+// billing, authorize resubmission, or reconstruct a credential/execution route.
+func MediaLegacyProviderTerminalConfirmed(task *Task) bool {
+	if task == nil || task.Status != TaskStatusFailure || task.PrivateData.MediaAdmissionID != "" || task.PrivateData.H3AdmissionID != "" || task.PrivateData.UpstreamTaskID == "" {
+		return false
 	}
-	if len(tasks) > 10000 {
-		return ErrMediaAdmissionUnavailable
+	platform := string(task.Platform)
+	if platform != "blackrxai-video" && platform != "toapis-image" {
+		return false
 	}
-	for i := range tasks {
-		if MediaLegacyIdentityUnknown(&tasks[i]) && TaskMediaKind(&tasks[i]) == kind {
-			return ErrMediaLegacyIdentity
+	execution := task.PrivateData.Execution
+	if execution == nil || execution.RequestID == "" || execution.TaskPlugin == nil || execution.TaskPlugin.Key != platform || execution.TaskPlugin.APIVersion != 1 {
+		return false
+	}
+	version := execution.TaskPlugin.Version
+	if platform == "blackrxai-video" {
+		if execution.RequestPath != "/v1/videos" || !slices.Contains([]string{"1.0.0", "1.0.2"}, version) {
+			return false
+		}
+	} else if execution.RequestPath != "/toapis/v1/images/generations" || !slices.Contains([]string{"1.1.0", "1.2.0"}, version) {
+		return false
+	}
+	var envelope map[string]any
+	if common.Unmarshal(task.Data, &envelope) != nil || envelope == nil {
+		return false
+	}
+	for _, field := range []string{"success", "data", "code", "status_code", "task", "task_id", "submission_receipt", "media_submission_receipt", "provider_terminal_confirmed"} {
+		if _, present := envelope[field]; present {
+			return false
 		}
 	}
-	return nil
+	id, _ := envelope["id"].(string)
+	status, _ := envelope["status"].(string)
+	object, _ := envelope["object"].(string)
+	modelName, _ := envelope["model"].(string)
+	providerError, _ := envelope["error"].(map[string]any)
+	errorCode, _ := providerError["code"].(string)
+	if id == "" || id != task.PrivateData.UpstreamTaskID {
+		return false
+	}
+	upstreamModel := task.Properties.UpstreamModelName
+	if upstreamModel == "" {
+		upstreamModel = task.Properties.OriginModelName
+	}
+	if platform == "blackrxai-video" {
+		return (task.PrivateData.MediaKind == "" || task.PrivateData.MediaKind == MediaVideo) && object == "video" && (status == "failed" || status == "cancelled") && errorCode == "video_generation_failed" && upstreamModel != "" && modelName == upstreamModel
+	}
+	return (task.PrivateData.MediaKind == "" || task.PrivateData.MediaKind == MediaImage) && object == "generation.task" && status == "failed" && errorCode == "generation_failed" && task.Properties.OriginModelName == "yunshu-internal-gpt-image-2" && upstreamModel == "yunshu-internal-gpt-image-2" && modelName == "gpt-image-2"
 }
 
-func reconcileMediaPool(tx *gorm.DB, pool *MediaPool, key string) error {
-	var channels []Channel
-	if err := tx.Limit(2001).Find(&channels).Error; err != nil {
-		return err
-	}
-	if len(channels) > 2000 {
-		return ErrMediaAdmissionUnavailable
-	}
-	var channelIDs []int
-	channelMap := make(map[int]*Channel)
-	for i := range channels {
-		channel := &channels[i]
-		if mediaChannelHasKey(channel, key, false) {
-			channelIDs = append(channelIDs, channel.Id)
-			channelMap[channel.Id] = channel
+func guardMediaLegacyIdentity(tx *gorm.DB, kind string) error {
+	return visitUnledgeredMediaHistory(tx, func(task *Task) error {
+		if IsH3Task(task) || strings.TrimSpace(task.PrivateData.Key) != "" || MediaLegacyProviderTerminalConfirmed(task) {
+			return nil
+		}
+		resolvedKind := TaskMediaKind(task)
+		_, knownPlugin := mediaTaskPlugin(task.Platform)
+		if resolvedKind == kind || resolvedKind == "" && (!knownPlugin || TaskRequiresMediaRouteBinding(task)) {
+			return ErrMediaLegacyIdentity
+		}
+		return nil
+	})
+}
+
+// Page by the immutable primary key rather than clipping all historical task
+// kinds to one window. Importing a page removes rows from the unledgered set.
+func visitUnledgeredMediaHistory(tx *gorm.DB, visit func(*Task) error) error {
+	var cursor int64
+	for {
+		var tasks []Task
+		if err := lockForUpdate(tx).Where("id > ? AND (status IS NULL OR status <> ?)", cursor, TaskStatusSuccess).
+			Where("id NOT IN (?)", tx.Model(&MediaAdmission{}).Select("task_db_id").Where("task_db_id IS NOT NULL")).
+			Where("id NOT IN (?)", tx.Model(&H3Admission{}).Select("task_db_id").Where("task_db_id IS NOT NULL")).
+			Order("id").Limit(500).Find(&tasks).Error; err != nil {
+			return err
+		}
+		for i := range tasks {
+			if err := visit(&tasks[i]); err != nil {
+				return err
+			}
+			cursor = tasks[i].ID
+		}
+		if len(tasks) < 500 {
+			return nil
 		}
 	}
-	if len(channelIDs) == 0 {
-		return ErrMediaAdmissionUnavailable
-	}
-	var tasks []Task
-	// Only rows not already represented by a durable ledger need importing.
-	// Finished/rejected history may grow without consuming the bounded legacy
-	// reconciliation window or preventing new work forever.
-	if err := lockForUpdate(tx).
-		Where("channel_id IN ? AND (status IS NULL OR status <> ?)", channelIDs, TaskStatusSuccess).
-		Where("id NOT IN (?)", tx.Model(&MediaAdmission{}).Select("task_db_id").Where("task_db_id IS NOT NULL")).
-		Where("id NOT IN (?)", tx.Model(&H3Admission{}).Select("task_db_id").Where("task_db_id IS NOT NULL")).
-		Limit(10001).Find(&tasks).Error; err != nil {
-		return err
-	}
-	if len(tasks) > 10000 {
-		return ErrMediaAdmissionUnavailable
-	}
-	for _, task := range tasks {
-		if task.PrivateData.H3AdmissionID != "" || IsH3Task(&task) {
-			continue
+}
+
+func reconcileMediaPool(tx *gorm.DB, pool *MediaPool) error {
+	if err := visitUnledgeredMediaHistory(tx, func(task *Task) error {
+		if task.PrivateData.H3AdmissionID != "" || IsH3Task(task) || MediaLegacyProviderTerminalConfirmed(task) || strings.TrimSpace(task.PrivateData.Key) == "" || mediaIdentityDigest(task.PrivateData.Key, pool.MediaKind) != pool.IdentityDigest {
+			return nil
 		}
-		if task.PrivateData.Key != "" && strings.TrimSpace(task.PrivateData.Key) != strings.TrimSpace(key) {
-			continue
-		}
-		kind := TaskMediaKind(&task)
+		kind := TaskMediaKind(task)
 		if kind == "" {
-			return ErrMediaAdmissionUnavailable
+			if _, known := mediaTaskPlugin(task.Platform); !known || TaskRequiresMediaRouteBinding(task) {
+				return ErrMediaLegacyIdentity
+			}
+			return nil
 		}
 		if kind != pool.MediaKind {
-			continue
-		}
-		if task.PrivateData.Key == "" {
-			return ErrMediaAdmissionUnavailable
-		}
-		var existing MediaAdmission
-		err := tx.Where("task_db_id = ?", task.ID).First(&existing).Error
-		if err == nil {
-			if existing.PoolID != pool.ID {
-				return ErrMediaAdmissionUnavailable
-			}
-			continue
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+			return nil
 		}
 		id := fmt.Sprintf("legacy-media-%d", task.ID)
 		admission := MediaAdmission{ID: id, TaskDBID: task.ID, PoolID: pool.ID, ChannelID: task.ChannelId, State: MediaUnknown, BillingState: "legacy_uncertain", SendingAt: 1, CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}
@@ -529,12 +592,15 @@ func reconcileMediaPool(tx *gorm.DB, pool *MediaPool, key string) error {
 		if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"private_data": task.PrivateData, "status": TaskStatusUnknown, "progress": "0%", "finish_time": 0}).Error; err != nil {
 			return err
 		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	var occupied int64
 	if err := tx.Model(&MediaAdmission{}).Where("pool_id = ? AND state <> ?", pool.ID, MediaReleased).Count(&occupied).Error; err != nil {
 		return err
 	}
-	pool.Occupied = int(occupied) // Bounded by the 10,000-row import above.
+	pool.Occupied = int(occupied)
 	pool.Reconciled = true
 	return tx.Model(pool).Updates(map[string]any{"occupied": occupied, "reconciled": true, "updated_at": time.Now().Unix()}).Error
 }
@@ -576,6 +642,11 @@ func (store MediaAdmissionStore) Acquire(ctx context.Context, task *Task, select
 		if result.RowsAffected != 1 {
 			return ErrMediaCapacity
 		}
+		routeDigest := MediaTaskRouteDigest(&channel, task.Platform)
+		if routeDigest == "" || task.PrivateData.RouteDigest != "" && task.PrivateData.RouteDigest != routeDigest {
+			return ErrMediaAdmissionUnavailable
+		}
+		task.PrivateData.RouteDigest = routeDigest
 		task.Status = TaskStatusUnknown
 		task.SubmitTime = 0
 		task.Progress = "0%"
@@ -1182,4 +1253,64 @@ func GetMediaClientConcurrencyHint(pluginKey, modelName, mediaKind string) *int 
 	}
 	total = min(total, limit)
 	return &total
+}
+
+// MediaTaskRouteDigest excludes the selected key: a key rotation must not move
+// an accepted task to a different origin or change how that key authenticates.
+func MediaTaskRouteDigest(channel *Channel, platform constant.TaskPlatform) string {
+	if channel == nil {
+		return ""
+	}
+	organization := ""
+	if channel.OpenAIOrganization != nil {
+		organization = *channel.OpenAIOrganization
+	}
+	return MediaTaskRelayRouteDigest(&relaycommon.ChannelMeta{ChannelType: channel.Type, ChannelBaseUrl: channel.GetBaseURL(), ChannelSetting: channel.GetSetting(), ChannelOtherSettings: channel.GetOtherSettings(), HeadersOverride: channel.GetHeaderOverride(), ParamOverride: channel.GetParamOverride(), Organization: organization}, platform)
+}
+
+func MediaTaskRelayRouteDigest(meta *relaycommon.ChannelMeta, platform constant.TaskPlatform) string {
+	plugin, known := mediaTaskPlugin(platform)
+	if !known {
+		return ""
+	}
+	return MediaTaskPluginRouteDigest(meta, plugin.Meta)
+}
+
+// The request/adaptor passes its pinned plugin metadata, so a concurrent
+// registry replacement cannot stamp a different auth contract onto this route.
+func MediaTaskPluginRouteDigest(meta *relaycommon.ChannelMeta, plugin jsplugin.Meta) string {
+	if meta == nil || plugin.Key == "" {
+		return ""
+	}
+	baseURL := meta.ChannelBaseUrl
+	if baseURL == "" {
+		baseURL = constant.GetChannelBaseURL(meta.ChannelType)
+	}
+	if baseURL == "" {
+		return ""
+	}
+	headers := meta.HeadersOverride
+	if len(headers) == 0 {
+		headers = nil
+	}
+	value := struct {
+		Type                         int
+		BaseURL, Proxy, Organization string
+		Bindings                     []string
+		TLSInsecureSkipVerify        bool
+		Headers                      map[string]any
+		Plugin                       string
+		Auth                         jsplugin.AuthMeta
+		AllowedHosts                 []string
+	}{meta.ChannelType, baseURL, meta.ChannelSetting.Proxy, meta.Organization, meta.ChannelSetting.TaskPluginBindings(), meta.ChannelSetting.TLSInsecureSkipVerify, headers, plugin.Key, plugin.Auth, plugin.AllowedHosts}
+	data, err := common.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
+}
+
+func MediaTaskRouteMatches(task *Task, channel *Channel) bool {
+	return task != nil && strings.TrimSpace(task.PrivateData.Key) != "" && task.PrivateData.RouteDigest != "" && task.PrivateData.RouteDigest == MediaTaskRouteDigest(channel, task.Platform)
 }

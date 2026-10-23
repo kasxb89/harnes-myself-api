@@ -244,7 +244,8 @@ func TestServeTaskPluginProtocolDisconnectDuringTerminalSettlementStopsOnlyObser
 	previousMemoryCache := common.MemoryCacheEnabled
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, database.AutoMigrate(&model.Channel{}, &model.Task{}))
+	require.NoError(t, database.AutoMigrate(&model.Channel{}, &model.Task{
+		PrivateData: model.TaskPrivateData{Key: "test-key"}}))
 	model.DB = database
 	common.MemoryCacheEnabled = false
 	t.Cleanup(func() {
@@ -268,6 +269,7 @@ func TestServeTaskPluginProtocolDisconnectDuringTerminalSettlementStopsOnlyObser
 		Quota:     10,
 		Status:    model.TaskStatusSubmitted,
 		PrivateData: model.TaskPrivateData{
+			Key:            "test-key", // Original selection on this synthetic channel.
 			UpstreamTaskID: "upstream-terminal",
 		},
 	}
@@ -275,6 +277,7 @@ func TestServeTaskPluginProtocolDisconnectDuringTerminalSettlementStopsOnlyObser
 
 	c, recorder := newPluginProtocolTestContext(true, true)
 	requestContext, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
 	c.Request = c.Request.WithContext(requestContext)
 	billingEvents := make([]string, 0)
 	billing := &taskSubmissionTestBilling{events: &billingEvents}
@@ -482,10 +485,11 @@ func TestServeTaskPluginProtocolStreamsPinnedGenerationWithHostFraming(t *testin
 			status = model.TaskStatus(model.TaskStatusSuccess)
 		}
 		return &model.Task{
-			TaskID:   taskID,
-			UserId:   userID,
-			Platform: platform,
-			Status:   status,
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      taskID,
+			UserId:      userID,
+			Platform:    platform,
+			Status:      status,
 		}, true, nil
 	}
 
@@ -532,7 +536,8 @@ func TestServeTaskPluginProtocolStreamMissingRenderEventsUsesFailureEnvelope(t *
 				return pluginProtocolTestOutcome(info, pinned.Plugin.Meta.Key, "task_default_events"), nil
 			}
 			deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
-				return &model.Task{TaskID: "task_default_events", Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key), UserId: 71, Status: testCase.status}, true, nil
+				return &model.Task{
+					PrivateData: model.TaskPrivateData{Key: "test-key"}, TaskID: "task_default_events", Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key), UserId: 71, Status: testCase.status}, true, nil
 			}
 
 			serveTaskPluginProtocol(c, pinned, deps)
@@ -572,10 +577,11 @@ func TestServeTaskPluginProtocolStreamInjectsHostArtifactCapabilities(t *testing
 		return pluginProtocolTestOutcome(info, pinned.Plugin.Meta.Key, "task_stream_artifact", nil), nil
 	}
 	task := &model.Task{
-		TaskID:   "task_stream_artifact",
-		Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:   71,
-		Status:   model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_stream_artifact",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusSuccess,
 	}
 	task.SetData(map[string]any{
 		"output": map[string]any{
@@ -664,10 +670,11 @@ func TestServeTaskPluginProtocolNonStreamUsesFinalHookAndHostEnvelope(t *testing
 	}
 	deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
 		task := &model.Task{
-			TaskID:   "task_final",
-			Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key),
-			UserId:   71,
-			Status:   model.TaskStatusSuccess,
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      "task_final",
+			Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+			UserId:      71,
+			Status:      model.TaskStatusSuccess,
 		}
 		task.SetData(map[string]any{"value": "plugin-semantic-result"})
 		return task, true, nil
@@ -734,10 +741,11 @@ func TestServeTaskPluginProtocolNonStreamInjectsHostArtifactCapabilities(t *test
 		return pluginProtocolTestOutcome(info, pinned.Plugin.Meta.Key, "task_final_artifact", nil), nil
 	}
 	task := &model.Task{
-		TaskID:   "task_final_artifact",
-		Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:   71,
-		Status:   model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_final_artifact",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusSuccess,
 	}
 	deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
 		return task, true, nil
@@ -784,10 +792,11 @@ func TestServeTaskPluginProtocolArtifactURLFailureOnlyFailsCurrentRendering(t *t
 				return pluginProtocolTestOutcome(info, pinned.Plugin.Meta.Key, "task_capability_failure", nil), nil
 			}
 			task := &model.Task{
-				TaskID:   "task_capability_failure",
-				Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key),
-				UserId:   71,
-				Status:   model.TaskStatusSuccess,
+				PrivateData: model.TaskPrivateData{Key: "test-key"},
+				TaskID:      "task_capability_failure",
+				Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+				UserId:      71,
+				Status:      model.TaskStatusSuccess,
 			}
 			deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
 				return task, true, nil
@@ -844,11 +853,12 @@ func TestServeTaskPluginProtocolNonStreamTaskFailureSkipsFinalHook(t *testing.T)
 	}
 	deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
 		task := &model.Task{
-			TaskID:     "task_failed",
-			Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-			UserId:     71,
-			Status:     model.TaskStatusFailure,
-			FailReason: "upstream credential at https://secret.invalid/",
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      "task_failed",
+			Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+			UserId:      71,
+			Status:      model.TaskStatusFailure,
+			FailReason:  "upstream credential at https://secret.invalid/",
 		}
 		task.SetData(map[string]any{"secret": "database-secret"})
 		return task, true, nil
@@ -892,11 +902,12 @@ func TestServeTaskPluginProtocolStreamTaskFailureSuppressesPluginAndDatabaseDeta
 	}
 	deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
 		task := &model.Task{
-			TaskID:     "task_stream_failed",
-			Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-			UserId:     71,
-			Status:     model.TaskStatusFailure,
-			FailReason: "database-secret https://database.invalid/?token=hidden",
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      "task_stream_failed",
+			Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+			UserId:      71,
+			Status:      model.TaskStatusFailure,
+			FailReason:  "database-secret https://database.invalid/?token=hidden",
 		}
 		task.SetData(map[string]any{"secret": "private-result"})
 		return task, true, nil
@@ -1035,10 +1046,11 @@ func TestServeTaskPluginProtocolBackgroundStreamEntersObservation(t *testing.T) 
 	deps.loadTask = func(context.Context, int, constant.TaskPlatform, string) (*model.Task, bool, error) {
 		loadCalls++
 		return &model.Task{
-			TaskID:   "task_background_stream",
-			Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key),
-			UserId:   71,
-			Status:   model.TaskStatusSuccess,
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      "task_background_stream",
+			Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+			UserId:      71,
+			Status:      model.TaskStatusSuccess,
 		}, true, nil
 	}
 
@@ -1075,6 +1087,7 @@ func TestRetrieveTaskPluginResponsePendingSkipsRenderFinal(t *testing.T) {
 		UserId:   71,
 		Status:   model.TaskStatusInProgress,
 		PrivateData: model.TaskPrivateData{
+			Key:                 "test-key",
 			ResponsesBackground: true,
 		},
 		Properties: model.Properties{OriginModelName: "video-model"},
@@ -1107,12 +1120,13 @@ func TestRetrieveTaskPluginResponseEchoesOriginModelName(t *testing.T) {
 	`, pluginruntime.Options{})
 	c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_alias")
 	deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-		TaskID:     "task_retrieve_alias",
-		Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:     71,
-		Status:     model.TaskStatusInProgress,
-		Properties: model.Properties{OriginModelName: "alias-model"},
-		CreatedAt:  1_710_000_000,
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_retrieve_alias",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusInProgress,
+		Properties:  model.Properties{OriginModelName: "alias-model"},
+		CreatedAt:   1_710_000_000,
 	}, true, nil)
 
 	retrieveTaskPluginResponse(c, deps)
@@ -1132,12 +1146,13 @@ func TestRetrieveTaskPluginResponseHidesDiscardedResult(t *testing.T) {
 	`, pluginruntime.Options{})
 	c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_discarded")
 	deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-		TaskID:      "task_retrieve_discarded",
-		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:      71,
-		Status:      model.TaskStatusSuccess,
-		PrivateData: model.TaskPrivateData{ResultDiscarded: true},
-		CreatedAt:   1_710_000_000,
+		TaskID:   "task_retrieve_discarded",
+		Platform: constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:   71,
+		Status:   model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{
+			Key: "test-key", ResultDiscarded: true},
+		CreatedAt: 1_710_000_000,
 	}, true, nil)
 
 	retrieveTaskPluginResponse(c, deps)
@@ -1166,12 +1181,13 @@ func TestRetrieveTaskPluginResponseSuccessRendersFinal(t *testing.T) {
 	`, logsAppender(&logs))
 	c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_success")
 	deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-		TaskID:     "task_retrieve_success",
-		Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:     71,
-		Status:     model.TaskStatusSuccess,
-		Properties: model.Properties{OriginModelName: "video-model"},
-		CreatedAt:  1_710_000_000,
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_retrieve_success",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusSuccess,
+		Properties:  model.Properties{OriginModelName: "video-model"},
+		CreatedAt:   1_710_000_000,
 	}, true, nil)
 
 	retrieveTaskPluginResponse(c, deps)
@@ -1202,12 +1218,13 @@ func TestRetrieveTaskPluginResponseStreamOnlySuccessSynthesizesFromEvents(t *tes
 	pinned.Plugin.Meta.Protocols = []pluginruntime.ProtocolClaim{{Name: "openai_responses", Supports: []string{"stream"}}}
 	c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_stream")
 	deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-		TaskID:     "task_retrieve_stream",
-		Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:     71,
-		Status:     model.TaskStatusSuccess,
-		Properties: model.Properties{OriginModelName: "video-model"},
-		CreatedAt:  1_710_000_000,
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_retrieve_stream",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusSuccess,
+		Properties:  model.Properties{OriginModelName: "video-model"},
+		CreatedAt:   1_710_000_000,
 	}, true, nil)
 
 	retrieveTaskPluginResponse(c, deps)
@@ -1235,12 +1252,13 @@ func TestRetrieveTaskPluginResponseStreamOnlyPendingAndFailureStayHostEnvelopes(
 		logs = logs[:0]
 		c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_stream_pending")
 		deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-			TaskID:     "task_retrieve_stream_pending",
-			Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-			UserId:     71,
-			Status:     model.TaskStatusInProgress,
-			Properties: model.Properties{OriginModelName: "video-model"},
-			CreatedAt:  1_710_000_000,
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      "task_retrieve_stream_pending",
+			Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+			UserId:      71,
+			Status:      model.TaskStatusInProgress,
+			Properties:  model.Properties{OriginModelName: "video-model"},
+			CreatedAt:   1_710_000_000,
 		}, true, nil)
 		retrieveTaskPluginResponse(c, deps)
 		assert.Empty(t, logs)
@@ -1255,11 +1273,12 @@ func TestRetrieveTaskPluginResponseStreamOnlyPendingAndFailureStayHostEnvelopes(
 		logs = logs[:0]
 		c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_stream_failure")
 		deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-			TaskID:     "task_retrieve_stream_failure",
-			Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-			UserId:     71,
-			Status:     model.TaskStatusFailure,
-			Properties: model.Properties{OriginModelName: "video-model"},
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      "task_retrieve_stream_failure",
+			Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+			UserId:      71,
+			Status:      model.TaskStatusFailure,
+			Properties:  model.Properties{OriginModelName: "video-model"},
 		}, true, nil)
 		retrieveTaskPluginResponse(c, deps)
 		assert.Empty(t, logs)
@@ -1282,12 +1301,13 @@ func TestRetrieveTaskPluginResponseStreamOnlyRenderErrorUsesFailureEnvelope(t *t
 	pinned.Plugin.Meta.Protocols = []pluginruntime.ProtocolClaim{{Name: "openai_responses", Supports: []string{"stream"}}}
 	c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_stream_throw")
 	deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-		TaskID:     "task_retrieve_stream_throw",
-		Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:     71,
-		Status:     model.TaskStatusSuccess,
-		Properties: model.Properties{OriginModelName: "video-model"},
-		CreatedAt:  1_710_000_000,
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_retrieve_stream_throw",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusSuccess,
+		Properties:  model.Properties{OriginModelName: "video-model"},
+		CreatedAt:   1_710_000_000,
 	}, true, nil)
 
 	retrieveTaskPluginResponse(c, deps)
@@ -1315,11 +1335,12 @@ func TestRetrieveTaskPluginResponseFailureUsesFailedEnvelope(t *testing.T) {
 	`, logsAppender(&logs))
 	c, recorder := newPluginProtocolRetrieveContext("resp_retrieve_failure")
 	deps := pluginProtocolRetrieveDeps(pinned, &model.Task{
-		TaskID:     "task_retrieve_failure",
-		Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:     71,
-		Status:     model.TaskStatusFailure,
-		Properties: model.Properties{OriginModelName: "video-model"},
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_retrieve_failure",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusFailure,
+		Properties:  model.Properties{OriginModelName: "video-model"},
 	}, true, nil)
 
 	retrieveTaskPluginResponse(c, deps)
@@ -1341,11 +1362,12 @@ func TestRetrieveTaskPluginResponseNotFound(t *testing.T) {
 		}};
 	`, pluginruntime.Options{})
 	owned := &model.Task{
-		TaskID:     "task_owned",
-		Platform:   constant.TaskPlatform(pinned.Plugin.Meta.Key),
-		UserId:     71,
-		Status:     model.TaskStatusInProgress,
-		Properties: model.Properties{OriginModelName: "video-model"},
+		PrivateData: model.TaskPrivateData{Key: "test-key"},
+		TaskID:      "task_owned",
+		Platform:    constant.TaskPlatform(pinned.Plugin.Meta.Key),
+		UserId:      71,
+		Status:      model.TaskStatusInProgress,
+		Properties:  model.Properties{OriginModelName: "video-model"},
 	}
 
 	tests := []struct {
@@ -1519,6 +1541,8 @@ func pluginProtocolTestDeps() pluginProtocolBridgeDeps {
 	}
 }
 
+// Synthetic protocol tasks have an explicitly selected test credential;
+// unknown historical identity belongs to the dedicated media router regressions.
 func pluginProtocolTestOutcome(
 	info *relaycommon.RelayInfo,
 	pluginKey string,
@@ -1528,11 +1552,12 @@ func pluginProtocolTestOutcome(
 	return &taskSubmissionOutcome{
 		Result: &relay.TaskSubmitResult{},
 		Task: &model.Task{
-			TaskID:    taskID,
-			Platform:  constant.TaskPlatform(pluginKey),
-			UserId:    info.UserId,
-			Status:    model.TaskStatusSubmitted,
-			CreatedAt: 1_710_000_000,
+			PrivateData: model.TaskPrivateData{Key: "test-key"},
+			TaskID:      taskID,
+			Platform:    constant.TaskPlatform(pluginKey),
+			UserId:      info.UserId,
+			Status:      model.TaskStatusSubmitted,
+			CreatedAt:   1_710_000_000,
 		},
 		RelayInfo: info,
 	}
@@ -1654,7 +1679,8 @@ func newImageProtocolTestContext(responseFormat string) (*gin.Context, *httptest
 }
 
 func imageProtocolTestOutcome(info *relaycommon.RelayInfo, status model.TaskStatus, images ...string) *taskSubmissionOutcome {
-	task := &model.Task{TaskID: "task_image", Platform: constant.TaskPlatform("image-bridge"), UserId: info.UserId, ChannelId: 3, Status: status, CreatedAt: 1_710_000_000}
+	task := &model.Task{
+		PrivateData: model.TaskPrivateData{Key: "test-key"}, TaskID: "task_image", Platform: constant.TaskPlatform("image-bridge"), UserId: info.UserId, ChannelId: 3, Status: status, CreatedAt: 1_710_000_000}
 	task.PrivateData.UpstreamTaskID = "vendor"
 	if len(images) > 0 {
 		task.SetData(map[string]any{"images": images})

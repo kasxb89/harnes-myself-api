@@ -359,6 +359,18 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 	tasksByUpstream := make(map[string]*model.Task, len(taskIds))
 	for _, upstreamID := range taskIds {
 		if task := taskM[upstreamID]; task != nil {
+			if task.PrivateData.H3AdmissionID != "" || task.PrivateData.MediaAdmissionID != "" {
+				if !model.MediaTaskRouteMatches(task, ch) {
+					if task.PrivateData.MediaAdmissionID != "" {
+						if err := model.HoldMediaUnknown(ctx, task); err != nil {
+							return err
+						}
+					} else if err := model.HoldH3Unknown(ctx, task); err != nil {
+						return err
+					}
+					continue
+				}
+			}
 			providerID := task.GetUpstreamTaskID()
 			if previous := tasksByUpstream[providerID]; previous != nil && previous.ID != task.ID {
 				return recordPollFailureForTasks(ctx, adaptor, []*model.Task{previous, task}, pollClassUnrecognized, 0, "Duplicate upstream task identity")
@@ -367,10 +379,16 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 			tasks = append(tasks, task)
 		}
 	}
+	if len(tasks) == 0 {
+		return nil
+	}
 	// The channel type tells plugin adaptors whether the upstream is another
 	// New API gateway, the same signal submission derives from the request.
 	info := &relaycommon.RelayInfo{}
-	info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: ch.Type, ChannelId: ch.Id, ChannelBaseUrl: baseURL, ChannelSetting: ch.GetSetting()}
+	info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: ch.Type, ChannelId: ch.Id, ChannelBaseUrl: baseURL, ChannelSetting: ch.GetSetting(), HeadersOverride: ch.GetHeaderOverride()}
+	if ch.OpenAIOrganization != nil {
+		info.Organization = *ch.OpenAIOrganization
+	}
 	key := ch.Key
 	if len(tasks) > 0 && tasks[0].PrivateData.Key != "" {
 		key = tasks[0].PrivateData.Key
@@ -575,10 +593,14 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	}
 	info := &relaycommon.RelayInfo{}
 	info.ChannelMeta = &relaycommon.ChannelMeta{
-		ChannelType:    cacheGetChannel.Type,
-		ChannelId:      cacheGetChannel.Id,
-		ChannelBaseUrl: cacheGetChannel.GetBaseURL(),
-		ChannelSetting: cacheGetChannel.GetSetting(),
+		ChannelType:     cacheGetChannel.Type,
+		ChannelId:       cacheGetChannel.Id,
+		ChannelBaseUrl:  cacheGetChannel.GetBaseURL(),
+		ChannelSetting:  cacheGetChannel.GetSetting(),
+		HeadersOverride: cacheGetChannel.GetHeaderOverride(),
+	}
+	if cacheGetChannel.OpenAIOrganization != nil {
+		info.Organization = *cacheGetChannel.OpenAIOrganization
 	}
 	info.ApiKey = cacheGetChannel.Key
 	adaptor.Init(info)
@@ -621,6 +643,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 	if model.MediaLegacyIdentityUnknown(task) {
 		return nil
+	}
+	if task.PrivateData.H3AdmissionID != "" || task.PrivateData.MediaAdmissionID != "" {
+		if !model.MediaTaskRouteMatches(task, ch) {
+			if task.PrivateData.MediaAdmissionID != "" {
+				return model.HoldMediaUnknown(ctx, task)
+			}
+			return model.HoldH3Unknown(ctx, task)
+		}
 	}
 	key := ch.Key
 

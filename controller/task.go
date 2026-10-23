@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -18,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -88,7 +91,59 @@ func GetTask(c *gin.Context) {
 	if providerTerminal {
 		response["provider_terminal_confirmed"] = true
 	}
+	if c.GetInt("id") > 0 && task.UserId == c.GetInt("id") {
+		if images := persistedToapisImageResult(task); len(images) > 0 {
+			response["result"] = gin.H{"data": images}
+		}
+	}
 	c.JSON(http.StatusOK, response)
+}
+
+// This is a saved-result projection, not an upstream query or financial proof.
+// Only the original validated provider identity and URL fields leave storage.
+func persistedToapisImageResult(task *model.Task) []map[string]string {
+	if task == nil || task.Status != model.TaskStatusSuccess || !task.ResultRetrievable() || task.Platform != "toapis-image" || task.Properties.OriginModelName != "yunshu-internal-gpt-image-2" || task.Properties.UpstreamModelName != "" && task.Properties.UpstreamModelName != "yunshu-internal-gpt-image-2" || task.PrivateData.UpstreamTaskID == "" || len(task.Data) > 1<<20 {
+		return nil
+	}
+	if execution := task.PrivateData.Execution; execution != nil && execution.TaskPlugin != nil && execution.TaskPlugin.Key != "toapis-image" {
+		return nil
+	}
+	var body struct {
+		ID     string          `json:"id"`
+		Object string          `json:"object"`
+		Model  string          `json:"model"`
+		Status string          `json:"status"`
+		Error  json.RawMessage `json:"error"`
+		Result struct {
+			Data []struct {
+				URL string `json:"url"`
+			} `json:"data"`
+		} `json:"result"`
+	}
+	if common.Unmarshal(task.Data, &body) != nil || body.ID != task.PrivateData.UpstreamTaskID || body.Object != "generation.task" || body.Model != "" && body.Model != "gpt-image-2" || body.Status != "completed" || len(body.Error) > 0 && string(body.Error) != "null" || len(body.Result.Data) > kitdto.MaxImageN {
+		return nil
+	}
+	if body.Model == "" {
+		execution := task.PrivateData.Execution
+		if execution == nil || execution.TaskPlugin == nil || execution.TaskPlugin.Key != "toapis-image" || execution.TaskPlugin.APIVersion != 1 {
+			return nil
+		}
+	}
+	images := make([]map[string]string, 0, len(body.Result.Data))
+	for _, item := range body.Result.Data {
+		if strings.ContainsAny(item.URL, "\\") || strings.ContainsFunc(item.URL, func(r rune) bool { return unicode.IsControl(r) || unicode.IsSpace(r) }) {
+			continue
+		}
+		parsed, err := url.Parse(item.URL)
+		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" {
+			continue
+		}
+		if _, err := url.QueryUnescape(parsed.RawQuery); err != nil {
+			continue
+		}
+		images = append(images, map[string]string{"url": item.URL})
+	}
+	return images
 }
 
 func GetTaskArtifacts(c *gin.Context) {
@@ -244,28 +299,31 @@ func initTaskArtifactAdaptor(task *model.Task) (relaychannel.TaskAdaptor, error)
 	}
 	channelModel, err := model.CacheGetChannel(task.ChannelId)
 	if err != nil {
-		return nil, fmt.Errorf("%w: channel unavailable", errTaskArtifactPluginUnavailable)
+		// A pure saved-data content hook can still serve a signed URL after
+		// channel deletion. The adaptor gets no origin or credential in that case.
+		channelModel = &model.Channel{}
 	}
 	adaptor := relay.GetTaskAdaptor(task.Platform)
 	if adaptor == nil {
 		return nil, errTaskArtifactPluginUnavailable
 	}
-	pluginKey := task.PrivateData.Key
-	if pluginKey == "" {
-		pluginKey = channelModel.Key
+	meta := &relaycommon.ChannelMeta{}
+	if model.MediaTaskRouteMatches(task, channelModel) {
+		meta.ChannelType = channelModel.Type
+		meta.ChannelBaseUrl = channelModel.GetBaseURL()
+		meta.ApiKey = task.PrivateData.Key
+		meta.ChannelSetting = channelModel.GetSetting()
+		meta.HeadersOverride = channelModel.GetHeaderOverride()
+		if channelModel.OpenAIOrganization != nil {
+			meta.Organization = *channelModel.OpenAIOrganization
+		}
+	} else if !model.TaskRequiresMediaRouteBinding(task) {
+		meta.ChannelType, meta.ChannelBaseUrl, meta.ApiKey, meta.ChannelSetting = channelModel.Type, channelModel.GetBaseURL(), channelModel.Key, channelModel.GetSetting()
+		if task.PrivateData.Key != "" {
+			meta.ApiKey = task.PrivateData.Key
+		}
 	}
-	baseURL := channelModel.GetBaseURL()
-	if baseURL == "" {
-		baseURL = constant.GetChannelBaseURL(channelModel.Type)
-	}
-	adaptor.Init(&relaycommon.RelayInfo{
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelType:    channelModel.Type,
-			ChannelBaseUrl: baseURL,
-			ApiKey:         pluginKey,
-			ChannelSetting: channelModel.GetSetting(),
-		},
-	})
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: meta})
 	return adaptor, nil
 }
 

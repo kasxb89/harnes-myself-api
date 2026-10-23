@@ -134,6 +134,10 @@ func PrepareMediaSubmission(c *gin.Context, info *relaycommon.RelayInfo, platfor
 	}
 	task := model.InitTask(platform, info)
 	task.PrivateData.Execution = TaskExecutionSnapshotFromContext(c)
+	task.PrivateData.RouteDigest = mediaSubmissionRouteDigest(c, info)
+	if task.PrivateData.RouteDigest == "" {
+		return TaskErrorWrapperLocal(errors.New("Media execution route is unconfirmed"), "media_admission_unavailable", http.StatusServiceUnavailable)
+	}
 	if err := model.AcquireMediaAdmission(c.Request.Context(), task, info.ApiKey, mediaKind); err != nil {
 		if errors.Is(err, model.ErrMediaLegacyIdentity) {
 			return TaskErrorWrapperLocal(errors.New("Historical media account identity requires administrator verification"), "media_legacy_identity_unconfirmed", http.StatusServiceUnavailable)
@@ -364,4 +368,13 @@ func stripMediaProofFields(value any, depth int) error {
 		}
 	}
 	return nil
+}
+
+func mediaSubmissionRouteDigest(c *gin.Context, info *relaycommon.RelayInfo) string {
+	value, _ := c.Get(jsplugin.ContextKeyPinnedPlugin)
+	pinned, _ := value.(jsplugin.PinnedPlugin)
+	if pinned.Plugin == nil || info == nil {
+		return ""
+	}
+	return model.MediaTaskPluginRouteDigest(info.ChannelMeta, pinned.Plugin.Meta)
 }

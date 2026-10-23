@@ -110,6 +110,10 @@ func PrepareH3Submission(c *gin.Context, info *relaycommon.RelayInfo, platform c
 	}
 	task := model.InitTask(platform, info)
 	task.PrivateData.Execution = TaskExecutionSnapshotFromContext(c)
+	task.PrivateData.RouteDigest = mediaSubmissionRouteDigest(c, info)
+	if task.PrivateData.RouteDigest == "" {
+		return TaskErrorWrapperLocal(errors.New("Media execution route is unconfirmed"), "media_admission_unavailable", http.StatusServiceUnavailable)
+	}
 	if err := model.AcquireH3Admission(c.Request.Context(), task, info.ApiKey); err != nil {
 		if errors.Is(err, model.ErrH3Capacity) {
 			return TaskErrorWrapperLocal(err, H3CapacityCode, http.StatusTooManyRequests)

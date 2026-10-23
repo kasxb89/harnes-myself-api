@@ -373,6 +373,13 @@ func TestDisabledArtifactStorePreservesPluginUpstreamContent(t *testing.T) {
 		"base_url": upstream.URL,
 	}).Error)
 	task.Platform = constant.TaskPlatform("google")
+	// This fixture represents a submission with an explicitly known original
+	// credential and route, rather than a historical channel-key fallback.
+	var originalChannel model.Channel
+	require.NoError(t, model.DB.First(&originalChannel, task.ChannelId).Error)
+	task.PrivateData.Key = "provider-key"
+	task.PrivateData.RouteDigest = model.MediaTaskRouteDigest(&originalChannel, task.Platform)
+	require.NotEmpty(t, task.PrivateData.RouteDigest)
 	task.PrivateData.Execution = &model.TaskExecutionSnapshot{TaskPlugin: &model.TaskPluginSnapshot{
 		Key: "google", Name: "Google Veo (Gemini API)", Version: "1.0.0", APIVersion: 1,
 	}}
@@ -446,6 +453,13 @@ func TestTaskArtifactContentFollowsHailuoRetrieveLink(t *testing.T) {
 		"base_url": upstream.URL,
 	}).Error)
 	task.Platform = constant.TaskPlatform("hailuo")
+	// This fixture represents a submission with an explicitly known original
+	// credential and route, rather than a historical channel-key fallback.
+	var originalChannel model.Channel
+	require.NoError(t, model.DB.First(&originalChannel, task.ChannelId).Error)
+	task.PrivateData.Key = "provider-key"
+	task.PrivateData.RouteDigest = model.MediaTaskRouteDigest(&originalChannel, task.Platform)
+	require.NotEmpty(t, task.PrivateData.RouteDigest)
 	task.PrivateData.Execution = &model.TaskExecutionSnapshot{TaskPlugin: &model.TaskPluginSnapshot{
 		Key: "hailuo", Name: "Hailuo", Version: "1.2.0", APIVersion: 1,
 	}}
@@ -733,4 +747,75 @@ func TestSelfTaskMediaURLGuard(t *testing.T) {
 	assert.False(t, isSelfTaskMediaURL(c, remoteURL))
 	assert.True(t, isTaskMediaFallbackLoop(remoteURL.String(), "task-1"))
 	assert.False(t, isTaskMediaFallbackLoop(remoteURL.String(), "task-2"))
+}
+
+func TestGetTaskProjectsOnlyOwnedPersistedToapisImageURLs(t *testing.T) {
+	task := setupGenericTaskTest(t)
+	const signedURL = "https://cdn.example.invalid/result.png?Expires=1&Signature=a%2Fb+c"
+	for _, test := range []string{"success", "missing_model_trusted_execution", "missing_model_unproven", "unknown", "failure", "discarded", "other_owner", "other_provider", "other_id", "numeric_id", "other_model", "http_url", "userinfo", "control", "credentialed_error"} {
+		t.Run(test, func(t *testing.T) {
+			task.Platform, task.Status = "toapis-image", model.TaskStatusSuccess
+			task.Properties = model.Properties{OriginModelName: "yunshu-internal-gpt-image-2", UpstreamModelName: "yunshu-internal-gpt-image-2"}
+			task.PrivateData = model.TaskPrivateData{Key: "private-upstream-credential", UpstreamTaskID: "original-private-provider-id"}
+			owner := task.UserId
+			image := map[string]any{"url": signedURL, "b64_json": "private-inline-payload", "vendor_secret": "private-vendor-field"}
+			body := map[string]any{"id": task.PrivateData.UpstreamTaskID, "object": "generation.task", "model": "gpt-image-2", "status": "completed", "result": map[string]any{"data": []any{image}}, "private_data": "must-never-project"}
+			switch test {
+			case "missing_model_trusted_execution":
+				delete(body, "model")
+				task.PrivateData.Execution = &model.TaskExecutionSnapshot{TaskPlugin: &model.TaskPluginSnapshot{Key: "toapis-image", APIVersion: 1}}
+			case "missing_model_unproven":
+				delete(body, "model")
+			case "unknown":
+				task.Status = model.TaskStatusUnknown
+			case "failure":
+				task.Status = model.TaskStatusFailure
+			case "discarded":
+				task.PrivateData.ResultDiscarded = true
+			case "other_owner":
+				owner++
+			case "other_provider":
+				task.Platform = "other-image-plugin"
+			case "other_id":
+				body["id"] = "unrelated-provider-id"
+			case "numeric_id":
+				body["id"] = 12345
+			case "other_model":
+				body["model"] = "unrelated-model"
+			case "http_url":
+				image["url"] = "http://cdn.example.invalid/image.png"
+			case "userinfo":
+				image["url"] = "https://credential@cdn.example.invalid/image.png"
+			case "control":
+				image["url"] = "https://cdn.example.invalid/image.png?x=\n"
+			case "credentialed_error":
+				body["error"] = map[string]any{"message": "provider failure"}
+			}
+			task.SetData(body)
+			require.NoError(t, model.DB.Save(task).Error)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Set("id", owner)
+			c.Params = gin.Params{{Key: "key", Value: task.TaskID}}
+			c.Request = httptest.NewRequest(http.MethodGet, "/v1/tasks/"+task.TaskID, nil)
+			GetTask(c)
+			if test == "other_owner" {
+				assert.Equal(t, http.StatusNotFound, recorder.Code)
+				return
+			}
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			var response map[string]any
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			if test == "success" || test == "missing_model_trusted_execution" {
+				assert.Equal(t, map[string]any{"data": []any{map[string]any{"url": signedURL}}}, response["result"])
+			} else {
+				assert.NotContains(t, response, "result")
+			}
+			for _, secret := range []string{"private-upstream-credential", "original-private-provider-id", "private-inline-payload", "private-vendor-field", "must-never-project"} {
+				assert.NotContains(t, recorder.Body.String(), secret)
+			}
+			assert.NotContains(t, response, "submission_receipt")
+			assert.NotContains(t, response, "media_submission_receipt")
+		})
+	}
 }

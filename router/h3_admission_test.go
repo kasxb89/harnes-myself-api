@@ -605,7 +605,7 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 		{"task_legacy_success", model.TaskStatusSuccess, now, "", "provider-success"},
 		{"task_legacy_failed", model.TaskStatusFailure, now, "provider explicitly failed", "provider-failed"},
 	} {
-		task := &model.Task{TaskID: test.id, Platform: "hailuo", UserId: 791, ChannelId: 790, Group: "default", Status: test.status, Progress: "100%", FinishTime: test.finish, FailReason: test.reason, Quota: 123, PrivateData: model.TaskPrivateData{UpstreamTaskID: test.upstream}, Properties: model.Properties{OriginModelName: "MiniMax-H3", UpstreamModelName: "MiniMax-H3"}}
+		task := &model.Task{TaskID: test.id, Platform: "hailuo", UserId: 791, ChannelId: 790, Group: "default", Status: test.status, Progress: "100%", FinishTime: test.finish, FailReason: test.reason, Quota: 123, PrivateData: model.TaskPrivateData{Key: channel.Key, UpstreamTaskID: test.upstream}, Properties: model.Properties{OriginModelName: "MiniMax-H3", UpstreamModelName: "MiniMax-H3"}}
 		if test.id == "task_legacy_failed" {
 			task.SetData(map[string]any{"task": map[string]any{"id": test.upstream, "status": "failed"}})
 		}
@@ -668,7 +668,7 @@ func TestH3AdmissionUpgradeReconcilesUncertainHistoryIdempotently(t *testing.T) 
 	assert.Equal(t, beforeToken, token)
 	posts, gets := f.counts()
 	assert.Zero(t, posts)
-	assert.Equal(t, 3, gets, "only the three historical rows with a known provider ID may query the fixture")
+	assert.Zero(t, gets, "historical keys establish occupancy, but a current route cannot establish original execution provenance")
 }
 
 func TestH3AdmissionCancelledAfterReceiptRecoversSamePublicID(t *testing.T) {
@@ -1547,6 +1547,70 @@ func TestH3AdmissionZeroPriceSubscriptionRefundIsConfirmedBeforeReceipt(t *testi
 					assert.NotContains(t, get.Body.String(), "submission_receipt", "funding repair alone cannot manufacture an admission confirmation")
 				}
 			}
+			posts, gets := f.counts()
+			assert.Zero(t, posts)
+			assert.Zero(t, gets)
+		})
+	}
+}
+
+func TestH3AdmissionHistoricalIdentityConflictsLeaveTransactionUntouched(t *testing.T) {
+	for _, conflict := range []string{"empty_key", "other_key", "orphan_private_id", "ledger_account", "ledger_channel", "ledger_id", "legacy_refilled_key", "legacy_uncertain_refilled_key"} {
+		t.Run(conflict, func(t *testing.T) {
+			f := newH3RouterFixture(t, 1)
+			ctx := context.Background()
+			require.NoError(t, model.SetH3AccountEnabled(ctx, "router-account-0", false))
+			var channel model.Channel
+			require.NoError(t, f.db.First(&channel, 790).Error)
+			good := &model.Task{TaskID: "task_h3_good_original_key", Platform: "hailuo", UserId: 791, ChannelId: 790, Status: model.TaskStatusUnknown, Progress: "100%", Quota: 123,
+				PrivateData: model.TaskPrivateData{Key: channel.Key, UpstreamTaskID: "provider-good"}, Properties: model.Properties{OriginModelName: "MiniMax-H3"}}
+			require.NoError(t, f.db.Create(good).Error)
+			bad := *good
+			bad.ID, bad.TaskID = 0, "task_h3_bad_identity"
+			switch conflict {
+			case "empty_key":
+				bad.PrivateData.Key = ""
+			case "other_key":
+				bad.PrivateData.Key = "synthetic-other-provider-account"
+			case "orphan_private_id":
+				bad.PrivateData.H3AdmissionID = "orphan-ledger"
+			default:
+				bad.PrivateData.H3AdmissionID = bad.TaskID
+			}
+			require.NoError(t, f.db.Create(&bad).Error)
+			if strings.HasPrefix(conflict, "ledger_") || strings.Contains(conflict, "refilled") {
+				ledger := model.H3Admission{ID: bad.TaskID, TaskDBID: bad.ID, AccountID: "router-account-0", ChannelID: 790, State: model.H3Unknown, BillingState: "reserved", SendingAt: 1}
+				switch conflict {
+				case "ledger_account":
+					ledger.AccountID = "other-account"
+				case "ledger_channel":
+					ledger.ChannelID = 999
+				case "ledger_id":
+					ledger.ID = "unrelated-ledger-id"
+				case "legacy_refilled_key":
+					ledger.BillingState = "legacy"
+				case "legacy_uncertain_refilled_key":
+					ledger.BillingState = "legacy_uncertain"
+				}
+				require.NoError(t, f.db.Create(&ledger).Error)
+			}
+			var beforeTasks, afterTasks []model.Task
+			var beforeLedgers, afterLedgers []model.H3Admission
+			var beforeAccount, afterAccount model.H3Account
+			require.NoError(t, f.db.Order("id").Find(&beforeTasks).Error)
+			require.NoError(t, f.db.Order("id").Find(&beforeLedgers).Error)
+			require.NoError(t, f.db.First(&beforeAccount).Error)
+			wallet, token := f.balance(t)
+			assert.ErrorIs(t, model.ReconcileH3Account(ctx, "router-account-0"), model.ErrH3AdmissionUnavailable)
+			require.NoError(t, f.db.Order("id").Find(&afterTasks).Error)
+			require.NoError(t, f.db.Order("id").Find(&afterLedgers).Error)
+			require.NoError(t, f.db.First(&afterAccount).Error)
+			assert.Equal(t, beforeTasks, afterTasks, "a later identity conflict rolls back earlier imports and normalization")
+			assert.Equal(t, beforeLedgers, afterLedgers)
+			assert.Equal(t, beforeAccount, afterAccount)
+			afterWallet, afterToken := f.balance(t)
+			assert.Equal(t, wallet, afterWallet)
+			assert.Equal(t, token, afterToken)
 			posts, gets := f.counts()
 			assert.Zero(t, posts)
 			assert.Zero(t, gets)

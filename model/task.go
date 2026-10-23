@@ -112,6 +112,10 @@ func (m Properties) Value() (driver.Value, error) {
 type TaskPrivateData struct {
 	MediaAdmissionID string `json:"media_admission_id,omitempty"`
 	MediaKind        string `json:"media_kind,omitempty"`
+	// RouteDigest binds a media credential to the execution route captured before sending.
+	// Missing historical provenance is never reconstructed from a current channel.
+	RouteDigest      string `json:"route_digest,omitempty"`
+	H3IdentityDigest string `json:"h3_identity_digest,omitempty"`
 	H3AdmissionID    string `json:"h3_admission_id,omitempty"`
 	Key              string `json:"key,omitempty"`
 	UpstreamTaskID   string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
@@ -221,7 +225,7 @@ func (p *TaskPrivateData) Scan(val any) error {
 
 func (p TaskPrivateData) Value() (driver.Value, error) {
 	if p.Key == "" && p.UpstreamTaskID == "" && p.ResultURL == "" &&
-		p.H3AdmissionID == "" && p.MediaAdmissionID == "" && p.MediaKind == "" && p.Execution == nil && p.BillingSource == "" && p.SubscriptionId == 0 &&
+		p.H3AdmissionID == "" && p.MediaAdmissionID == "" && p.MediaKind == "" && p.RouteDigest == "" && p.H3IdentityDigest == "" && p.Execution == nil && p.BillingSource == "" && p.SubscriptionId == 0 &&
 		p.TokenId == 0 && p.NodeName == "" && p.BillingContext == nil &&
 		!p.ResponsesBackground && len(p.PluginState) == 0 && p.PollFailures == 0 &&
 		!p.ResultDiscarded {

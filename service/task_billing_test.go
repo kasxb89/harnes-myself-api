@@ -156,6 +156,9 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 			OriginModelName: "test-model",
 		},
 		PrivateData: model.TaskPrivateData{
+			// Billing/polling fixtures represent a selected synthetic credential;
+			// a missing historical identity is covered by the router regressions.
+			Key:            "sk-test",
 			BillingSource:  billingSource,
 			SubscriptionId: subscriptionId,
 			TokenId:        tokenId,

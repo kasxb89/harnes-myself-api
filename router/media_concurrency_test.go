@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -46,6 +47,12 @@ func (recorder *h3CancelAfterCreatedRecorder) Write(data []byte) (int, error) {
 func newMediaConcurrencyFixture(t *testing.T) *videoQuoteFixture {
 	t.Helper()
 	f := newVideoQuoteFixture(t)
+	require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", 871).Update("base_url", "https://blackrx-fixture.invalid").Error)
+	source, err := os.ReadFile("../deploy/instance/toapis-image-plugin.js")
+	require.NoError(t, err)
+	plugin, err := jsplugin.DefaultRegistry.Register(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister(plugin.Meta.Key) })
 	require.NoError(t, f.db.Migrator().DropTable(&model.MediaAdmission{}, &model.MediaPool{}))
 	require.NoError(t, model.MigrateMediaAdmission(f.db))
 	require.NoError(t, model.MigrateMediaAdmission(f.db))
@@ -275,6 +282,8 @@ func TestMediaConcurrencyIndependentConnectionsShareAliasesAndImageBudget(t *tes
 	for keyIndex := range 2 {
 		key := fmt.Sprintf("synthetic-image-%d", keyIndex)
 		channel := &model.Channel{Id: 880 + keyIndex, Type: constant.ChannelTypeTaskPlugin, Key: key, Models: "yunshu-internal-gpt-image-2", Group: "default", Status: common.ChannelStatusEnabled}
+		baseURL := "https://toapis-fixture.invalid"
+		channel.BaseURL = &baseURL
 		channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "toapis-image"})
 		require.NoError(t, f.db.Create(channel).Error)
 		for i := range 10 {
@@ -438,6 +447,18 @@ func TestMediaConcurrencyCompletedHistoryDoesNotExhaustLegacyImportWindow(t *tes
 		ledgers[i] = model.MediaAdmission{ID: rows[i].TaskID, TaskDBID: rows[i].ID, PoolID: pool.ID, ChannelID: rows[i].ChannelId, State: model.MediaReleased, BillingState: "not_charged"}
 	}
 	require.NoError(t, f.db.CreateInBatches(&ledgers, 100).Error)
+	// More than the previous global scan cap of known non-media failures must
+	// neither block this video pool nor hide a later media history page.
+	source, err := os.ReadFile("../plugins/tasks/sunoapi/plugin.js")
+	require.NoError(t, err)
+	plugin, err := jsplugin.DefaultRegistry.Register(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister(plugin.Meta.Key) })
+	nonMedia := make([]model.Task, 10001)
+	for i := range nonMedia {
+		nonMedia[i] = model.Task{TaskID: fmt.Sprintf("task_non_media_history_%d", i), Platform: "sunoapi", Status: model.TaskStatusFailure, Progress: "100%", Properties: model.Properties{OriginModelName: "suno_music"}}
+	}
+	require.NoError(t, f.db.CreateInBatches(&nonMedia, 100).Error)
 	require.NoError(t, model.AcquireMediaAdmission(ctx, mediaConcurrencyTask(f, "task_history_next"), "synthetic-unused-blackrx-credential", model.MediaVideo))
 	require.NoError(t, f.db.First(&pool).Error)
 	assert.Equal(t, 1, pool.Occupied)
@@ -546,6 +567,8 @@ func TestMediaConcurrencyKeylessLegacyDoesNotGuessRotatedAccount(t *testing.T) {
 	assert.Equal(t, 200, get.Code)
 	assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
 	assert.NotContains(t, get.Body.String(), `"media_submission_receipt"`)
+	require.NoError(t, f.db.Model(legacy).Update("platform", "removed-media-plugin").Error)
+	assert.ErrorIs(t, model.AcquireMediaAdmission(context.Background(), attempt, other.Key, model.MediaVideo), model.ErrMediaLegacyIdentity, "removed metadata cannot prove a keyless task was non-media")
 	imageLegacy := &model.Task{TaskID: "task_legacy_image_missing_key", Platform: "toapis-image", UserId: 791, ChannelId: 881, Status: model.TaskStatusFailure, Progress: "100%", Quota: 17, PrivateData: model.TaskPrivateData{UpstreamTaskID: "legacy-image-id"}, Properties: model.Properties{OriginModelName: "yunshu-internal-gpt-image-2", UpstreamModelName: "yunshu-internal-gpt-image-2"}}
 	require.NoError(t, f.db.Create(imageLegacy).Error)
 	native := f.request(t, http.MethodGet, "/toapis/v1/images/generations/"+imageLegacy.TaskID, "")
@@ -855,4 +878,312 @@ func TestMediaConcurrencyUnknownPreservesOriginalUpstreamErrorDiagnostics(t *tes
 	assert.Equal(t, 1, f.posts)
 	assert.Zero(t, f.gets)
 	f.mu.Unlock()
+}
+
+func TestMediaConcurrencyFrozenHistoricalKeySurvivesChannelRotationAndDeletion(t *testing.T) {
+	for _, deleted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("deleted_%t", deleted), func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			ctx := context.Background()
+			const originalKey = "synthetic-media-blackrxai-video"
+			for i := range 4 {
+				legacy := &model.Task{TaskID: fmt.Sprintf("task_frozen_history_%d", i), Platform: "blackrxai-video", UserId: 791, ChannelId: 880, Status: model.TaskStatusQueued,
+					PrivateData: model.TaskPrivateData{Key: originalKey, UpstreamTaskID: fmt.Sprintf("provider-history-%d", i)}, Properties: model.Properties{OriginModelName: "bt-seedance-2.0"}}
+				require.NoError(t, f.db.Create(legacy).Error)
+			}
+			if deleted {
+				require.NoError(t, f.db.Delete(&model.Channel{}, 880).Error)
+			} else {
+				require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", 880).Update("key", "synthetic-rotated-key").Error)
+			}
+			for index, key := range []string{originalKey, "synthetic-independent-key"} {
+				baseURL := "https://blackrx-fixture.invalid"
+				channel := &model.Channel{Id: 882 + index, Type: constant.ChannelTypeTaskPlugin, Key: key, BaseURL: &baseURL, Models: "bt-seedance-2.0", Group: "default", Status: common.ChannelStatusEnabled}
+				channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "blackrxai-video"})
+				require.NoError(t, f.db.Create(channel).Error)
+			}
+			require.NoError(t, model.RefreshMediaConcurrencyPools(ctx))
+			attempt := &model.Task{TaskID: "task_frozen_history_blocked", Platform: "blackrxai-video", UserId: 791, ChannelId: 882, Properties: model.Properties{OriginModelName: "bt-seedance-2.0"}}
+			assert.ErrorIs(t, model.AcquireMediaAdmission(ctx, attempt, originalKey, model.MediaVideo), model.ErrMediaCapacity)
+			attempt.TaskID, attempt.ChannelId = "task_independent_allowed", 883
+			require.NoError(t, model.AcquireMediaAdmission(ctx, attempt, "synthetic-independent-key", model.MediaVideo))
+			var admissions []model.MediaAdmission
+			require.NoError(t, f.db.Where("channel_id = ?", 880).Find(&admissions).Error)
+			require.Len(t, admissions, 4)
+			for _, admission := range admissions {
+				assert.Equal(t, model.MediaUnknown, admission.State)
+				assert.Equal(t, admissions[0].PoolID, admission.PoolID)
+			}
+			service.RunTaskPollingOnce(ctx, nil)
+			f.mu.Lock()
+			assert.Zero(t, f.posts)
+			assert.Zero(t, f.gets, "frozen key alone is not original route provenance")
+			f.mu.Unlock()
+		})
+	}
+}
+
+type mediaRouteProbeTransport struct {
+	requests  *int
+	forwarded *bool
+	key       string
+}
+
+func (transport mediaRouteProbeTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	*transport.requests++
+	*transport.forwarded = *transport.forwarded || request.Header.Get("Authorization") == "Bearer "+transport.key
+	id := request.URL.Path[strings.LastIndex(request.URL.Path, "/")+1:]
+	body := fmt.Sprintf(`{"id":%q,"object":"video","status":"failed","error":{"message":"synthetic unrelated route terminal"}}`, id)
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+}
+
+func TestMediaConcurrencyPollRejectsChangedExecutionRoute(t *testing.T) {
+	for _, change := range []string{"base_url", "type", "plugin", "proxy", "organization", "auth_header", "missing_provenance", "display_only"} {
+		t.Run(change, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			accepted := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic local fixture","seconds":10,"size":"1792x1024"}`)
+			require.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
+			var response struct {
+				ID string `json:"id"`
+			}
+			require.NoError(t, common.Unmarshal(accepted.Body.Bytes(), &response))
+			task := f.task(t, response.ID)
+			require.NotEmpty(t, task.PrivateData.RouteDigest)
+			var original model.Channel
+			require.NoError(t, f.db.First(&original, 880).Error)
+			changed := original
+			switch change {
+			case "base_url":
+				value := "https://unrelated-route.invalid"
+				changed.BaseURL = &value
+			case "type":
+				changed.Type = constant.ChannelTypeNewAPI
+			case "plugin":
+				setting := changed.GetSetting()
+				setting.TaskPluginKey = "toapis-image"
+				changed.SetSetting(setting)
+			case "proxy":
+				setting := changed.GetSetting()
+				setting.Proxy = "http://unrelated-proxy.invalid"
+				changed.SetSetting(setting)
+			case "organization":
+				value := "unrelated-org"
+				changed.OpenAIOrganization = &value
+			case "auth_header":
+				value := `{"Authorization":"Bearer unrelated-auth"}`
+				changed.HeaderOverride = &value
+			case "missing_provenance":
+				task.PrivateData.RouteDigest = ""
+				require.NoError(t, f.db.Model(&model.Task{}).Where("id = ?", task.ID).Update("private_data", task.PrivateData).Error)
+			case "display_only":
+				changed.Name = "Renamed display label"
+				other := changed.GetOtherSettings()
+				other.DisableTaskPollingSleep = false
+				changed.SetOtherSettings(other)
+			}
+			require.NoError(t, f.db.Save(&changed).Error)
+			model.InitChannelCache()
+			wallet, token := f.balance(t)
+			f.mu.Lock()
+			f.queryMode = "failed"
+			f.mu.Unlock()
+			observed, forwarded := 0, false
+			clients := []*http.Client{service.GetHttpClient(), service.GetSSRFProtectedHTTPClient()}
+			transports := make([]http.RoundTripper, len(clients))
+			for i, client := range clients {
+				transports[i] = client.Transport
+				client.Transport = mediaRouteProbeTransport{requests: &observed, forwarded: &forwarded, key: task.PrivateData.Key}
+			}
+			t.Cleanup(func() {
+				for i, client := range clients {
+					client.Transport = transports[i]
+				}
+			})
+			service.RunTaskPollingOnce(context.Background(), nil)
+			var pool model.MediaPool
+			require.NoError(t, f.db.First(&pool).Error)
+			stored := f.task(t, response.ID)
+			f.mu.Lock()
+			if change == "display_only" {
+				assert.Equal(t, 1, observed)
+				assert.Zero(t, pool.Occupied)
+				assert.EqualValues(t, model.TaskStatusFailure, stored.Status)
+			} else {
+				assert.Zero(t, observed, "a different route must never receive any query or supply a terminal")
+				assert.False(t, forwarded, "the frozen bearer must never reach a changed route")
+				assert.Equal(t, 1, pool.Occupied)
+				assert.EqualValues(t, model.TaskStatusUnknown, stored.Status)
+			}
+			assert.Equal(t, 1, f.posts)
+			f.mu.Unlock()
+			if change == "display_only" {
+				return
+			}
+			afterWallet, afterToken := f.balance(t)
+			assert.Equal(t, wallet, afterWallet)
+			assert.Equal(t, token, afterToken)
+			if change == "missing_provenance" {
+				return
+			}
+			for i, client := range clients {
+				client.Transport = transports[i]
+			}
+			require.NoError(t, f.db.Save(&original).Error)
+			model.InitChannelCache()
+			service.RunTaskPollingOnce(context.Background(), nil)
+			require.NoError(t, f.db.First(&pool).Error)
+			assert.Zero(t, pool.Occupied, "restoring the original route allows normal same-task recovery")
+			assert.EqualValues(t, model.TaskStatusFailure, f.task(t, response.ID).Status)
+		})
+	}
+}
+
+func TestMediaConcurrencyHistoricalTerminalSnapshotsOnlyExcludeCapacity(t *testing.T) {
+	for _, platform := range []string{"blackrxai-video", "toapis-image"} {
+		for _, evidence := range []string{"exact", "numeric_id", "other_id", "other_model", "host_error", "wrong_object", "running", "no_error_code", "plugin_conflict", "missing_provenance", "unknown_version", "wrong_path", "new_ledger"} {
+			t.Run(platform+"/"+evidence, func(t *testing.T) {
+				f := newMediaNativeFixture(t)
+				kind, modelName, object, wireModel, errorCode, channelID := model.MediaVideo, "bt-seedance-2.0", "video", "bt-seedance-2.0", "video_generation_failed", 880
+				if platform == "toapis-image" {
+					kind, modelName, object, wireModel, errorCode, channelID = model.MediaImage, "yunshu-internal-gpt-image-2", "generation.task", "gpt-image-2", "generation_failed", 881
+				}
+				legacy := &model.Task{TaskID: "task_legacy_recorded_terminal", Platform: constant.TaskPlatform(platform), UserId: 791, ChannelId: channelID, Status: model.TaskStatusFailure, Progress: "100%", Quota: 19,
+					PrivateData: model.TaskPrivateData{UpstreamTaskID: "original-provider-id"}, Properties: model.Properties{OriginModelName: modelName, UpstreamModelName: modelName}}
+				version, path := "1.0.2", "/v1/videos"
+				if platform == "toapis-image" {
+					version, path = "1.2.0", "/toapis/v1/images/generations"
+				}
+				legacy.PrivateData.Execution = &model.TaskExecutionSnapshot{RequestID: "original-request-id", RequestPath: path, TaskPlugin: &model.TaskPluginSnapshot{Key: platform, APIVersion: 1, Version: version}}
+				envelope := map[string]any{"id": "original-provider-id", "object": object, "model": wireModel, "status": "failed", "error": map[string]any{"code": errorCode}}
+				switch evidence {
+				case "numeric_id":
+					envelope["id"] = 12345
+				case "other_id":
+					envelope["id"] = "other-provider-task"
+				case "other_model":
+					envelope["model"] = "other-model"
+				case "host_error":
+					envelope["code"] = "task_timeout"
+				case "wrong_object":
+					envelope["object"] = "unrecognized.task"
+				case "running":
+					envelope["status"] = "queued"
+				case "no_error_code":
+					envelope["error"] = map[string]any{"message": "local timeout"}
+				case "plugin_conflict":
+					legacy.PrivateData.Execution.TaskPlugin.Key = "unrelated-plugin"
+				case "missing_provenance":
+					legacy.PrivateData.Execution = nil
+				case "unknown_version":
+					legacy.PrivateData.Execution.TaskPlugin.Version = "99.0.0"
+				case "wrong_path":
+					legacy.PrivateData.Execution.RequestPath = "/unrelated/path"
+				case "new_ledger":
+					legacy.PrivateData.MediaAdmissionID = legacy.TaskID
+				}
+				legacy.SetData(envelope)
+				require.NoError(t, f.db.Create(legacy).Error)
+				before := f.task(t, legacy.TaskID)
+				wallet, token := f.balance(t)
+				if evidence == "new_ledger" {
+					// Already gated work cannot release a slot based on this old-data exception.
+					var channel model.Channel
+					require.NoError(t, f.db.First(&channel, channelID).Error)
+					require.NoError(t, f.db.Model(legacy).Update("status", model.TaskStatusUnknown).Error)
+					require.NoError(t, f.db.Create(&model.MediaPool{ID: "existing-pool", IdentityDigest: "unrelated-pool-identity", MediaKind: kind, Occupied: 1, Reconciled: true}).Error)
+					require.NoError(t, f.db.Create(&model.MediaAdmission{ID: legacy.TaskID, TaskDBID: legacy.ID, PoolID: "existing-pool", ChannelID: channelID, State: model.MediaUnknown, SendingAt: 1}).Error)
+					service.RunTaskPollingOnce(context.Background(), nil)
+					var pool model.MediaPool
+					require.NoError(t, f.db.Where("id = ?", "existing-pool").First(&pool).Error)
+					assert.Equal(t, 1, pool.Occupied)
+					assert.False(t, model.MediaLegacyProviderTerminalConfirmed(legacy))
+				} else {
+					var channel model.Channel
+					require.NoError(t, f.db.First(&channel, channelID).Error)
+					attempt := &model.Task{TaskID: "task_after_historical_terminal", Platform: legacy.Platform, UserId: 791, ChannelId: channelID, Properties: legacy.Properties}
+					err := model.AcquireMediaAdmission(context.Background(), attempt, channel.Key, kind)
+					if evidence == "exact" {
+						require.NoError(t, err)
+					} else {
+						assert.ErrorIs(t, err, model.ErrMediaLegacyIdentity)
+					}
+					assert.Equal(t, before, f.task(t, legacy.TaskID), "capacity classification never rewrites old evidence, key, route or billing")
+				}
+				afterWallet, afterToken := f.balance(t)
+				assert.Equal(t, wallet, afterWallet)
+				assert.Equal(t, token, afterToken)
+				f.mu.Lock()
+				assert.Zero(t, f.posts)
+				assert.Zero(t, f.gets)
+				f.mu.Unlock()
+			})
+		}
+	}
+}
+
+func TestMediaConcurrencyContentDoesNotRebindAcceptedCredential(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	var original model.Channel
+	require.NoError(t, f.db.First(&original, 880).Error)
+	organization, headers := "original-organization", `{"X-Provider-Auth":"original-auth-setting"}`
+	original.OpenAIOrganization, original.HeaderOverride = &organization, &headers
+	require.NoError(t, f.db.Save(&original).Error)
+	model.InitChannelCache()
+	accepted := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"local content regression","seconds":10,"size":"1792x1024"}`)
+	require.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
+	var response struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, common.Unmarshal(accepted.Body.Bytes(), &response))
+	task := f.task(t, response.ID)
+	require.NoError(t, f.db.Model(task).Update("status", model.TaskStatusSuccess).Error)
+	require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", 880).Update("base_url", "https://changed-content-route.invalid").Error)
+	model.InitChannelCache()
+	observed, forwarded := 0, false
+	for _, client := range []*http.Client{service.GetHttpClient(), service.GetSSRFProtectedHTTPClient()} {
+		previous := client.Transport
+		client.Transport = mediaRouteProbeTransport{requests: &observed, forwarded: &forwarded, key: task.PrivateData.Key}
+		t.Cleanup(func() { client.Transport = previous })
+	}
+	content := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID+"/artifacts/video/content", "")
+	assert.Equal(t, http.StatusInternalServerError, content.Code, content.Body.String())
+	assert.Zero(t, observed)
+	assert.False(t, forwarded)
+	assert.NotContains(t, content.Body.String(), task.PrivateData.Key)
+}
+
+func TestMediaConcurrencyHistoricalSavedURLSurvivesDeletedChannelWithoutCredentials(t *testing.T) {
+	f := newH3RouterFixture(t, 1)
+	originalSetting := *system_setting.GetFetchSetting()
+	system_setting.GetFetchSetting().AllowPrivateIp = true
+	system_setting.GetFetchSetting().AllowedPorts = []string{"1-65535"}
+	t.Cleanup(func() { *system_setting.GetFetchSetting() = originalSetting })
+	calls, leaked := 0, false
+	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		leaked = leaked || r.Header.Get("Authorization") != "" || r.Header.Get("X-Provider-Auth") != ""
+		assert.Equal(t, http.MethodGet, r.Method)
+		w.Header().Set("Content-Type", "video/mp4")
+		_, _ = io.WriteString(w, "saved-signed-video")
+	}))
+	t.Cleanup(cdn.Close)
+	for _, client := range []*http.Client{service.GetHttpClient(), service.GetSSRFProtectedHTTPClient()} {
+		previous := client.Transport
+		client.Transport = http.DefaultTransport
+		t.Cleanup(func() { client.Transport = previous })
+	}
+	legacy := &model.Task{TaskID: "task_legacy_saved_video", Platform: "hailuo", UserId: 791, ChannelId: 790, Status: model.TaskStatusSuccess, Progress: "100%", Properties: model.Properties{OriginModelName: "MiniMax-H3"},
+		PrivateData: model.TaskPrivateData{UpstreamTaskID: "legacy-original-provider", Execution: &model.TaskExecutionSnapshot{TaskPlugin: &model.TaskPluginSnapshot{Key: "hailuo", APIVersion: 1, Version: "1.0.0"}}}}
+	legacy.SetData(map[string]any{"task": map[string]any{"id": "legacy-original-provider", "status": "succeeded", "content": map[string]any{"url": cdn.URL + "/signed-video"}}})
+	require.NoError(t, f.db.Create(legacy).Error)
+	require.NoError(t, f.db.Delete(&model.Channel{}, 790).Error)
+	model.InitChannelCache()
+	content := f.request(t, http.MethodGet, "/v1/tasks/"+legacy.TaskID+"/artifacts/video/content", "", "h3routeradmin")
+	require.Equal(t, http.StatusOK, content.Code, content.Body.String())
+	assert.Equal(t, "saved-signed-video", content.Body.String())
+	assert.Equal(t, 1, calls)
+	assert.False(t, leaked)
+	stored := f.task(t, legacy.TaskID)
+	assert.Empty(t, stored.PrivateData.Key)
+	assert.Empty(t, stored.PrivateData.RouteDigest)
 }
