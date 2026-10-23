@@ -26,46 +26,121 @@ import { EmptyState } from '@/components/empty-state'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
-import { formatProfitCny } from '../lib/format'
+import {
+  formatProfitCny,
+  verifiedCashAmount,
+  verifiedFundingAmount,
+  verifiedPeriodAverage,
+} from '../lib/format'
 import type { ModelProfitRow } from '../types'
 
 export function ProfitTable(props: { rows: ModelProfitRow[] }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  const money = (value: number | null) =>
-    value === null ? t('Unknown') : formatProfitCny(value, locale)
+  const money = (value: number | null | undefined) =>
+    value == null || !Number.isFinite(value)
+      ? t('Pending confirmation')
+      : formatProfitCny(value, locale)
   const numericClass = 'text-right tabular-nums'
   const columns: StaticDataTableColumn<ModelProfitRow>[] = [
     {
       id: 'model',
-      header: t('Model'),
+      header: t('Model name'),
       className: 'min-w-52',
       cell: (row) => (
-        <span className='font-mono text-xs break-all'>
-          {row.model_name || t('Unknown model')}
-        </span>
+        <div className='space-y-2'>
+          <span className='font-mono text-xs break-all'>
+            {row.model_name || t('Unknown model')}
+          </span>
+          {row.funding_policy === 'fifo' && (
+            <dl className='text-muted-foreground space-y-1 text-xs'>
+              <div>
+                <dt className='inline'>
+                  {t('Confirmed paid consumption revenue')}:{' '}
+                </dt>
+                <dd className='inline tabular-nums'>
+                  {money(
+                    verifiedFundingAmount(row, 'confirmed_cash_revenue_cny')
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className='inline'>{t('Consumed paid face value')}: </dt>
+                <dd className='inline tabular-nums'>
+                  {money(
+                    verifiedFundingAmount(row, 'confirmed_paid_consumed_cny')
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className='inline'>{t('Consumed gifted face value')}: </dt>
+                <dd className='inline tabular-nums'>
+                  {money(
+                    verifiedFundingAmount(row, 'confirmed_gift_consumed_cny')
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className='inline'>
+                  {t('Consumed face value awaiting attribution')}:{' '}
+                </dt>
+                <dd className='inline tabular-nums'>
+                  {money(
+                    verifiedFundingAmount(row, 'unknown_funding_consumed_cny')
+                  )}
+                </dd>
+              </div>
+            </dl>
+          )}
+        </div>
       ),
     },
     {
       id: 'requests',
-      header: t('Requests'),
+      header: t('Usage count'),
       className: numericClass,
       cellClassName: numericClass,
       cell: (row) => formatNumber(row.requests, locale),
     },
     {
-      id: 'revenue',
-      header: t('Billed revenue'),
+      id: 'customer-unit-price',
+      header: t('Customer unit price'),
       className: numericClass,
       cellClassName: numericClass,
-      cell: (row) => money(row.revenue_cny),
+      cell: (row) => (
+        <div>
+          <div>
+            {money(verifiedPeriodAverage(row, 'customer_average_price_cny'))}
+          </div>
+          <div className='text-muted-foreground text-xs'>
+            <span>{t('Average per request')}</span> ·{' '}
+            <span>{t('Balance charges')}</span>
+          </div>
+        </div>
+      ),
     },
     {
-      id: 'known-revenue',
-      header: t('Revenue with known costs'),
+      id: 'upstream-unit-cost',
+      header: t('Procurement unit cost (estimate)'),
       className: numericClass,
       cellClassName: numericClass,
-      cell: (row) => money(row.known_cost_revenue_cny),
+      cell: (row) => (
+        <div>
+          <div>
+            {money(verifiedPeriodAverage(row, 'upstream_average_cost_cny'))}
+          </div>
+          <div className='text-muted-foreground text-xs'>
+            {t('Average per request')}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: 'profit',
+      header: t('Profit'),
+      className: numericClass,
+      cellClassName: numericClass,
+      cell: (row) => money(verifiedCashAmount(row, 'cash_profit_cny')),
     },
   ]
   if (props.rows.length === 0) {

@@ -43,12 +43,16 @@ type DatePickerProps = {
   selected: Date | undefined
   onSelect: (date: Date | undefined) => void
   placeholder?: string
+  compact?: boolean
+  'aria-label'?: string
 }
 
 export function DatePicker({
   selected,
   onSelect,
   placeholder,
+  compact = false,
+  'aria-label': ariaLabel,
 }: DatePickerProps) {
   const { t, i18n } = useTranslation()
   const placeholderText = placeholder ?? t('Pick a date')
@@ -59,22 +63,34 @@ export function DatePicker({
       <PopoverTrigger
         render={
           <Button
+            type='button'
             variant='outline'
+            aria-label={ariaLabel}
             data-empty={!selected}
-            className='data-[empty=true]:text-muted-foreground w-[240px] justify-start text-start font-normal'
+            className={
+              compact
+                ? 'size-9 shrink-0 px-2'
+                : 'data-[empty=true]:text-muted-foreground w-[240px] justify-start text-start font-normal'
+            }
           />
         }
       >
-        {selected ? (
-          dayjs(selected).format('YYYY-MM-DD')
-        ) : (
-          <span>{placeholderText}</span>
-        )}
-        <CalendarIcon className='ms-auto h-4 w-4 opacity-50' />
+        {!compact &&
+          (selected ? (
+            dayjs(selected).format('YYYY-MM-DD')
+          ) : (
+            <span>{placeholderText}</span>
+          ))}
+        <CalendarIcon
+          className={
+            compact ? 'size-4 opacity-70' : 'ms-auto h-4 w-4 opacity-50'
+          }
+        />
       </PopoverTrigger>
       <PopoverContent className='w-auto p-0'>
         <Calendar
           mode='single'
+          defaultMonth={compact ? selected : undefined}
           captionLayout='dropdown'
           selected={selected}
           onSelect={onSelect}

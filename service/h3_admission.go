@@ -130,6 +130,7 @@ func PrepareH3Submission(c *gin.Context, info *relaycommon.RelayInfo, platform c
 func PopulateTaskBillingSnapshot(c *gin.Context, info *relaycommon.RelayInfo, task *model.Task) {
 	task.PrivateData.Execution = TaskExecutionSnapshotFromContext(c)
 	task.PrivateData.BillingSource = info.BillingSource
+	task.PrivateData.FundingRequestId = info.FundingRequestId
 	task.PrivateData.SubscriptionId = info.SubscriptionId
 	task.PrivateData.TokenId = info.TokenId
 	task.PrivateData.NodeName = common.NodeName

@@ -42,11 +42,14 @@ import { Route as AuthenticatedCreationContentIndexRouteImport } from './routes/
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedImageManagementIndexRouteImport } from './routes/_authenticated/image-management/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
+import { Route as AuthenticatedMediaManagementIndexRouteImport } from './routes/_authenticated/media-management/index'
 import { Route as AuthenticatedMediaOperationsIndexRouteImport } from './routes/_authenticated/media-operations/index'
 import { Route as AuthenticatedModelProfitsIndexRouteImport } from './routes/_authenticated/model-profits/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
+import { Route as AuthenticatedOperationsScreenIndexRouteImport } from './routes/_authenticated/operations-screen/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
@@ -61,6 +64,7 @@ import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedUsageLogsAuditRouteImport } from './routes/_authenticated/usage-logs/audit'
 import { Route as AuthenticatedUserActivityIndexRouteImport } from './routes/_authenticated/user-activity/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
+import { Route as AuthenticatedVideoManagementIndexRouteImport } from './routes/_authenticated/video-management/index'
 import { Route as AuthenticatedVideoUsageIndexRouteImport } from './routes/_authenticated/video-usage/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
@@ -252,11 +256,23 @@ const AuthenticatedErrorsErrorRoute =
     path: '/errors/$error',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedImageManagementIndexRoute =
+  AuthenticatedImageManagementIndexRouteImport.update({
+    id: '/image-management/',
+    path: '/image-management/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
   id: '/keys/',
   path: '/keys/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMediaManagementIndexRoute =
+  AuthenticatedMediaManagementIndexRouteImport.update({
+    id: '/media-management/',
+    path: '/media-management/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedMediaOperationsIndexRoute =
   AuthenticatedMediaOperationsIndexRouteImport.update({
     id: '/media-operations/',
@@ -279,6 +295,12 @@ const AuthenticatedModelsSectionRoute =
   AuthenticatedModelsSectionRouteImport.update({
     id: '/models/$section',
     path: '/models/$section',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOperationsScreenIndexRoute =
+  AuthenticatedOperationsScreenIndexRouteImport.update({
+    id: '/operations-screen/',
+    path: '/operations-screen/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedPlaygroundIndexRoute =
@@ -364,6 +386,12 @@ const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   path: '/users/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedVideoManagementIndexRoute =
+  AuthenticatedVideoManagementIndexRouteImport.update({
+    id: '/video-management/',
+    path: '/video-management/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedVideoUsageIndexRoute =
   AuthenticatedVideoUsageIndexRouteImport.update({
     id: '/video-usage/',
@@ -513,10 +541,13 @@ export interface FileRoutesByFullPath {
   '/client-model-config/': typeof AuthenticatedClientModelConfigIndexRoute
   '/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/image-management/': typeof AuthenticatedImageManagementIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
+  '/media-management/': typeof AuthenticatedMediaManagementIndexRoute
   '/media-operations/': typeof AuthenticatedMediaOperationsIndexRoute
   '/model-profits/': typeof AuthenticatedModelProfitsIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
+  '/operations-screen/': typeof AuthenticatedOperationsScreenIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -529,6 +560,7 @@ export interface FileRoutesByFullPath {
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/user-activity/': typeof AuthenticatedUserActivityIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
+  '/video-management/': typeof AuthenticatedVideoManagementIndexRoute
   '/video-usage/': typeof AuthenticatedVideoUsageIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
@@ -583,10 +615,13 @@ export interface FileRoutesByTo {
   '/client-model-config': typeof AuthenticatedClientModelConfigIndexRoute
   '/creation-content': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/image-management': typeof AuthenticatedImageManagementIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
+  '/media-management': typeof AuthenticatedMediaManagementIndexRoute
   '/media-operations': typeof AuthenticatedMediaOperationsIndexRoute
   '/model-profits': typeof AuthenticatedModelProfitsIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
+  '/operations-screen': typeof AuthenticatedOperationsScreenIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -599,6 +634,7 @@ export interface FileRoutesByTo {
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/user-activity': typeof AuthenticatedUserActivityIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
+  '/video-management': typeof AuthenticatedVideoManagementIndexRoute
   '/video-usage': typeof AuthenticatedVideoUsageIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
@@ -657,10 +693,13 @@ export interface FileRoutesById {
   '/_authenticated/client-model-config/': typeof AuthenticatedClientModelConfigIndexRoute
   '/_authenticated/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/image-management/': typeof AuthenticatedImageManagementIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
+  '/_authenticated/media-management/': typeof AuthenticatedMediaManagementIndexRoute
   '/_authenticated/media-operations/': typeof AuthenticatedMediaOperationsIndexRoute
   '/_authenticated/model-profits/': typeof AuthenticatedModelProfitsIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
+  '/_authenticated/operations-screen/': typeof AuthenticatedOperationsScreenIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
@@ -673,6 +712,7 @@ export interface FileRoutesById {
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/user-activity/': typeof AuthenticatedUserActivityIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
+  '/_authenticated/video-management/': typeof AuthenticatedVideoManagementIndexRoute
   '/_authenticated/video-usage/': typeof AuthenticatedVideoUsageIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
@@ -730,10 +770,13 @@ export interface FileRouteTypes {
     | '/client-model-config/'
     | '/creation-content/'
     | '/dashboard/'
+    | '/image-management/'
     | '/keys/'
+    | '/media-management/'
     | '/media-operations/'
     | '/model-profits/'
     | '/models/'
+    | '/operations-screen/'
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
@@ -746,6 +789,7 @@ export interface FileRouteTypes {
     | '/usage-logs/'
     | '/user-activity/'
     | '/users/'
+    | '/video-management/'
     | '/video-usage/'
     | '/wallet/'
     | '/pricing/$modelId/'
@@ -800,10 +844,13 @@ export interface FileRouteTypes {
     | '/client-model-config'
     | '/creation-content'
     | '/dashboard'
+    | '/image-management'
     | '/keys'
+    | '/media-management'
     | '/media-operations'
     | '/model-profits'
     | '/models'
+    | '/operations-screen'
     | '/playground'
     | '/profile'
     | '/redemption-codes'
@@ -816,6 +863,7 @@ export interface FileRouteTypes {
     | '/usage-logs'
     | '/user-activity'
     | '/users'
+    | '/video-management'
     | '/video-usage'
     | '/wallet'
     | '/pricing/$modelId'
@@ -873,10 +921,13 @@ export interface FileRouteTypes {
     | '/_authenticated/client-model-config/'
     | '/_authenticated/creation-content/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/image-management/'
     | '/_authenticated/keys/'
+    | '/_authenticated/media-management/'
     | '/_authenticated/media-operations/'
     | '/_authenticated/model-profits/'
     | '/_authenticated/models/'
+    | '/_authenticated/operations-screen/'
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
@@ -889,6 +940,7 @@ export interface FileRouteTypes {
     | '/_authenticated/usage-logs/'
     | '/_authenticated/user-activity/'
     | '/_authenticated/users/'
+    | '/_authenticated/video-management/'
     | '/_authenticated/video-usage/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
@@ -1162,11 +1214,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/image-management/': {
+      id: '/_authenticated/image-management/'
+      path: '/image-management'
+      fullPath: '/image-management/'
+      preLoaderRoute: typeof AuthenticatedImageManagementIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/keys/': {
       id: '/_authenticated/keys/'
       path: '/keys'
       fullPath: '/keys/'
       preLoaderRoute: typeof AuthenticatedKeysIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/media-management/': {
+      id: '/_authenticated/media-management/'
+      path: '/media-management'
+      fullPath: '/media-management/'
+      preLoaderRoute: typeof AuthenticatedMediaManagementIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/media-operations/': {
@@ -1195,6 +1261,13 @@ declare module '@tanstack/react-router' {
       path: '/models/$section'
       fullPath: '/models/$section'
       preLoaderRoute: typeof AuthenticatedModelsSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/operations-screen/': {
+      id: '/_authenticated/operations-screen/'
+      path: '/operations-screen'
+      fullPath: '/operations-screen/'
+      preLoaderRoute: typeof AuthenticatedOperationsScreenIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/playground/': {
@@ -1293,6 +1366,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users/'
       preLoaderRoute: typeof AuthenticatedUsersIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/video-management/': {
+      id: '/_authenticated/video-management/'
+      path: '/video-management'
+      fullPath: '/video-management/'
+      preLoaderRoute: typeof AuthenticatedVideoManagementIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/video-usage/': {
@@ -1534,10 +1614,13 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedClientModelConfigIndexRoute: typeof AuthenticatedClientModelConfigIndexRoute
   AuthenticatedCreationContentIndexRoute: typeof AuthenticatedCreationContentIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedImageManagementIndexRoute: typeof AuthenticatedImageManagementIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
+  AuthenticatedMediaManagementIndexRoute: typeof AuthenticatedMediaManagementIndexRoute
   AuthenticatedMediaOperationsIndexRoute: typeof AuthenticatedMediaOperationsIndexRoute
   AuthenticatedModelProfitsIndexRoute: typeof AuthenticatedModelProfitsIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
+  AuthenticatedOperationsScreenIndexRoute: typeof AuthenticatedOperationsScreenIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
@@ -1549,6 +1632,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUserActivityIndexRoute: typeof AuthenticatedUserActivityIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
+  AuthenticatedVideoManagementIndexRoute: typeof AuthenticatedVideoManagementIndexRoute
   AuthenticatedVideoUsageIndexRoute: typeof AuthenticatedVideoUsageIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
 }
@@ -1570,11 +1654,17 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCreationContentIndexRoute:
     AuthenticatedCreationContentIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedImageManagementIndexRoute:
+    AuthenticatedImageManagementIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
+  AuthenticatedMediaManagementIndexRoute:
+    AuthenticatedMediaManagementIndexRoute,
   AuthenticatedMediaOperationsIndexRoute:
     AuthenticatedMediaOperationsIndexRoute,
   AuthenticatedModelProfitsIndexRoute: AuthenticatedModelProfitsIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
+  AuthenticatedOperationsScreenIndexRoute:
+    AuthenticatedOperationsScreenIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
@@ -1587,6 +1677,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUserActivityIndexRoute: AuthenticatedUserActivityIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
+  AuthenticatedVideoManagementIndexRoute:
+    AuthenticatedVideoManagementIndexRoute,
   AuthenticatedVideoUsageIndexRoute: AuthenticatedVideoUsageIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
 }

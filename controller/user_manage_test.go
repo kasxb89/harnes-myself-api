@@ -70,6 +70,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	})
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
+	require.NoError(t, db.AutoMigrate(model.WalletFundingModels()...))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
 		versionQuery = "SELECT sqlite_version()"
@@ -466,9 +467,9 @@ func TestManageUserQuotaTargetsAndWalletBounds(t *testing.T) {
 
 func TestManageUserQuotaMiddlewareKeepsOneOperationPerRequest(t *testing.T) {
 	db := setupManageUserTestDB(t)
-	pat := "quota-middleware-test-token"
-	operator := model.User{Id: 9999, Username: "root-operator", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1, AccessToken: &pat, Quota: 1000}
+	operator := model.User{Id: 9999, Username: "root-operator", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1, Quota: 1000}
 	require.NoError(t, db.Create(&operator).Error)
+	pat, _ := createScopedAccessToken(t, operator.Id, time.Now().Add(time.Hour).Unix(), "user:write")
 	router := gin.New()
 	router.Use(middleware.RequestId(), middleware.AccessTokenAudit())
 	router.POST("/api/user/manage", middleware.AdminAuth(), ManageUser)
@@ -527,12 +528,6 @@ func TestManageUserQuotaConcurrentSnapshots(t *testing.T) {
 	var ready sync.WaitGroup
 	ready.Add(2)
 	release := make(chan struct{})
-	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("test:concurrent_quota_start", func(tx *gorm.DB) {
-		if tx.Statement.Table == "users" {
-			ready.Done()
-			<-release
-		}
-	}))
 	type result struct {
 		adjustment *model.UserQuotaAdjustment
 		err        error
@@ -541,6 +536,10 @@ func TestManageUserQuotaConcurrentSnapshots(t *testing.T) {
 	results := make(chan result, 2)
 	for _, value := range []int{10, 20} {
 		go func(value int) {
+			// Synchronize callers before either begins its transaction. The
+			// SQLite writer lock must never be held while waiting for a peer.
+			ready.Done()
+			<-release
 			adjustment, err := model.AdjustUserQuota(user.Id, common.RoleRootUser, "add", value)
 			results <- result{adjustment, err, value}
 		}(value)
@@ -560,7 +559,6 @@ func TestManageUserQuotaConcurrentSnapshots(t *testing.T) {
 		assert.Equal(t, result.value, result.adjustment.After-result.adjustment.Before)
 		committed = append(committed, *result.adjustment)
 	}
-	require.NoError(t, db.Callback().Query().Remove("test:concurrent_quota_start"))
 	require.NotEmpty(t, committed)
 	sort.Slice(committed, func(i, j int) bool { return committed[i].Before < committed[j].Before })
 	balance := 1000
@@ -574,15 +572,15 @@ func TestManageUserQuotaConcurrentSnapshots(t *testing.T) {
 
 func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 	for _, tc := range []struct {
-		name, mode                               string
-		before, cached, value, after, wantCached int
-		failUpdate, failCache, missingCache      bool
+		name, mode                                 string
+		before, reserved, value, after, wantCached int
+		failUpdate, failCache, missingCache        bool
 	}{
-		{name: "add_preserves_reservations", mode: "add", before: 1000, cached: 900, value: 500, after: 1500, wantCached: 1400},
-		{name: "subtract_preserves_reservations", mode: "subtract", before: 1000, cached: 900, value: 500, after: 500, wantCached: 400},
-		{name: "override_preserves_reservations", mode: "override", before: 1000, cached: 900, value: 2000, after: 2000, wantCached: 1900},
-		{name: "large_odd_difference", mode: "override", before: common.MaxWalletQuota - 1, cached: common.MaxWalletQuota - 1, value: -common.MaxWalletQuota, after: -common.MaxWalletQuota, wantCached: -common.MaxWalletQuota},
-		{name: "rollback_does_not_change_cache", mode: "subtract", before: 1000, cached: 900, value: 500, after: 1000, wantCached: 900, failUpdate: true},
+		{name: "add_preserves_committed_reservation", mode: "add", before: 1000, reserved: 100, value: 500, after: 1400, wantCached: 1400},
+		{name: "subtract_preserves_committed_reservation", mode: "subtract", before: 1000, reserved: 100, value: 500, after: 400, wantCached: 400},
+		{name: "override_sets_live_balance_after_reservation", mode: "override", before: 1000, reserved: 100, value: 2000, after: 2000, wantCached: 2000},
+		{name: "large_odd_difference", mode: "override", before: common.MaxWalletQuota - 1, value: -common.MaxWalletQuota, after: -common.MaxWalletQuota, wantCached: -common.MaxWalletQuota},
+		{name: "rollback_does_not_change_committed_reservation", mode: "subtract", before: 1000, reserved: 100, value: 500, after: 900, wantCached: 900, failUpdate: true},
 		{name: "cache_error_keeps_committed_change", mode: "add", before: 1000, value: 500, after: 1500, failCache: true},
 		{name: "missing_cache_is_not_partially_created", mode: "add", before: 1000, value: 500, after: 1500, missingCache: true},
 	} {
@@ -599,6 +597,17 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 			cache, err := model.GetUserCache(user.Id)
 			require.NoError(t, err)
 			assert.Equal(t, tc.before, cache.Quota)
+			if tc.reserved > 0 {
+				reserved, err := model.TryReserveUserQuota(user.Id, tc.reserved)
+				require.NoError(t, err)
+				require.True(t, reserved)
+				var live model.User
+				require.NoError(t, db.First(&live, user.Id).Error)
+				assert.Equal(t, tc.before-tc.reserved, live.Quota, "the reservation already lives in the primary wallet ledger")
+				cache, err = model.GetUserCache(user.Id)
+				require.NoError(t, err)
+				assert.Equal(t, live.Quota, cache.Quota)
+			}
 			_, err = model.GetUserCache(operator.Id)
 			require.NoError(t, err)
 			keys := server.Keys()
@@ -610,7 +619,6 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 				}
 			}
 			require.NotEmpty(t, quotaKey)
-			server.HSet(quotaKey, "Quota", strconv.Itoa(tc.cached))
 			if tc.missingCache {
 				server.Del(quotaKey)
 			}
@@ -636,6 +644,9 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 					assert.Equal(t, strconv.Itoa(tc.after), server.HGet(quotaKey, "Quota"))
 				}
 			} else if !tc.failCache {
+				cache, err := model.GetUserCache(user.Id)
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantCached, cache.Quota)
 				assert.Equal(t, strconv.Itoa(tc.wantCached), server.HGet(quotaKey, "Quota"))
 			}
 		})

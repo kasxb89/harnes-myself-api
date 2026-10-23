@@ -27,7 +27,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AxiosError, AxiosHeaders, type AxiosAdapter } from 'axios'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -42,6 +42,7 @@ import { VideoUsagePage } from '..'
 import { emptyVideoPayload, videoPayload } from './fixtures'
 
 const clients: QueryClient[] = []
+const originalAdapter = api.defaults.adapter
 const i18n = createInstance()
 beforeEach(async () => {
   await i18n.init({
@@ -62,6 +63,8 @@ afterEach(() => {
   cleanup()
   clients.splice(0).forEach((client) => client.clear())
   useAuthStore.getState().auth.reset()
+  api.defaults.adapter = originalAdapter
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 function renderPage() {
@@ -93,6 +96,73 @@ function mockResult(data = videoPayload) {
     },
   }))
 }
+
+it('restoring read permission starts a fresh request while a cancelled identical request is still settling', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-24T02:00:00Z'))
+  const aborted = vi.fn()
+  const requests: {
+    signal: { aborted?: boolean } | undefined
+    complete: (data: unknown) => void
+  }[] = []
+  const adapter: AxiosAdapter = (config) =>
+    new Promise((resolve) => {
+      config.signal?.addEventListener?.('abort', aborted, { once: true })
+      requests.push({
+        signal: config.signal,
+        complete: (data) =>
+          resolve({
+            config,
+            data: { success: true, data },
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+          }),
+      })
+    })
+  api.defaults.adapter = adapter
+  try {
+    renderPage()
+    await waitFor(() => expect(requests).toHaveLength(1))
+    await act(async () => {
+      useAuthStore.getState().auth.setUser({
+        id: 1,
+        username: 'admin',
+        role: ROLE.ADMIN,
+        permissions: {
+          admin_permissions: { video_usage: { read: false } },
+        },
+      })
+    })
+    expect(screen.getByText('Access denied')).toBeVisible()
+    clients[0].removeQueries({ queryKey: ['video-usage'] })
+    expect(clients[0].getQueryCache().getAll()).toHaveLength(0)
+    await act(async () => {
+      useAuthStore.getState().auth.setUser({
+        id: 1,
+        username: 'admin',
+        role: ROLE.ADMIN,
+        permissions: {
+          admin_permissions: { video_usage: { read: true } },
+        },
+      })
+    })
+    await waitFor(() => expect(requests).toHaveLength(2))
+    expect(requests[0].signal?.aborted).toBe(true)
+    expect(aborted).toHaveBeenCalledOnce()
+    await act(async () => requests[0].complete(videoPayload))
+    expect(screen.queryByText('MiniMax-H3')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('status', { name: 'Loading video usage' })
+    ).toBeVisible()
+    await act(async () => requests[1].complete(emptyVideoPayload))
+    expect(await screen.findByText('No recorded video tasks')).toBeVisible()
+  } finally {
+    await act(async () =>
+      requests.forEach((request) => request.complete(emptyVideoPayload))
+    )
+  }
+})
 
 it('ordinary users cannot enter the route or request video usage data', () => {
   useAuthStore
@@ -203,16 +273,19 @@ it('server pagination, task scope and four explicit filters keep their exact que
   expect(get).toHaveBeenCalledTimes(3)
   await user.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
-    expect(get).toHaveBeenLastCalledWith('/api/video-usage', {
-      params: expect.objectContaining({
-        user_id: 7,
-        model: 'MiniMax-H3',
-        client_source: 'desktop',
-        task_scope: 'current',
-        p: 1,
-        page_size: 20,
-      }),
-    })
+    expect(get).toHaveBeenLastCalledWith(
+      '/api/video-usage',
+      expect.objectContaining({
+        params: expect.objectContaining({
+          user_id: 7,
+          model: 'MiniMax-H3',
+          client_source: 'desktop',
+          task_scope: 'current',
+          p: 1,
+          page_size: 20,
+        }),
+      })
+    )
   )
   expect(
     screen.getByText(

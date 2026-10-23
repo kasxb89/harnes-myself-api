@@ -28,6 +28,11 @@ export const Route = createFileRoute('/_authenticated/video-usage/')({
     if (!canAccessAdminRoute(user, '/video-usage')) {
       throw redirect({ to: '/403' })
     }
+    throw redirect({
+      to: '/media-management',
+      search: { tab: 'video' },
+      replace: true,
+    })
   },
   component: VideoUsagePage,
 })

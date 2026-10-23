@@ -21,6 +21,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { Button } from '../button'
 import { Combobox } from '../combobox'
 import {
   Drawer,
@@ -28,6 +29,7 @@ import {
   DrawerDescription,
   DrawerTitle,
 } from '../drawer'
+import { Popover, PopoverContent, PopoverTrigger } from '../popover'
 import {
   Select,
   SelectContent,
@@ -172,4 +174,39 @@ describe('popups outside a drawer', () => {
     expect(document.body).toContainElement(listbox)
     expect(view.container).not.toContainElement(listbox)
   })
+})
+
+it('keeps popover controls interactive inside the enclosing drawer portal', async () => {
+  const apply = vi.fn()
+  render(
+    <FilterDrawer>
+      <Popover>
+        <PopoverTrigger>Choose period</PopoverTrigger>
+        <PopoverContent>
+          <Button onClick={apply}>Apply period</Button>
+        </PopoverContent>
+      </Popover>
+    </FilterDrawer>
+  )
+  const drawer = screen.getByRole('dialog', { name: 'Filters' })
+  await userEvent.click(
+    within(drawer).getByRole('button', { name: 'Choose period' })
+  )
+  await userEvent.click(
+    await within(drawer).findByRole('button', { name: 'Apply period' })
+  )
+  expect(apply).toHaveBeenCalledOnce()
+  expect(screen.getByRole('dialog', { name: 'Filters' })).toBeVisible()
+})
+it('preserves body-based popovers when no custom container is provided', async () => {
+  const view = render(
+    <Popover>
+      <PopoverTrigger>Choose period</PopoverTrigger>
+      <PopoverContent>Calendar options</PopoverContent>
+    </Popover>
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Choose period' }))
+  const content = await screen.findByText('Calendar options')
+  expect(document.body).toContainElement(content)
+  expect(view.container).not.toContainElement(content)
 })

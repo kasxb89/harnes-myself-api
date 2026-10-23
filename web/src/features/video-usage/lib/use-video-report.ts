@@ -24,7 +24,7 @@ import { getVideoUsage, VideoUsageTooBroadError } from '../api'
 import type { VideoChannel, VideoProvider, VideoUser } from '../schema'
 import { initialVideoFilters, videoQueryFromDraft } from './filters'
 
-export function useVideoReport(userId: number) {
+export function useVideoReport(userId: number, active = true) {
   const [draft, setDraft] = useState(initialVideoFilters)
   const [query, setQuery] = useState(() => {
     const initial = videoQueryFromDraft(draft)
@@ -40,7 +40,8 @@ export function useVideoReport(userId: number) {
   const parsed = videoQueryFromDraft(draft)
   const report = useQuery({
     queryKey: ['video-usage', userId, query],
-    queryFn: () => getVideoUsage(query),
+    queryFn: ({ signal }) => getVideoUsage(query, signal),
+    enabled: active,
     retry: false,
     meta: { errorToast: false },
   })

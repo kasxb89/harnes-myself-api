@@ -18,16 +18,23 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
+import { mediaManagementSearchSchema } from '@/features/media-management/search'
 import { MediaOperationsPage } from '@/features/media-operations'
 import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/media-operations/')({
-  beforeLoad: () => {
+  validateSearch: mediaManagementSearchSchema,
+  beforeLoad: ({ search }) => {
     const user = useAuthStore.getState().auth.user
     if (!canAccessAdminRoute(user, '/media-operations')) {
       throw redirect({ to: '/403' })
     }
+    throw redirect({
+      to: '/media-management',
+      search: { tab: search.tab === 'concurrency' ? 'concurrency' : 'tasks' },
+      replace: true,
+    })
   },
   component: MediaOperationsPage,
 })

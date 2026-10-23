@@ -51,7 +51,7 @@ export function MediaCurrentTable(props: { rows: MediaOperationModel[] }) {
     },
     {
       id: 'kind',
-      header: t('Media type'),
+      header: t('Task type'),
       cell: (row) => {
         if (row.media_kind === 'image') return t('Image')
         if (row.media_kind === 'video') return t('Video')
@@ -74,8 +74,8 @@ export function MediaCurrentTable(props: { rows: MediaOperationModel[] }) {
   if (!props.rows.length) {
     return (
       <EmptyState
-        title={t('No recorded media models')}
-        description={t('Choose another model or media type.')}
+        title={t('No recorded task models')}
+        description={t('Choose another model or task type.')}
       />
     )
   }
@@ -84,7 +84,7 @@ export function MediaCurrentTable(props: { rows: MediaOperationModel[] }) {
       columns={columns}
       data={props.rows}
       getRowKey={(row) => `${row.media_kind}:${row.model}`}
-      tableProps={{ 'aria-label': t('Current media task records') }}
+      tableProps={{ 'aria-label': t('Current task records') }}
     />
   )
 }

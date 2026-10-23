@@ -117,6 +117,10 @@ type User struct {
 	LastLoginAt          int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AuthVersion          int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
 	AdminPermissions     map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+
+	// This server-only marker is serialized with the wallet row lock. It must
+	// never be editable through profile updates or client JSON.
+	WalletFundingInitialized bool `json:"-" gorm:"not null;default:false"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -593,40 +597,32 @@ func inviteUser(inviterId int) error {
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
-	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
 		return common.NewMessage("Minimum transfer quota is {{min}}!", map[string]any{"min": logger.FormatQuota(common.QuotaFromFloat(common.QuotaPerUnit))})
 	}
-
-	// 开始数据库事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		current, err := walletFundingUserForUpdate(tx, user.Id)
+		if err != nil {
+			return err
+		}
+		if current.AffQuota < quota {
+			return common.NewMessage("Invitation quota is insufficient!")
+		}
+		if err := CreditWalletFundingWithTx(tx, user.Id, quota, WalletFundingGift, "affiliate-transfer:"+common.GetRandomString(24), nil); err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("aff_quota", current.AffQuota-quota).Error; err != nil {
+			return err
+		}
+		current.AffQuota -= quota
+		current.Quota += quota
+		*user = *current
+		return nil
+	})
+	if err == nil {
+		InvalidateWalletFundingCache(user.Id)
 	}
-	defer tx.Rollback() // 确保在函数退出时事务能回滚
-
-	// 加锁查询用户以确保数据一致性
-	err := lockForUpdate(tx).First(user, user.Id).Error
-	if err != nil {
-		return err
-	}
-
-	// 再次检查用户的AffQuota是否足够
-	if user.AffQuota < quota {
-		return common.NewMessage("Invitation quota is insufficient!")
-	}
-
-	// 更新用户额度
-	user.AffQuota -= quota
-	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
-		return err
-	}
-
-	// 提交事务
-	return tx.Commit().Error
+	return err
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
@@ -696,7 +692,10 @@ func (user *User) Insert(inviterId int) error {
 				user.SetSetting(defaultSetting)
 			}
 
-			return tx.Create(user).Error
+			if err := tx.Create(user).Error; err != nil {
+				return err
+			}
+			return InitializeUserWalletFundingWithTx(tx, user, WalletFundingGift)
 		})
 	}); err != nil {
 		return err
@@ -728,7 +727,7 @@ func (user *User) finishInsert(inviterId int) {
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_ = CreditUserGiftQuota(user.Id, common.QuotaForInvitee, "invitation:"+common.GetRandomString(24))
 			RecordLog(user.Id, LogTypeSystem, common.NewMessage("Invitation code bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInvitee)}))
 		}
 		if common.QuotaForInviter > 0 {
@@ -760,7 +759,10 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			user.SetSetting(defaultSetting)
 		}
 
-		return tx.Create(user).Error
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		return InitializeUserWalletFundingWithTx(tx, user, WalletFundingGift)
 	})
 }
 
@@ -786,7 +788,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_ = CreditUserGiftQuota(user.Id, common.QuotaForInvitee, "invitation:"+common.GetRandomString(24))
 			RecordLog(user.Id, LogTypeSystem, common.NewMessage("Invitation code bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInvitee)}))
 		}
 		if common.QuotaForInviter > 0 {
@@ -845,6 +847,7 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.Model(&current).Omit(
 		"access_token",
 		"quota",
+		"wallet_funding_initialized",
 		"used_quota",
 		"request_count",
 		"aff_count",
@@ -1347,74 +1350,34 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool) (err error) {
+func IncreaseUserQuota(id int, quota int, db bool) error {
 	if quota < 0 {
 		return errors.New("quota cannot be negative")
 	}
-	if err := common.ValidateWalletQuota(quota); err != nil {
-		return err
-	}
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		gopool.Go(func() {
-			if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-				common.SysLog(common.LogText("failed to increase user quota: %s", err.Error()))
-			}
-		})
+	if quota == 0 {
 		return nil
 	}
-	if err := increaseUserQuota(id, quota); err != nil {
-		return err
-	}
-	gopool.Go(func() {
-		if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-			common.SysLog(common.LogText("failed to increase user quota: %s", err.Error()))
-		}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		return CreditWalletFundingWithTx(tx, id, quota, WalletFundingUnknown, "generic-credit:"+common.GetRandomString(24), nil)
 	})
-	return nil
+	if err == nil {
+		InvalidateWalletFundingCache(id)
+	}
+	return err
 }
 
-func increaseUserQuota(id int, quota int) (err error) {
-	result := DB.Model(&User{}).
-		Where("id = ? AND quota <= ?", id, common.MaxWalletQuota-quota).
-		Update("quota", gorm.Expr("quota + ?", quota))
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 1 {
-		return nil
-	}
-	var count int64
-	if err := DB.Model(&User{}).Where("id = ?", id).Count(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return ErrWalletQuotaLimitExceeded
-}
-
-func DecreaseUserQuota(id int, quota int, db bool) (err error) {
+func DecreaseUserQuota(id int, quota int, db bool) error {
 	if quota < 0 {
 		return errors.New("quota cannot be negative")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog(common.LogText("failed to decrease user quota: %s", err.Error()))
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
+	if quota == 0 {
 		return nil
 	}
-	return decreaseUserQuota(id, quota)
-}
-
-func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
-		return err
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		return DebitWalletFundingWithTx(tx, id, quota, "generic-debit:"+common.GetRandomString(24), false)
+	})
+	if err == nil {
+		InvalidateWalletFundingCache(id)
 	}
 	return err
 }
@@ -1485,20 +1448,16 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 }
 
 func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
-	if quota == 0 && usedQuota == 0 && requestCount == 0 {
+	if quota != 0 {
+		if err := DeltaUpdateUserQuota(id, quota); err != nil {
+			common.SysError(common.LogText("failed to batch update user quota: %s", err))
+			return
+		}
+	}
+	if usedQuota == 0 && requestCount == 0 {
 		return
 	}
-
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]any{
-			"quota":         gorm.Expr("quota + ?", quota),
-			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
-			"request_count": gorm.Expr("request_count + ?", requestCount),
-		},
-	).Error
-	if err != nil {
-		common.SysLog(common.LogText("failed to batch update user quota, used quota and request count: %s", err.Error()))
-	}
+	updateUserUsedQuotaAndRequestCount(id, usedQuota, requestCount)
 }
 
 // GetUsernameById gets username from Redis first, falls back to DB if needed

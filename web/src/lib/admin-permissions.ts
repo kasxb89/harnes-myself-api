@@ -131,6 +131,17 @@ export function canAccessAdminRoute(
   if (matches('/usage-logs/operations')) {
     return read('operations') || read('upstream_topups')
   }
+  if (matches('/operations-screen')) {
+    return [
+      'model_profits',
+      'media_operations',
+      'diagnostics',
+      'user_activity',
+    ].some(read)
+  }
+  if (matches('/media-management') || matches('/video-management')) {
+    return read('media_operations') || read('video_usage')
+  }
   const resources: ReadonlyArray<readonly [string, string]> = [
     ['/model-profits', 'model_profits'],
     ['/dashboard/users', 'operations'],
@@ -139,6 +150,7 @@ export function canAccessAdminRoute(
     ['/user-activity', 'user_activity'],
     ['/video-usage', 'video_usage'],
     ['/media-operations', 'media_operations'],
+    ['/image-management', 'media_operations'],
     ['/client-model-config', 'client_model_config'],
     ['/creation-content', 'creation_content'],
     ['/usage-logs/errors', 'diagnostics'],

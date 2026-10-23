@@ -36,10 +36,15 @@ export class MediaQueryTooBroadError extends Error {
 }
 
 export async function getMediaOperations(
-  params: MediaOperationsQuery
+  params: MediaOperationsQuery,
+  signal?: AbortSignal
 ): Promise<MediaOperationsResult> {
   const response = await api
-    .get<unknown>('/api/media-operations', { params })
+    .get<unknown>('/api/media-operations', {
+      params,
+      signal,
+      disableDuplicate: true,
+    })
     .catch((error: unknown) => {
       if (isAxiosError(error) && error.response?.status === 422) {
         const body: unknown = error.response.data

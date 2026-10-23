@@ -50,6 +50,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 // SettleBilling 执行计费结算。如果 RelayInfo 上有 BillingSession 则通过 session 结算，
 // 否则回退到旧的 PostConsumeQuota 路径（兼容按次计费等场景）。
 func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuota int) error {
+	if actualQuota < 0 {
+		return fmt.Errorf("actual quota cannot be negative: %d", actualQuota)
+	}
 	if relayInfo.Billing != nil {
 		preConsumed := relayInfo.Billing.GetPreConsumedQuota()
 		delta := actualQuota - preConsumed
@@ -73,8 +76,15 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 		}
 
 		if err := relayInfo.Billing.Settle(actualQuota); err != nil {
+			// A token adjustment can fail after the wallet transaction has
+			// committed. Its cash allocation remains valid and must not be lost.
+			if session, ok := relayInfo.Billing.(*BillingSession); !ok || !session.fundingSettled {
+				relayInfo.FundingSnapshot = nil
+			}
+			BindWalletFundingLogContext(ctx, relayInfo)
 			return err
 		}
+		BindWalletFundingLogContext(ctx, relayInfo)
 
 		// 发送额度通知（订阅计费使用订阅剩余额度）
 		if actualQuota != 0 {
@@ -88,9 +98,19 @@ func SettleBilling(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, actualQuo
 	}
 
 	// 回退：无 BillingSession 时使用旧路径
-	quotaDelta := actualQuota - relayInfo.FinalPreConsumedQuota
-	if quotaDelta != 0 {
-		return PostConsumeQuota(relayInfo, quotaDelta, relayInfo.FinalPreConsumedQuota, true)
+	preConsumed := relayInfo.FinalPreConsumedQuota
+	if relayInfo.BillingSource != BillingSourceSubscription && relayInfo.FundingRequestId != "" {
+		preConsumed = relayInfo.FundingConsumedQuota
 	}
-	return nil
+	quotaDelta := actualQuota - preConsumed
+	if quotaDelta != 0 {
+		err := PostConsumeQuota(relayInfo, quotaDelta, preConsumed, true)
+		BindWalletFundingLogContext(ctx, relayInfo)
+		return err
+	}
+	// A zero-price or exact-match legacy request still records an explicit
+	// funding snapshot; absence is never interpreted as paid revenue.
+	err := PostConsumeQuota(relayInfo, 0, preConsumed, false)
+	BindWalletFundingLogContext(ctx, relayInfo)
+	return err
 }

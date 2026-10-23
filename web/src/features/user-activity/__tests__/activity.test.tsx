@@ -483,7 +483,9 @@ it('one known generating chat with eight media attempts keeps exact task phases 
   ).toBeVisible()
   expect(
     within(
-      within(workload).getByRole('group', { name: 'Media task attempts' })
+      within(workload).getByRole('group', {
+        name: 'Image and video task attempts',
+      })
     ).getByText('8')
   ).toBeVisible()
   expect(

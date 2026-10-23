@@ -18,7 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { parseProfitPeriod, profitPreset } from '../lib/period'
+import {
+  parseProfitPeriod,
+  profitPreset,
+  profitCalendarDate,
+  profitCalendarValue,
+} from '../lib/period'
 
 describe('Shanghai profit reporting periods', () => {
   it('maps an inclusive calendar range to exclusive Shanghai midnight regardless of browser timezone', () => {
@@ -59,4 +64,13 @@ describe('Shanghai profit reporting periods', () => {
       expect(parseProfitPeriod(value)).toBeNull()
     }
   )
+})
+
+it('calendar selection round-trips local calendar fields without shifting the Shanghai reporting day', () => {
+  expect(profitCalendarValue(profitCalendarDate('2026-10-21'))).toBe(
+    '2026-10-21'
+  )
+  expect(profitCalendarDate('2026-02-30')).toBeUndefined()
+  expect(profitCalendarDate('2026-2-3')).toBeUndefined()
+  expect(profitCalendarValue(undefined)).toBe('')
 })

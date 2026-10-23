@@ -50,6 +50,6 @@ export function mediaQueryFromDraft(
     start_timestamp: Math.floor(start / 1000),
     end_timestamp: Math.floor(end / 1000),
     media_kind: draft.kind,
-    ...(draft.model ? { model: draft.model } : {}),
+    ...(draft.model.trim() ? { model: draft.model.trim() } : {}),
   }
 }

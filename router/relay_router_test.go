@@ -144,6 +144,7 @@ func setupRelayRouterTestDB(t *testing.T) {
 	require.NoError(t, model.DB.Raw(versionQuery).Scan(&databaseVersion).Error)
 	t.Logf("database: %s %s", common.MainDatabaseType(), databaseVersion)
 	require.NoError(t, model.DB.AutoMigrate(&model.User{}, &model.Token{}, &model.Ability{}))
+	require.NoError(t, model.DB.AutoMigrate(model.WalletFundingModels()...))
 
 	t.Cleanup(func() {
 		require.NoError(t, model.DB.Migrator().DropTable(&model.Ability{}, &model.Token{}, &model.User{}))

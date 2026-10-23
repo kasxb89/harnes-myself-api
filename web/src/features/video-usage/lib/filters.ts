@@ -73,7 +73,7 @@ export function videoQueryFromDraft(
     client_source: draft.source,
     provider: draft.provider,
     ...(channelId !== undefined ? { channel_id: channelId } : {}),
-    ...(draft.model ? { model: draft.model } : {}),
+    ...(draft.model.trim() ? { model: draft.model.trim() } : {}),
     ...(userId !== undefined ? { user_id: userId } : {}),
     task_scope: 'history',
     p: 1,

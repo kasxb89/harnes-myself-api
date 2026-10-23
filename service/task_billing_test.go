@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,10 +20,15 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -63,6 +71,9 @@ func TestMain(m *testing.M) {
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
+	if err := db.AutoMigrate(model.WalletFundingModels()...); err != nil {
+		panic("failed to migrate wallet funding: " + err.Error())
+	}
 
 	os.Exit(m.Run())
 }
@@ -74,10 +85,15 @@ func TestMain(m *testing.M) {
 func truncate(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
+		model.DB.Exec("DELETE FROM wallet_funding_allocations")
+		model.DB.Exec("DELETE FROM wallet_funding_events")
+		model.DB.Exec("DELETE FROM wallet_funding_requests")
+		model.DB.Exec("DELETE FROM wallet_funding_lots")
+		model.DB.Exec("DELETE FROM model_profit_billing_records")
 		model.DB.Exec("DELETE FROM tasks")
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
-		model.DB.Exec("DELETE FROM logs")
+		model.LOG_DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM midjourneys")
 		model.DB.Exec("DELETE FROM top_ups")
@@ -169,6 +185,494 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 			},
 		},
 	}
+}
+
+func TestWalletFundingRequestPreservesMixedSourcesThroughImageReserveAndRefund(t *testing.T) {
+	truncate(t)
+	const userID = 1601
+	seedUser(t, userID, 0)
+	cash := decimal.RequireFromString("0.8")
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return model.CreditWalletFundingWithTx(tx, userID, 100, model.WalletFundingPaid, "paid-image-test", &cash)
+	}))
+	require.NoError(t, model.CreditUserGiftQuota(userID, 100, "registration-image-test"))
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	info := &relaycommon.RelayInfo{UserId: userID, RequestId: "mixed-image-request", IsPlayground: true, ForcePreConsume: true, ImageRequestCount: 1}
+	session, apiErr := NewBillingSession(c, info, 150)
+	require.Nil(t, apiErr)
+	info.Billing = session
+	require.NoError(t, session.Reserve(180))
+	assert.Equal(t, 20, getUserQuota(t, userID))
+	snapshot, err := model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "relay")
+	require.NoError(t, err)
+	assert.Equal(t, int64(100), snapshot.PaidQuota)
+	assert.Equal(t, int64(80), snapshot.GiftQuota)
+	assert.Zero(t, snapshot.UnknownQuota)
+	require.NotNil(t, snapshot.CashRevenueCNY)
+	assert.True(t, cash.Equal(*snapshot.CashRevenueCNY))
+
+	// The added image reserve must not replace the original reserve when the
+	// upstream ultimately fails. Both calls restore exactly the original lots.
+	session.Refund(c)
+	session.Refund(c)
+	assert.Equal(t, 200, getUserQuota(t, userID))
+	snapshot, err = model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "relay")
+	require.NoError(t, err)
+	assert.Zero(t, snapshot.Quota)
+	var lots []model.WalletFundingLot
+	require.NoError(t, model.DB.Where("user_id = ? AND remaining_quota > ?", userID, 0).Order("id").Find(&lots).Error)
+	require.Len(t, lots, 2)
+	assert.Equal(t, int64(100), lots[0].RemainingQuota)
+	assert.Equal(t, "0.8", lots[0].RemainingCashCNY)
+	assert.Equal(t, int64(100), lots[1].RemainingQuota)
+
+	info = &relaycommon.RelayInfo{UserId: userID, RequestId: "settled-image-request", IsPlayground: true, ForcePreConsume: true, ImageRequestCount: 1}
+	session, apiErr = NewBillingSession(c, info, 180)
+	require.Nil(t, apiErr)
+	info.Billing = session
+	require.NoError(t, SettleBilling(c, info, 120))
+	require.NoError(t, SettleBilling(c, info, 120))
+	assert.Equal(t, 80, getUserQuota(t, userID))
+	value, exists := c.Get("wallet_funding")
+	require.True(t, exists)
+	settled, ok := value.(*model.WalletFundingAmounts)
+	require.True(t, ok)
+	assert.Equal(t, int64(120), settled.Quota)
+	assert.Equal(t, int64(100), settled.PaidQuota)
+	assert.Equal(t, int64(20), settled.GiftQuota)
+	require.NotNil(t, settled.CashRevenueCNY)
+	assert.True(t, cash.Equal(*settled.CashRevenueCNY))
+}
+
+func TestWalletFundingImageReserveTokenFailureRestoresOnlyExtraAllocation(t *testing.T) {
+	truncate(t)
+	const userID, tokenID = 1602, 1602
+	seedUser(t, userID, 0)
+	require.NoError(t, model.CreditUserGiftQuota(userID, 200, "gift-image-token-test"))
+	seedToken(t, tokenID, userID, "image-token-test", 170)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	info := &relaycommon.RelayInfo{UserId: userID, RequestId: "image-reserve-token-failure", TokenId: tokenID, TokenKey: "image-token-test", ForcePreConsume: true, ImageRequestCount: 1}
+	session, apiErr := NewBillingSession(c, info, 150)
+	require.Nil(t, apiErr)
+	require.Error(t, session.Reserve(180))
+	assert.Equal(t, 50, getUserQuota(t, userID))
+	assert.Equal(t, 20, getTokenRemainQuota(t, tokenID))
+	snapshot, err := model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "relay")
+	require.NoError(t, err)
+	assert.Equal(t, int64(150), snapshot.GiftQuota)
+	session.Refund(c)
+	assert.Equal(t, 200, getUserQuota(t, userID))
+	assert.Equal(t, 170, getTokenRemainQuota(t, tokenID))
+}
+
+func runWalletFundingTaskAtomicCases(t *testing.T) {
+	t.Helper()
+	for _, tc := range []struct{ platform, failure string }{{"task", "marker"}, {"task", "token"}, {"midjourney", "marker"}, {"midjourney", "token"}} {
+		t.Run(tc.platform+"/"+tc.failure, func(t *testing.T) {
+			truncate(t)
+			const userID, channelID, tokenID = 1603, 1603, 1603
+			seedUser(t, userID, 0)
+			require.NoError(t, model.CreditUserGiftQuota(userID, 200, "gift-task-restart-test"))
+			seedChannel(t, channelID)
+			seedToken(t, tokenID, userID, "task-restart-token", 200)
+			_, err := model.ApplyWalletFundingTarget(userID, "original-refund-request", "relay", 150, true)
+			require.NoError(t, err)
+			require.NoError(t, model.DecreaseTokenQuota(tokenID, "task-restart-token", 150))
+			seedChargedAccounting(t, userID, channelID, tokenID, 150, 1)
+			var task *model.Task
+			var mj *model.Midjourney
+			table, id := "tasks", int64(0)
+			if tc.platform == "task" {
+				task = makeTask(userID, channelID, 150, tokenID, BillingSourceWallet, 0)
+				task.PrivateData.FundingRequestId = "original-refund-request"
+				require.NoError(t, task.Insert())
+				id = task.ID
+			} else {
+				mj = &model.Midjourney{UserId: userID, ChannelId: channelID, BillingChannelId: channelID, TokenId: tokenID, MjId: "mj-restart", Quota: 150, FundingRequestId: "original-refund-request"}
+				require.NoError(t, mj.Insert())
+				table, id = "midjourneys", int64(mj.Id)
+			}
+			callback, registered := "test:wallet-refund-atomic-failure", true
+			require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+				if tc.failure == "token" && tx.Statement.Table == "tokens" || tc.failure == "marker" && tx.Statement.Table == table {
+					tx.AddError(errors.New("forced wallet refund atomic write failure"))
+				}
+			}))
+			t.Cleanup(func() {
+				if registered {
+					require.NoError(t, model.DB.Callback().Update().Remove(callback))
+				}
+			})
+			if task != nil {
+				require.False(t, RefundTaskQuota(context.Background(), task, "upstream failed"))
+			} else {
+				require.False(t, RefundMidjourneyQuota(context.Background(), mj, "upstream failed"))
+			}
+			assert.Equal(t, 50, getUserQuota(t, userID))
+			assert.Equal(t, 50, getTokenRemainQuota(t, tokenID))
+			assert.Equal(t, int64(150), getChannelUsedQuota(t, channelID))
+			used, calls := getUserUsageAccounting(t, userID)
+			assert.Equal(t, 150, used)
+			assert.Equal(t, 1, calls)
+			logsBefore := countLogs(t)
+			assert.Zero(t, logsBefore)
+			require.NoError(t, model.DB.Callback().Update().Remove(callback))
+			registered = false
+			if task != nil {
+				require.NoError(t, model.DB.First(&task, id).Error)
+				require.Equal(t, 150, task.Quota)
+				require.True(t, RefundTaskQuota(context.Background(), task, "retry after restart"))
+			} else {
+				require.NoError(t, model.DB.First(&mj, id).Error)
+				require.Equal(t, 150, mj.Quota)
+				require.True(t, RefundMidjourneyQuota(context.Background(), mj, "retry after restart"))
+			}
+			assert.Equal(t, 200, getUserQuota(t, userID))
+			assert.Equal(t, 200, getTokenRemainQuota(t, tokenID))
+			assert.Zero(t, getChannelUsedQuota(t, channelID))
+			used, calls = getUserUsageAccounting(t, userID)
+			assert.Zero(t, used)
+			assert.Equal(t, 1, calls)
+			assert.Equal(t, logsBefore+1, countLogs(t))
+			// A stale worker still holding the old marker must not replay the
+			// committed wallet, token, usage or financial event a second time.
+			if task != nil {
+				task.Quota = 150
+				require.True(t, RefundTaskQuota(context.Background(), task, "stale worker"))
+			} else {
+				mj.Quota = 150
+				require.True(t, RefundMidjourneyQuota(context.Background(), mj, "stale worker"))
+			}
+			assert.Equal(t, 200, getUserQuota(t, userID))
+			assert.Equal(t, 200, getTokenRemainQuota(t, tokenID))
+			assert.Zero(t, getChannelUsedQuota(t, channelID))
+			used, calls = getUserUsageAccounting(t, userID)
+			assert.Zero(t, used)
+			assert.Equal(t, 1, calls)
+			assert.Equal(t, logsBefore+1, countLogs(t))
+		})
+	}
+}
+
+func runWalletFundingSessionAtomicCases(t *testing.T) {
+	t.Helper()
+	t.Run("async_upward_adjustment_honors_token_limit", func(t *testing.T) {
+		truncate(t)
+		const userID, tokenID = 1608, 1608
+		seedUser(t, userID, 0)
+		require.NoError(t, model.CreditUserGiftQuota(userID, 50_000, "async-adjustment-token-limit"))
+		seedToken(t, tokenID, userID, "async-adjustment-token", 30_000)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+		info := &relaycommon.RelayInfo{UserId: userID, RequestId: "async-adjustment-request", TokenId: tokenID, TokenKey: "async-adjustment-token", OriginModelName: "async-funding-test", ForcePreConsume: true, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1608}}
+		session, apiErr := NewBillingSession(c, info, 20_000)
+		require.Nil(t, apiErr)
+		require.Error(t, session.Reserve(40_000), "an accepted upstream adjustment must not exceed the remaining token reservation")
+		assert.Equal(t, 30_000, getUserQuota(t, userID))
+		assert.Equal(t, 10_000, getTokenRemainQuota(t, tokenID))
+		assert.Equal(t, 20_000, session.GetPreConsumedQuota())
+		snapshot, err := model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "relay")
+		require.NoError(t, err)
+		assert.Equal(t, int64(20_000), snapshot.Quota)
+		session.Refund(c)
+		assert.Equal(t, 50_000, getUserQuota(t, userID))
+		assert.Equal(t, 30_000, getTokenRemainQuota(t, tokenID))
+	})
+	t.Run("legacy_wallet_settlement_target", func(t *testing.T) {
+		truncate(t)
+		const userID, tokenID = 1609, 1609
+		seedUser(t, userID, 0)
+		require.NoError(t, model.CreditUserGiftQuota(userID, 200, "legacy-settlement-gift"))
+		seedToken(t, tokenID, userID, "legacy-settlement-token", 200)
+		info := &relaycommon.RelayInfo{UserId: userID, RequestId: "legacy-settlement-request", TokenId: tokenID, TokenKey: "legacy-settlement-token", OriginModelName: "funding-legacy", ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1609}}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		for _, target := range []int{30, 30, 20, 20, 0, 0} {
+			require.NoError(t, SettleBilling(c, info, target))
+			assert.Equal(t, 200-target, getUserQuota(t, userID))
+			assert.Equal(t, 200-target, getTokenRemainQuota(t, tokenID))
+		}
+	})
+	for _, stage := range []string{"preconsume", "reserve", "settle", "refund", "trusted_zero"} {
+		t.Run("wallet_session_"+stage, func(t *testing.T) {
+			truncate(t)
+			const userID, tokenID = 1610, 1610
+			seedUser(t, userID, 0)
+			require.NoError(t, model.CreditUserGiftQuota(userID, 200, "session-atomic-gift"))
+			seedToken(t, tokenID, userID, "session-atomic-token", 200)
+			info := &relaycommon.RelayInfo{UserId: userID, RequestId: "session-atomic-request", TokenId: tokenID, TokenKey: "session-atomic-token", OriginModelName: "funding-original", ForcePreConsume: true, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1610}}
+			if stage == "trusted_zero" {
+				setting := operation_setting.GetQuotaSetting()
+				old := setting.TrustQuotaUSD
+				setting.TrustQuotaUSD = 0.0001
+				t.Cleanup(func() { setting.TrustQuotaUSD = old })
+				info.ForcePreConsume, info.TokenUnlimited = false, true
+				require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", tokenID).Update("unlimited_quota", true).Error)
+			}
+			if stage == "reserve" {
+				info.ImageRequestCount = 1
+			}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			callback, registered, failedUpdates := "test:wallet-session-token-failure", false, 0
+			inject := func() {
+				require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+					if tx.Statement.Table == "tokens" {
+						failedUpdates++
+						tx.AddError(errors.New("forced atomic wallet token write failure"))
+					}
+				}))
+				registered = true
+			}
+			t.Cleanup(func() {
+				if registered {
+					require.NoError(t, model.DB.Callback().Update().Remove(callback))
+				}
+			})
+			if stage == "preconsume" {
+				inject()
+			}
+			session, apiErr := NewBillingSession(c, info, 50)
+			if stage == "preconsume" {
+				require.NotNil(t, apiErr)
+				assert.Equal(t, 200, getUserQuota(t, userID))
+				assert.Equal(t, 200, getTokenRemainQuota(t, tokenID))
+			} else {
+				require.Nil(t, apiErr)
+				info.Billing = session
+				inject()
+				switch stage {
+				case "reserve":
+					require.Error(t, session.Reserve(80))
+				case "settle", "trusted_zero":
+					info.OriginModelName, info.ChannelId = "funding-fallback", 1611
+					require.Error(t, SettleBilling(c, info, 80))
+				case "refund":
+					session.Refund(c)
+					require.True(t, session.NeedsRefund())
+				}
+				expected := 150
+				if stage == "trusted_zero" {
+					expected = 200
+					assert.Zero(t, session.GetPreConsumedQuota())
+				}
+				assert.Equal(t, expected, getUserQuota(t, userID))
+				assert.Equal(t, expected, getTokenRemainQuota(t, tokenID))
+			}
+			require.Equal(t, 1, failedUpdates)
+			require.NoError(t, model.DB.Callback().Update().Remove(callback))
+			registered = false
+			if stage == "preconsume" {
+				session, apiErr = NewBillingSession(c, info, 50)
+				require.Nil(t, apiErr)
+				info.Billing = session
+			}
+			expected := 120
+			switch stage {
+			case "reserve":
+				require.NoError(t, session.Reserve(80))
+				require.NoError(t, SettleBilling(c, info, 80))
+			case "settle", "trusted_zero":
+				require.NoError(t, SettleBilling(c, info, 80))
+				var request model.WalletFundingRequest
+				require.NoError(t, model.DB.Where("user_id = ? AND request_id = ?", userID, info.RequestId).First(&request).Error)
+				assert.Equal(t, "funding-original", request.InitialModelName)
+				assert.Equal(t, "funding-fallback", request.ModelName)
+				assert.Equal(t, 1611, request.ChannelID)
+			case "refund":
+				session.Refund(c)
+				session.Refund(c)
+				expected = 200
+			case "preconsume":
+				require.NoError(t, SettleBilling(c, info, 50))
+				expected = 150
+			}
+			assert.Equal(t, expected, getUserQuota(t, userID))
+			assert.Equal(t, expected, getTokenRemainQuota(t, tokenID))
+		})
+	}
+	t.Run("mixed_subscription_wallet_token_redis_batch", func(t *testing.T) {
+		socket := os.Getenv("TEST_FUNDING_REDIS_SOCKET")
+		if socket == "" {
+			t.Skip("TEST_FUNDING_REDIS_SOCKET is not configured")
+		}
+		require.True(t, strings.HasPrefix(socket, "/"), "only an explicit local Unix socket is allowed")
+		truncate(t)
+		client := redis.NewClient(&redis.Options{Network: "unix", Addr: socket, MaxRetries: -1, DialTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second})
+		require.NoError(t, client.Ping(context.Background()).Err())
+		oldRedis, oldEnabled, oldBatch := common.RDB, common.RedisEnabled, common.BatchUpdateEnabled
+		common.RDB, common.RedisEnabled, common.BatchUpdateEnabled = client, true, true
+		t.Cleanup(func() {
+			common.RDB, common.RedisEnabled, common.BatchUpdateEnabled = oldRedis, oldEnabled, oldBatch
+			require.NoError(t, client.Close())
+		})
+		const userID, tokenID, planID = 1710, 1710, 1710
+		seedUser(t, userID, 0)
+		require.NoError(t, model.CreditUserGiftQuota(userID, 200, "mixed-source-gift"))
+		key := "mixed-source-token-" + string(common.MainDatabaseType())
+		seedToken(t, tokenID, userID, key, 100)
+		var token model.Token
+		require.NoError(t, model.DB.First(&token, tokenID).Error)
+		require.NoError(t, common.RedisHSetObj("token:"+common.GenerateHMAC(key), &token, time.Minute))
+		plan := model.SubscriptionPlan{Id: planID, Title: "Mixed funding test", Enabled: true, TotalAmount: 1000, QuotaResetPeriod: model.SubscriptionResetNever}
+		require.NoError(t, model.DB.Create(&plan).Error)
+		subscription := model.UserSubscription{Id: 1710, UserId: userID, PlanId: planID, AmountTotal: 1000, StartTime: time.Now().Unix(), EndTime: time.Now().Add(time.Hour).Unix(), Status: "active", Source: "admin"}
+		require.NoError(t, model.DB.Create(&subscription).Error)
+		t.Cleanup(func() {
+			model.DB.Where("user_id = ?", userID).Delete(&model.SubscriptionPreConsumeRecord{})
+			model.DB.Delete(&plan)
+		})
+		newInfo := func(requestID, preference string) (*gin.Context, *relaycommon.RelayInfo) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			return c, &relaycommon.RelayInfo{UserId: userID, RequestId: requestID, TokenId: tokenID, TokenKey: key, OriginModelName: "mixed-funding-test", ForcePreConsume: true, UserSetting: dto.UserSetting{BillingPreference: preference}, ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 1710}}
+		}
+		subContext, subInfo := newInfo("mixed-subscription", "subscription_only")
+		subSession, apiErr := NewBillingSession(subContext, subInfo, 60)
+		require.Nil(t, apiErr)
+		assert.Equal(t, 40, getTokenRemainQuota(t, tokenID), "subscription reservation is already committed before a wallet request can invalidate its cache")
+		assert.Equal(t, 60, getTokenUsedQuota(t, tokenID))
+		walletContext, walletInfo := newInfo("mixed-wallet-rejected", "wallet_only")
+		_, apiErr = NewBillingSession(walletContext, walletInfo, 60)
+		require.NotNil(t, apiErr)
+		assert.Equal(t, 200, getUserQuota(t, userID))
+		assert.Equal(t, 40, getTokenRemainQuota(t, tokenID))
+		walletContext, walletInfo = newInfo("mixed-wallet-accepted", "wallet_only")
+		walletSession, apiErr := NewBillingSession(walletContext, walletInfo, 40)
+		require.Nil(t, apiErr)
+		require.NoError(t, walletSession.Settle(40))
+		assert.Equal(t, 160, getUserQuota(t, userID))
+		assert.Zero(t, getTokenRemainQuota(t, tokenID))
+		cached, err := model.GetTokenByKey(key, false)
+		require.NoError(t, err)
+		assert.Zero(t, cached.RemainQuota)
+		refunded := make(chan struct{}, 1)
+		callback := "test:mixed-subscription-refund-completed"
+		require.NoError(t, model.DB.Callback().Update().After("gorm:update").Register(callback, func(tx *gorm.DB) {
+			if tx.Statement.Table == "tokens" && tx.Error == nil {
+				select {
+				case refunded <- struct{}{}:
+				default:
+				}
+			}
+		}))
+		subSession.Refund(subContext)
+		select {
+		case <-refunded:
+		case <-time.After(5 * time.Second):
+			t.Fatal("subscription token refund did not complete")
+		}
+		require.NoError(t, model.DB.Callback().Update().Remove(callback))
+		assert.Equal(t, 60, getTokenRemainQuota(t, tokenID))
+		walletContext, walletInfo = newInfo("mixed-wallet-after-sub-refund", "wallet_only")
+		walletSession, apiErr = NewBillingSession(walletContext, walletInfo, 60)
+		require.Nil(t, apiErr)
+		require.NoError(t, walletSession.Settle(60))
+		assert.Equal(t, 100, getUserQuota(t, userID))
+		assert.Zero(t, getTokenRemainQuota(t, tokenID))
+		assert.Equal(t, 100, getTokenUsedQuota(t, tokenID))
+		// Redis outage cannot make the database-authoritative wallet path
+		// unavailable or replay a queued subscription token delta later.
+		unavailable := redis.NewClient(&redis.Options{Network: "unix", Addr: socket + ".missing", MaxRetries: -1, DialTimeout: 100 * time.Millisecond, ReadTimeout: 100 * time.Millisecond, WriteTimeout: 100 * time.Millisecond})
+		common.RDB = unavailable
+		require.NoError(t, model.IncreaseTokenQuota(tokenID, key, 10))
+		walletContext, walletInfo = newInfo("mixed-wallet-redis-outage", "wallet_only")
+		walletSession, apiErr = NewBillingSession(walletContext, walletInfo, 10)
+		require.Nil(t, apiErr)
+		require.NoError(t, walletSession.Settle(10))
+		assert.Equal(t, 90, getUserQuota(t, userID))
+		assert.Zero(t, getTokenRemainQuota(t, tokenID))
+		common.RDB = client
+		require.NoError(t, unavailable.Close())
+	})
+}
+
+func TestWalletFundingRealtimeInterimUsageSettlesOnlyOnce(t *testing.T) {
+	truncate(t)
+	const userID, tokenID = 1604, 1604
+	seedUser(t, userID, 0)
+	require.NoError(t, model.CreditUserGiftQuota(userID, 200, "gift-realtime-test"))
+	seedToken(t, tokenID, userID, "realtime-funding-token", 200)
+	oldModelRatios := ratio_setting.ModelRatio2JSONString()
+	oldGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(oldModelRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroupRatios))
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"realtime-funding-test":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/realtime", nil)
+	info := &relaycommon.RelayInfo{UserId: userID, RequestId: "realtime-funding-request", TokenId: tokenID, TokenKey: "realtime-funding-token", OriginModelName: "realtime-funding-test", UsingGroup: "default", UserGroup: "default", ForcePreConsume: true}
+	session, apiErr := NewBillingSession(c, info, 50)
+	require.Nil(t, apiErr)
+	info.Billing = session
+	for range 2 {
+		require.NoError(t, PreWssConsumeQuota(c, info, &dto.RealtimeUsage{TotalTokens: 20, InputTokens: 20, InputTokenDetails: dto.InputTokenDetails{TextTokens: 20}}))
+	}
+	assert.Equal(t, 110, getUserQuota(t, userID))
+	assert.Equal(t, 110, getTokenRemainQuota(t, tokenID))
+	require.NoError(t, SettleBilling(c, info, 40))
+	require.NoError(t, SettleBilling(c, info, 40))
+	assert.Equal(t, 160, getUserQuota(t, userID))
+	assert.Equal(t, 160, getTokenRemainQuota(t, tokenID))
+	snapshot, err := model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "relay")
+	require.NoError(t, err)
+	assert.Equal(t, int64(40), snapshot.GiftQuota)
+}
+
+func TestWalletFundingDoesNotRelabelIncompleteSubscriptionTask(t *testing.T) {
+	truncate(t)
+	const userID = 1605
+	seedUser(t, userID, 0)
+	require.NoError(t, model.CreditUserGiftQuota(userID, 200, "gift-subscription-isolation-test"))
+	task := makeTask(userID, 0, 50, 0, BillingSourceSubscription, 0)
+	require.NoError(t, task.Insert())
+	assert.False(t, RefundTaskQuota(context.Background(), task, "subscription identity missing"))
+	assert.Equal(t, 200, getUserQuota(t, userID))
+	assert.Equal(t, 50, task.Quota)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.WalletFundingRequest{}).Where("user_id = ?", userID).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestWalletFundingViolationFeeUsesIndependentIdempotentAllocation(t *testing.T) {
+	truncate(t)
+	const userID, channelID = 1606, 1606
+	seedUser(t, userID, 0)
+	seedChannel(t, channelID)
+	require.NoError(t, model.CreditUserGiftQuota(userID, 200, "gift-violation-test"))
+	settings := model_setting.GetGrokSettings()
+	oldSettings, oldQuotaUnit := *settings, common.QuotaPerUnit
+	t.Cleanup(func() { *settings = oldSettings; common.QuotaPerUnit = oldQuotaUnit })
+	*settings = model_setting.GrokSettings{ViolationDeductionEnabled: true, ViolationDeductionAmount: 0.00002}
+	common.QuotaPerUnit = 500_000
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+	c.Set(common.RequestIdKey, "request-with-violation")
+	info := &relaycommon.RelayInfo{UserId: userID, RequestId: "request-with-violation", IsPlayground: true, ForcePreConsume: true, StartTime: time.Now(), ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channelID}, UserSetting: dto.UserSetting{QuotaWarningThreshold: 1}, PriceData: types.PriceData{GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1}}}
+	session, apiErr := NewBillingSession(c, info, 150)
+	require.Nil(t, apiErr)
+	info.Billing = session
+	session.Refund(c)
+	assert.Equal(t, 200, getUserQuota(t, userID))
+	violation := relaytypes.NewErrorWithStatusCode(fmt.Errorf("content rejected"), relaytypes.ErrorCodeViolationFeeGrokCSAM, http.StatusBadRequest)
+	require.True(t, ChargeViolationFeeIfNeeded(c, info, violation))
+	assert.False(t, ChargeViolationFeeIfNeeded(c, info, violation))
+	assert.Equal(t, 190, getUserQuota(t, userID))
+	main, err := model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "relay")
+	require.NoError(t, err)
+	assert.Zero(t, main.Quota)
+	fee, err := model.GetWalletFundingSnapshot(userID, info.FundingRequestId, "violation_fee")
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), fee.GiftQuota)
+	assert.Zero(t, fee.UnknownQuota)
+	used, calls := getUserUsageAccounting(t, userID)
+	assert.Equal(t, 10, used)
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, int64(1), countLogs(t))
 }
 
 func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
@@ -767,7 +1271,7 @@ func TestSettleMidjourneyTaskBillingFundingFailureClearsMarkers(t *testing.T) {
 	assert.Zero(t, countLogs(t))
 }
 
-func TestSettleMidjourneyTaskBillingTokenFailureKeepsFundingRefundable(t *testing.T) {
+func TestSettleMidjourneyTaskBillingTokenFailureRollsBackWalletCharge(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
 
@@ -807,26 +1311,23 @@ func TestSettleMidjourneyTaskBillingTokenFailureKeepsFundingRefundable(t *testin
 	billed, err := SettleMidjourneyTaskBilling(relayInfo, task, prepared)
 
 	require.Error(t, err)
-	require.True(t, billed)
-	assert.Equal(t, initialUserQuota-chargedQuota, getUserQuota(t, userID))
+	require.False(t, billed)
+	assert.Equal(t, initialUserQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	assert.Zero(t, getTokenUsedQuota(t, tokenID))
 	persisted := getMidjourneyTask(t, task.Id)
-	assert.Equal(t, chargedQuota, persisted.Quota)
+	assert.Zero(t, persisted.Quota)
 	assert.Zero(t, persisted.TokenId)
-	assert.Equal(t, channelID, persisted.BillingChannelId)
+	assert.Zero(t, persisted.BillingChannelId)
 
-	seedChargedAccounting(t, userID, channelID, 0, chargedQuota, 1)
 	assert.True(t, RefundMidjourneyQuota(ctx, task, "token settlement failed"))
 	assert.Equal(t, initialUserQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota, getTokenRemainQuota(t, tokenID))
 	usedQuota, requestCount := getUserUsageAccounting(t, userID)
 	assert.Zero(t, usedQuota)
-	assert.Equal(t, 1, requestCount)
+	assert.Zero(t, requestCount)
 	assert.Zero(t, getChannelUsedQuota(t, channelID))
-	log := getLastLog(t)
-	require.NotNil(t, log)
-	assert.Zero(t, log.TokenId)
+	assert.Zero(t, countLogs(t))
 }
 
 func TestPrepareMidjourneyTaskBillingRejectsSubscriptionBeforeCharge(t *testing.T) {

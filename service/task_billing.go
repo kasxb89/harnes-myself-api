@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
@@ -109,18 +110,78 @@ func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
 
 // taskIsSubscription 判断任务是否通过订阅计费。
 func taskIsSubscription(task *model.Task) bool {
-	return task.PrivateData.BillingSource == BillingSourceSubscription && task.PrivateData.SubscriptionId > 0
+	return task.PrivateData.BillingSource == BillingSourceSubscription || task.PrivateData.SubscriptionId > 0
 }
 
 // taskAdjustFunding 调整任务的资金来源（钱包或订阅），delta > 0 表示扣费，delta < 0 表示退还。
-func taskAdjustFunding(task *model.Task, delta int) error {
+func taskAdjustFunding(task *model.Task, delta int) (*model.WalletFundingResult, error) {
 	if taskIsSubscription(task) {
-		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
+		if task.PrivateData.SubscriptionId <= 0 || task.PrivateData.BillingSource == BillingSourceWallet {
+			return nil, fmt.Errorf("subscription funding identity is missing")
+		}
+		return nil, model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta, false)
+	requestID := task.PrivateData.FundingRequestId
+	if requestID == "" {
+		if task.ID > 0 {
+			requestID = fmt.Sprintf("legacy-task:%d", task.ID)
+		} else if task.TaskID != "" {
+			requestID = "legacy-task:" + task.TaskID
+		} else {
+			return nil, fmt.Errorf("task funding identity is missing")
+		}
+		if _, err := model.AdoptLegacyWalletFunding(task.UserId, requestID, "relay", task.Quota); err != nil {
+			return nil, err
+		}
+		task.PrivateData.FundingRequestId = requestID
 	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
+	if err := model.PrepareWalletFundingRequest(task.UserId, requestID, "relay", taskModelName(task), task.ChannelId); err != nil {
+		return nil, err
+	}
+	if err := model.InvalidateUserTokensCache(task.UserId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	var funding *model.WalletFundingResult
+	target := task.Quota + delta
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		funding, err = model.ApplyWalletFundingTargetWithTx(tx, task.UserId, requestID, "relay", target, false)
+		if err != nil {
+			return err
+		}
+		if funding.Applied {
+			if err := adjustTaskWalletAccounting(tx, task.UserId, task.ChannelId, task.PrivateData.TokenId, funding.AppliedDelta); err != nil {
+				return err
+			}
+		}
+		if task.ID > 0 {
+			return tx.Model(&model.Task{}).Where("id = ? AND user_id = ?", task.ID, task.UserId).Update("quota", target).Error
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	model.InvalidateWalletFundingCache(task.UserId)
+	if err := model.InvalidateUserTokensCache(task.UserId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token cache after task billing: %s", err.Error()))
+	}
+	return funding, nil
+}
+
+// adjustTaskWalletAccounting participates in the same main-DB transaction as
+// the funding target and task marker. A failed token/usage write therefore
+// cannot leave a refunded wallet with outstanding accounting side effects.
+func adjustTaskWalletAccounting(tx *gorm.DB, userID, channelID, tokenID, delta int) error {
+	if tokenID > 0 {
+		if err := adjustWalletTokenQuota(tx, userID, tokenID, delta, false, true, true); err != nil {
+			return err
+		}
+	}
+	if err := tx.Model(&model.User{}).Where("id = ?", userID).Update("used_quota", gorm.Expr("used_quota + ?", delta)).Error; err != nil {
+		return err
+	}
+	return tx.Model(&model.Channel{}).Where("id = ?", channelID).Update("used_quota", gorm.Expr("used_quota + ?", delta)).Error
 }
 
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。
@@ -145,8 +206,15 @@ func taskAdjustTokenQuota(ctx context.Context, task *model.Task, delta int) {
 }
 
 // taskBillingOther 从 task 的 BillingContext 构建日志 Other 字段。
-func taskBillingOther(task *model.Task) *model.LogOther {
+func taskBillingOther(task *model.Task, funding ...*model.WalletFundingAmounts) *model.LogOther {
 	other := model.NewLogOther()
+	if len(funding) > 0 && funding[0] != nil {
+		other.SetAdmin("funding", funding[0])
+		other.SetAdmin("funding_request_id", task.PrivateData.FundingRequestId)
+		other.SetAdmin("funding_purpose", "relay")
+		other.SetAdmin("funding_signed", true)
+		other.SetAdmin("funding_event_id", funding[0].EventID)
+	}
 	// 前端列表按 is_task 选择任务档位渲染分支,缺失会把差额/退款日志误判成普通 relay 动态计费
 	other.SetPublic("is_task", true)
 	if bc := task.PrivateData.BillingContext; bc != nil {
@@ -267,20 +335,32 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	}
 
 	// 1. 退还资金来源（钱包或订阅）
-	if err := taskAdjustFunding(task, -quota); err != nil {
+	funding, err := taskAdjustFunding(task, -quota)
+	if err != nil {
 		logger.LogWarn(ctx, common.LogText("failed to refund the funding source, task %s: %s", task.TaskID, err.Error()))
 		return false
 	}
+	if funding != nil && !funding.Applied {
+		// Funding, token, usage and marker were committed together by the
+		// original worker; a replay must not repeat any side effect.
+		task.Quota = 0
+		return true
+	}
 
 	// 2. 退还令牌额度
-	taskAdjustTokenQuota(ctx, task, -quota)
-
-	// 3. 回减预扣时累计的用户和渠道用量，请求次数保持不变
-	model.UpdateUserUsedQuota(task.UserId, -quota)
-	model.UpdateChannelUsedQuota(task.ChannelId, -quota)
+	if funding == nil {
+		taskAdjustTokenQuota(ctx, task, -quota)
+		model.UpdateUserUsedQuota(task.UserId, -quota)
+		model.UpdateChannelUsedQuota(task.ChannelId, -quota)
+	} else {
+		quota = -funding.AppliedDelta
+	}
 
 	// 4. 记录日志
 	other := taskBillingOther(task)
+	if funding != nil {
+		other = taskBillingOther(task, &funding.Delta)
+	}
 	other.SetPublic("task_id", task.TaskID)
 	other.SetPublic("reason", reason)
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
@@ -297,8 +377,10 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	// 5. 资金退款完成后再清除持久化标记。
 	// 回写失败必须显式告警，避免漏掉潜在的重复退款风险。
 	task.Quota = 0
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, common.LogText("refund succeeded but clearing the task quota failed, task %s: %s", task.TaskID, err.Error()))
+	if funding == nil {
+		if err := task.UpdateQuota(); err != nil {
+			logger.LogError(ctx, common.LogText("refund succeeded but clearing the task quota failed, task %s: %s", task.TaskID, err.Error()))
+		}
 	}
 	return true
 }
@@ -329,22 +411,28 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	))
 
 	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
+	funding, err := taskAdjustFunding(task, quotaDelta)
+	if err != nil {
 		logger.LogError(ctx, common.LogText("failed to adjust funding for the difference, task %s: %s", task.TaskID, err.Error()))
+		return
+	}
+	if funding != nil && !funding.Applied {
+		task.Quota = actualQuota
 		return
 	}
 
 	// 调整令牌额度
-	taskAdjustTokenQuota(ctx, task, quotaDelta)
-
 	task.Quota = actualQuota
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, common.LogText("failed to write back the settled task quota, task %s: %s", task.TaskID, err.Error()))
+	if funding == nil {
+		taskAdjustTokenQuota(ctx, task, quotaDelta)
+		if err := task.UpdateQuota(); err != nil {
+			logger.LogError(ctx, common.LogText("failed to write back the settled task quota, task %s: %s", task.TaskID, err.Error()))
+		}
+		model.UpdateUserUsedQuota(task.UserId, quotaDelta)
+		model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
+	} else {
+		quotaDelta = funding.AppliedDelta
 	}
-
-	// 提交阶段已经累计过一次请求；结算阶段只调整最终用量。
-	model.UpdateUserUsedQuota(task.UserId, quotaDelta)
-	model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
 
 	var logType int
 	var logQuota int
@@ -356,6 +444,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logQuota = -quotaDelta
 	}
 	other := taskBillingOther(task)
+	if funding != nil {
+		other = taskBillingOther(task, &funding.Delta)
+	}
 	other.SetPublic("task_id", task.TaskID)
 	other.SetPublic("pre_consumed_quota", preConsumedQuota)
 	other.SetPublic("actual_quota", actualQuota)

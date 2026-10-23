@@ -60,7 +60,7 @@ export function MediaHistoryTable(props: { rows: MediaOperationModel[] }) {
   if (!props.rows.length) {
     return (
       <EmptyState
-        title={t('No media observations in this period')}
+        title={t('No task observations in this period')}
         description={t('Choose another period or model.')}
       />
     )
@@ -70,7 +70,7 @@ export function MediaHistoryTable(props: { rows: MediaOperationModel[] }) {
       columns={columns}
       data={props.rows}
       getRowKey={(row) => `${row.media_kind}:${row.model}`}
-      tableProps={{ 'aria-label': t('Media history by model') }}
+      tableProps={{ 'aria-label': t('Task history by model') }}
     />
   )
 }

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -39,33 +39,92 @@ import { CostRuleForm } from './cost-rule-form'
 export function CostRulesDialog() {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const user = useAuthStore((state) => state.auth.user)
+  const sessionId = useAuthStore((state) => state.auth.session?.sid ?? '')
+  const role = user?.role ?? ROLE.GUEST
+  const scope = useRef({ mounted: false, generation: 0 })
   const [open, setOpen] = useState(false)
   const client = useQueryClient()
+  const queryKey = ['model-profit-cost-rules', user?.id, sessionId]
   const rules = useQuery({
-    queryKey: ['model-profit-cost-rules'],
-    queryFn: getCostRules,
+    queryKey,
+    queryFn: ({ signal }) => getCostRules(signal),
     enabled: open && role >= ROLE.SUPER_ADMIN,
     retry: false,
   })
+  const acceptsSave = (generation: number): boolean => {
+    const current = useAuthStore.getState().auth
+    return (
+      scope.current.mounted &&
+      scope.current.generation === generation &&
+      current.user?.id === user?.id &&
+      (current.session?.sid ?? '') === sessionId &&
+      Boolean(current.user && current.user.role >= ROLE.SUPER_ADMIN)
+    )
+  }
   const save = useMutation({
-    mutationFn: async (rule: CostRule) => {
+    mutationFn: async (operation: { rule: CostRule; generation: number }) => {
+      if (!acceptsSave(operation.generation)) {
+        throw new Error(t('Access denied'))
+      }
       if (!rules.data) throw new Error(t('Failed to load upstream costs'))
       return saveCostRules({
         ...rules.data,
-        rules: [...rules.data.rules, rule],
+        rules: [...rules.data.rules, operation.rule],
       })
     },
-    onSuccess: async (data) => {
-      client.setQueryData(['model-profit-cost-rules'], data)
-      await client.invalidateQueries({ queryKey: ['model-profits'] })
-      toast.success(t('Saved'))
+    meta: { errorToast: false },
+    onSuccess: async (data, operation) => {
+      if (!acceptsSave(operation.generation)) {
+        return
+      }
+      client.setQueryData(queryKey, data)
+      await client.invalidateQueries({
+        queryKey: ['model-profits', user?.id, sessionId],
+      })
+      if (acceptsSave(operation.generation)) {
+        toast.success(t('Saved'))
+      }
     },
-    onError: (error) => {
+    onError: (error, operation) => {
+      if (!acceptsSave(operation.generation)) {
+        return
+      }
       handleServerError(error)
       void rules.refetch()
     },
   })
+  const resetMutation = save.reset
+  useEffect(() => {
+    const currentScope = scope.current
+    const ownedKey = ['model-profit-cost-rules', user?.id, sessionId]
+    currentScope.mounted = true
+    const unsubscribe = useAuthStore.subscribe((state, previous) => {
+      if (
+        state.auth.user?.id === previous.auth.user?.id &&
+        state.auth.session?.sid === previous.auth.session?.sid &&
+        Boolean(state.auth.user && state.auth.user.role >= ROLE.SUPER_ADMIN) ===
+          Boolean(
+            previous.auth.user && previous.auth.user.role >= ROLE.SUPER_ADMIN
+          )
+      ) {
+        return
+      }
+      currentScope.generation += 1
+      resetMutation()
+      setOpen(false)
+      void client.cancelQueries({ queryKey: ownedKey })
+      client.removeQueries({ queryKey: ownedKey })
+    })
+    return () => {
+      currentScope.mounted = false
+      currentScope.generation += 1
+      unsubscribe()
+      void client.cancelQueries({ queryKey: ownedKey })
+      client.removeQueries({ queryKey: ownedKey })
+    }
+  }, [client, user?.id, sessionId, resetMutation])
+  const generation = scope.current.generation
   if (role < ROLE.SUPER_ADMIN) return null
   return (
     <Dialog
@@ -147,7 +206,9 @@ export function CostRulesDialog() {
               ))}
             </div>
             <CostRuleForm
-              onSave={(rule) => save.mutateAsync(rule).then(() => undefined)}
+              onSave={(rule) =>
+                save.mutateAsync({ rule, generation }).then(() => undefined)
+              }
               saving={save.isPending}
             />
           </>

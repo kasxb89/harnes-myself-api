@@ -27,7 +27,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AxiosError, AxiosHeaders, type AxiosAdapter } from 'axios'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -48,6 +48,7 @@ import { MediaOperationsPage } from '..'
 import { emptyMediaPayload, mediaPayload } from './fixtures'
 
 const clients: QueryClient[] = []
+const originalAdapter = api.defaults.adapter
 const i18n = createInstance()
 beforeEach(async () => {
   await i18n.init({
@@ -68,6 +69,8 @@ afterEach(() => {
   cleanup()
   clients.splice(0).forEach((client) => client.clear())
   useAuthStore.getState().auth.reset()
+  api.defaults.adapter = originalAdapter
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 function renderPage() {
@@ -113,7 +116,7 @@ it('current records retain unknown capacity without inventing free slots or perc
   expect(within(snapshot).getByText('Unknown', { exact: true })).toBeVisible()
   expect(within(snapshot).getByText('7', { exact: true })).toBeVisible()
   const table = screen.getByRole('table', {
-    name: 'Current media task records',
+    name: 'Current task records',
   })
   const row = within(table).getByRole('row', { name: /MiniMax-H3/ })
   expect(
@@ -129,12 +132,12 @@ it('current records retain unknown capacity without inventing free slots or perc
 it('history separates deduplicated requests from events, policy attempts and client evidence', async () => {
   mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   await userEvent.click(
     screen.getByRole('tab', { name: 'Historical observations' })
   )
   const table = await screen.findByRole('table', {
-    name: 'Media history by model',
+    name: 'Task history by model',
   })
   const row = within(table).getByRole('row', { name: /MiniMax-H3/ })
   expect(
@@ -160,7 +163,7 @@ it('history separates deduplicated requests from events, policy attempts and cli
 it('polling counters are in a separate keyboard-accessible tab with their consecutive meaning', async () => {
   mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   const current = screen.getByRole('tab', { name: 'Current task records' })
   current.focus()
   await userEvent.keyboard('{End}')
@@ -168,14 +171,14 @@ it('polling counters are in a separate keyboard-accessible tab with their consec
   expect(poll).toHaveFocus()
   await userEvent.keyboard('{Enter}')
   expect(poll).toHaveAttribute('aria-selected', 'true')
-  const table = screen.getByRole('table', { name: 'Media polling diagnostics' })
+  const table = screen.getByRole('table', { name: 'Task polling diagnostics' })
   expect(
     within(table).getByRole('columnheader', {
       name: 'Maximum consecutive polling failures',
     })
   ).toBeVisible()
   expect(
-    screen.queryByRole('table', { name: 'Media history by model' })
+    screen.queryByRole('table', { name: 'Task history by model' })
   ).not.toBeInTheDocument()
 })
 
@@ -185,23 +188,23 @@ it('pending and failed requests cannot masquerade as an empty successful report'
     .mockImplementationOnce(() => new Promise(() => {}))
   const rendered = renderPage()
   expect(
-    screen.getByRole('status', { name: 'Loading media operations' })
+    screen.getByRole('status', { name: 'Loading task monitoring' })
   ).toBeVisible()
-  expect(screen.queryByText('No recorded media models')).not.toBeInTheDocument()
+  expect(screen.queryByText('No recorded task models')).not.toBeInTheDocument()
   rendered.unmount()
   clients.splice(0).forEach((client) => client.clear())
   get.mockRejectedValueOnce(new Error('private upstream failure'))
   renderPage()
   expect(
-    await screen.findByText('Failed to load media operations')
+    await screen.findByText('Failed to load task monitoring')
   ).toBeVisible()
   expect(screen.queryByText('private upstream failure')).not.toBeInTheDocument()
-  expect(screen.queryByText('No recorded media models')).not.toBeInTheDocument()
+  expect(screen.queryByText('No recorded task models')).not.toBeInTheDocument()
   get.mockResolvedValueOnce({
     data: { success: true, data: emptyMediaPayload },
   })
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
-  expect(await screen.findByText('No recorded media models')).toBeVisible()
+  expect(await screen.findByText('No recorded task models')).toBeVisible()
 })
 
 it('malformed capacity is rejected rather than displayed as a known zero', async () => {
@@ -220,19 +223,19 @@ it('malformed capacity is rejected rather than displayed as a known zero', async
   })
   renderPage()
   expect(
-    await screen.findByText('Failed to load media operations')
+    await screen.findByText('Failed to load task monitoring')
   ).toBeVisible()
   expect(
-    screen.queryByRole('table', { name: 'Current media task records' })
+    screen.queryByRole('table', { name: 'Current task records' })
   ).not.toBeInTheDocument()
 })
 
 it('filter choices apply only on demand and retain an exact model after an empty result', async () => {
   const get = mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   const user = userEvent.setup()
-  await user.click(screen.getByRole('combobox', { name: 'Media type' }))
+  await user.click(screen.getByRole('combobox', { name: 'Task type' }))
   await user.click(await screen.findByRole('option', { name: 'Video' }))
   await user.click(screen.getByRole('combobox', { name: 'Model' }))
   await user.click(await screen.findByRole('option', { name: 'MiniMax-H3' }))
@@ -242,14 +245,17 @@ it('filter choices apply only on demand and retain an exact model after an empty
   })
   await user.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
-    expect(get).toHaveBeenLastCalledWith('/api/media-operations', {
-      params: expect.objectContaining({
-        media_kind: 'video',
-        model: 'MiniMax-H3',
-      }),
-    })
+    expect(get).toHaveBeenLastCalledWith(
+      '/api/media-operations',
+      expect.objectContaining({
+        params: expect.objectContaining({
+          media_kind: 'video',
+          model: 'MiniMax-H3',
+        }),
+      })
+    )
   )
-  await screen.findByText('No recorded media models')
+  await screen.findByText('No recorded task models')
   expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue(
     'MiniMax-H3'
   )
@@ -258,7 +264,7 @@ it('filter choices apply only on demand and retain an exact model after an empty
 it('an invalid range blocks applying and a today preset never sends a future end', async () => {
   const get = mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   const user = userEvent.setup()
   const dateGroup = screen.getByRole('group', { name: 'History period' })
   await user.click(within(dateGroup).getByRole('button'))
@@ -286,7 +292,7 @@ it('an invalid range blocks applying and a today preset never sends a future end
 it('losing administrator permission removes previously loaded operational data', async () => {
   const get = mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   await act(async () => {
     useAuthStore
       .getState()
@@ -295,6 +301,75 @@ it('losing administrator permission removes previously loaded operational data',
   expect(screen.getByText('Access denied')).toBeVisible()
   expect(screen.queryByText('MiniMax-H3')).not.toBeInTheDocument()
   expect(get).toHaveBeenCalledOnce()
+})
+
+it('restoring read permission starts a fresh request while a cancelled identical request is still settling', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-24T02:00:00Z'))
+  const aborted = vi.fn()
+  const requests: {
+    signal: { aborted?: boolean } | undefined
+    complete: (data: unknown) => void
+  }[] = []
+  const adapter: AxiosAdapter = (config) =>
+    new Promise((resolve) => {
+      config.signal?.addEventListener?.('abort', aborted, { once: true })
+      requests.push({
+        signal: config.signal,
+        complete: (data) =>
+          resolve({
+            config,
+            data: { success: true, data },
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+          }),
+      })
+    })
+  api.defaults.adapter = adapter
+  try {
+    renderPage()
+    await waitFor(() => expect(requests).toHaveLength(1))
+    await act(async () => {
+      useAuthStore.getState().auth.setUser({
+        id: 1,
+        username: 'admin',
+        role: ROLE.ADMIN,
+        permissions: {
+          admin_permissions: { media_operations: { read: false } },
+        },
+      })
+    })
+    expect(screen.getByText('Access denied')).toBeVisible()
+    clients[0].removeQueries({ queryKey: ['media-operations'] })
+    expect(
+      clients[0].getQueryCache().findAll({ queryKey: ['media-operations'] })
+    ).toHaveLength(0)
+    await act(async () => {
+      useAuthStore.getState().auth.setUser({
+        id: 1,
+        username: 'admin',
+        role: ROLE.ADMIN,
+        permissions: {
+          admin_permissions: { media_operations: { read: true } },
+        },
+      })
+    })
+    await waitFor(() => expect(requests).toHaveLength(2))
+    expect(requests[0].signal?.aborted).toBe(true)
+    expect(aborted).toHaveBeenCalledOnce()
+    await act(async () => requests[0].complete(mediaPayload))
+    expect(screen.queryByText('MiniMax-H3')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('status', { name: 'Loading task monitoring' })
+    ).toBeVisible()
+    await act(async () => requests[1].complete(emptyMediaPayload))
+    expect(await screen.findByText('No recorded task models')).toBeVisible()
+  } finally {
+    await act(async () =>
+      requests.forEach((request) => request.complete(emptyMediaPayload))
+    )
+  }
 })
 
 it.each([
@@ -321,7 +396,7 @@ it.each([
     )
     mockResult()
     renderPage()
-    await screen.findByRole('table', { name: 'Current media task records' })
+    await screen.findByRole('table', { name: 'Current task records' })
     await act(async () => {
       await i18n.changeLanguage(language)
     })
@@ -350,7 +425,7 @@ it.each([
 it('narrowing to one model keeps other previously loaded models selectable without another directory query', async () => {
   const get = mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   const user = userEvent.setup()
   await user.click(screen.getByRole('combobox', { name: 'Model' }))
   await user.click(await screen.findByRole('option', { name: 'MiniMax-H3' }))
@@ -432,7 +507,7 @@ it.each([
     )
     renderPage()
     expect(
-      await screen.findByText('Failed to load media operations')
+      await screen.findByText('Failed to load task monitoring')
     ).toBeVisible()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible()
     expect(
@@ -447,7 +522,7 @@ it.each([
 it('switching administrator accounts resets filters and the accumulated model directory', async () => {
   const get = mockResult()
   renderPage()
-  await screen.findByRole('table', { name: 'Current media task records' })
+  await screen.findByRole('table', { name: 'Current task records' })
   get.mockResolvedValueOnce({
     data: { success: true, data: emptyMediaPayload },
   })
@@ -461,7 +536,7 @@ it('switching administrator accounts resets filters and the accumulated model di
       },
     })
   })
-  await screen.findByText('No recorded media models')
+  await screen.findByText('No recorded task models')
   const user = userEvent.setup()
   await user.click(screen.getByRole('combobox', { name: 'Model' }))
   expect(

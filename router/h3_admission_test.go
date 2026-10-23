@@ -130,6 +130,7 @@ func newH3RouterFixture(t *testing.T, accountCount int) *h3RouterFixture {
 		constant.TaskPollMaxFailures = previousPollFailures
 	})
 	models := []any{&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Task{}, &model.Option{}, &model.Model{}, &model.Vendor{}, &model.UserSubscription{}, &model.SubscriptionPlan{}, &model.SubscriptionPreConsumeRecord{}, &model.H3Account{}, &model.H3Admission{}, &model.MediaPool{}, &model.MediaAdmission{}}
+	models = append(models, model.WalletFundingModels()...)
 	// This database is dedicated to this fixture, never a product database.
 	require.NoError(t, db.Migrator().DropTable(models...))
 	require.NoError(t, db.AutoMigrate(models...))
@@ -1385,17 +1386,23 @@ func TestH3AdmissionPreSendBuildFailurePreservesRefundTruth(t *testing.T) {
 				if ok && strings.Contains(debit.SQL, "-") {
 					debitObserved = true
 				}
+				if quota, ok := values["quota"].(int64); ok && quota < int64(beforeWallet) {
+					debitObserved = true
+				}
 			}))
 			t.Cleanup(func() { _ = f.db.Callback().Update().Remove(debitCallback) })
 			if failRefund {
 				callback := "h3:pre-send-refund-write-failure"
 				require.NoError(t, f.db.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
 					values, ok := tx.Statement.Dest.(map[string]any)
-					if !ok || tx.Statement.Table != "users" {
+					if !ok || tx.Statement.Table != "users" || !debitObserved {
 						return
 					}
-					credit, ok := values["quota"].(clause.Expr)
-					if ok && strings.Contains(credit.SQL, "+") {
+					// Funding first acquires SQLite's write lock with quota + 0,
+					// both before debit and before refund. Fail the real absolute
+					// restoration UPDATE, never that no-op locking statement.
+					quota, assigned := values["quota"].(int64)
+					if assigned && quota == int64(beforeWallet) {
 						injected = true
 						tx.AddError(fmt.Errorf("synthetic pre-send refund database unavailable"))
 					}

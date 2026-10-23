@@ -38,6 +38,7 @@ import {
   Users,
   Wallet,
   Image,
+  Video,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -78,14 +79,7 @@ export function useSidebarData(): SidebarData {
           {
             title: t('My usage'),
             icon: Key,
-            items: [
-              { title: t('API Keys'), url: '/keys', icon: Key },
-              {
-                title: t('Usage Logs'),
-                url: '/usage-logs/common',
-                icon: FileText,
-              },
-            ],
+            items: [{ title: t('API Keys'), url: '/keys', icon: Key }],
           },
           {
             title: t('Chat sessions'),
@@ -105,6 +99,31 @@ export function useSidebarData(): SidebarData {
         id: 'operations',
         title: t('Platform operations'),
         items: [
+          {
+            title: t('Operations screen'),
+            url: '/operations-screen',
+            icon: LayoutDashboard,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Call logs'),
+            url: '/usage-logs/common',
+            icon: FileText,
+          },
+          {
+            title: t('Image management'),
+            url: '/image-management',
+            activeUrls: ['/media-operations'],
+            icon: Image,
+            requiredRole: ROLE.ADMIN,
+          },
+          {
+            title: t('Video management'),
+            url: '/video-management',
+            activeUrls: ['/media-management', '/video-usage'],
+            icon: Video,
+            requiredRole: ROLE.ADMIN,
+          },
           {
             title: t('Users & assets'),
             icon: Users,
@@ -184,18 +203,6 @@ export function useSidebarData(): SidebarData {
                 title: t('Audit Logs'),
                 url: '/usage-logs/audit',
                 icon: ClipboardList,
-              },
-              {
-                title: t('Image and video operations'),
-                url: '/media-operations',
-                icon: Image,
-                requiredRole: ROLE.ADMIN,
-              },
-              {
-                title: t('Video model usage'),
-                url: '/video-usage',
-                icon: Activity,
-                requiredRole: ROLE.ADMIN,
               },
             ],
           },

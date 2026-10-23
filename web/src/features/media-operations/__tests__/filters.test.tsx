@@ -72,7 +72,7 @@ function setup(options: { loading?: boolean; invalid?: boolean } = {}) {
 it('keyboard users can choose media and a model before explicitly applying filters', async () => {
   const callbacks = setup()
   const user = userEvent.setup()
-  const kind = screen.getByRole('combobox', { name: 'Media type' })
+  const kind = screen.getByRole('combobox', { name: 'Task type' })
   kind.focus()
   await user.keyboard('{ArrowDown}')
   await user.click(await screen.findByRole('option', { name: 'Video' }))
@@ -101,3 +101,36 @@ it.each([{ loading: true }, { invalid: true }])(
     expect(callbacks.apply).not.toHaveBeenCalled()
   }
 )
+
+it('pasted models absent from current observations are retained and sent only after Apply', async () => {
+  const callbacks = setup()
+  const user = userEvent.setup()
+  const model = screen.getByRole('combobox', { name: 'Model' })
+  await user.click(model)
+  await user.paste('old-exact-model')
+  await user.tab()
+  expect(model).toHaveValue('old-exact-model')
+  expect(callbacks.apply).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Apply filters' }))
+  expect(callbacks.apply).toHaveBeenCalledWith(
+    expect.objectContaining({ model: 'old-exact-model' })
+  )
+})
+it('the time range accepts pasted timestamps and rejects nonexistent dates before confirmation', async () => {
+  setup()
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('button', { name: /2026-10-20/ }))
+  const start = screen.getByRole('textbox', { name: 'Start Time' })
+  await user.click(start)
+  await user.clear(start)
+  await user.paste('2026-02-30 10:20:00')
+  expect(start).toHaveValue('2026-02-30 10:20:00')
+  expect(start).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+  await user.clear(start)
+  await user.paste('2026-10-20 10:20:00')
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()
+  expect(
+    screen.getByRole('button', { name: 'Choose start date' })
+  ).toBeVisible()
+})

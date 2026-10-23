@@ -27,7 +27,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AxiosError, AxiosHeaders } from 'axios'
+import { AxiosError, AxiosHeaders, type AxiosAdapter } from 'axios'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -49,6 +49,7 @@ import type { MediaConcurrency } from '../concurrency-schema'
 
 const i18n = createInstance()
 const clients: QueryClient[] = []
+const originalAdapter = api.defaults.adapter
 const snapshot: MediaConcurrency = {
   schema_version: 1,
   revision: 'config-one',
@@ -88,7 +89,7 @@ const snapshot: MediaConcurrency = {
 function envelope(data: unknown = snapshot) {
   return { data: { success: true, data } }
 }
-function renderPanel() {
+function renderPanel(kind?: 'image' | 'video') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -96,7 +97,7 @@ function renderPanel() {
   return render(
     <I18nextProvider i18n={i18n}>
       <QueryClientProvider client={client}>
-        <MediaConcurrencyPanel active userId={1} />
+        <MediaConcurrencyPanel active userId={1} kind={kind} />
       </QueryClientProvider>
     </I18nextProvider>
   )
@@ -118,7 +119,56 @@ afterEach(() => {
   cleanup()
   clients.splice(0).forEach((client) => client.clear())
   useAuthStore.getState().auth.reset()
+  api.defaults.adapter = originalAdapter
   vi.restoreAllMocks()
+})
+
+it('remounting a removed concurrency panel starts a fresh request before its cancelled request settles', async () => {
+  vi.mocked(api.get).mockRestore()
+  const aborted = vi.fn()
+  const requests: {
+    signal: { aborted?: boolean } | undefined
+    complete: () => void
+  }[] = []
+  const adapter: AxiosAdapter = (config) =>
+    new Promise((resolve) => {
+      config.signal?.addEventListener?.('abort', aborted, { once: true })
+      requests.push({
+        signal: config.signal,
+        complete: () =>
+          resolve({
+            config,
+            data: envelope().data,
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+          }),
+      })
+    })
+  api.defaults.adapter = adapter
+  try {
+    const rendered = renderPanel()
+    await waitFor(() => expect(requests).toHaveLength(1))
+    rendered.unmount()
+    clients[0].removeQueries({ queryKey: ['media-concurrency'] })
+    expect(clients[0].getQueryCache().getAll()).toHaveLength(0)
+    renderPanel()
+    await waitFor(() => expect(requests).toHaveLength(2))
+    expect(requests[0].signal?.aborted).toBe(true)
+    expect(aborted).toHaveBeenCalledOnce()
+    await act(async () => requests[0].complete())
+    expect(
+      screen.queryByRole('table', { name: 'Upstream account admission pools' })
+    ).not.toBeInTheDocument()
+    await act(async () => requests[1].complete())
+    expect(
+      await screen.findByRole('table', {
+        name: 'Upstream account admission pools',
+      })
+    ).toBeVisible()
+  } finally {
+    await act(async () => requests.forEach((request) => request.complete()))
+  }
 })
 
 it('administrators can read actual per-key limits but cannot edit or reconcile', async () => {
@@ -129,14 +179,14 @@ it('administrators can read actual per-key limits but cannot edit or reconcile',
     permissions: { admin_permissions: { media_operations: { read: true } } },
   })
   renderPanel()
-  await screen.findByRole('table', { name: 'Media account admission pools' })
+  await screen.findByRole('table', { name: 'Upstream account admission pools' })
   expect(
     screen.getByLabelText('Default video concurrency per key')
   ).toBeDisabled()
   expect(screen.getByText('Enabled video admission limit: 16')).toBeVisible()
   expect(screen.getByText('Unknown', { exact: true })).toBeVisible()
   expect(
-    screen.queryByRole('button', { name: 'Save media concurrency' })
+    screen.queryByRole('button', { name: 'Save account concurrency' })
   ).not.toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Reconcile account pools' })
@@ -144,7 +194,7 @@ it('administrators can read actual per-key limits but cannot edit or reconcile',
   expect(screen.queryByText('opaque-h3-1')).not.toBeInTheDocument()
   expect(screen.queryByText('opaque-historical')).not.toBeInTheDocument()
   const table = screen.getByRole('table', {
-    name: 'Media account admission pools',
+    name: 'Upstream account admission pools',
   })
   const row = within(table).getByRole('row', { name: /H3 account 1/ })
   expect(within(row).getByText('5', { exact: true })).toBeVisible()
@@ -158,7 +208,7 @@ it('invalid policy values remain visible and block confirmation rather than bein
   )
   fireEvent.change(input, { target: { value: '17' } })
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   expect(
     await screen.findByText('Enter a whole number within the allowed range')
@@ -197,7 +247,7 @@ it('root confirms an exact revisioned save, clears a blank override and preserve
     target: { value: '' },
   })
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   expect(put).not.toHaveBeenCalled()
   const dialog = screen.getByRole('alertdialog')
@@ -205,7 +255,7 @@ it('root confirms an exact revisioned save, clears a blank override and preserve
     within(dialog).getByText(/Running and UNKNOWN tasks are preserved/)
   ).toBeVisible()
   await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
-  await screen.findByText('Media concurrency saved')
+  await screen.findByText('Account concurrency saved')
   expect(put).toHaveBeenCalledExactlyOnceWith('/api/media-concurrency', {
     schema_version: 1,
     expected_revision: 'config-one',
@@ -234,7 +284,7 @@ it('a 409 preserves the draft and blocks saving until an explicit reload obtains
     { target: { value: '3' } }
   )
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   await userEvent.click(
     within(screen.getByRole('alertdialog')).getByRole('button', {
@@ -242,13 +292,13 @@ it('a 409 preserves the draft and blocks saving until an explicit reload obtains
     })
   )
   await screen.findByText(
-    'Media concurrency changed elsewhere. Reload the latest configuration before saving. Reloading discards this draft.'
+    'Account concurrency changed elsewhere. Reload the latest configuration before saving. Reloading discards this draft.'
   )
   expect(
     screen.getByLabelText('Default video concurrency per key')
   ).toHaveValue('3')
   expect(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   ).toBeDisabled()
   expect(put).toHaveBeenCalledOnce()
   expect(screen.queryByText('private response')).not.toBeInTheDocument()
@@ -272,7 +322,7 @@ it('a 409 preserves the draft and blocks saving until an explicit reload obtains
   })
   put.mockResolvedValueOnce(envelope({ ...snapshot, revision: 'config-final' }))
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   await userEvent.click(
     within(screen.getByRole('alertdialog')).getByRole('button', {
@@ -295,7 +345,7 @@ it('failed business saves keep the draft and never show a saved message', async 
     { target: { value: '2' } }
   )
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   await userEvent.click(
     within(screen.getByRole('alertdialog')).getByRole('button', {
@@ -303,12 +353,14 @@ it('failed business saves keep the draft and never show a saved message', async 
     })
   )
   expect(
-    await screen.findByText('Failed to save media concurrency')
+    await screen.findByText('Failed to save account concurrency')
   ).toBeVisible()
   expect(
     screen.getByLabelText('Default video concurrency per key')
   ).toHaveValue('2')
-  expect(screen.queryByText('Media concurrency saved')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('Account concurrency saved')
+  ).not.toBeInTheDocument()
   expect(screen.queryByText('private provider detail')).not.toBeInTheDocument()
 })
 
@@ -317,17 +369,19 @@ it('root explicitly reconciles configured pools with schema one and receives a f
     .spyOn(api, 'post')
     .mockResolvedValue(envelope({ ...snapshot, revision: 'reconciled' }))
   renderPanel()
-  await screen.findByRole('table', { name: 'Media account admission pools' })
+  await screen.findByRole('table', { name: 'Upstream account admission pools' })
   await userEvent.click(
     screen.getByRole('button', { name: 'Reconcile account pools' })
   )
   expect(post).not.toHaveBeenCalled()
   const dialog = screen.getByRole('alertdialog')
   expect(
-    within(dialog).getByText(/does not call providers or generate media/)
+    within(dialog).getByText(
+      /does not call providers or generate images or videos/
+    )
   ).toBeVisible()
   await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
-  await screen.findByText('Media account pools reconciled')
+  await screen.findByText('Account pools reconciled')
   expect(post).toHaveBeenCalledExactlyOnceWith(
     '/api/media-concurrency/refresh',
     { schema_version: 1 }
@@ -339,7 +393,7 @@ it('a reconciliation failure preserves the existing snapshot and reports failure
     new Error('private credential detail')
   )
   renderPanel()
-  await screen.findByRole('table', { name: 'Media account admission pools' })
+  await screen.findByRole('table', { name: 'Upstream account admission pools' })
   await userEvent.click(
     screen.getByRole('button', { name: 'Reconcile account pools' })
   )
@@ -349,12 +403,10 @@ it('a reconciliation failure preserves the existing snapshot and reports failure
     })
   )
   expect(
-    await screen.findByText('Failed to reconcile media account pools')
+    await screen.findByText('Failed to reconcile account pools')
   ).toBeVisible()
   expect(screen.getByText('H3 account 1')).toBeVisible()
-  expect(
-    screen.queryByText('Media account pools reconciled')
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Account pools reconciled')).not.toBeInTheDocument()
   expect(
     screen.queryByText('private credential detail')
   ).not.toBeInTheDocument()
@@ -364,7 +416,7 @@ it('an empty ledger shows no registered pools without inventing upstream availab
   vi.mocked(api.get).mockResolvedValue(envelope({ ...snapshot, pools: [] }))
   renderPanel()
   expect(
-    await screen.findByText('No registered media account pools')
+    await screen.findByText('No registered upstream account pools')
   ).toBeVisible()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   expect(
@@ -400,7 +452,7 @@ it('paging account pools keeps edits on both pages in the confirmed request', as
     await screen.findByLabelText('Override for Page account 1')
   ).toHaveValue('3')
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   await userEvent.click(
     within(screen.getByRole('alertdialog')).getByRole('button', {
@@ -428,7 +480,7 @@ it('load failures and malformed pool snapshots do not display invented zero capa
   )
   renderPanel()
   expect(
-    await screen.findByText('Failed to load media concurrency')
+    await screen.findByText('Failed to load account concurrency')
   ).toBeVisible()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   expect(
@@ -444,7 +496,7 @@ it('losing root permission closes confirmation and losing admin permission remov
     { target: { value: '3' } }
   )
   await userEvent.click(
-    screen.getByRole('button', { name: 'Save media concurrency' })
+    screen.getByRole('button', { name: 'Save account concurrency' })
   )
   await act(async () => {
     useAuthStore.getState().auth.setUser({
@@ -492,12 +544,14 @@ it('the configuration tab remains usable when the separate observation API fails
       </QueryClientProvider>
     </I18nextProvider>
   )
-  await screen.findByText('Failed to load media operations')
+  await screen.findByText('Failed to load task monitoring')
   await userEvent.click(
     screen.getByRole('tab', { name: 'Concurrency settings' })
   )
   expect(
-    await screen.findByRole('table', { name: 'Media account admission pools' })
+    await screen.findByRole('table', {
+      name: 'Upstream account admission pools',
+    })
   ).toBeVisible()
 })
 
@@ -520,7 +574,9 @@ it.each([
       true
     )
     renderPanel()
-    await screen.findByRole('table', { name: 'Media account admission pools' })
+    await screen.findByRole('table', {
+      name: 'Upstream account admission pools',
+    })
     await act(async () => {
       await i18n.changeLanguage(language)
     })
@@ -535,3 +591,38 @@ it.each([
     expect(screen.getByText(labels.Unknown, { exact: true })).toBeVisible()
   }
 )
+
+it('editing image concurrency preserves hidden video defaults and video pool overrides', async () => {
+  const data = {
+    ...snapshot,
+    pool_overrides: [
+      ...snapshot.pool_overrides,
+      { pool_id: 'opaque-h3-1', limit: 2 },
+    ],
+  }
+  vi.mocked(api.get).mockResolvedValue(envelope(data))
+  const put = vi.spyOn(api, 'put').mockResolvedValue(envelope(data))
+  renderPanel('image')
+  const image = await screen.findByLabelText(
+    'Default image concurrency per key'
+  )
+  expect(
+    screen.queryByLabelText('Default video concurrency per key')
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText('H3 account 1')).not.toBeInTheDocument()
+  expect(screen.getByText('Image account')).toBeVisible()
+  fireEvent.change(image, { target: { value: '12' } })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Save account concurrency' })
+  )
+  await userEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Confirm',
+    })
+  )
+  await waitFor(() => expect(put).toHaveBeenCalledOnce())
+  expect(put.mock.calls[0][1]).toMatchObject({
+    defaults: { video: 4, image: 12 },
+    pool_overrides: expect.arrayContaining(data.pool_overrides),
+  })
+})

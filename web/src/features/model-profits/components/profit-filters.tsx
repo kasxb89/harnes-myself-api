@@ -18,13 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { DatePicker } from '@/components/date-picker'
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
+import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 
 import {
   profitPreset,
+  profitCalendarDate,
+  profitCalendarValue,
   type ProfitPeriod,
   type ProfitPreset,
 } from '../lib/period'
@@ -69,7 +72,7 @@ export function ProfitFilters(props: {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          props.onApply()
+          if (!props.loading && !props.invalid) props.onApply()
         }}
       >
         <FieldGroup className='grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2fr_auto]'>
@@ -77,33 +80,64 @@ export function ProfitFilters(props: {
             <FieldLabel htmlFor='model-profit-start'>
               {t('Start date')}
             </FieldLabel>
-            <Input
-              id='model-profit-start'
-              type='date'
-              value={props.value.start}
-              aria-invalid={props.invalid}
-              onChange={(event) =>
-                props.onChange({ ...props.value, start: event.target.value })
-              }
-            />
+            <div className='flex gap-2'>
+              <Input
+                id='model-profit-start'
+                type='text'
+                placeholder='YYYY-MM-DD'
+                autoComplete='off'
+                value={props.value.start}
+                aria-invalid={props.invalid}
+                onChange={(event) =>
+                  props.onChange({ ...props.value, start: event.target.value })
+                }
+              />
+              <DatePicker
+                compact
+                aria-label={t('Choose start date')}
+                selected={profitCalendarDate(props.value.start)}
+                onSelect={(date) =>
+                  props.onChange({
+                    ...props.value,
+                    start: profitCalendarValue(date),
+                  })
+                }
+              />
+            </div>
           </Field>
           <Field>
             <FieldLabel htmlFor='model-profit-end'>
               {t('End date (inclusive)')}
             </FieldLabel>
-            <Input
-              id='model-profit-end'
-              type='date'
-              value={props.value.end}
-              aria-invalid={props.invalid}
-              onChange={(event) =>
-                props.onChange({ ...props.value, end: event.target.value })
-              }
-            />
+            <div className='flex gap-2'>
+              <Input
+                id='model-profit-end'
+                type='text'
+                placeholder='YYYY-MM-DD'
+                autoComplete='off'
+                value={props.value.end}
+                aria-invalid={props.invalid}
+                onChange={(event) =>
+                  props.onChange({ ...props.value, end: event.target.value })
+                }
+              />
+              <DatePicker
+                compact
+                aria-label={t('Choose end date')}
+                selected={profitCalendarDate(props.value.end)}
+                onSelect={(date) =>
+                  props.onChange({
+                    ...props.value,
+                    end: profitCalendarValue(date),
+                  })
+                }
+              />
+            </div>
           </Field>
           <Field>
             <FieldLabel htmlFor='model-profit-model'>{t('Model')}</FieldLabel>
-            <Combobox
+            <ComboboxInput
+              allowCustomValue
               id='model-profit-model'
               value={props.value.model}
               options={[
@@ -114,7 +148,6 @@ export function ProfitFilters(props: {
                 })),
               ]}
               placeholder={t('All models')}
-              searchPlaceholder={t('Search models...')}
               emptyText={t('No matching models')}
               aria-label={t('Model')}
               onValueChange={(model) =>

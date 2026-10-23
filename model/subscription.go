@@ -793,8 +793,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return common.NewMessage("Insufficient balance")
 		}
 		if requiredQuota > 0 {
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
+			if err := DebitWalletFundingWithTx(tx, userId, requiredQuota, "subscription-purchase:"+common.GetRandomString(24), true); err != nil {
 				return err
 			}
 		}
@@ -835,9 +834,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	}
 
 	if chargedQuota > 0 {
-		if err := cacheDecrUserQuota(userId, int64(chargedQuota)); err != nil {
-			common.SysLog(common.LogText("failed to decrease user quota cache after subscription balance purchase: %s", err.Error()))
-		}
+		InvalidateWalletFundingCache(userId)
 	}
 	if upgradeGroup != "" {
 		refreshSubscriptionUserGroupCache(userId, common.LogText("subscription balance purchase"))

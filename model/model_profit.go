@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -22,27 +23,50 @@ type ModelProfitFilter struct {
 }
 
 type ModelProfitTotals struct {
-	Requests            int64    `json:"requests"`
-	BillingEvents       int64    `json:"billing_events"`
-	RevenueCNY          float64  `json:"revenue_cny"`
-	RefundCNY           float64  `json:"refund_cny"`
-	KnownCostRevenueCNY float64  `json:"known_cost_revenue_cny"`
-	UpstreamCostCNY     *float64 `json:"upstream_cost_cny"`
-	GrossProfitCNY      *float64 `json:"gross_profit_cny"`
-	ProfitMargin        *float64 `json:"profit_margin"`
-	KnownCostRequests   int64    `json:"known_cost_requests"`
-	UnknownCostRequests int64    `json:"unknown_cost_requests"`
-	KnownCostEvents     int64    `json:"known_cost_events"`
-	UnknownCostEvents   int64    `json:"unknown_cost_events"`
-	CostCoverage        float64  `json:"cost_coverage"`
-	PendingRequests     int64    `json:"pending_requests"`
-	PendingRevenueCNY   float64  `json:"pending_revenue_cny"`
-	costSum             float64
+	Requests             int64    `json:"requests"`
+	BillingEvents        int64    `json:"billing_events"`
+	RevenueCNY           float64  `json:"revenue_cny"`
+	RefundCNY            float64  `json:"refund_cny"`
+	KnownCostRevenueCNY  float64  `json:"known_cost_revenue_cny"`
+	UpstreamCostCNY      *float64 `json:"upstream_cost_cny"`
+	GrossProfitCNY       *float64 `json:"gross_profit_cny"`
+	ProfitMargin         *float64 `json:"profit_margin"`
+	KnownCostRequests    int64    `json:"known_cost_requests"`
+	UnknownCostRequests  int64    `json:"unknown_cost_requests"`
+	KnownCostEvents      int64    `json:"known_cost_events"`
+	UnknownCostEvents    int64    `json:"unknown_cost_events"`
+	CostCoverage         float64  `json:"cost_coverage"`
+	PendingRequests      int64    `json:"pending_requests"`
+	PendingRevenueCNY    float64  `json:"pending_revenue_cny"`
+	PendingBillingEvents int64    `json:"pending_billing_events"`
+	// Cash attribution is backed by the main-database funding journal. Legacy
+	// billing logs alone cannot establish a paid/gift split.
+	CashRevenueCNY            *float64         `json:"cash_revenue_cny"`
+	GiftConsumedCNY           *float64         `json:"gift_consumed_cny"`
+	CashProfitCNY             *float64         `json:"cash_profit_cny"`
+	FundingStatus             string           `json:"funding_status"`
+	FundingUnknownEvents      int64            `json:"funding_unknown_events"`
+	FundingCoverage           float64          `json:"funding_coverage"`
+	FundingPolicy             string           `json:"funding_policy"`
+	ConfirmedCashRevenueCNY   float64          `json:"confirmed_cash_revenue_cny"`
+	ConfirmedPaidConsumedCNY  float64          `json:"confirmed_paid_consumed_cny"`
+	ConfirmedGiftConsumedCNY  float64          `json:"confirmed_gift_consumed_cny"`
+	UnknownFundingConsumedCNY float64          `json:"unknown_funding_consumed_cny"`
+	UnknownCostReasons        map[string]int64 `json:"unknown_cost_reasons,omitempty"`
+	UnconfirmedFundingReasons map[string]int64 `json:"unconfirmed_funding_reasons,omitempty"`
+	fundingKnownEvents        int64
+	cashSum                   decimal.Decimal
+	costSum                   float64
+	invalidAmount             bool
+	priceUnconfirmed          bool
 }
 
 type ModelProfitRow struct {
 	ModelName string `json:"model_name"`
 	ModelProfitTotals
+	CustomerAveragePriceCNY *float64 `json:"customer_average_price_cny"`
+	UpstreamAverageCostCNY  *float64 `json:"upstream_average_cost_cny"`
+	AveragePriceUnit        string   `json:"average_price_unit"`
 }
 
 type ModelProfitTrendPoint struct {
@@ -66,9 +90,15 @@ type ModelProfitReport struct {
 	ProfitBasis                     string                  `json:"profit_basis"`
 	CostRulesRevision               int64                   `json:"cost_rules_revision"`
 	ConsumptionLoggingEnabled       bool                    `json:"consumption_logging_enabled"`
+	CashProfitBasis                 string                  `json:"cash_profit_basis"`
+	FundingCollectionStatus         string                  `json:"funding_collection_status"`
+	FundingPolicy                   string                  `json:"funding_policy"`
 }
 
 type profitLogFacts struct {
+	FundingPending          bool               `json:"funding_pending,omitempty"`
+	FundingPendingInitial   bool               `json:"funding_pending_initial,omitempty"`
+	AdminInfo               profitFundingFacts `json:"admin_info"`
 	TaskID                  string             `json:"task_id"`
 	IsTask                  bool               `json:"is_task"`
 	ActualQuota             *int64             `json:"actual_quota"`
@@ -89,6 +119,14 @@ type profitLogFacts struct {
 	MatchedTier             string             `json:"matched_tier"`
 }
 
+type profitFundingFacts struct {
+	Funding          *WalletFundingAmounts `json:"funding,omitempty"`
+	FundingRequestID string                `json:"funding_request_id,omitempty"`
+	FundingPurpose   string                `json:"funding_purpose,omitempty"`
+	FundingSigned    bool                  `json:"funding_signed,omitempty"`
+	ProfitRecordKey  string                `json:"profit_record_key,omitempty"`
+}
+
 type profitTaskKey struct {
 	Channel, User int
 	ID            string
@@ -96,9 +134,16 @@ type profitTaskKey struct {
 type profitCostEvent struct {
 	cost                    float64
 	known, initial, pending bool
+	priceUnconfirmed        bool
+	unknownReason           string
+	funding                 *WalletFundingAmounts
 }
 
 func (totals *ModelProfitTotals) add(log Log, event profitCostEvent, conversion float64) {
+	totals.priceUnconfirmed = totals.priceUnconfirmed || event.priceUnconfirmed
+	if log.Quota < 0 {
+		totals.invalidAmount = true
+	}
 	amount := float64(log.Quota) * conversion
 	if log.Type == LogTypeRefund {
 		totals.RefundCNY += amount
@@ -106,10 +151,40 @@ func (totals *ModelProfitTotals) add(log Log, event profitCostEvent, conversion 
 	}
 	totals.RevenueCNY += amount
 	totals.BillingEvents++
+	totals.FundingPolicy = "fifo"
+	fundingReason := ""
+	if event.pending {
+		totals.FundingUnknownEvents++
+		fundingReason = "pending_settlement"
+	} else if event.funding == nil {
+		totals.FundingUnknownEvents++
+		totals.UnknownFundingConsumedCNY += amount
+		fundingReason = "historical_funding_evidence_missing"
+	} else {
+		funding := event.funding
+		totals.cashSum = totals.cashSum.Add(funding.KnownCashRevenueCNY)
+		totals.ConfirmedCashRevenueCNY = totals.cashSum.InexactFloat64()
+		totals.ConfirmedPaidConsumedCNY += float64(funding.PaidQuota) * conversion
+		totals.ConfirmedGiftConsumedCNY += float64(funding.GiftQuota) * conversion
+		totals.UnknownFundingConsumedCNY += float64(funding.UnknownQuota) * conversion
+		if funding.CashRevenueCNY == nil {
+			totals.FundingUnknownEvents++
+			fundingReason = "payment_receipt_or_source_unverified"
+		} else {
+			totals.fundingKnownEvents++
+		}
+	}
+	if fundingReason != "" {
+		if totals.UnconfirmedFundingReasons == nil {
+			totals.UnconfirmedFundingReasons = make(map[string]int64)
+		}
+		totals.UnconfirmedFundingReasons[fundingReason]++
+	}
 	if event.initial {
 		totals.Requests++
 	}
 	if event.pending {
+		totals.PendingBillingEvents++
 		totals.PendingRevenueCNY += amount
 		if event.initial {
 			totals.PendingRequests++
@@ -124,6 +199,14 @@ func (totals *ModelProfitTotals) add(log Log, event profitCostEvent, conversion 
 		}
 	} else {
 		totals.UnknownCostEvents++
+		reason := event.unknownReason
+		if reason == "" {
+			reason = "usage_or_settlement_evidence_missing"
+		}
+		if totals.UnknownCostReasons == nil {
+			totals.UnknownCostReasons = make(map[string]int64)
+		}
+		totals.UnknownCostReasons[reason]++
 		if event.initial {
 			totals.UnknownCostRequests++
 		}
@@ -131,8 +214,24 @@ func (totals *ModelProfitTotals) add(log Log, event profitCostEvent, conversion 
 }
 
 func (totals *ModelProfitTotals) finish() {
+	totals.FundingStatus = "unattributed"
+	totals.FundingPolicy = "fifo"
 	if totals.BillingEvents > 0 {
 		totals.CostCoverage = float64(totals.KnownCostEvents) / float64(totals.BillingEvents)
+		totals.FundingCoverage = float64(totals.fundingKnownEvents) / float64(totals.BillingEvents)
+		if totals.FundingUnknownEvents == 0 {
+			totals.FundingStatus = "attributed"
+			if totals.PendingBillingEvents == 0 && !totals.invalidAmount && !totals.priceUnconfirmed {
+				cash, gift := totals.ConfirmedCashRevenueCNY, totals.ConfirmedGiftConsumedCNY
+				totals.CashRevenueCNY, totals.GiftConsumedCNY = &cash, &gift
+				if totals.UnknownCostEvents == 0 {
+					profit := cash - totals.costSum
+					totals.CashProfitCNY = &profit
+				}
+			}
+		} else if totals.fundingKnownEvents > 0 {
+			totals.FundingStatus = "partial"
+		}
 	}
 	if totals.KnownCostEvents == 0 {
 		return
@@ -153,7 +252,8 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 	defer cancel()
 	report := ModelProfitReport{Rows: []ModelProfitRow{}, ModelOptions: []string{}, Trend: []ModelProfitTrendPoint{}, TrendGranularity: "day", StartTimestamp: filter.Start, EndTimestamp: filter.End,
 		Timezone: "Asia/Shanghai", Currency: "CNY", CurrentRate: operation_setting.USDExchangeRate, QuotaPerUnit: common.QuotaPerUnit,
-		HistoricalConversionApproximate: true, ProfitBasis: "estimated_billed_consumption_margin_not_cash_profit", ConsumptionLoggingEnabled: common.LogConsumeEnabled}
+		HistoricalConversionApproximate: true, ProfitBasis: "estimated_billed_consumption_margin_not_cash_profit", ConsumptionLoggingEnabled: common.LogConsumeEnabled,
+		CashProfitBasis: "cash_attributed_revenue_minus_full_upstream_cost", FundingCollectionStatus: "collected", FundingPolicy: "fifo"}
 	if filter.Start < 0 || filter.End <= filter.Start || filter.End > 253402300799 || filter.End-filter.Start > 366*86400 || (filter.ModelName != "" && !validClientModelID(filter.ModelName)) || math.IsNaN(report.CurrentRate) || math.IsInf(report.CurrentRate, 0) || report.CurrentRate <= 0 || report.QuotaPerUnit <= 0 {
 		return report, ErrModelProfitParameters
 	}
@@ -175,6 +275,35 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 	logs, err := readProfitLogs(query, maxProfitBillingEvents)
 	if err != nil {
 		return report, err
+	}
+	collected, err := readModelProfitBillingRecords(ctx, filter, maxProfitBillingEvents)
+	if err != nil {
+		return report, err
+	}
+	logs, collectedIdentities, err := mergeModelProfitBillingLogs(ctx, logs, collected)
+	if err != nil {
+		return report, err
+	}
+	unreconciled, err := readUnreconciledProfitFunding(ctx, filter)
+	if err != nil {
+		return report, err
+	}
+	logs = append(logs, unreconciled...)
+	if len(logs) > maxProfitBillingEvents {
+		return report, ErrModelProfitTooLarge
+	}
+	var collectedModels []string
+	if err := mainProfitRecordQuery(ctx).Where("created_at >= ? AND created_at < ?", filter.Start, filter.End).Distinct("model_name").Limit(maxProfitBillingEvents+1).Pluck("model_name", &collectedModels).Error; err != nil {
+		return report, err
+	}
+	report.ModelOptions = append(report.ModelOptions, collectedModels...)
+	for _, log := range unreconciled {
+		report.ModelOptions = append(report.ModelOptions, log.ModelName)
+	}
+	slices.Sort(report.ModelOptions)
+	report.ModelOptions = slices.Compact(report.ModelOptions)
+	if len(report.ModelOptions) > maxProfitBillingEvents {
+		return report, ErrModelProfitTooLarge
 	}
 	taskKeys := make(map[profitTaskKey]struct{})
 	for _, log := range logs {
@@ -210,20 +339,47 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 		}
 		var facts profitLogFacts
 		valid := common.UnmarshalJsonStr(log.Other, &facts) == nil
-		event := profitCostEvent{initial: log.Type == LogTypeConsume}
+		event := profitCostEvent{initial: log.Type == LogTypeConsume && (!facts.FundingPending || facts.FundingPendingInitial), pending: facts.FundingPending, priceUnconfirmed: !valid || facts.FundingPending || (facts.IsTask && facts.TaskID == "")}
 		if valid && facts.TaskID != "" {
 			if stored, exists := taskEvents[profitLogIdentity(log)]; exists {
 				event = stored
 			} else {
 				event.initial = log.Type == LogTypeConsume && facts.ActualQuota == nil
+				event.priceUnconfirmed = true
 			}
-		} else if valid && !facts.IsTask && log.Type == LogTypeConsume {
+		} else if valid && !facts.IsTask && !facts.FundingPending && log.Type == LogTypeConsume {
 			if rule := selectProfitCostRule(config.Rules, log.ChannelId, log.ModelName, log.CreatedAt); rule != nil {
 				event.cost, event.known = modelProfitCost(*rule, log, facts)
 			}
 		}
 		if log.Quota < 0 {
 			event.known = false
+		}
+		if !event.known && event.unknownReason == "" {
+			switch {
+			case event.pending:
+				event.unknownReason = "pending_settlement"
+			case !valid || log.Quota < 0:
+				event.unknownReason = "invalid_usage_facts"
+			case facts.TaskID == "" && selectProfitCostRule(config.Rules, log.ChannelId, log.ModelName, log.CreatedAt) == nil:
+				event.unknownReason = "procurement_price_missing"
+			default:
+				if rule := selectProfitCostRule(config.Rules, log.ChannelId, log.ModelName, log.CreatedAt); rule != nil && rule.Kind == "image_resolution" {
+					if resolution, ok := facts.UsageFacts["resolution"].(string); !ok || (resolution != "1k" && resolution != "2k" && resolution != "4k") {
+						event.unknownReason = "image_resolution_missing"
+					}
+				}
+			}
+		}
+		if collectedIdentities[profitLogIdentity(log)] && valid {
+			funding := facts.AdminInfo.Funding
+			signedQuota := int64(log.Quota)
+			if log.Type == LogTypeRefund {
+				signedQuota = -signedQuota
+			}
+			if validProfitFunding(funding, signedQuota) {
+				event.funding = funding
+			}
 		}
 		row.add(log, event, conversion)
 		report.Summary.add(log, event, conversion)
@@ -232,6 +388,23 @@ func GetModelProfits(ctx context.Context, filter ModelProfitFilter) (ModelProfit
 	}
 	for _, row := range models {
 		row.finish()
+		row.AveragePriceUnit = "request"
+		// These are observed period averages per original call, including net
+		// settlement/refunds. They are not advertised token/second/image tariffs.
+		// A refund-only period has no denominator. Pending or partial costs
+		// must not be presented as a final whole-row unit price.
+		if row.Requests > 0 && row.PendingBillingEvents == 0 && !row.invalidAmount && !row.priceUnconfirmed {
+			price := row.RevenueCNY / float64(row.Requests)
+			if !math.IsNaN(price) && !math.IsInf(price, 0) {
+				row.CustomerAveragePriceCNY = &price
+			}
+			if row.BillingEvents > 0 && row.UnknownCostEvents == 0 && row.UpstreamCostCNY != nil {
+				cost := *row.UpstreamCostCNY / float64(row.Requests)
+				if !math.IsNaN(cost) && !math.IsInf(cost, 0) {
+					row.UpstreamAverageCostCNY = &cost
+				}
+			}
+		}
 		report.Rows = append(report.Rows, *row)
 	}
 	slices.SortFunc(report.Rows, func(a, b ModelProfitRow) int { return strings.Compare(a.ModelName, b.ModelName) })
@@ -272,6 +445,31 @@ func profitLogIdentity(log Log) string {
 	// ClickHouse does not persist auto-increment IDs. Request IDs plus the
 	// immutable accounting fields also identify those log events.
 	return fmt.Sprintf("%d:%s:%d:%d:%d:%d:%d:%x", log.Id, log.RequestId, log.CreatedAt, log.Type, log.ChannelId, log.UserId, log.Quota, sha256.Sum256([]byte(log.Other)))
+}
+
+func validProfitFunding(funding *WalletFundingAmounts, quota int64) bool {
+	if funding == nil || funding.Quota != quota || funding.EventID < 0 || quota < -common.MaxWalletQuota || quota > common.MaxWalletQuota {
+		return false
+	}
+	bound := quota
+	if bound < 0 {
+		bound = -bound
+	}
+	for _, value := range []int64{funding.PaidQuota, funding.GiftQuota, funding.UnknownQuota, funding.CashUnknownQuota} {
+		if value < -bound || value > bound || (quota >= 0 && value < 0) || (quota < 0 && value > 0) {
+			return false
+		}
+	}
+	if funding.PaidQuota+funding.GiftQuota+funding.UnknownQuota != quota {
+		return false
+	}
+	if quota >= 0 && funding.KnownCashRevenueCNY.IsNegative() || quota < 0 && funding.KnownCashRevenueCNY.IsPositive() {
+		return false
+	}
+	if funding.CashRevenueCNY != nil && (funding.CashUnknownQuota != 0 || funding.UnknownQuota != 0 || !funding.CashRevenueCNY.Equal(funding.KnownCashRevenueCNY)) {
+		return false
+	}
+	return true
 }
 
 func selectProfitCostRule(rules []ModelProfitCostRule, channel int, model string, at int64) *ModelProfitCostRule {
@@ -410,7 +608,22 @@ func modelProfitTaskEvents(ctx context.Context, keys map[profitTaskKey]struct{},
 		if err != nil {
 			return nil, err
 		}
+		var records []ModelProfitBillingRecord
+		if err := mainProfitRecordQuery(ctx).Where("channel_id = ? AND user_id = ?", key.Channel, key.User).Where(condition, pattern).Order("created_at, id").Limit(maxProfitBillingEvents - historyRead + 1).Find(&records).Error; err != nil {
+			return nil, err
+		}
+		collected := make([]Log, 0, len(records))
+		for _, record := range records {
+			collected = append(collected, modelProfitRecordLog(record))
+		}
+		history, _, err = mergeModelProfitBillingLogs(ctx, history, collected)
+		if err != nil {
+			return nil, err
+		}
 		historyRead += len(history)
+		if historyRead > maxProfitBillingEvents {
+			return nil, ErrModelProfitTooLarge
+		}
 		history = slices.DeleteFunc(history, func(log Log) bool {
 			var facts profitLogFacts
 			return common.UnmarshalJsonStr(log.Other, &facts) != nil || facts.TaskID != key.ID
@@ -455,7 +668,7 @@ func modelProfitTaskEvents(ctx context.Context, keys map[profitTaskKey]struct{},
 		}
 		pending := task.Status != TaskStatusSuccess && task.Status != TaskStatusFailure
 		for i, log := range history {
-			events[profitLogIdentity(log)] = profitCostEvent{initial: i == initial, pending: pending}
+			events[profitLogIdentity(log)] = profitCostEvent{initial: i == initial, pending: pending, priceUnconfirmed: initial < 0}
 		}
 		if initial < 0 || pending {
 			continue
@@ -469,6 +682,13 @@ func modelProfitTaskEvents(ctx context.Context, keys map[profitTaskKey]struct{},
 		}
 		rule := selectProfitCostRule(rules, key.Channel, history[initial].ModelName, at)
 		if rule == nil || (task.Status == TaskStatusFailure && !rule.FailureRefunded) {
+			if rule == nil {
+				for _, log := range history {
+					event := events[profitLogIdentity(log)]
+					event.unknownReason = "procurement_price_missing"
+					events[profitLogIdentity(log)] = event
+				}
+			}
 			continue
 		}
 		previousCost, valid := 0.0, true
@@ -505,6 +725,7 @@ func modelProfitTaskEvents(ctx context.Context, keys map[profitTaskKey]struct{},
 				valid = false
 			}
 			if !valid {
+				event.priceUnconfirmed = true
 				events[profitLogIdentity(log)] = event
 				continue
 			}

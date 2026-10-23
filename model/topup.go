@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
-	"maps"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -86,37 +86,46 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 	return nil
 }
 
-// creditTopUpQuota atomically enforces the wallet ceiling while adding quota.
-// Keeping the predicate and increment in one UPDATE prevents two
-// concurrent callbacks from both passing a separate read/check.
+// creditTopUpQuota preserves unverified credits without inventing cash income.
+// Its caller transaction commits the wallet ceiling, lot and source journal.
 func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]any) error {
-	maxCurrentQuota, err := topUpQuotaMaxCurrent(creditedQuota)
-	if err != nil {
+	if _, err := topUpQuotaMaxCurrent(creditedQuota); err != nil {
 		return err
 	}
-
-	updateFields := make(map[string]any, len(updates)+1)
-	maps.Copy(updateFields, updates)
-	updateFields["quota"] = gorm.Expr("quota + ?", creditedQuota)
-
-	result := tx.Model(&User{}).
-		Where("id = ? AND quota <= ?", userId, maxCurrentQuota).
-		Updates(updateFields)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 1 {
-		return nil
-	}
-
-	var count int64
-	if err := tx.Model(&User{}).Where("id = ?", userId).Count(&count).Error; err != nil {
+	if err := CreditWalletFundingWithTx(tx, userId, creditedQuota, WalletFundingUnknown, "unverified-credit:"+common.GetRandomString(24), nil); err != nil {
+		if errors.Is(err, ErrWalletQuotaLimitExceeded) {
+			return ErrTopUpQuotaLimitExceeded
+		}
 		return err
 	}
-	if count == 0 {
-		return gorm.ErrRecordNotFound
+	if len(updates) > 0 {
+		return tx.Model(&User{}).Where("id = ?", userId).Updates(updates).Error
 	}
-	return ErrTopUpQuotaLimitExceeded
+	return nil
+}
+
+// The paid receipt and the quota source commit together. Only WeChat Native
+// has an unambiguous CNY cash amount in existing order rows. Other providers'
+// currencies are not frozen on the legacy order and remain cash-unverified.
+func creditPaidTopUpQuota(tx *gorm.DB, topUp *TopUp, creditedQuota int, updates map[string]any) error {
+	if _, err := topUpQuotaMaxCurrent(creditedQuota); err != nil {
+		return err
+	}
+	var paidCash *decimal.Decimal
+	if topUp.PaymentProvider == PaymentProviderWechat && !math.IsNaN(topUp.Money) && !math.IsInf(topUp.Money, 0) && topUp.Money > 0 {
+		cash := decimal.NewFromFloat(topUp.Money)
+		paidCash = &cash
+	}
+	if err := CreditWalletFundingWithTx(tx, topUp.UserId, creditedQuota, WalletFundingPaid, fmt.Sprintf("topup:%d", topUp.Id), paidCash); err != nil {
+		if errors.Is(err, ErrWalletQuotaLimitExceeded) {
+			return ErrTopUpQuotaLimitExceeded
+		}
+		return err
+	}
+	if len(updates) > 0 {
+		return tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(updates).Error
+	}
+	return nil
 }
 
 func (topUp *TopUp) Update() error {
@@ -217,7 +226,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp, quotaToAdd, nil)
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
@@ -275,7 +284,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]any{
+		return creditPaidTopUpQuota(tx, topUp, quota, map[string]any{
 			"stripe_customer": customerId,
 		})
 	})
@@ -512,7 +521,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 增加用户额度（立即写库，保持一致性）
-		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+		if err := creditPaidTopUpQuota(tx, topUp, quotaToAdd, nil); err != nil {
 			return err
 		}
 
@@ -589,7 +598,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			}
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quota, updateFields)
+		return creditPaidTopUpQuota(tx, topUp, quota, updateFields)
 	})
 
 	if err != nil {
@@ -647,7 +656,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp, quotaToAdd, nil)
 	})
 
 	if err != nil {
@@ -701,7 +710,7 @@ func RechargeWechat(tradeNo string, callerIp string) (err error) {
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp, quotaToAdd, nil)
 	})
 
 	if err != nil {
@@ -786,7 +795,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUpQuota(tx, topUp, quotaToAdd, nil)
 	})
 
 	if err != nil {

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export interface ProfitTotals {
   requests: number
+  billing_events?: number
   revenue_cny: number
   known_cost_revenue_cny: number
   upstream_cost_cny: number | null
@@ -29,12 +30,29 @@ export interface ProfitTotals {
   unknown_cost_events: number
   cost_coverage: number
   pending_requests: number
+  pending_billing_events?: number
   pending_revenue_cny: number
   refund_cny: number
+  cash_revenue_cny?: number | null
+  gift_consumed_cny?: number | null
+  cash_profit_cny?: number | null
+  funding_status?: string
+  funding_unknown_events?: number
+  funding_coverage?: number
+  funding_policy?: 'fifo'
+  confirmed_cash_revenue_cny?: number | null
+  confirmed_paid_consumed_cny?: number | null
+  confirmed_gift_consumed_cny?: number | null
+  unknown_funding_consumed_cny?: number | null
+  unknown_cost_reasons?: Record<string, number>
+  unconfirmed_funding_reasons?: Record<string, number>
 }
 
 export interface ModelProfitRow extends ProfitTotals {
   model_name: string
+  customer_average_price_cny?: number | null
+  upstream_average_cost_cny?: number | null
+  average_price_unit?: 'request'
 }
 
 export interface ModelProfitTrendPoint extends ProfitTotals {
@@ -52,6 +70,9 @@ export interface ModelProfitResult {
   start_timestamp: number
   end_timestamp: number
   consumption_logging_enabled?: boolean
+  cash_profit_basis?: string
+  funding_collection_status?: string
+  funding_policy?: 'fifo'
 }
 
 export interface ProfitFilters {

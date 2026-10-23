@@ -352,15 +352,31 @@ type RecordConsumeLogParams struct {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	createdAt := common.GetTimestamp()
+	other := params.Other
+	if other == nil {
+		other = NewLogOther()
+	}
+	if value, ok := c.Get("wallet_funding"); ok {
+		if funding, valid := value.(*WalletFundingAmounts); valid && funding != nil {
+			other.SetAdmin("funding", funding)
+			other.SetAdmin("funding_request_id", c.GetString("wallet_funding_request_id"))
+			other.SetAdmin("funding_purpose", c.GetString("wallet_funding_purpose"))
+		}
+	}
+	financialLog := &Log{UserId: userId, CreatedAt: createdAt, Type: LogTypeConsume,
+		RequestId: c.GetString(common.RequestIdKey), ChannelId: params.ChannelId, ModelName: params.ModelName,
+		Quota: params.Quota, PromptTokens: params.PromptTokens, CompletionTokens: params.CompletionTokens, Other: other.JSONString()}
+	if err := recordModelProfitBilling(financialLog, other); err != nil {
+		logger.LogError(c, common.LogText("failed to record financial billing evidence: %s", err.Error()))
+	}
 	if !common.LogConsumeEnabled {
 		return
 	}
 	logger.LogInfo(c, common.LogText("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
 	username := c.GetString("username")
-	requestId := c.GetString(common.RequestIdKey)
+	requestId := financialLog.RequestId
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
-	createdAt := common.GetTimestamp()
-	other := params.Other
 	content := other.setContent(params.Content)
 	otherStr := other.JSONString()
 	// 判断是否需要记录 IP
@@ -430,6 +446,16 @@ type RecordTaskBillingLogParams struct {
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
+	createdAt := common.GetTimestamp()
+	other := params.Other
+	if other == nil {
+		other = NewLogOther()
+	}
+	financialLog := &Log{UserId: params.UserId, CreatedAt: createdAt, Type: params.LogType,
+		ChannelId: params.ChannelId, ModelName: params.ModelName, Quota: params.Quota, Other: other.JSONString()}
+	if err := recordModelProfitBilling(financialLog, other); err != nil {
+		common.SysError(common.LogText("failed to record financial billing evidence: %s", err.Error()))
+	}
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
@@ -440,8 +466,6 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			tokenName = token.Name
 		}
 	}
-	createdAt := common.GetTimestamp()
-	other := params.Other
 	log := &Log{
 		UserId:    params.UserId,
 		Username:  username,
@@ -454,6 +478,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,
 		Group:     params.Group,
+		RequestId: financialLog.RequestId,
 		Other:     other.JSONString(),
 	}
 	err := createLog(log)

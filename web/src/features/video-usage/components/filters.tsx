@@ -98,7 +98,7 @@ export function VideoUsageFilters(props: {
         <ComboboxInput
           id='video-usage-model'
           aria-label={t('Model')}
-          allowCustomValue={false}
+          allowCustomValue
           openOnFocus={false}
           value={props.value.model}
           options={[

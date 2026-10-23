@@ -82,6 +82,7 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	sqlDB, err := database.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	require.NoError(t, database.AutoMigrate(model.WalletFundingModels()...))
 	require.NoError(t, database.AutoMigrate(&model.User{}, &model.Channel{}, &model.Task{}, &model.Log{}, &model.Option{}, &model.H3Account{}, &model.H3Admission{}, &model.MediaPool{}, &model.MediaAdmission{}))
 	model.DB = database
 	model.LOG_DB = database

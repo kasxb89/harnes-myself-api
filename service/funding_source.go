@@ -4,7 +4,11 @@ import (
 	"errors"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ---------------------------------------------------------------------------
@@ -32,45 +36,147 @@ type FundingSource interface {
 // 使 wallet_first 等计费偏好可以回退到订阅。
 var ErrInsufficientWalletQuota = errors.New("wallet quota insufficient")
 
+var errInsufficientWalletTokenQuota = errors.New("token quota is not enough, insufficient remaining quota")
+
 type WalletFunding struct {
-	userId   int
-	consumed int // 实际预扣的用户额度
+	userId    int
+	requestId string
+	purpose   string
+	modelName string
+	channelID int
+	tokenID   int
+	unlimited bool
+	consumed  int // 当前原请求已扣的累计净额度
+	lastDelta int
+	snapshot  *model.WalletFundingAmounts
 }
 
 func (w *WalletFunding) Source() string { return BillingSourceWallet }
 
 func (w *WalletFunding) PreConsume(amount int) error {
 	if amount <= 0 {
-		return nil
+		return w.applyTarget(w.consumed, true, true)
 	}
-	reserved, err := model.TryReserveUserQuota(w.userId, amount)
-	if err != nil {
-		return err
-	}
-	if !reserved {
-		return ErrInsufficientWalletQuota
-	}
-	w.consumed = amount
-	return nil
+	return w.applyTarget(w.consumed+amount, true, true)
 }
 
 func (w *WalletFunding) Settle(delta int) error {
-	if delta == 0 {
-		return nil
-	}
-	if delta > 0 {
-		return model.DecreaseUserQuota(w.userId, delta, false)
-	}
-	return model.IncreaseUserQuota(w.userId, -delta, false)
+	return w.applyTarget(w.consumed+delta, false, false)
 }
 
 func (w *WalletFunding) Refund() error {
-	if w.consumed <= 0 {
+	return w.applyTarget(0, false, false)
+}
+
+// applyTarget keeps wallet quota and its original funding allocation in one
+// durable transaction. A retry of the same cumulative target cannot debit or
+// credit the wallet a second time.
+func (w *WalletFunding) applyTarget(target int, requireAvailable, requireTokenAvailable bool) error {
+	if w.requestId == "" {
+		w.requestId = common.NewRequestId()
+		if w.purpose == "" {
+			w.purpose = "relay"
+		}
+		// Compatibility with in-flight/legacy sessions whose initial reserve
+		// predates the journal. Imported funds remain explicitly unknown.
+		if w.consumed > 0 {
+			if _, err := model.AdoptLegacyWalletFunding(w.userId, w.requestId, w.purpose, w.consumed); err != nil {
+				return err
+			}
+		}
+	}
+	if w.purpose == "" {
+		w.purpose = "relay"
+	}
+	if err := model.PrepareWalletFundingRequest(w.userId, w.requestId, w.purpose, w.modelName, w.channelID); err != nil {
+		return err
+	}
+	if err := model.InvalidateUserTokensCache(w.userId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	var result *model.WalletFundingResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		result, err = model.ApplyWalletFundingTargetWithTx(tx, w.userId, w.requestId, w.purpose, target, requireAvailable)
+		if err != nil {
+			return err
+		}
+		if result.Applied && w.tokenID > 0 {
+			return adjustWalletTokenQuota(tx, w.userId, w.tokenID, result.AppliedDelta, requireTokenAvailable, w.unlimited, false)
+		}
+		return nil
+	})
+	if errors.Is(err, model.ErrInsufficientWalletFunding) {
+		return ErrInsufficientWalletQuota
+	}
+	if err != nil {
+		return err
+	}
+	model.InvalidateWalletFundingCache(w.userId)
+	if err := model.InvalidateUserTokensCache(w.userId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token cache after task billing: %s", err.Error()))
+	}
+	w.consumed = int(result.Total.Quota)
+	w.lastDelta = result.AppliedDelta
+	w.snapshot = &result.Total
+	return nil
+}
+
+func (w *WalletFunding) setRelayMetadata(info *relaycommon.RelayInfo) {
+	w.modelName = info.OriginModelName
+	w.tokenID, w.unlimited = info.TokenId, info.TokenUnlimited
+	if info.IsPlayground {
+		w.tokenID = 0
+	}
+	if info.ChannelMeta != nil {
+		w.channelID = info.ChannelId
+	}
+}
+
+// adjustWalletTokenQuota shares the wallet transaction. Missing historical
+// task tokens can be skipped; an active request's missing token cannot charge.
+func adjustWalletTokenQuota(tx *gorm.DB, userID, tokenID, delta int, requireAvailable, unlimited, allowMissing bool) error {
+	if tokenID <= 0 || delta == 0 {
 		return nil
 	}
-	// IncreaseUserQuota 是 quota += N 的非幂等操作，不能重试，否则会多退额度。
-	// 订阅的 RefundSubscriptionPreConsume 有 requestId 幂等保护所以可以重试。
-	return model.IncreaseUserQuota(w.userId, w.consumed, false)
+	query := tx.Model(&model.Token{}).Where("id = ? AND user_id = ?", tokenID, userID)
+	if requireAvailable && delta > 0 && !unlimited {
+		query = query.Where("remain_quota >= ?", delta)
+	}
+	result := query.Updates(map[string]any{
+		"remain_quota":  gorm.Expr("remain_quota - ?", delta),
+		"used_quota":    gorm.Expr("used_quota + ?", delta),
+		"accessed_time": common.GetTimestamp(),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 && !allowMissing {
+		return errInsufficientWalletTokenQuota
+	}
+	return nil
+}
+
+func (w *WalletFunding) syncRelayInfo(info *relaycommon.RelayInfo) {
+	info.FundingRequestId = w.requestId
+	info.FundingPurpose = w.purpose
+	info.FundingConsumedQuota = w.consumed
+	info.FundingSnapshot = w.snapshot
+}
+
+// BindWalletFundingLogContext supplies an explicitly verified wallet snapshot
+// to the host log/financial projection. A missing snapshot stays unknown.
+func BindWalletFundingLogContext(c *gin.Context, info *relaycommon.RelayInfo) {
+	if c == nil || info == nil {
+		return
+	}
+	c.Set("wallet_funding", info.FundingSnapshot)
+	c.Set("wallet_funding_request_id", info.FundingRequestId)
+	c.Set("wallet_funding_purpose", info.FundingPurpose)
+	c.Set("wallet_funding_event_id", int64(0))
+	if snapshot, ok := info.FundingSnapshot.(*model.WalletFundingAmounts); ok && snapshot != nil {
+		c.Set("wallet_funding_event_id", snapshot.EventID)
+	}
 }
 
 // ---------------------------------------------------------------------------

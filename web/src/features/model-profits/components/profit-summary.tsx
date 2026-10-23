@@ -16,41 +16,57 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { CircleDollarSign, Percent, PiggyBank, Receipt } from 'lucide-react'
+import { CircleDollarSign, Gift, PiggyBank, Receipt } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
-import { formatProfitCny, formatProfitMargin } from '../lib/format'
+import { formatProfitCny, verifiedCashAmount } from '../lib/format'
 import type { ProfitTotals } from '../types'
 
 export function ProfitSummary(props: { data: ProfitTotals }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const data = props.data
+  const cash = (
+    field: 'cash_revenue_cny' | 'gift_consumed_cny' | 'cash_profit_cny'
+  ) => {
+    const amount = verifiedCashAmount(data, field)
+    return amount === null
+      ? t('Pending confirmation')
+      : formatProfitCny(amount, locale)
+  }
   return (
     <section
       aria-label={t('Model profit summary')}
       className='grid grid-cols-2 gap-4 rounded-xl border p-4 xl:grid-cols-4'
     >
       <StatCard
-        title={t('Billed revenue')}
-        value={formatProfitCny(data.revenue_cny, locale)}
-        description={t(
-          'Balance charged at customer prices; includes gift balances'
-        )}
+        title={t('Cash revenue')}
+        value={cash('cash_revenue_cny')}
+        description={t('Revenue attributed to customer-paid funds')}
         icon={Receipt}
         details={[
-          { label: t('Requests'), value: formatNumber(data.requests, locale) },
+          {
+            label: t('Balance charges'),
+            value: formatProfitCny(data.revenue_cny, locale),
+          },
         ]}
         compactMobile
       />
       <StatCard
-        title={t('Known upstream cost (estimate)')}
-        value={formatProfitCny(data.upstream_cost_cny, locale)}
-        description={t('Costs supported by configured supplier price rules')}
+        title={t('Known model procurement cost (estimate)')}
+        value={
+          data.upstream_cost_cny == null ||
+          !Number.isFinite(data.upstream_cost_cny)
+            ? t('Pending confirmation')
+            : formatProfitCny(data.upstream_cost_cny, locale)
+        }
+        description={t(
+          'Estimated from model purchase prices and recorded billable usage'
+        )}
         icon={CircleDollarSign}
         tone='accent-2'
         details={[
@@ -62,27 +78,36 @@ export function ProfitSummary(props: { data: ProfitTotals }) {
         compactMobile
       />
       <StatCard
-        title={t('Gross profit (known-cost portion)')}
-        value={formatProfitCny(data.gross_profit_cny, locale)}
-        description={t('Revenue with known costs minus those upstream costs')}
+        title={t('Cash profit')}
+        value={cash('cash_profit_cny')}
+        description={t(
+          'Consumed paid revenue minus procurement costs, including gifted consumption'
+        )}
         icon={PiggyBank}
         details={[
           {
-            label: t('Revenue with known costs'),
-            value: formatProfitCny(data.known_cost_revenue_cny, locale),
+            label: t('Unattributed billing events'),
+            value: formatNumber(
+              data.funding_unknown_events ??
+                data.billing_events ??
+                data.known_cost_events + data.unknown_cost_events,
+              locale
+            ),
           },
         ]}
         compactMobile
       />
       <StatCard
-        title={t('Gross margin (known-cost portion)')}
-        value={formatProfitMargin(data.profit_margin, locale)}
-        description={t('Calculated only for requests with known costs')}
-        icon={Percent}
+        title={t('Gift balance consumed')}
+        value={cash('gift_consumed_cny')}
+        description={t(
+          'Consumed gifts earn no cash revenue and still incur upstream costs'
+        )}
+        icon={Gift}
         details={[
           {
-            label: t('Unknown cost events'),
-            value: formatNumber(data.unknown_cost_events, locale),
+            label: t('Requests'),
+            value: formatNumber(data.requests, locale),
           },
         ]}
         compactMobile

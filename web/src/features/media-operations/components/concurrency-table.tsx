@@ -48,13 +48,16 @@ import { useMediaFormat } from '../lib/format'
 
 export function MediaConcurrencyTable(props: {
   pools: MediaPool[]
+  kind?: 'image' | 'video'
   form: UseFormReturn<MediaConcurrencyFormValues>
   disabled: boolean
 }) {
   const { t } = useTranslation()
   const format = useMediaFormat()
   const table = useReactTable({
-    data: props.pools,
+    data: props.kind
+      ? props.pools.filter((pool) => pool.media_kind === props.kind)
+      : props.pools,
     columns: [],
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -167,12 +170,12 @@ export function MediaConcurrencyTable(props: {
       },
     },
   ]
-  if (!props.pools.length) {
+  if (!table.getPrePaginationRowModel().rows.length) {
     return (
       <EmptyState
-        title={t('No registered media account pools')}
+        title={t('No registered upstream account pools')}
         description={t(
-          'Pools appear when configured media keys are registered or first used.'
+          'Pools appear when configured upstream keys are registered or first used.'
         )}
       />
     )
@@ -183,7 +186,7 @@ export function MediaConcurrencyTable(props: {
         columns={columns}
         data={table.getRowModel().rows.map((row) => row.original)}
         getRowKey={(row) => row.pool_id}
-        tableProps={{ 'aria-label': t('Media account admission pools') }}
+        tableProps={{ 'aria-label': t('Upstream account admission pools') }}
       />
       <DataTablePagination table={table} />
     </div>

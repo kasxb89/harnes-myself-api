@@ -1,0 +1,690 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+.operations-screen-host {
+  background: #eeeeee;
+}
+
+.operations-screen {
+  --ops-cyan: #181818;
+  --ops-blue: #686868;
+  --ops-green: #4c4c4c;
+  --ops-amber: #848484;
+  --ops-magenta: #767676;
+  --ops-axis: #535353;
+  --ops-grid: #dedede;
+  --ops-tooltip-bg: #ffffff;
+  --background: #f9f9f9;
+  --foreground: #202020;
+  --card: #ffffff;
+  --card-foreground: #202020;
+  --popover: #ffffff;
+  --popover-foreground: #202020;
+  --primary: #202020;
+  --primary-foreground: #ffffff;
+  --secondary: #eeeeee;
+  --secondary-foreground: #303030;
+  --muted: #eeeeee;
+  --muted-foreground: #626262;
+  --accent: #e8e8e8;
+  --accent-foreground: #181818;
+  --border: #d6d6d6;
+  --input: #b7b7b7;
+  --ring: #303030;
+  --destructive: #202020;
+  --table-header: #eeeeee;
+  --table-header-hover: #e4e4e4;
+  --chart-1: var(--ops-cyan);
+  --chart-2: var(--ops-blue);
+  --chart-3: var(--ops-green);
+  --chart-4: var(--ops-amber);
+  --chart-5: var(--ops-magenta);
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  border: 1px solid #cccccc;
+  border-radius: 3px;
+  color: var(--foreground);
+  background:
+    radial-gradient(ellipse at 2% 90%, #3333330a, transparent 38%),
+    radial-gradient(ellipse at 100% 5%, #3333330b, transparent 35%),
+    repeating-linear-gradient(94deg, #00000002 0 1px, transparent 1px 5px),
+    #fafafa;
+  box-shadow: 0 12px 38px #0000000b;
+}
+
+.operations-screen::before,
+.operations-screen::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  width: 44px;
+  height: 17px;
+  border-color: #333333;
+  pointer-events: none;
+  opacity: 0.65;
+}
+.operations-screen::before {
+  inset: 0 auto auto 0;
+  border-top: 2px solid;
+  border-left: 2px solid;
+}
+.operations-screen::after {
+  inset: auto 0 0 auto;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+}
+.operations-screen:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  border: 0;
+}
+.operations-screen .ops-screen-layer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+.operations-screen .ops-scanline {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.operations-screen .ops-scanline::after {
+  content: '';
+  position: absolute;
+  inset: 12% -20% auto;
+  height: 30%;
+  opacity: 0.3;
+  background: radial-gradient(ellipse, #bcbcbc15, transparent 64%);
+  animation: ops-ink-cloud 24s ease-in-out infinite alternate;
+}
+.operations-screen .ops-perimeter-ticks {
+  position: absolute;
+  inset: 12px 5px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.28;
+  background:
+    repeating-linear-gradient(180deg, #777777 0 1px, transparent 1px 18px) left
+      top / 2px 100% no-repeat,
+    repeating-linear-gradient(180deg, #777777 0 1px, transparent 1px 18px) right
+      top / 2px 100% no-repeat;
+}
+.operations-screen .ops-command-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 20px;
+}
+.operations-screen .ops-command-header::before,
+.operations-screen .ops-command-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: calc(50% - 110px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #888888);
+}
+.operations-screen .ops-command-header::before {
+  left: 0;
+}
+.operations-screen .ops-command-header::after {
+  right: 0;
+  transform: scaleX(-1);
+}
+.operations-screen .ops-command-context {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.operations-screen .ops-context-empty {
+  color: #626262;
+  font-size: 11px;
+}
+.operations-screen .ops-brand {
+  position: relative;
+  min-width: 0;
+  padding-inline: 12px;
+  text-align: center;
+}
+.operations-screen .ops-title-track {
+  display: block;
+  width: 94px;
+  height: 4px;
+  margin: 12px auto 0;
+  border-radius: 50%;
+  background: linear-gradient(90deg, transparent, #222222 30% 65%, transparent);
+  transform: rotate(-1deg);
+}
+.operations-screen .ops-kicker {
+  margin-bottom: 5px;
+  color: #626262;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+}
+.operations-screen .ops-command-title {
+  color: #181818;
+  font-family: 'STSong', 'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif;
+  font-size: clamp(26px, 2.7vw, 38px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+}
+.operations-screen .ops-command-description {
+  max-width: 36rem;
+  color: #626262;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+}
+.operations-screen .ops-controls {
+  justify-content: flex-end;
+}
+.operations-screen .ops-controls [data-slot='button'] {
+  min-height: 34px;
+  border-color: #b8b8b8;
+  border-radius: 2px;
+  color: #333333;
+  background: #ffffffa8;
+  font-size: 12px;
+}
+.operations-screen .ops-controls [data-slot='button']:hover {
+  border-color: #303030;
+  color: #111111;
+  background: #eeeeee;
+}
+.operations-screen .ops-controls [aria-pressed='true'] {
+  border-color: #303030;
+  color: #111111;
+  background: #e6e6e6;
+}
+.operations-screen .ops-observation-rail {
+  padding: 8px 11px;
+  border-block: 1px solid #d0d0d0;
+  background: #ffffff6b;
+}
+.operations-screen .ops-status-light {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: #333333;
+  background: currentColor;
+}
+.operations-screen .ops-status-light::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  animation: ops-pulse 3.8s ease-out infinite;
+}
+.operations-screen
+  .ops-observation-status:is(
+    [data-state='paused'],
+    [data-state='pending'],
+    [data-state='stale']
+  )
+  .ops-status-light {
+  background: transparent;
+  border: 1px solid;
+}
+.operations-screen
+  .ops-observation-status:is([data-state='offline'], [data-state='failed'])
+  .ops-status-light {
+  border-radius: 0;
+}
+.operations-screen .ops-status-badge {
+  padding-inline: 0;
+  border: 0;
+  border-radius: 0;
+  color: #303030;
+  background: transparent;
+  font-weight: 600;
+}
+.operations-screen .ops-refresh-cadence {
+  padding-left: 9px;
+  border-left: 1px solid #bbbbbb;
+}
+.operations-screen .ops-window-picker {
+  color: #303030;
+}
+.operations-screen .ops-window-picker > [data-slot] {
+  border-color: #b7b7b7;
+  border-radius: 2px;
+  background: #ffffff;
+}
+.operations-screen .ops-time-rail {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding: 0 3px;
+}
+.operations-screen .ops-time-cell {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 7px 12px;
+}
+.operations-screen .ops-time-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #626262;
+  font-size: 11px;
+}
+.operations-screen .ops-time-label > svg {
+  width: 12px;
+  height: 12px;
+  color: #626262;
+}
+.operations-screen time {
+  color: #404040;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+.operations-screen .ops-tab-strip {
+  height: auto;
+  min-height: 0;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+  align-content: flex-start;
+  gap: 6px;
+  justify-content: center;
+  padding: 8px 0 13px;
+  border-bottom: 1px solid #bbbbbb;
+  border-radius: 0;
+  background: transparent;
+}
+.operations-screen .ops-tab {
+  position: relative;
+  height: 40px;
+  min-height: 40px;
+  gap: 9px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: #626262;
+  background: transparent;
+  font-size: 13px;
+  transition:
+    color 150ms,
+    border-color 150ms,
+    background-color 150ms;
+}
+.operations-screen .ops-tab-index {
+  color: #757575;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+}
+.operations-screen .ops-tab[data-active] {
+  border-color: #b7b7b7;
+  color: #111111;
+  background: #ffffff;
+  box-shadow: inset 0 -2px #303030;
+}
+.operations-screen .ops-tab[data-active] .ops-tab-index,
+.operations-screen .ops-tab[data-active] > svg {
+  color: #303030;
+}
+.operations-screen .ops-detail-link {
+  color: #404040;
+  font-size: 11px;
+}
+.operations-screen
+  .ops-screen-panel
+  :where(section[class*='grid'], [data-slot='card']) {
+  border-color: #cccccc;
+  border-radius: 2px;
+  background: #ffffffa8;
+}
+.operations-screen .ops-screen-panel [data-slot='alert'] {
+  border-color: #aaaaaa;
+  border-radius: 2px;
+  color: #333333;
+  background: #eeeeeed9;
+}
+.operations-screen .ops-screen-panel [data-slot='table-container'] {
+  border-radius: 2px;
+  background: #ffffffbf;
+}
+.operations-screen .ops-screen-panel [data-slot='table-head'] {
+  border-color: #cccccc;
+  color: #404040;
+  background: #eeeeee;
+  font-size: 11px;
+}
+.operations-screen .ops-screen-panel [data-slot='table-cell'] {
+  border-color: #dddddd;
+  color: #303030;
+}
+.operations-screen .ops-screen-panel [data-slot='table-row'] {
+  border-color: #dddddd;
+}
+.operations-screen .ops-screen-panel h2:not(.ops-holo-label),
+.operations-screen .ops-screen-panel h3 {
+  padding-left: 10px;
+  border-left: 2px solid #303030;
+  color: #303030;
+  font-weight: 550;
+  letter-spacing: 0.035em;
+}
+.operations-screen .ops-chart-panel {
+  position: relative;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #cccccc;
+  border-radius: 2px;
+  background: #ffffffb3;
+  box-shadow: 0 6px 20px #00000003;
+}
+.operations-screen .ops-chart-panel::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 22px;
+  height: 5px;
+  border-top: 2px solid #404040;
+  pointer-events: none;
+}
+.operations-screen .ops-chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.operations-screen .ops-chart-title {
+  color: #303030;
+  font-size: 13px;
+  font-weight: 600;
+}
+.operations-screen .ops-chart-note {
+  color: #626262;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.ops-screen-popover {
+  --popover: #ffffff;
+  --popover-foreground: #202020;
+  --accent: #eeeeee;
+  --accent-foreground: #181818;
+  --muted-foreground: #626262;
+  border-color: #aaaaaa;
+  color: #202020;
+  background: #ffffff;
+}
+.operations-screen .ops-chart-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.operations-screen .ops-chart-canvas {
+  min-width: 0;
+  color: var(--ops-axis);
+}
+.operations-screen .ops-chart-canvas .recharts-cartesian-grid line {
+  stroke: var(--ops-grid);
+}
+.operations-screen .ops-chart-canvas .recharts-text {
+  fill: var(--ops-axis);
+  font-size: 11px;
+}
+.operations-screen .ops-chart-canvas .recharts-tooltip-cursor {
+  fill: #00000006;
+}
+.operations-screen .ops-chart-canvas [data-slot='chart-tooltip-content'] {
+  border-color: #aaaaaa;
+  color: #202020;
+  background: var(--ops-tooltip-bg);
+}
+.operations-screen .ops-chart-legend {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: #404040;
+  font-size: 11px;
+}
+.operations-screen .ops-hud-deck {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+.operations-screen .ops-hud-core-slot {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  grid-row: 1;
+  padding-block: 4px;
+}
+.operations-screen .ops-hud-flank {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  align-self: center;
+}
+.operations-screen .ops-hud-flank .ops-chart-panel {
+  padding: 15px 13px 9px;
+}
+.operations-screen .ops-hud-flank .ops-chart-header {
+  display: block;
+  margin-bottom: 8px;
+}
+.operations-screen .ops-hud-flank .ops-chart-note {
+  font-size: 10px;
+  line-height: 1.55;
+}
+.operations-screen .ops-hud-flank .ops-chart-canvas {
+  height: 250px;
+  margin-top: 8px;
+}
+.operations-screen .ops-hud-flank .ops-chart-title {
+  font-size: 13px;
+}
+.operations-screen .ops-hud-flank details > summary {
+  color: #535353;
+  font-size: 10px;
+}
+.operations-screen .ops-hud-pending {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  padding: 20px;
+  border: 1px solid #cccccc;
+  color: #626262;
+  background: #ffffff8a;
+  font-size: 12px;
+}
+.operations-screen .ops-hud-link {
+  display: none;
+}
+.operations-screen .ops-details-console {
+  min-width: 0;
+  margin-top: 8px;
+  border-top: 1px solid #bbbbbb;
+}
+.operations-screen .ops-detail-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-block: 6px;
+}
+.operations-screen .ops-details-trigger {
+  color: #404040;
+  font-size: 12px;
+}
+.operations-screen .ops-details-trigger > svg {
+  transition: transform 150ms;
+}
+.operations-screen .ops-details-trigger[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
+}
+.operations-screen .ops-details-content {
+  padding-block: 12px;
+}
+.operations-screen[data-paused='true'] .ops-scanline::after,
+.operations-screen[data-paused='true'] .ops-status-light::after {
+  animation-play-state: paused;
+}
+@keyframes ops-ink-cloud {
+  from {
+    transform: translateX(-7%);
+    opacity: 0.2;
+  }
+  to {
+    transform: translateX(7%);
+    opacity: 0.45;
+  }
+}
+@keyframes ops-pulse {
+  from {
+    transform: scale(0.6);
+    opacity: 0.65;
+  }
+  to {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+@media (min-width: 1100px) {
+  .operations-screen .ops-hud-deck {
+    grid-template-columns: minmax(0, 1fr) minmax(310px, 1.25fr) minmax(0, 1fr);
+    gap: 20px;
+  }
+  .operations-screen .ops-hud-core-slot {
+    grid-row: auto;
+  }
+}
+@media (min-width: 1280px) {
+  .operations-screen .ops-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 799px) {
+  .operations-screen .ops-command-header {
+    grid-template-columns: 1fr;
+    gap: 9px;
+    padding-bottom: 10px;
+  }
+  .operations-screen .ops-brand {
+    grid-row: 1;
+  }
+  .operations-screen .ops-command-context {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 5px 10px;
+  }
+  .operations-screen .ops-controls {
+    justify-content: center;
+  }
+  .operations-screen .ops-command-title {
+    font-size: 28px;
+  }
+  .operations-screen .ops-command-description {
+    display: none;
+  }
+  .operations-screen .ops-time-cell {
+    display: flex;
+    gap: 3px 8px;
+  }
+  .operations-screen .ops-time-label {
+    margin: 0;
+  }
+}
+@media (max-width: 640px) {
+  .operations-screen-host > .ops-screen-viewport {
+    padding: 8px;
+  }
+  .operations-screen {
+    padding: 13px 10px;
+  }
+  .operations-screen:fullscreen {
+    padding: 14px 10px;
+  }
+  .operations-screen .ops-controls {
+    width: 100%;
+  }
+  .operations-screen .ops-controls [data-slot='button'] {
+    flex: 1;
+    padding-inline: 7px;
+    font-size: 11px;
+  }
+  .operations-screen .ops-observation-rail {
+    padding: 10px;
+  }
+  .operations-screen .ops-refresh-cadence {
+    width: 100%;
+    margin-left: 10px;
+    padding: 0;
+    border: 0;
+  }
+  .operations-screen .ops-tab {
+    flex: 1 1 calc(25% - 5px);
+    min-width: 0;
+    gap: 5px;
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+  .operations-screen .ops-tab-index {
+    display: none;
+  }
+  .operations-screen .ops-chart-panel {
+    padding: 12px;
+  }
+  .operations-screen .ops-chart-header {
+    margin-bottom: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .operations-screen .ops-scanline::after,
+  .operations-screen .ops-status-light::after {
+    animation: none;
+  }
+  .operations-screen .ops-tab,
+  .operations-screen .ops-details-trigger > svg {
+    transition: none;
+  }
+}

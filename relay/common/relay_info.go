@@ -153,6 +153,13 @@ type RelayInfo struct {
 	SubscriptionPlanTitle string
 	// RequestId is used for idempotent pre-consume/refund
 	RequestId string
+	// FundingRequestId and FundingPurpose identify the durable wallet charge.
+	// FundingSnapshot is host-owned (*model.WalletFundingAmounts); keeping it
+	// opaque here avoids coupling relay request metadata to database models.
+	FundingRequestId     string
+	FundingPurpose       string
+	FundingConsumedQuota int
+	FundingSnapshot      any
 	// SubscriptionAmountTotal / SubscriptionAmountUsedAfterPreConsume are used to compute remaining in logs.
 	SubscriptionAmountTotal               int64
 	SubscriptionAmountUsedAfterPreConsume int64

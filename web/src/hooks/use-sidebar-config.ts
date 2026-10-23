@@ -56,6 +56,14 @@ function isModuleEnabled(
   adminConfig: SidebarModulesAdminConfig,
   userConfig: SidebarModulesUserConfig
 ): boolean {
+  if (url === '/media-management' || url === '/video-management') {
+    return ['/media-operations', '/video-usage'].some((legacyUrl) =>
+      isModuleEnabled(legacyUrl, adminConfig, userConfig)
+    )
+  }
+  if (url === '/image-management') {
+    return isModuleEnabled('/media-operations', adminConfig, userConfig)
+  }
   const mapping = SIDEBAR_URL_MODULES[url]
   if (!mapping) {
     // No mapping config, default to visible (e.g. system settings and new features)

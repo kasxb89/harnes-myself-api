@@ -30,7 +30,7 @@ func TestModelProfitImageResolutionDatabase(t *testing.T) {
 			}
 			typ := map[string]common.DatabaseType{"sqlite": common.DatabaseTypeSQLite, "mysql": common.DatabaseTypeMySQL, "postgres": common.DatabaseTypePostgreSQL}[kind]
 			useLogExportDatabases(t, db, logDB, typ, typ)
-			require.NoError(t, db.AutoMigrate(&model.Option{}, &model.Task{}))
+			require.NoError(t, db.AutoMigrate(&model.Option{}, &model.Task{}, &model.ModelProfitBillingRecord{}))
 			require.NoError(t, logDB.AutoMigrate(&model.Log{}))
 			oldQuota, oldRate := common.QuotaPerUnit, operation_setting.USDExchangeRate
 			common.QuotaPerUnit, operation_setting.USDExchangeRate = 100, 10

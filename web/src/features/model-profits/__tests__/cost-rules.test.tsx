@@ -28,6 +28,7 @@ import {
 } from '@testing-library/react'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import en from '@/i18n/locales/en.json'
@@ -124,7 +125,10 @@ it('loads cost versions only when root opens the dedicated configuration dialog'
     name: 'Upstream cost rules',
   })
   expect(await within(dialog).findByText('#19 · previous-model')).toBeVisible()
-  expect(get).toHaveBeenCalledWith('/api/model-profit/cost-rules')
+  expect(get).toHaveBeenCalledWith('/api/model-profit/cost-rules', {
+    signal: expect.any(AbortSignal),
+    disableDuplicate: true,
+  })
 })
 
 it('appends a cost version using the fetched revision and retains every previous version', async () => {
@@ -251,3 +255,58 @@ it('preserves unsaved input and refreshes the revision when saving is rejected',
   expect(screen.getByLabelText('Exact model name')).toHaveValue('new-model')
   expect(screen.getByLabelText('Upstream unit cost (CNY)')).toHaveValue(0.1)
 })
+
+it.each(['success', 'failure'] as const)(
+  'a late cost-rule save %s after losing root cannot update caches, notify or refetch privileged data',
+  async (outcome) => {
+    const { put, get } = setup()
+    const response = {
+      data: { success: true, data: { ...initial, revision: 99 } },
+    }
+    let complete: (value: typeof response) => void = () => undefined
+    let fail: (reason: Error) => void = () => undefined
+    const pending = new Promise<typeof response>((resolve, reject) => {
+      complete = resolve
+      fail = reject
+    })
+    put.mockImplementation(() => pending)
+    const saved = vi.spyOn(toast, 'success')
+    const failed = vi.spyOn(toast, 'error')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Configure upstream costs' })
+    )
+    await screen.findByLabelText('Channel ID')
+    await fillVersion()
+    fireEvent.click(screen.getByRole('button', { name: 'Add cost version' }))
+    await waitFor(() => expect(put).toHaveBeenCalledOnce())
+    await act(async () => {
+      useAuthStore.getState().auth.setUser({
+        id: 22,
+        username: 'reader',
+        role: ROLE.ADMIN,
+        permissions: { admin_permissions: { model_profits: { read: true } } },
+      })
+    })
+    await act(async () => {
+      useAuthStore
+        .getState()
+        .auth.setUser({ id: 1, username: 'root', role: ROLE.SUPER_ADMIN })
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await act(async () => {
+      if (outcome === 'success') complete(response)
+      else fail(new Error('earlier root request failed'))
+      await pending.catch(() => undefined)
+    })
+    expect(saved).not.toHaveBeenCalled()
+    expect(failed).not.toHaveBeenCalled()
+    expect(get).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Configure upstream costs' })
+    )
+    await screen.findByLabelText('Channel ID')
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(screen.getByLabelText('Exact model name')).toHaveValue('')
+  }
+)

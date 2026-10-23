@@ -14,7 +14,7 @@ var (
 )
 
 // UserQuotaAdjustment is the immutable database snapshot of a committed manual
-// adjustment. Pending relay deductions in the quota cache are not part of it.
+// adjustment, serialized with every wallet debit and funding-source entry.
 type UserQuotaAdjustment struct {
 	UserID   int
 	Username string
@@ -35,10 +35,11 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 
 	var adjustment UserQuotaAdjustment
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		var user User
-		if err := lockForUpdate(tx).First(&user, userID).Error; err != nil {
+		lockedUser, err := walletFundingUserForUpdate(tx, userID)
+		if err != nil {
 			return err
 		}
+		user := *lockedUser
 		if operatorRole != common.RoleRootUser && operatorRole <= user.Role {
 			return ErrUserQuotaPermission
 		}
@@ -56,15 +57,24 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		if err != nil {
 			return ErrWalletQuotaLimitExceeded
 		}
-		// An unchanged override is a successful operation, including on MySQL
-		// configurations that count only changed rows in RowsAffected.
-		if after != user.Quota {
-			result := tx.Model(&User{}).Where("id = ?", userID).Update("quota", after)
-			if result.Error != nil {
-				return result.Error
+		delta := int64(after) - int64(user.Quota)
+		for delta != 0 {
+			amount := delta
+			if amount < 0 {
+				amount = -amount
 			}
-			if result.RowsAffected != 1 {
-				return gorm.ErrRecordNotFound
+			amount = min(amount, int64(common.MaxWalletQuota))
+			key := "admin-adjustment:" + common.GetRandomString(24)
+			if delta > 0 {
+				if err := CreditWalletFundingWithTx(tx, userID, int(amount), WalletFundingGift, key, nil); err != nil {
+					return err
+				}
+				delta -= amount
+			} else {
+				if err := DebitWalletFundingWithTx(tx, userID, int(amount), key, false); err != nil {
+					return err
+				}
+				delta += amount
 			}
 		}
 		adjustment = UserQuotaAdjustment{UserID: user.Id, Username: user.Username, Before: user.Quota, After: after}
@@ -74,13 +84,6 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		return nil, err
 	}
 
-	// Apply only the committed difference, preserving outstanding reservations.
-	// Both balances are bounded above, so their difference fits in int64.
-	delta := int64(adjustment.After) - int64(adjustment.Before)
-	if delta != 0 {
-		if err := cacheIncrUserQuota(userID, delta); err != nil {
-			common.SysError(common.LogText("failed to sync manual quota adjustment for user %d: %s", userID, err))
-		}
-	}
+	InvalidateWalletFundingCache(userID)
 	return &adjustment, nil
 }

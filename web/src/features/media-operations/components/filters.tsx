@@ -32,6 +32,7 @@ export interface MediaFiltersDraft {
 
 export function MediaOperationsFilters(props: {
   value: MediaFiltersDraft
+  kind?: 'image' | 'video'
   models: string[]
   loading: boolean
   invalid: boolean
@@ -42,7 +43,7 @@ export function MediaOperationsFilters(props: {
   const { t } = useTranslation()
   return (
     <form
-      aria-label={t('Media operations filters')}
+      aria-label={t('Task monitoring filters')}
       className='grid items-end gap-3 rounded-xl border p-4 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_2fr_auto]'
       onSubmit={(event) => {
         event.preventDefault()
@@ -65,32 +66,34 @@ export function MediaOperationsFilters(props: {
           }
         />
       </Field>
-      <Field>
-        <FieldLabel htmlFor='media-operation-kind'>
-          {t('Media type')}
-        </FieldLabel>
-        <ComboboxInput
-          allowCustomValue={false}
-          openOnFocus={false}
-          id='media-operation-kind'
-          aria-label={t('Media type')}
-          value={props.value.kind}
-          options={[
-            { value: 'all', label: t('Images and videos') },
-            { value: 'image', label: t('Image') },
-            { value: 'video', label: t('Video') },
-          ]}
-          onValueChange={(value) => {
-            if (value === 'all' || value === 'image' || value === 'video') {
-              props.onChange({ ...props.value, kind: value })
-            }
-          }}
-        />
-      </Field>
+      {!props.kind && (
+        <Field>
+          <FieldLabel htmlFor='media-operation-kind'>
+            {t('Task type')}
+          </FieldLabel>
+          <ComboboxInput
+            allowCustomValue={false}
+            openOnFocus={false}
+            id='media-operation-kind'
+            aria-label={t('Task type')}
+            value={props.value.kind}
+            options={[
+              { value: 'all', label: t('Images and videos') },
+              { value: 'image', label: t('Image') },
+              { value: 'video', label: t('Video') },
+            ]}
+            onValueChange={(value) => {
+              if (value === 'all' || value === 'image' || value === 'video') {
+                props.onChange({ ...props.value, kind: value })
+              }
+            }}
+          />
+        </Field>
+      )}
       <Field>
         <FieldLabel htmlFor='media-operation-model'>{t('Model')}</FieldLabel>
         <ComboboxInput
-          allowCustomValue={false}
+          allowCustomValue
           openOnFocus={false}
           id='media-operation-model'
           aria-label={t('Model')}

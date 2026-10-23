@@ -127,7 +127,7 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
 })
 
-it('groups root navigation into nine business entries and lists each destination once', async () => {
+it('groups root navigation with the operations screen first under platform operations and lists each destination once', async () => {
   await setup()
   expect(
     within(screen.getByRole('navigation'))
@@ -142,6 +142,10 @@ it('groups root navigation into nine business entries and lists each destination
     'Workbench',
     'My usage',
     'Chat sessions',
+    'Operations screen',
+    'Call logs',
+    'Image management',
+    'Video management',
     'Users & assets',
     'Business & finance',
     'Tasks & diagnostics',
@@ -203,7 +207,55 @@ it('does not expose sensitive links while administrator self permissions are not
     screen.queryByRole('link', { name: 'Model profits' })
   ).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('link', { name: 'Image and video operations' })
+    screen.queryByRole('link', { name: 'Image management' })
+  ).not.toBeInTheDocument()
+})
+it.each(['media_operations', 'video_usage'])(
+  'separates image and video entries while retaining the original %s permission boundary',
+  async (resource) => {
+    await setup(ROLE.ADMIN, undefined, { [resource]: { read: true } })
+    expect(
+      screen.getByRole('link', { name: 'Video management' })
+    ).toHaveAttribute('href', '/video-management')
+    expect(
+      screen.queryByRole('link', { name: 'Image management' }) !== null
+    ).toBe(resource === 'media_operations')
+    expect(
+      screen.queryByRole('link', { name: 'Media management' })
+    ).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'k', ctrlKey: true })
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByRole('combobox'), {
+      target: { value: 'Video management' },
+    })
+    expect(
+      await within(dialog).findByRole('option', { name: /Video management/ })
+    ).toBeVisible()
+  }
+)
+it('places call logs directly under platform operations and preserves their ordinary-user access', async () => {
+  await setup(ROLE.USER)
+  const operations = screen.getByRole('region', { name: 'Platform operations' })
+  expect(
+    within(operations).getByRole('link', { name: 'Call logs' })
+  ).toHaveAttribute('href', '/usage-logs/common')
+  expect(
+    within(operations).getByRole('heading', { level: 3, name: 'Call logs' })
+  ).toBeVisible()
+  expect(
+    within(screen.getByRole('region', { name: 'Daily work' })).queryByRole(
+      'link',
+      { name: 'Call logs' }
+    )
+  ).not.toBeInTheDocument()
+})
+it('respects historical sidebar disablement for both replacement generation entries', async () => {
+  await setup(ROLE.SUPER_ADMIN, { media: { enabled: false } })
+  expect(
+    screen.queryByRole('link', { name: 'Image management' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('link', { name: 'Video management' })
   ).not.toBeInTheDocument()
 })
 it('retains the administrator role floor even if an ordinary account receives a stale capability', async () => {
@@ -231,5 +283,29 @@ it('platform disablement removes empty business parents and their command entrie
   const dialog = await screen.findByRole('dialog')
   expect(
     within(dialog).queryByRole('option', { name: /Model profits/ })
+  ).not.toBeInTheDocument()
+})
+
+it.each(['model_profits', 'media_operations', 'diagnostics', 'user_activity'])(
+  'shows the operations screen with only %s read access',
+  async (resource) => {
+    await setup(ROLE.ADMIN, undefined, { [resource]: { read: true } })
+    const group = screen.getByRole('region', { name: 'Platform operations' })
+    expect(within(group).getAllByRole('link')[0]).toHaveAttribute(
+      'href',
+      '/operations-screen'
+    )
+    expect(
+      within(group).getByRole('link', { name: 'Operations screen' })
+    ).toBeVisible()
+  }
+)
+it('keeps the operations screen hidden when no tab has a read grant', async () => {
+  await setup(ROLE.ADMIN, undefined, {
+    media_operations: { operate: true },
+    video_usage: { read: true },
+  })
+  expect(
+    screen.queryByRole('link', { name: 'Operations screen' })
   ).not.toBeInTheDocument()
 })

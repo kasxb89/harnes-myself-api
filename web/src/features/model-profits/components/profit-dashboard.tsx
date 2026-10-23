@@ -87,7 +87,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
       day: '2-digit',
     }).format(new Date(timestamp * 1000))
   const revenueConfig = {
-    revenue_cny: { label: t('Billed revenue'), color: 'var(--chart-1)' },
+    revenue_cny: { label: t('Balance charges'), color: 'var(--chart-1)' },
   }
   const requestConfig = {
     requests: { label: t('Requests'), color: 'var(--chart-2)' },
@@ -107,10 +107,10 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
     <div className='grid min-w-0 gap-4 lg:grid-cols-2 2xl:grid-cols-3'>
       <Card className='min-w-0'>
         <CardHeader>
-          <CardTitle>{t('Model revenue ranking')}</CardTitle>
+          <CardTitle>{t('Model balance charge ranking')}</CardTitle>
           <CardDescription>
             {t(
-              'Top 10 models by billed revenue; remaining models are grouped together.'
+              'Top 10 models by balance charges; remaining models are grouped together. This is not cash revenue.'
             )}
           </CardDescription>
         </CardHeader>
@@ -119,7 +119,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
             config={revenueConfig}
             className='h-80 w-full'
             role='img'
-            aria-label={t('Model revenue ranking')}
+            aria-label={t('Model balance charge ranking')}
           >
             <BarChart
               accessibilityLayer
@@ -151,7 +151,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
                   <ChartTooltipContent
                     formatter={(value) => (
                       <div className='flex w-full justify-between gap-4'>
-                        <span>{t('Billed revenue')}</span>
+                        <span>{t('Balance charges')}</span>
                         <span className='font-medium tabular-nums'>
                           {formatProfitCny(Number(value), locale)}
                         </span>
@@ -174,7 +174,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
             </summary>
             <ol
               className='mt-3 grid gap-2 text-xs'
-              aria-label={t('Revenue ranking values')}
+              aria-label={t('Balance charge ranking values')}
             >
               {revenue.map((row) => (
                 <li
@@ -275,10 +275,10 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
       </Card>
       <Card className='min-w-0 lg:col-span-2 2xl:col-span-1'>
         <CardHeader>
-          <CardTitle>{t('Daily revenue and requests')}</CardTitle>
+          <CardTitle>{t('Daily balance charges and requests')}</CardTitle>
           <CardDescription>
             {t(
-              'Shanghai calendar days; revenue and requests use separate axes. Revenue includes pending reserved charges; gross profit covers only the known-cost portion.'
+              'Shanghai calendar days; balance charges and requests use separate axes. Charges include pending reserved amounts and gift balances; they are not cash revenue.'
             )}
           </CardDescription>
         </CardHeader>
@@ -293,7 +293,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
                 config={trendConfig}
                 className='h-80 w-full'
                 role='img'
-                aria-label={t('Daily revenue and requests')}
+                aria-label={t('Daily balance charges and requests')}
               >
                 <ComposedChart
                   accessibilityLayer
@@ -336,7 +336,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
                           <div className='flex w-full justify-between gap-4'>
                             <span>
                               {name === 'revenue_cny'
-                                ? t('Billed revenue')
+                                ? t('Balance charges')
                                 : t('Requests')}
                             </span>
                             <span className='font-medium tabular-nums'>
@@ -352,7 +352,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
                   <Legend
                     formatter={(value: string) =>
                       value === 'revenue_cny'
-                        ? t('Billed revenue')
+                        ? t('Balance charges')
                         : t('Requests')
                     }
                   />
@@ -388,7 +388,7 @@ export function ProfitDashboard(props: { data: ModelProfitResult }) {
                     >
                       <span>{date(point.bucket_start, true)}</span>
                       <span>
-                        {t('Billed revenue')}:{' '}
+                        {t('Balance charges')}:{' '}
                         {formatProfitCny(point.revenue_cny, locale)}
                       </span>
                       <span>

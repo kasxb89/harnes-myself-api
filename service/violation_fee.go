@@ -122,10 +122,43 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		return false
 	}
 
-	if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
-		logger.LogError(ctx, common.LogText("failed to charge violation fee: %s", err.Error()))
-		return false
+	// A violation fee is a separate charge purpose. Reusing the refunded
+	// generation allocation would consume or refund that request twice.
+	feeInfo := *relayInfo
+	feeInfo.FundingRequestId = relayInfo.RequestId
+	if feeInfo.FundingRequestId == "" {
+		feeInfo.FundingRequestId = common.NewRequestId()
+		relayInfo.RequestId = feeInfo.FundingRequestId
 	}
+	feeInfo.FundingPurpose = "violation_fee"
+	feeInfo.FundingConsumedQuota = 0
+	feeInfo.FundingSnapshot = nil
+	var chargeErr error
+	fundingApplied := false
+	if feeInfo.BillingSource == BillingSourceSubscription {
+		var result postConsumeQuotaResult
+		result, chargeErr = postConsumeQuotaWithResult(&feeInfo, feeQuota, 0, true)
+		fundingApplied = result.FundingApplied
+	} else {
+		wallet := &WalletFunding{userId: feeInfo.UserId, requestId: feeInfo.FundingRequestId, purpose: feeInfo.FundingPurpose}
+		wallet.setRelayMetadata(&feeInfo)
+		chargeErr = wallet.applyTarget(feeQuota, false, false)
+		if chargeErr == nil {
+			wallet.syncRelayInfo(&feeInfo)
+			if wallet.lastDelta == 0 {
+				return false
+			}
+			fundingApplied = true
+			checkAndSendQuotaNotify(&feeInfo, wallet.lastDelta, 0)
+		}
+	}
+	if chargeErr != nil {
+		logger.LogError(ctx, common.LogText("failed to charge violation fee: %s", chargeErr.Error()))
+		if !fundingApplied {
+			return false
+		}
+	}
+	BindWalletFundingLogContext(ctx, &feeInfo)
 
 	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, feeQuota)
 	model.UpdateChannelUsedQuota(relayInfo.ChannelId, feeQuota)

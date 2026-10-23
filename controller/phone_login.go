@@ -380,12 +380,8 @@ func findOrCreatePhoneUserWithTx(tx *gorm.DB, phoneE164 string) (*model.User, bo
 		if err := common.ValidateWalletQuota(bonusQuota); err != nil {
 			return nil, false, err
 		}
-		result := tx.Model(&model.User{}).Where("id = ? AND quota <= ?", created.Id, common.MaxWalletQuota-bonusQuota).Update("quota", gorm.Expr("quota + ?", bonusQuota))
-		if result.Error != nil {
-			return nil, false, result.Error
-		}
-		if result.RowsAffected != 1 {
-			return nil, false, model.ErrWalletQuotaLimitExceeded
+		if err := model.CreditWalletFundingWithTx(tx, created.Id, bonusQuota, model.WalletFundingGift, "phone-registration", nil); err != nil {
+			return nil, false, err
 		}
 	}
 	return &created, true, nil

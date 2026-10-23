@@ -48,6 +48,7 @@ import { MediaConcurrencyTable } from './concurrency-table'
 
 export function MediaConcurrencyForm(props: {
   snapshot: MediaConcurrency
+  kind?: 'image' | 'video'
   canEdit: boolean
   busy: boolean
   conflict: boolean
@@ -87,7 +88,9 @@ export function MediaConcurrencyForm(props: {
         {!props.canEdit && (
           <Alert>
             <AlertDescription>
-              {t('Only root administrators can change media concurrency.')}
+              {t(
+                'Only root administrators can change upstream key concurrency.'
+              )}
             </AlertDescription>
           </Alert>
         )}
@@ -98,37 +101,39 @@ export function MediaConcurrencyForm(props: {
           )}
         >
           <FieldGroup className='sm:flex-row'>
-            {(['video', 'image'] as const).map((kind) => (
-              <Field key={kind}>
-                <FormField
-                  control={form.control}
-                  name={kind}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        {kind === 'video'
-                          ? t('Default video concurrency per key')
-                          : t('Default image concurrency per key')}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          inputMode='numeric'
-                          disabled={disabled}
-                          className='max-w-40'
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {kind === 'video'
-                          ? t('Allowed range: 1–16')
-                          : t('Allowed range: 1–64')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </Field>
-            ))}
+            {(props.kind ? [props.kind] : (['video', 'image'] as const)).map(
+              (kind) => (
+                <Field key={kind}>
+                  <FormField
+                    control={form.control}
+                    name={kind}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {kind === 'video'
+                            ? t('Default video concurrency per key')
+                            : t('Default image concurrency per key')}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            inputMode='numeric'
+                            disabled={disabled}
+                            className='max-w-40'
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {kind === 'video'
+                            ? t('Allowed range: 1–16')
+                            : t('Allowed range: 1–64')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Field>
+              )
+            )}
           </FieldGroup>
         </SettingsCard>
         <SettingsCard
@@ -141,19 +146,24 @@ export function MediaConcurrencyForm(props: {
             className='mb-4 flex flex-wrap gap-x-6 gap-y-2 text-sm'
             aria-label={t('Enabled admission limits')}
           >
-            <p>
-              {t('Enabled video admission limit: {{count}}', {
-                count: format.count(totals.video),
-              })}
-            </p>
-            <p>
-              {t('Enabled image admission limit: {{count}}', {
-                count: format.count(totals.image),
-              })}
-            </p>
+            {props.kind !== 'image' && (
+              <p>
+                {t('Enabled video admission limit: {{count}}', {
+                  count: format.count(totals.video),
+                })}
+              </p>
+            )}
+            {props.kind !== 'video' && (
+              <p>
+                {t('Enabled image admission limit: {{count}}', {
+                  count: format.count(totals.image),
+                })}
+              </p>
+            )}
           </div>
           <MediaConcurrencyTable
             pools={props.snapshot.pools}
+            kind={props.kind}
             form={form}
             disabled={disabled}
           />
@@ -178,7 +188,7 @@ export function MediaConcurrencyForm(props: {
               type='submit'
               disabled={disabled || !form.formState.isDirty}
             >
-              {t('Save media concurrency')}
+              {t('Save account concurrency')}
             </Button>
             <Button
               type='button'

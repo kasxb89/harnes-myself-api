@@ -44,8 +44,13 @@ function parseConcurrency(body: unknown): MediaConcurrency {
   if (!parsed.success) throw new Error(t('Failed to load media concurrency'))
   return parsed.data
 }
-export async function getMediaConcurrency(): Promise<MediaConcurrency> {
-  const response = await api.get<unknown>('/api/media-concurrency')
+export async function getMediaConcurrency(
+  signal?: AbortSignal
+): Promise<MediaConcurrency> {
+  const response = await api.get<unknown>('/api/media-concurrency', {
+    signal,
+    disableDuplicate: true,
+  })
   return parseConcurrency(response.data)
 }
 export async function saveMediaConcurrency(

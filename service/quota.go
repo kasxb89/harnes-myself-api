@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -94,7 +93,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return err
 	}
 
-	token, err := model.GetTokenByKey(strings.TrimPrefix(relayInfo.TokenKey, "sk-"), false)
+	token, err := model.GetTokenById(relayInfo.TokenId)
 	if err != nil {
 		return err
 	}
@@ -146,10 +145,18 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
 
-	err = PostConsumeQuota(relayInfo, quota, 0, false)
+	if session, ok := relayInfo.Billing.(*BillingSession); ok {
+		err = session.ReserveRealtimeQuota(quota)
+	} else {
+		err = PostConsumeQuota(relayInfo, quota, 0, false)
+		if err == nil {
+			relayInfo.FinalPreConsumedQuota += quota
+		}
+	}
 	if err != nil {
 		return err
 	}
+	BindWalletFundingLogContext(ctx, relayInfo)
 	logger.LogInfo(ctx, common.LogText("realtime streaming consume quota success, quota: %d", quota))
 	return nil
 }
@@ -436,6 +443,8 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 }
 
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
+	fundingDelta := quota
+	walletFunding := relayInfo != nil && relayInfo.BillingSource != BillingSourceSubscription
 
 	// 1) Consume from wallet quota OR subscription item
 	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {
@@ -450,23 +459,39 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 			relayInfo.SubscriptionPostDelta += delta
 		}
 	} else {
-		// Wallet
-		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
-		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+		wallet := &WalletFunding{userId: relayInfo.UserId, requestId: relayInfo.FundingRequestId, purpose: relayInfo.FundingPurpose, consumed: relayInfo.FundingConsumedQuota}
+		wallet.setRelayMetadata(relayInfo)
+		if wallet.requestId == "" {
+			wallet.requestId = relayInfo.RequestId
+			if wallet.requestId == "" {
+				wallet.requestId = common.NewRequestId()
+				relayInfo.RequestId = wallet.requestId
+			}
+			if wallet.purpose == "" {
+				wallet.purpose = "relay"
+			}
+			wallet.consumed = preConsumedQuota
+			if wallet.consumed > 0 {
+				if _, err = model.AdoptLegacyWalletFunding(wallet.userId, wallet.requestId, wallet.purpose, wallet.consumed); err != nil {
+					return result, err
+				}
+			}
 		}
-		if err != nil {
+		relayInfo.FundingSnapshot = nil
+		if err = wallet.Settle(quota); err != nil {
 			return result, err
 		}
+		wallet.syncRelayInfo(relayInfo)
+		fundingDelta = wallet.lastDelta
+		result.TokenApplied = fundingDelta != 0 && !relayInfo.IsPlayground && relayInfo.TokenId > 0
 	}
 	result.FundingApplied = true
 
-	if !relayInfo.IsPlayground {
-		if quota > 0 {
-			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, quota)
+	if fundingDelta != 0 && !relayInfo.IsPlayground && !walletFunding {
+		if fundingDelta > 0 {
+			err = model.DecreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, fundingDelta)
 		} else {
-			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -quota)
+			err = model.IncreaseTokenQuota(relayInfo.TokenId, relayInfo.TokenKey, -fundingDelta)
 		}
 		if err != nil {
 			return result, err

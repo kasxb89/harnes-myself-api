@@ -60,8 +60,8 @@ export function MediaPollTable(props: { rows: MediaOperationModel[] }) {
   if (!props.rows.length) {
     return (
       <EmptyState
-        title={t('No recorded media models')}
-        description={t('Choose another model or media type.')}
+        title={t('No recorded task models')}
+        description={t('Choose another model or task type.')}
       />
     )
   }
@@ -70,7 +70,7 @@ export function MediaPollTable(props: { rows: MediaOperationModel[] }) {
       columns={columns}
       data={props.rows}
       getRowKey={(row) => `${row.media_kind}:${row.model}`}
-      tableProps={{ 'aria-label': t('Media polling diagnostics') }}
+      tableProps={{ 'aria-label': t('Task polling diagnostics') }}
     />
   )
 }

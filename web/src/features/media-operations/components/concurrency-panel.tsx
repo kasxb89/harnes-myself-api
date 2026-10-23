@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -29,7 +29,7 @@ import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 import { getServerErrorMessage } from '@/lib/server-error-message'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
 import {
   getMediaConcurrency,
@@ -44,15 +44,32 @@ type PendingAction =
   | { kind: 'save'; request: MediaConcurrencyUpdate }
   | { kind: 'reconcile' }
 
+type AuthorizedAction = {
+  action: PendingAction
+  generation: number
+}
+
+function canEditMediaConcurrency(
+  user: AuthUser | null,
+  userId: number
+): boolean {
+  return Boolean(
+    user &&
+    user.id === userId &&
+    user.role >= ROLE.SUPER_ADMIN &&
+    canAccessAdminRoute(user, '/media-operations')
+  )
+}
+
 export function MediaConcurrencyPanel(props: {
   active: boolean
+  kind?: 'image' | 'video'
   userId: number
 }) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const canEdit = Boolean(
-    user && user.id === props.userId && user.role >= ROLE.SUPER_ADMIN
-  )
+  const canEdit = canEditMediaConcurrency(user, props.userId)
+  const authorization = useRef({ mounted: false, generation: 0 })
   const queryClient = useQueryClient()
   const queryKey = ['media-concurrency', props.userId]
   const [conflict, setConflict] = useState(false)
@@ -63,7 +80,7 @@ export function MediaConcurrencyPanel(props: {
   const [resetEpoch, setResetEpoch] = useState(0)
   const query = useQuery({
     queryKey,
-    queryFn: getMediaConcurrency,
+    queryFn: ({ signal }) => getMediaConcurrency(signal),
     enabled:
       props.active &&
       Boolean(
@@ -76,38 +93,83 @@ export function MediaConcurrencyPanel(props: {
     refetchOnWindowFocus: false,
     meta: { errorToast: false },
   })
+  const acceptsMutationResult = (operation: AuthorizedAction): boolean => {
+    const currentUser = useAuthStore.getState().auth.user
+    return (
+      authorization.current.mounted &&
+      authorization.current.generation === operation.generation &&
+      canEditMediaConcurrency(currentUser, props.userId)
+    )
+  }
   const save = useMutation({
-    mutationFn: (action: PendingAction) =>
-      action.kind === 'save'
-        ? saveMediaConcurrency(action.request)
+    mutationFn: (operation: AuthorizedAction) =>
+      operation.action.kind === 'save'
+        ? saveMediaConcurrency(operation.action.request)
         : reconcileMediaConcurrency(),
     retry: false,
     meta: { errorToast: false },
-    onSuccess: (snapshot, action) => {
+    onSuccess: (snapshot, operation) => {
+      if (!acceptsMutationResult(operation)) {
+        return
+      }
       queryClient.setQueryData(queryKey, snapshot)
       setResetEpoch((value) => value + 1)
       setConflict(false)
       setPending(null)
-      setNotice(action.kind === 'save' ? 'saved' : 'reconciled')
+      setNotice(operation.action.kind === 'save' ? 'saved' : 'reconciled')
     },
-    onError: (error, action) => {
+    onError: (error, operation) => {
+      if (!acceptsMutationResult(operation)) {
+        return
+      }
       setPending(null)
       if (error instanceof MediaConcurrencyConflict) {
         setConflict(true)
         setNotice(null)
       } else {
-        setNotice(action.kind === 'reconcile' ? 'reconcile-failed' : 'failed')
+        setNotice(
+          operation.action.kind === 'reconcile' ? 'reconcile-failed' : 'failed'
+        )
         handleServerError(
           error,
-          action.kind === 'reconcile'
-            ? t('Failed to reconcile media account pools')
-            : t('Failed to save media concurrency')
+          operation.action.kind === 'reconcile'
+            ? t('Failed to reconcile account pools')
+            : t('Failed to save account concurrency')
         )
       }
     },
   })
+  const resetMutation = save.reset
+  useEffect(() => {
+    const scope = authorization.current
+    scope.mounted = true
+    const unsubscribe = useAuthStore.subscribe((state, previous) => {
+      if (
+        state.auth.user?.id === previous.auth.user?.id &&
+        state.auth.session?.sid === previous.auth.session?.sid &&
+        canEditMediaConcurrency(state.auth.user, props.userId) ===
+          canEditMediaConcurrency(previous.auth.user, props.userId)
+      ) {
+        return
+      }
+      scope.generation += 1
+      resetMutation()
+      setPending(null)
+      setNotice(null)
+      setConflict(false)
+      setResetEpoch((value) => value + 1)
+    })
+    return () => {
+      scope.mounted = false
+      scope.generation += 1
+      unsubscribe()
+    }
+  }, [props.userId, resetMutation])
   const loadError = query.isError
-    ? getServerErrorMessage(query.error, t('Failed to load media concurrency'))
+    ? getServerErrorMessage(
+        query.error,
+        t('Failed to load account concurrency')
+      )
     : undefined
   if (
     !user ||
@@ -126,7 +188,7 @@ export function MediaConcurrencyPanel(props: {
   }
   return (
     <section
-      aria-label={t('Media concurrency configuration')}
+      aria-label={t('Account concurrency configuration')}
       className='min-w-0 space-y-4'
     >
       <div className='flex flex-wrap gap-2'>
@@ -150,13 +212,13 @@ export function MediaConcurrencyPanel(props: {
         )}
       </div>
       {query.isFetching && (
-        <LoadingState inline message={t('Loading media concurrency')} />
+        <LoadingState inline message={t('Loading account concurrency')} />
       )}
       {query.isError && (
         <ErrorState
-          title={t('Failed to load media concurrency')}
+          title={t('Failed to load account concurrency')}
           description={
-            loadError === t('Failed to load media concurrency')
+            loadError === t('Failed to load account concurrency')
               ? undefined
               : loadError
           }
@@ -169,7 +231,7 @@ export function MediaConcurrencyPanel(props: {
         <Alert variant='destructive'>
           <AlertDescription>
             {t(
-              'Media concurrency changed elsewhere. Reload the latest configuration before saving. Reloading discards this draft.'
+              'Account concurrency changed elsewhere. Reload the latest configuration before saving. Reloading discards this draft.'
             )}
           </AlertDescription>
         </Alert>
@@ -177,27 +239,28 @@ export function MediaConcurrencyPanel(props: {
       {notice === 'failed' && (
         <Alert variant='destructive'>
           <AlertDescription>
-            {t('Failed to save media concurrency')}
+            {t('Failed to save account concurrency')}
           </AlertDescription>
         </Alert>
       )}
       {notice === 'reconcile-failed' && (
         <Alert variant='destructive'>
           <AlertDescription>
-            {t('Failed to reconcile media account pools')}
+            {t('Failed to reconcile account pools')}
           </AlertDescription>
         </Alert>
       )}
       {notice === 'saved' && (
-        <p role='status'>{t('Media concurrency saved')}</p>
+        <p role='status'>{t('Account concurrency saved')}</p>
       )}
       {notice === 'reconciled' && (
-        <p role='status'>{t('Media account pools reconciled')}</p>
+        <p role='status'>{t('Account pools reconciled')}</p>
       )}
       {query.data && !query.isError && (
         <MediaConcurrencyForm
           key={`${query.data.revision}:${resetEpoch}`}
           snapshot={query.data}
+          kind={props.kind}
           canEdit={canEdit}
           busy={query.isFetching || save.isPending}
           conflict={conflict}
@@ -214,12 +277,12 @@ export function MediaConcurrencyPanel(props: {
         title={
           pending?.kind === 'reconcile'
             ? t('Reconcile account pools')
-            : t('Save media concurrency')
+            : t('Save account concurrency')
         }
         desc={
           pending?.kind === 'reconcile'
             ? t(
-                'Register configured media keys and reconcile recorded occupancy. This does not call providers or generate media. Unsaved changes will be discarded.'
+                'Register configured image and video keys and reconcile recorded occupancy. This does not call providers or generate images or videos. Unsaved changes will be discarded.'
               )
             : t(
                 'Apply these per-key admission limits? Running and UNKNOWN tasks are preserved; a lower limit only blocks new submissions.'
@@ -228,7 +291,12 @@ export function MediaConcurrencyPanel(props: {
         confirmText={t('Confirm')}
         isLoading={save.isPending}
         handleConfirm={() => {
-          if (pending && canEdit && !save.isPending) save.mutate(pending)
+          if (pending && canEdit && !save.isPending) {
+            save.mutate({
+              action: pending,
+              generation: authorization.current.generation,
+            })
+          }
         }}
       />
     </section>

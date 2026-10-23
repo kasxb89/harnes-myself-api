@@ -79,6 +79,60 @@ describe('administrative route permissions', () => {
     }
   )
 
+  it.each(['media_operations', 'video_usage'])(
+    'opens media management with %s read access while retaining independent legacy route permissions',
+    (resource) => {
+      const user = {
+        ...admin,
+        permissions: { admin_permissions: { [resource]: { read: true } } },
+      }
+      expect(canAccessAdminRoute(user, '/media-management/?type=video')).toBe(
+        true
+      )
+      expect(canAccessAdminRoute(user, '/video-management')).toBe(true)
+      expect(canAccessAdminRoute(user, '/image-management')).toBe(
+        resource === 'media_operations'
+      )
+      expect(canAccessAdminRoute(user, '/media-operations')).toBe(
+        resource === 'media_operations'
+      )
+      expect(canAccessAdminRoute(user, '/video-usage')).toBe(
+        resource === 'video_usage'
+      )
+    }
+  )
+
+  it('denies media management without a granted read capability or administrator role', () => {
+    expect(canAccessAdminRoute(admin, '/media-management')).toBe(false)
+    expect(
+      canAccessAdminRoute(
+        {
+          ...admin,
+          permissions: {
+            admin_permissions: { media_operations: { operate: true } },
+          },
+        },
+        '/media-management'
+      )
+    ).toBe(false)
+    expect(
+      canAccessAdminRoute(
+        {
+          ...admin,
+          role: 1,
+          permissions: {
+            admin_permissions: { video_usage: { read: true } },
+          },
+        },
+        '/media-management'
+      )
+    ).toBe(false)
+    expect(canAccessAdminRoute(null, '/media-management')).toBe(false)
+    expect(
+      canAccessAdminRoute({ ...admin, role: 100 }, '/media-management')
+    ).toBe(true)
+  })
+
   it('revocation is effective on the next check and super administrator access remains unchanged', () => {
     const user = {
       ...admin,

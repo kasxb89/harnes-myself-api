@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func CovertMjpActionToModelName(mjAction string) string {
@@ -38,6 +39,7 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	task.Quota = 0
 	task.TokenId = 0
 	task.BillingChannelId = 0
+	task.FundingRequestId = ""
 	if !shouldBill {
 		return false, nil
 	}
@@ -50,6 +52,10 @@ func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.
 	if relayInfo.BillingSource == BillingSourceSubscription {
 		return false, errors.New("legacy Midjourney billing does not support subscriptions")
 	}
+	if relayInfo.RequestId == "" {
+		relayInfo.RequestId = common.NewRequestId()
+	}
+	task.FundingRequestId = relayInfo.RequestId
 
 	task.Quota = quota
 	task.BillingChannelId = task.ChannelId
@@ -71,24 +77,58 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return false, errors.New("Midjourney task must be persisted before billing")
 	}
 
-	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
-	if !result.FundingApplied {
+	relayInfo.FundingRequestId = task.FundingRequestId
+	relayInfo.FundingPurpose = "relay"
+	// Midjourney charges after persistence. Re-entering settlement must set
+	// the original target, rather than append another task-sized debit.
+	var funding *model.WalletFundingResult
+	billingErr := model.PrepareWalletFundingRequest(task.UserId, task.FundingRequestId, "relay", relayInfo.OriginModelName, task.GetBillingChannelId())
+	if billingErr == nil {
+		if err := model.InvalidateUserTokensCache(task.UserId); err != nil {
+			common.SysError(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+		}
+	}
+	tokenID := relayInfo.TokenId
+	if relayInfo.IsPlayground {
+		tokenID = 0
+	}
+	if billingErr == nil {
+		billingErr = model.DB.Transaction(func(tx *gorm.DB) error {
+			var err error
+			funding, err = model.ApplyWalletFundingTargetWithTx(tx, task.UserId, task.FundingRequestId, "relay", task.Quota, false)
+			if err != nil || !funding.Applied {
+				return err
+			}
+			if err := adjustWalletTokenQuota(tx, task.UserId, tokenID, funding.AppliedDelta, false, true, false); err != nil {
+				return err
+			}
+			return tx.Model(&model.Midjourney{}).Where("id = ? AND user_id = ?", task.Id, task.UserId).Updates(map[string]any{
+				"quota": task.Quota, "token_id": tokenID, "billing_channel_id": task.GetBillingChannelId(), "funding_request_id": task.FundingRequestId,
+			}).Error
+		})
+	}
+	model.InvalidateWalletFundingCache(task.UserId)
+	if err := model.InvalidateUserTokensCache(task.UserId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token cache after task billing: %s", err.Error()))
+	}
+	if billingErr != nil {
 		task.Quota = 0
 		task.TokenId = 0
 		task.BillingChannelId = 0
+		task.FundingRequestId = ""
 		if updateErr := task.UpdateBillingState(); updateErr != nil {
 			return false, errors.Join(billingErr, fmt.Errorf("clear Midjourney billing state: %w", updateErr))
 		}
 		return false, billingErr
 	}
+	relayInfo.FundingSnapshot = &funding.Total
+	relayInfo.FundingConsumedQuota = int(funding.Total.Quota)
+	if !funding.Applied {
+		return false, nil
+	}
 
-	task.TokenId = 0
-	if result.TokenApplied {
-		task.TokenId = relayInfo.TokenId
-	}
-	if updateErr := task.UpdateBillingState(); updateErr != nil {
-		return true, errors.Join(billingErr, fmt.Errorf("update Midjourney billing state: %w", updateErr))
-	}
+	task.TokenId = tokenID
+	checkAndSendQuotaNotify(relayInfo, funding.AppliedDelta, 0)
 	return true, billingErr
 }
 
@@ -99,24 +139,59 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		return true
 	}
 
-	if err := model.IncreaseUserQuota(task.UserId, quota, false); err != nil {
+	requestID := task.FundingRequestId
+	if requestID == "" {
+		requestID = fmt.Sprintf("legacy-mj:%d", task.Id)
+		if task.Id <= 0 {
+			return false
+		}
+		if _, err := model.AdoptLegacyWalletFunding(task.UserId, requestID, "relay", quota); err != nil {
+			logger.LogWarn(ctx, common.LogText("failed to refund Midjourney user quota, task %s: %s", task.MjId, err.Error()))
+			return false
+		}
+	}
+	if err := model.PrepareWalletFundingRequest(task.UserId, requestID, "relay", CovertMjpActionToModelName(task.Action), task.GetBillingChannelId()); err != nil {
+		return false
+	}
+	if err := model.InvalidateUserTokensCache(task.UserId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	var funding *model.WalletFundingResult
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		funding, err = model.ApplyWalletFundingTargetWithTx(tx, task.UserId, requestID, "relay", 0, false)
+		if err != nil {
+			return err
+		}
+		if funding.Applied {
+			if err := adjustTaskWalletAccounting(tx, task.UserId, task.GetBillingChannelId(), task.TokenId, funding.AppliedDelta); err != nil {
+				return err
+			}
+		}
+		return tx.Model(&model.Midjourney{}).Where("id = ? AND user_id = ?", task.Id, task.UserId).Updates(map[string]any{"quota": 0, "funding_request_id": requestID}).Error
+	})
+	if err != nil {
 		logger.LogWarn(ctx, common.LogText("failed to refund Midjourney user quota, task %s: %s", task.MjId, err.Error()))
 		return false
 	}
-
-	if task.TokenId > 0 {
-		tokenKey := resolveTokenKey(ctx, task.TokenId, task.MjId)
-		if tokenKey != "" {
-			if err := model.IncreaseTokenQuota(task.TokenId, tokenKey, quota); err != nil {
-				logger.LogWarn(ctx, common.LogText("failed to refund Midjourney token quota, task %s: %s", task.MjId, err.Error()))
-			}
-		}
+	model.InvalidateWalletFundingCache(task.UserId)
+	if err := model.InvalidateUserTokensCache(task.UserId); err != nil {
+		common.SysError(common.LogText("failed to invalidate token cache after task billing: %s", err.Error()))
 	}
+	task.Quota = 0
+	task.FundingRequestId = requestID
+	if !funding.Applied {
+		return true
+	}
+	quota = -funding.AppliedDelta
 
 	billingChannelId := task.GetBillingChannelId()
-	model.UpdateUserUsedQuota(task.UserId, -quota)
-	model.UpdateChannelUsedQuota(billingChannelId, -quota)
 	other := model.NewLogOther()
+	other.SetAdmin("funding", &funding.Delta)
+	other.SetAdmin("funding_request_id", requestID)
+	other.SetAdmin("funding_purpose", "relay")
+	other.SetAdmin("funding_signed", true)
+	other.SetAdmin("funding_event_id", funding.EventID)
 	other.SetPublic("task_id", task.MjId)
 	other.SetPublic("reason", reason)
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
@@ -129,10 +204,6 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 		Other:     other,
 	})
 
-	task.Quota = 0
-	if err := task.UpdateBillingState(); err != nil {
-		logger.LogError(ctx, common.LogText("Midjourney refund succeeded but clearing the quota failed, task %s: %s", task.MjId, err.Error()))
-	}
 	return true
 }
 

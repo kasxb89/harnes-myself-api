@@ -7,7 +7,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -334,7 +333,7 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		// Don't return error - fall through to DB
 	}
 	token = &Token{}
-	if err = DB.Where(commonKeyCol+" = ?", key).First(token).Error; err != nil {
+	if err = DB.Where(map[string]any{"key": key}).First(token).Error; err != nil {
 		return nil, err
 	}
 	if common.RedisEnabled {
@@ -426,20 +425,16 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota cannot be negative")
 	}
-	if common.RedisEnabled {
-		gopool.Go(func() {
-			// 守卫式增量：哈希不存在时跳过，由下次读取从数据库水合，
-			// 绝不创建只有配额字段的残缺哈希。
-			if _, err := cacheApplyTokenQuotaDelta(tokenId, key, int64(quota)); err != nil {
-				common.SysLog(common.LogText("failed to increase token quota: %s", err.Error()))
-			}
-		})
+	if err := invalidateTokenCacheForMutation(key); err != nil {
+		common.SysLog(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
 	}
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, tokenId, quota)
-		return nil
+	if err := increaseTokenQuota(tokenId, quota); err != nil {
+		return err
 	}
-	return increaseTokenQuota(tokenId, quota)
+	if err := invalidateTokenCacheForMutation(key); err != nil {
+		common.SysLog(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	return nil
 }
 
 func increaseTokenQuota(id int, quota int) (err error) {
@@ -457,18 +452,16 @@ func DecreaseTokenQuota(id int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota cannot be negative")
 	}
-	if common.RedisEnabled {
-		gopool.Go(func() {
-			if _, err := cacheApplyTokenQuotaDelta(id, key, int64(-quota)); err != nil {
-				common.SysLog(common.LogText("failed to decrease token quota: %s", err.Error()))
-			}
-		})
+	if err := invalidateTokenCacheForMutation(key); err != nil {
+		common.SysLog(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
 	}
-	if common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeTokenQuota, id, -quota)
-		return nil
+	if err := decreaseTokenQuota(id, quota); err != nil {
+		return err
 	}
-	return decreaseTokenQuota(id, quota)
+	if err := invalidateTokenCacheForMutation(key); err != nil {
+		common.SysLog(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	return nil
 }
 
 func decreaseTokenQuota(id int, quota int) (err error) {
@@ -538,7 +531,7 @@ func InvalidateUserTokensCache(userId int) error {
 	}
 	var tokens []Token
 	if err := DB.Unscoped().
-		Select("id", commonKeyCol).
+		Select([]string{"id", "key"}).
 		Where("user_id = ?", userId).
 		Find(&tokens).Error; err != nil {
 		return err

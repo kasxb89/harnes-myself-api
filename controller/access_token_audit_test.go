@@ -41,6 +41,7 @@ func setupAccessTokenAudit(t *testing.T) (*model.User, string) {
 	require.NoError(t, i18n.Init())
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.Log{}, &model.AuditLog{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UserAccessToken{}, &model.Option{},
 		&model.AuthFlow{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.UserOAuthBinding{}))
+	require.NoError(t, db.AutoMigrate(model.WalletFundingModels()...))
 	model.DB, model.LOG_DB = db, db
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
@@ -841,6 +842,7 @@ func newAuditTestDatabase(t *testing.T, kind, dsn string) (*gorm.DB, string) {
 		path := t.TempDir() + "/audit.db"
 		db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 		require.NoError(t, err)
+		require.NoError(t, db.AutoMigrate(model.WalletFundingModels()...))
 		return db, path
 	}
 	require.NotEmpty(t, dsn)
@@ -885,6 +887,9 @@ func newAuditTestDatabase(t *testing.T, kind, dsn string) (*gorm.DB, string) {
 	require.NoError(t, sqlDB.Close())
 	db, err := gorm.Open(isolated, &gorm.Config{})
 	require.NoError(t, err)
+	if kind != "clickhouse" {
+		require.NoError(t, db.AutoMigrate(model.WalletFundingModels()...))
+	}
 	t.Logf("isolated database: %s (%s)", name, kind)
 	t.Cleanup(func() {
 		connection, err := db.DB()

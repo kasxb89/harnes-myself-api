@@ -25,11 +25,12 @@ import { createServerError } from '@/lib/server-error-message'
 import type { CostRules, ModelProfitResult, ProfitFilters } from './types'
 
 export async function getModelProfits(
-  params: ProfitFilters
+  params: ProfitFilters,
+  signal?: AbortSignal
 ): Promise<ModelProfitResult> {
   const response = await api.get<ApiResponse<ModelProfitResult>>(
     '/api/model-profit/',
-    { params }
+    { params, signal, disableDuplicate: true }
   )
   if (!response.data.success || !response.data.data) {
     throw createServerError(response.data, t('Failed to load model profits'))
@@ -37,9 +38,10 @@ export async function getModelProfits(
   return response.data.data
 }
 
-export async function getCostRules(): Promise<CostRules> {
+export async function getCostRules(signal?: AbortSignal): Promise<CostRules> {
   const response = await api.get<ApiResponse<CostRules>>(
-    '/api/model-profit/cost-rules'
+    '/api/model-profit/cost-rules',
+    { signal, disableDuplicate: true }
   )
   if (!response.data.success || !response.data.data) {
     throw createServerError(response.data, t('Failed to load upstream costs'))

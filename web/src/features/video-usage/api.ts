@@ -35,10 +35,15 @@ export class VideoUsageTooBroadError extends Error {
   }
 }
 export async function getVideoUsage(
-  params: VideoUsageQuery
+  params: VideoUsageQuery,
+  signal?: AbortSignal
 ): Promise<VideoUsageResult> {
   const response = await api
-    .get<unknown>('/api/video-usage', { params })
+    .get<unknown>('/api/video-usage', {
+      params,
+      signal,
+      disableDuplicate: true,
+    })
     .catch((error: unknown) => {
       if (isAxiosError(error) && error.response?.status === 422) {
         const body: unknown = error.response.data

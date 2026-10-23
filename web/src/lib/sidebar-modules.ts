@@ -384,6 +384,8 @@ export const SIDEBAR_URL_MODULES: Record<
     module: 'customer_service',
   },
   '/media-operations': { section: 'media', module: 'operations' },
+  '/image-management': { section: 'media', module: 'operations' },
+  '/video-management': { section: 'media', module: 'video_usage' },
   '/video-usage': { section: 'media', module: 'video_usage' },
   '/system-info': { section: 'system', module: 'info' },
   '/task-plugins': { section: 'system', module: 'task_plugin' },

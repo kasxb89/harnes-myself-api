@@ -20,6 +20,7 @@ import { CalendarDays } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { DatePicker } from '@/components/date-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -43,8 +44,14 @@ function toInputValue(date?: Date): string {
 
 function fromInputValue(value: string): Date | undefined {
   if (!value) return undefined
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? undefined : date
+  const normalized = value.trim().replace(' ', 'T')
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
+    return undefined
+  }
+  const date = new Date(normalized)
+  if (!Number.isFinite(date.getTime())) return undefined
+  const expected = normalized.length === 16 ? `${normalized}:00` : normalized
+  return toInputValue(date) === expected ? date : undefined
 }
 
 export function CompactDateTimeRangePicker({
@@ -81,7 +88,11 @@ export function CompactDateTimeRangePicker({
     setOpen(nextOpen)
   }
 
+  const invalidStart = Boolean(draftStart && !fromInputValue(draftStart))
+  const invalidEnd = Boolean(draftEnd && !fromInputValue(draftEnd))
+
   const applyDraft = () => {
+    if (invalidStart || invalidEnd) return
     onChange({
       start: fromInputValue(draftStart),
       end: fromInputValue(draftEnd),
@@ -152,14 +163,34 @@ export function CompactDateTimeRangePicker({
               <div className='text-muted-foreground text-xs'>
                 {t('Start Time')}
               </div>
-              <Input
-                type='datetime-local'
-                step={1}
-                value={draftStart}
-                aria-label={t('Start Time')}
-                onChange={(e) => setDraftStart(e.target.value)}
-                className='h-8 text-sm leading-5 tabular-nums'
-              />
+              <div className='flex gap-2'>
+                <Input
+                  type='text'
+                  placeholder='YYYY-MM-DD HH:mm:ss'
+                  autoComplete='off'
+                  aria-invalid={invalidStart}
+                  value={draftStart}
+                  aria-label={t('Start Time')}
+                  onChange={(e) => setDraftStart(e.target.value)}
+                  className='h-8 text-sm leading-5 tabular-nums'
+                />
+                <DatePicker
+                  compact
+                  aria-label={t('Choose start date')}
+                  selected={fromInputValue(draftStart)}
+                  onSelect={(date) => {
+                    if (!date) return
+                    const current = fromInputValue(draftStart)
+                    date.setHours(
+                      current?.getHours() ?? 0,
+                      current?.getMinutes() ?? 0,
+                      current?.getSeconds() ?? 0,
+                      0
+                    )
+                    setDraftStart(toInputValue(date))
+                  }}
+                />
+              </div>
             </div>
             <span className='text-muted-foreground hidden pb-2 text-xs sm:block'>
               ~
@@ -168,14 +199,34 @@ export function CompactDateTimeRangePicker({
               <div className='text-muted-foreground text-xs'>
                 {t('End Time')}
               </div>
-              <Input
-                type='datetime-local'
-                step={1}
-                value={draftEnd}
-                aria-label={t('End Time')}
-                onChange={(e) => setDraftEnd(e.target.value)}
-                className='h-8 text-sm leading-5 tabular-nums'
-              />
+              <div className='flex gap-2'>
+                <Input
+                  type='text'
+                  placeholder='YYYY-MM-DD HH:mm:ss'
+                  autoComplete='off'
+                  aria-invalid={invalidEnd}
+                  value={draftEnd}
+                  aria-label={t('End Time')}
+                  onChange={(e) => setDraftEnd(e.target.value)}
+                  className='h-8 text-sm leading-5 tabular-nums'
+                />
+                <DatePicker
+                  compact
+                  aria-label={t('Choose end date')}
+                  selected={fromInputValue(draftEnd)}
+                  onSelect={(date) => {
+                    if (!date) return
+                    const current = fromInputValue(draftEnd)
+                    date.setHours(
+                      current?.getHours() ?? 0,
+                      current?.getMinutes() ?? 0,
+                      current?.getSeconds() ?? 0,
+                      0
+                    )
+                    setDraftEnd(toInputValue(date))
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -228,7 +279,13 @@ export function CompactDateTimeRangePicker({
           </div>
 
           <div className='flex justify-end'>
-            <Button size='sm' className='h-8' onClick={applyDraft}>
+            <Button
+              type='button'
+              size='sm'
+              className='h-8'
+              disabled={invalidStart || invalidEnd}
+              onClick={applyDraft}
+            >
               {t('Confirm')}
             </Button>
           </div>

@@ -75,6 +75,7 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
       security: useIsSidebarModuleVisible('/security'),
       profile: useIsSidebarModuleVisible('/profile'),
       wallet: useIsSidebarModuleVisible('/wallet'),
+      media: useIsSidebarModuleVisible('/media-management'),
     }),
     { wrapper: Wrapper }
   )
@@ -137,6 +138,68 @@ describe('business navigation compatibility', () => {
         (item) => item.url === '/system-settings/site'
       )
     ).toBe(false)
+  })
+  it.each([
+    [
+      { media: { enabled: true, operations: true, video_usage: false } },
+      undefined,
+      true,
+    ],
+    [
+      { media: { enabled: true, operations: false, video_usage: true } },
+      undefined,
+      true,
+    ],
+    [
+      { media: { enabled: true, operations: false, video_usage: false } },
+      undefined,
+      false,
+    ],
+    [{ media: { enabled: false } }, { media: { operations: true } }, false],
+    [
+      undefined,
+      { media: { enabled: true, operations: false, video_usage: true } },
+      true,
+    ],
+    [
+      undefined,
+      { media: { enabled: true, operations: true, video_usage: false } },
+      true,
+    ],
+    [
+      undefined,
+      { media: { enabled: true, operations: false, video_usage: false } },
+      false,
+    ],
+    [undefined, { media: { enabled: false } }, false],
+    [
+      { media: { operations: false, video_usage: true } },
+      { media: { operations: true, video_usage: false } },
+      false,
+    ],
+  ])(
+    'combines historical media preferences without reopening a disabled module (%j, %j)',
+    (admin, user, visible) => {
+      const { result } = sidebarFor(admin, user)
+      expect(result.current.media).toBe(visible)
+      expect(
+        links(result.current.groups).some(
+          (item) => item.url === '/video-management'
+        )
+      ).toBe(visible)
+    }
+  )
+  it('keeps historical image/video routes active under the matching replacement entries', () => {
+    const { result } = sidebarFor()
+    const media = links(result.current.groups).find(
+      (item) => item.url === '/video-management'
+    )
+    const images = links(result.current.groups).find(
+      (item) => item.url === '/image-management'
+    )
+    expect(images && checkIsActive('/media-operations', images)).toBe(true)
+    expect(media && checkIsActive('/video-usage', media)).toBe(true)
+    expect(media && checkIsActive('/media-management', media)).toBe(true)
   })
   it('retains legacy drawing visibility and active state inside the diagnostics parent', () => {
     const { result } = sidebarFor({

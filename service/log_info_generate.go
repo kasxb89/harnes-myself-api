@@ -72,6 +72,12 @@ func AppendRelayLogAdminInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 	}
 	other.SetAdmin("use_channel", ctx.GetStringSlice("use_channel"))
 	if relayInfo != nil {
+		if funding, ok := relayInfo.FundingSnapshot.(*model.WalletFundingAmounts); ok && funding != nil {
+			ctx.Set("wallet_funding", funding)
+			ctx.Set("wallet_funding_request_id", relayInfo.FundingRequestId)
+			ctx.Set("wallet_funding_purpose", relayInfo.FundingPurpose)
+			ctx.Set("wallet_funding_event_id", funding.EventID)
+		}
 		if billingModel := relayInfo.GetBillingModelName(); billingModel != "" && billingModel != relayInfo.OriginModelName {
 			other.SetAdmin("billing_model", billingModel)
 		}

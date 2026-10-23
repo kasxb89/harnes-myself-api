@@ -27,11 +27,17 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { AxiosAdapter } from 'axios'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import en from '@/i18n/locales/en.json'
+import fr from '@/i18n/locales/fr.json'
+import ja from '@/i18n/locales/ja.json'
+import ru from '@/i18n/locales/ru.json'
+import viLocale from '@/i18n/locales/vi.json'
+import zhTW from '@/i18n/locales/zh-TW.json'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
@@ -42,6 +48,17 @@ import type { ModelProfitResult, ModelProfitRow } from '../types'
 
 const partial: ModelProfitRow = {
   model_name: 'partial-model',
+  billing_events: 2,
+  pending_billing_events: 0,
+  customer_average_price_cny: 10,
+  upstream_average_cost_cny: null,
+  average_price_unit: 'request',
+  cash_revenue_cny: null,
+  gift_consumed_cny: null,
+  cash_profit_cny: null,
+  funding_status: 'unattributed',
+  funding_unknown_events: 2,
+  funding_coverage: 0,
   requests: 2,
   revenue_cny: 20,
   known_cost_revenue_cny: 8,
@@ -60,6 +77,7 @@ const partial: ModelProfitRow = {
 const unknown: ModelProfitRow = {
   ...partial,
   model_name: 'unknown-model',
+  customer_average_price_cny: 9,
   requests: 1,
   revenue_cny: 9,
   known_cost_revenue_cny: 0,
@@ -71,6 +89,8 @@ const unknown: ModelProfitRow = {
   cost_coverage: 0,
 }
 const payload: ModelProfitResult = {
+  cash_profit_basis: 'cash_attributed_revenue_minus_full_upstream_cost',
+  funding_collection_status: 'not_collected',
   rows: [partial, unknown],
   summary: partial,
   model_options: [
@@ -97,6 +117,7 @@ const payload: ModelProfitResult = {
   end_timestamp: 0,
 }
 const clients: QueryClient[] = []
+const originalAdapter = api.defaults.adapter
 const i18n = createInstance()
 
 beforeEach(async () => {
@@ -113,6 +134,8 @@ afterEach(() => {
   clients.splice(0).forEach((client) => client.clear())
   useAuthStore.getState().auth.reset()
   vi.restoreAllMocks()
+  vi.useRealTimers()
+  api.defaults.adapter = originalAdapter
 })
 
 function setup(
@@ -140,6 +163,11 @@ function setup(
       data: { success: true, data: options.data ?? payload },
     })
   })
+  renderReport()
+  return get
+}
+
+function renderReport() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -151,29 +179,69 @@ function setup(
       </QueryClientProvider>
     </I18nextProvider>
   )
-  return get
 }
 
-it('keeps exactly four detail columns and labels known-cost profit without counting unknown costs as zero', async () => {
+function setProfitSession(id: number, sid: string, read = true) {
+  const timestamp = Math.floor(Date.now() / 1000)
+  useAuthStore.getState().auth.setBundle({
+    access_token: `test-${sid}`,
+    token_type: 'Bearer',
+    access_expires_at: timestamp + 3600,
+    user: {
+      id,
+      username: `admin-${id}`,
+      role: ROLE.ADMIN,
+      permissions: { admin_permissions: { model_profits: { read } } },
+    },
+    session: {
+      sid,
+      current: true,
+      login_method: 'test',
+      ip: '',
+      user_agent: '',
+      created_at: timestamp,
+      last_active_at: timestamp,
+      expires_at: timestamp + 3600,
+    },
+  })
+}
+
+it('keeps exactly five requested columns and leaves cash profit unconfirmed when allocations are missing', async () => {
   setup()
   const table = await screen.findByRole('table', { name: 'Profit by model' })
   expect(
     within(table)
       .getAllByRole('columnheader')
       .map((cell) => cell.textContent)
-  ).toEqual(['Model', 'Requests', 'Billed revenue', 'Revenue with known costs'])
+  ).toEqual([
+    'Model name',
+    'Usage count',
+    'Customer unit price',
+    'Procurement unit cost (estimate)',
+    'Profit',
+  ])
   const partialRow = within(table).getByRole('row', { name: /partial-model/ })
-  expect(within(partialRow).getByText('CN¥8.00')).toBeVisible()
-  const unknownRow = within(table).getByRole('row', { name: /unknown-model/ })
-  expect(within(unknownRow).getByText('CN¥0.00')).toBeVisible()
+  expect(within(partialRow).getByText('CN¥10.00')).toBeVisible()
+  expect(within(partialRow).getAllByRole('cell')[2]).toHaveTextContent(
+    'Balance charges'
+  )
+  expect(within(partialRow).getAllByText('Pending confirmation')).toHaveLength(
+    2
+  )
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
-  expect(
-    within(summary).getByText('Gross profit (known-cost portion)')
-  ).toBeVisible()
-  expect(within(summary).getByText('CN¥3.00')).toBeVisible()
+  expect(within(summary).getByText('Cash revenue')).toBeVisible()
+  expect(within(summary).getByText('Cash profit')).toBeVisible()
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
+  expect(within(summary).getByText('CN¥5.00')).toBeVisible()
   expect(within(summary).getByText('50%')).toBeVisible()
+  expect(within(summary).queryByText('CN¥3.00')).not.toBeInTheDocument()
   expect(
     screen.getByText(/missing costs are never counted as zero/)
+  ).toBeVisible()
+  expect(
+    screen.getByText(
+      /New consumption also remains unverified until a funding ledger is implemented/
+    )
   ).toBeVisible()
 })
 
@@ -197,6 +265,8 @@ it('requests an exact model and Shanghai inclusive date range only after Apply',
   fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
     expect(get).toHaveBeenLastCalledWith('/api/model-profit/', {
+      signal: expect.any(AbortSignal),
+      disableDuplicate: true,
       params: {
         start_timestamp: Date.parse('2026-10-20T00:00:00+08:00') / 1000,
         end_timestamp: Date.parse('2026-10-22T00:00:00+08:00') / 1000,
@@ -249,7 +319,7 @@ it('keeps wide financial columns in a horizontal scroll area and aligns amounts 
   const table = await screen.findByRole('table', { name: 'Profit by model' })
   expect(table.parentElement).toHaveClass('overflow-x-auto')
   const row = within(table).getByRole('row', { name: /very-long-model-/ })
-  expect(within(row).getByRole('cell', { name: 'CN¥8.00' })).toHaveClass(
+  expect(within(row).getByRole('cell', { name: /CN¥10\.00/ })).toHaveClass(
     'text-right'
   )
 })
@@ -293,36 +363,55 @@ it('updates amounts and labels immediately when the language switches', async ()
   await screen.findByText('partial-model')
   await act(() => i18n.changeLanguage('zhCN'))
   expect(screen.getByRole('heading', { name: '模型利润' })).toBeVisible()
-  expect(within(screen.getByRole('table')).getByText('¥8.00')).toBeVisible()
+  expect(within(screen.getByRole('table')).getByText('¥10.00')).toBeVisible()
 })
 
-it('offers historical models and clears selection using All models without accepting arbitrary search text', async () => {
+it('accepts an exact pasted model outside the current dropdown and clears it explicitly', async () => {
   const get = setup()
   await screen.findByText('partial-model')
   const user = userEvent.setup()
   const model = screen.getByRole('combobox', { name: 'Model' })
   await user.click(model)
-  await user.type(model, 'retired')
-  await user.click(screen.getByRole('option', { name: 'retired-model' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+  await user.paste('not-in-window-model')
+  await user.tab()
+  expect(model).toHaveValue('not-in-window-model')
+  expect(get).toHaveBeenCalledOnce()
+  await user.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
     expect(get.mock.lastCall?.[1]).toMatchObject({
-      params: { model_name: 'retired-model' },
+      params: { model_name: 'not-in-window-model' },
     })
   )
   await user.click(model)
-  await user.type(model, 'does-not-exist')
-  expect(screen.getByText('No matching models')).toBeVisible()
-  await user.keyboard('{Escape}')
-  expect(model).toHaveValue('retired-model')
-  await user.click(model)
+  await user.clear(model)
   await user.click(screen.getByRole('option', { name: 'All models' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+  await user.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
     expect(get.mock.lastCall?.[1]).toMatchObject({
       params: { model_name: undefined },
     })
   )
+})
+it('accepts pasted calendar dates and exposes a separate date dropdown without submitting', async () => {
+  const get = setup()
+  await screen.findByText('partial-model')
+  const user = userEvent.setup()
+  const start = screen.getByLabelText('Start date')
+  await user.click(start)
+  await user.clear(start)
+  await user.paste('2026-10-20')
+  expect(start).toHaveValue('2026-10-20')
+  await user.click(screen.getByRole('button', { name: 'Choose start date' }))
+  expect(await screen.findByRole('grid')).toBeVisible()
+  await user.click(
+    screen.getByRole('button', { name: /Monday, October 19th, 2026/ })
+  )
+  expect(start).toHaveValue('2026-10-19')
+  expect(get).toHaveBeenCalledOnce()
+  await user.keyboard('{Escape}')
+  fireEvent.change(start, { target: { value: '2026-02-30' } })
+  expect(screen.getByRole('button', { name: 'Apply filters' })).toBeDisabled()
+  expect(start).toHaveAttribute('aria-invalid', 'true')
 })
 
 it('switches to the dashboard using the same applied data and shows actual daily values', async () => {
@@ -330,9 +419,11 @@ it('switches to the dashboard using the same applied data and shows actual daily
   await screen.findByText('partial-model')
   fireEvent.click(screen.getByRole('tab', { name: 'Profit dashboard' }))
   const panel = screen.getByRole('tabpanel', { name: 'Profit dashboard' })
-  expect(within(panel).getByText('Model revenue ranking')).toBeVisible()
+  expect(within(panel).getByText('Model balance charge ranking')).toBeVisible()
   expect(within(panel).getByText('Request distribution')).toBeVisible()
-  expect(within(panel).getByText('Daily revenue and requests')).toBeVisible()
+  expect(
+    within(panel).getByText('Daily balance charges and requests')
+  ).toBeVisible()
   const daily = within(panel).getByRole('list', {
     name: 'Daily trend values',
     hidden: true,
@@ -354,7 +445,7 @@ it('shows an empty dashboard instead of invented charts', async () => {
     'No model consumption in this period'
   )
   expect(
-    screen.queryByRole('img', { name: 'Model revenue ranking' })
+    screen.queryByRole('img', { name: 'Model balance charge ranking' })
   ).not.toBeInTheDocument()
 })
 
@@ -372,7 +463,7 @@ it('keeps all-unknown summary amounts unknown in the dashboard', async () => {
   await screen.findByText('unknown-model')
   fireEvent.click(screen.getByRole('tab', { name: 'Profit dashboard' }))
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
-  expect(within(summary).getAllByText('—')).toHaveLength(3)
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(4)
   expect(
     within(summary).queryByText('CN¥9.00', { selector: '.text-destructive' })
   ).not.toBeInTheDocument()
@@ -386,12 +477,12 @@ it('keeps a failed dashboard free of stale charts and supports Retry', async () 
   await screen.findByText('Failed to load model profits')
   fireEvent.click(screen.getByRole('tab', { name: 'Profit dashboard' }))
   expect(
-    screen.queryByRole('img', { name: 'Model revenue ranking' })
+    screen.queryByRole('img', { name: 'Model balance charge ranking' })
   ).not.toBeInTheDocument()
   get.mockResolvedValue({ data: { success: true, data: payload } })
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(
-    await screen.findByRole('img', { name: 'Model revenue ranking' })
+    await screen.findByRole('img', { name: 'Model balance charge ranking' })
   ).toBeVisible()
 })
 
@@ -474,12 +565,13 @@ it('keeps dropdown popups inside fullscreen and follows native exit events', asy
   }
 })
 
-it('includes pending reserved charges in displayed revenue while labeling profit as the known-cost portion', async () => {
+it('labels pending reserved balance charges separately from unconfirmed cash profit', async () => {
   const pending = {
     ...partial,
     requests: 3,
     revenue_cny: 27,
     pending_requests: 1,
+    pending_billing_events: 1,
     pending_revenue_cny: 7,
   }
   setup({
@@ -500,7 +592,7 @@ it('includes pending reserved charges in displayed revenue while labeling profit
   const panel = screen.getByRole('tabpanel', { name: 'Profit dashboard' })
   expect(
     within(panel).getByText(
-      'Shanghai calendar days; revenue and requests use separate axes. Revenue includes pending reserved charges; gross profit covers only the known-cost portion.'
+      'Shanghai calendar days; balance charges and requests use separate axes. Charges include pending reserved amounts and gift balances; they are not cash revenue.'
     )
   ).toBeVisible()
   expect(
@@ -511,9 +603,240 @@ it('includes pending reserved charges in displayed revenue while labeling profit
   ).toHaveTextContent('CN¥27.00')
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
   expect(within(summary).getByText('CN¥27.00')).toBeVisible()
-  expect(
-    within(summary).getByText('Gross profit (known-cost portion)')
-  ).toBeVisible()
-  expect(within(summary).getByText('CN¥3.00')).toBeVisible()
+  expect(within(summary).getByText('Cash profit')).toBeVisible()
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
   expect(within(summary).queryByText('CN¥22.00')).not.toBeInTheDocument()
 })
+
+it.each(['read permission', 'account', 'session'] as const)(
+  'changing the %s aborts the earlier report and isolates a same-parameter fresh read',
+  async (boundary) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-24T02:00:00Z'))
+    setProfitSession(1, 'first-session')
+    const requests: {
+      signal: { aborted?: boolean } | undefined
+      complete: (data: ModelProfitResult) => void
+    }[] = []
+    const adapter: AxiosAdapter = (config) =>
+      new Promise((resolve) => {
+        requests.push({
+          signal: config.signal,
+          complete: (data) =>
+            resolve({
+              config,
+              data: { success: true, data },
+              status: 200,
+              statusText: 'OK',
+              headers: {},
+            }),
+        })
+      })
+    api.defaults.adapter = adapter
+    try {
+      renderReport()
+      await waitFor(() => expect(requests).toHaveLength(1))
+      if (boundary === 'read permission') {
+        await act(async () => {
+          setProfitSession(1, 'first-session', false)
+        })
+        expect(screen.getByText('Access denied')).toBeVisible()
+        await act(async () => {
+          setProfitSession(1, 'first-session')
+        })
+      } else if (boundary === 'account') {
+        await act(async () => {
+          setProfitSession(22, 'other-session')
+        })
+      } else {
+        await act(async () => {
+          setProfitSession(1, 'next-session')
+        })
+      }
+      await waitFor(() => expect(requests).toHaveLength(2))
+      expect(requests[0].signal?.aborted).toBe(true)
+      await act(async () =>
+        requests[0].complete({
+          ...payload,
+          rows: [{ ...partial, model_name: 'old-request-model' }],
+        })
+      )
+      expect(screen.queryByText('old-request-model')).not.toBeInTheDocument()
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Loading model profits...'
+      )
+      await act(async () =>
+        requests[1].complete({
+          ...payload,
+          rows: [{ ...partial, model_name: 'new-request-model' }],
+        })
+      )
+      expect(await screen.findByText('new-request-model')).toBeVisible()
+    } finally {
+      await act(async () =>
+        requests.forEach((request) =>
+          request.complete({ ...payload, rows: [] })
+        )
+      )
+    }
+  }
+)
+
+it('older service responses keep absent cash and unit-price fields unconfirmed without deriving cash from balance charges', async () => {
+  const legacy: ModelProfitRow = {
+    ...partial,
+    cash_revenue_cny: undefined,
+    cash_profit_cny: undefined,
+    gift_consumed_cny: undefined,
+    funding_status: undefined,
+    funding_coverage: undefined,
+    funding_unknown_events: undefined,
+    pending_billing_events: undefined,
+    customer_average_price_cny: undefined,
+    upstream_average_cost_cny: undefined,
+    average_price_unit: undefined,
+  }
+  setup({
+    data: {
+      ...payload,
+      funding_collection_status: undefined,
+      rows: [legacy],
+      summary: legacy,
+    },
+  })
+  const row = await screen.findByRole('row', { name: /partial-model/ })
+  expect(within(row).getAllByText('Pending confirmation')).toHaveLength(3)
+  const summary = screen.getByRole('region', { name: 'Model profit summary' })
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
+  expect(within(summary).getByText('Balance charges')).toBeVisible()
+  expect(within(summary).getByText('CN¥20.00')).toBeVisible()
+})
+
+it('attributed synthetic records preserve real zero and negative cash profit while gift consumption retains its full cost', async () => {
+  const gift: ModelProfitRow = {
+    ...partial,
+    model_name: 'verified-gift',
+    known_cost_requests: 2,
+    unknown_cost_requests: 0,
+    known_cost_events: 2,
+    unknown_cost_events: 0,
+    cost_coverage: 1,
+    upstream_cost_cny: 6,
+    funding_status: 'attributed',
+    funding_coverage: 1,
+    funding_unknown_events: 0,
+    cash_revenue_cny: 0,
+    gift_consumed_cny: 20,
+    cash_profit_cny: -6,
+    upstream_average_cost_cny: 3,
+  }
+  const zero: ModelProfitRow = {
+    ...gift,
+    model_name: 'verified-zero',
+    revenue_cny: 0,
+    customer_average_price_cny: 0,
+    upstream_average_cost_cny: 0,
+    upstream_cost_cny: 0,
+    cash_revenue_cny: 0,
+    gift_consumed_cny: 0,
+    cash_profit_cny: 0,
+  }
+  const loss: ModelProfitRow = {
+    ...gift,
+    model_name: 'verified-loss',
+    cash_revenue_cny: 4,
+    gift_consumed_cny: 16,
+    cash_profit_cny: -2,
+  }
+  setup({
+    data: {
+      ...payload,
+      funding_collection_status: 'collected',
+      rows: [gift, zero, loss],
+      summary: gift,
+    },
+  })
+  const table = await screen.findByRole('table', { name: 'Profit by model' })
+  expect(
+    within(table).getByRole('row', { name: /verified-gift/ })
+  ).toHaveTextContent('-CN¥6.00')
+  expect(
+    within(table).getByRole('row', { name: /verified-loss/ })
+  ).toHaveTextContent('-CN¥2.00')
+  expect(
+    within(
+      within(table).getByRole('row', { name: /verified-zero/ })
+    ).getAllByText('CN¥0.00')
+  ).toHaveLength(3)
+  const summary = screen.getByRole('region', { name: 'Model profit summary' })
+  expect(within(summary).getByText('CN¥0.00')).toBeVisible()
+  expect(within(summary).getByText('CN¥6.00')).toBeVisible()
+  expect(within(summary).getByText('-CN¥6.00')).toBeVisible()
+  expect(
+    within(summary).queryByText('Pending confirmation')
+  ).not.toBeInTheDocument()
+})
+
+it('an unsettled zero-delta event blocks both period unit prices even when original calls and reserved balance are zero', async () => {
+  const pending = {
+    ...partial,
+    requests: 0,
+    pending_requests: 0,
+    pending_revenue_cny: 0,
+    pending_billing_events: 1,
+    customer_average_price_cny: 0,
+    upstream_average_cost_cny: 0,
+  }
+  setup({ data: { ...payload, rows: [pending], summary: pending } })
+  const row = await screen.findByRole('row', { name: /partial-model/ })
+  expect(within(row).getAllByText('Pending confirmation')).toHaveLength(3)
+  expect(
+    screen.getByText(
+      /Billing events awaiting settlement: 1; original calls: 0;/
+    )
+  ).toBeVisible()
+})
+
+it.each([
+  ['en', en],
+  ['zhCN', zh],
+  ['zhTW', zhTW],
+  ['fr', fr],
+  ['ru', ru],
+  ['ja', ja],
+  ['vi', viLocale],
+] as const)(
+  'switching to %s preserves the five-column semantics and the unconfirmed cash state',
+  async (language, resource) => {
+    i18n.addResourceBundle(
+      language,
+      'translation',
+      resource.translation,
+      true,
+      true
+    )
+    setup()
+    await screen.findByRole('table', { name: 'Profit by model' })
+    await act(async () => {
+      await i18n.changeLanguage(language)
+    })
+    const table = screen.getByRole('table', { name: i18n.t('Profit by model') })
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((cell) => cell.textContent)
+    ).toEqual([
+      i18n.t('Model name'),
+      i18n.t('Usage count'),
+      i18n.t('Customer unit price'),
+      i18n.t('Procurement unit cost (estimate)'),
+      i18n.t('Profit'),
+    ])
+    expect(
+      within(table).getAllByText(i18n.t('Pending confirmation'))
+    ).toHaveLength(4)
+    expect(
+      within(table).getAllByText(i18n.t('Average per request'))
+    ).toHaveLength(4)
+  }
+)

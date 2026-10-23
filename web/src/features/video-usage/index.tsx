@@ -48,14 +48,182 @@ export function VideoUsagePage() {
   }
   return <VideoUsageReport key={user.id} userId={user.id} />
 }
-function VideoUsageReport(props: { userId: number }) {
+export function VideoUsageReport(props: {
+  userId: number
+  embedded?: boolean
+  active?: boolean
+}) {
   const { t } = useTranslation()
   const format = useVideoFormat()
   const [tab, setTab] = useState('current')
-  const state = useVideoReport(props.userId)
+  const state = useVideoReport(props.userId, props.active ?? true)
   const data = state.report.data
   const refresh = () => {
     void state.report.refetch()
+  }
+  const content = (
+    <div className='min-w-0 space-y-4'>
+      <Alert>
+        <AlertDescription>
+          {t(
+            'Upstream capacity is unknown. Client online time is not attributed to video models.'
+          )}
+        </AlertDescription>
+      </Alert>
+      <VideoUsageFilters
+        value={state.draft}
+        models={state.models}
+        users={state.users}
+        channels={state.channels}
+        providers={state.providers}
+        invalid={!state.parsed}
+        loading={state.report.isFetching}
+        onChange={state.setDraft}
+        onApply={state.apply}
+        onReset={state.reset}
+      />
+      {!state.parsed && (
+        <Alert variant='destructive'>
+          <AlertDescription>
+            {t('Choose a valid past time range of up to 31 days.')}
+          </AlertDescription>
+        </Alert>
+      )}
+      {state.report.isFetching && (
+        <div role='status' aria-label={t('Loading video usage')}>
+          <LoadingState inline message={t('Loading video usage')} />
+        </div>
+      )}
+      {state.report.isError && (
+        <ErrorState
+          title={t('Failed to load video usage')}
+          description={
+            state.tooBroad
+              ? t('Narrow the time range or choose a model')
+              : undefined
+          }
+          onRetry={state.tooBroad ? undefined : refresh}
+        />
+      )}
+      {!state.report.isError && data && (
+        <>
+          <p className='text-muted-foreground text-xs'>
+            {t('Snapshot: {{time}}', { time: format.time(data.as_of) })}
+          </p>
+          <VideoUsageSummary summary={data.summary} />
+          <p className='text-muted-foreground text-xs'>
+            <span>{t('Submitted in the history period')}</span> ·{' '}
+            <span>
+              {t(
+                'Source coverage before source filtering: {{desktop}} desktop declarations / {{unknown}} unknown / {{total}} records.',
+                {
+                  desktop: format.count(data.source_coverage.desktop),
+                  unknown: format.count(data.source_coverage.unknown),
+                  total: format.count(data.source_coverage.total),
+                }
+              )}
+            </span>
+          </p>
+          <VideoUsageMethodology />
+          <Tabs
+            value={tab}
+            onValueChange={(next) => setTab(String(next))}
+            className='gap-4'
+          >
+            <TabsList
+              aria-label={t('Video usage views')}
+              className='max-w-full flex-wrap justify-start gap-1 group-data-horizontal/tabs:h-auto'
+            >
+              <TabsTrigger
+                value='current'
+                className='min-h-8 flex-none px-3 whitespace-nowrap'
+              >
+                {t('Current task records')}
+              </TabsTrigger>
+              <TabsTrigger
+                value='history'
+                className='min-h-8 flex-none px-3 whitespace-nowrap'
+              >
+                {t('Period summary')}
+              </TabsTrigger>
+              <TabsTrigger
+                value='trends'
+                className='min-h-8 flex-none px-3 whitespace-nowrap'
+              >
+                {t('Video trends')}
+              </TabsTrigger>
+              <TabsTrigger
+                value='channels'
+                className='min-h-8 flex-none px-3 whitespace-nowrap'
+              >
+                {t('Channel breakdown')}
+              </TabsTrigger>
+              <TabsTrigger
+                value='tasks'
+                className='min-h-8 flex-none px-3 whitespace-nowrap'
+              >
+                {t('Task details')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value='current'>
+              <VideoCurrentTable models={data.models} />
+            </TabsContent>
+            <TabsContent value='history' className='space-y-3'>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Submission window [{{start}}, {{end}}); browser time zone.',
+                  {
+                    start: format.time(data.start_timestamp),
+                    end: format.time(data.end_timestamp),
+                  }
+                )}
+              </p>
+              <VideoHistoryTable models={data.models} />
+            </TabsContent>
+            <TabsContent value='trends'>
+              <Suspense
+                fallback={
+                  <LoadingState inline message={t('Loading video trends')} />
+                }
+              >
+                <VideoTrends
+                  trends={data.trends}
+                  ingress={data.ingress}
+                  onRecentRange={state.setRecentRange}
+                />
+              </Suspense>
+            </TabsContent>
+            <TabsContent value='channels'>
+              <VideoChannelTable rows={data.channel_breakdown} />
+            </TabsContent>
+            <TabsContent value='tasks'>
+              <VideoTaskTable
+                tasks={data.tasks}
+                loading={state.report.isFetching}
+                onScopeChange={state.setScope}
+                onPageChange={state.setPage}
+              />
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
+    </div>
+  )
+  if (props.embedded) {
+    return (
+      <div className='min-w-0 space-y-4'>
+        <div className='flex justify-end'>
+          <Button
+            variant='outline'
+            onClick={refresh}
+            disabled={state.report.isFetching}
+          >
+            {t('Refresh')}
+          </Button>
+        </div>
+        {content}
+      </div>
+    )
   }
   return (
     <SectionPageLayout stackActionsOnMobile>
@@ -71,157 +239,7 @@ function VideoUsageReport(props: { userId: number }) {
           {t('Refresh')}
         </Button>
       </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <div className='min-w-0 space-y-4'>
-          <Alert>
-            <AlertDescription>
-              {t(
-                'Upstream capacity is unknown. Client online time is not attributed to video models.'
-              )}
-            </AlertDescription>
-          </Alert>
-          <VideoUsageFilters
-            value={state.draft}
-            models={state.models}
-            users={state.users}
-            channels={state.channels}
-            providers={state.providers}
-            invalid={!state.parsed}
-            loading={state.report.isFetching}
-            onChange={state.setDraft}
-            onApply={state.apply}
-            onReset={state.reset}
-          />
-          {!state.parsed && (
-            <Alert variant='destructive'>
-              <AlertDescription>
-                {t('Choose a valid past time range of up to 31 days.')}
-              </AlertDescription>
-            </Alert>
-          )}
-          {state.report.isFetching && (
-            <div role='status' aria-label={t('Loading video usage')}>
-              <LoadingState inline message={t('Loading video usage')} />
-            </div>
-          )}
-          {state.report.isError && (
-            <ErrorState
-              title={t('Failed to load video usage')}
-              description={
-                state.tooBroad
-                  ? t('Narrow the time range or choose a model')
-                  : undefined
-              }
-              onRetry={state.tooBroad ? undefined : refresh}
-            />
-          )}
-          {!state.report.isError && data && (
-            <>
-              <p className='text-muted-foreground text-xs'>
-                {t('Snapshot: {{time}}', { time: format.time(data.as_of) })}
-              </p>
-              <VideoUsageSummary summary={data.summary} />
-              <p className='text-muted-foreground text-xs'>
-                <span>{t('Submitted in the history period')}</span> ·{' '}
-                <span>
-                  {t(
-                    'Source coverage before source filtering: {{desktop}} desktop declarations / {{unknown}} unknown / {{total}} records.',
-                    {
-                      desktop: format.count(data.source_coverage.desktop),
-                      unknown: format.count(data.source_coverage.unknown),
-                      total: format.count(data.source_coverage.total),
-                    }
-                  )}
-                </span>
-              </p>
-              <VideoUsageMethodology />
-              <Tabs
-                value={tab}
-                onValueChange={(next) => setTab(String(next))}
-                className='gap-4'
-              >
-                <TabsList
-                  aria-label={t('Video usage views')}
-                  className='max-w-full flex-wrap justify-start gap-1 group-data-horizontal/tabs:h-auto'
-                >
-                  <TabsTrigger
-                    value='current'
-                    className='min-h-8 flex-none px-3 whitespace-nowrap'
-                  >
-                    {t('Current task records')}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='history'
-                    className='min-h-8 flex-none px-3 whitespace-nowrap'
-                  >
-                    {t('Period summary')}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='trends'
-                    className='min-h-8 flex-none px-3 whitespace-nowrap'
-                  >
-                    {t('Video trends')}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='channels'
-                    className='min-h-8 flex-none px-3 whitespace-nowrap'
-                  >
-                    {t('Channel breakdown')}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='tasks'
-                    className='min-h-8 flex-none px-3 whitespace-nowrap'
-                  >
-                    {t('Task details')}
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value='current'>
-                  <VideoCurrentTable models={data.models} />
-                </TabsContent>
-                <TabsContent value='history' className='space-y-3'>
-                  <p className='text-muted-foreground text-xs'>
-                    {t(
-                      'Submission window [{{start}}, {{end}}); browser time zone.',
-                      {
-                        start: format.time(data.start_timestamp),
-                        end: format.time(data.end_timestamp),
-                      }
-                    )}
-                  </p>
-                  <VideoHistoryTable models={data.models} />
-                </TabsContent>
-                <TabsContent value='trends'>
-                  <Suspense
-                    fallback={
-                      <LoadingState
-                        inline
-                        message={t('Loading video trends')}
-                      />
-                    }
-                  >
-                    <VideoTrends
-                      trends={data.trends}
-                      ingress={data.ingress}
-                      onRecentRange={state.setRecentRange}
-                    />
-                  </Suspense>
-                </TabsContent>
-                <TabsContent value='channels'>
-                  <VideoChannelTable rows={data.channel_breakdown} />
-                </TabsContent>
-                <TabsContent value='tasks'>
-                  <VideoTaskTable
-                    tasks={data.tasks}
-                    loading={state.report.isFetching}
-                    onScopeChange={state.setScope}
-                    onPageChange={state.setPage}
-                  />
-                </TabsContent>
-              </Tabs>
-            </>
-          )}
-        </div>
-      </SectionPageLayout.Content>
+      <SectionPageLayout.Content>{content}</SectionPageLayout.Content>
     </SectionPageLayout>
   )
 }

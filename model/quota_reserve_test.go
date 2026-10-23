@@ -113,7 +113,7 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	reserved, err := TryReserveUserQuota(user.Id, 8)
 	require.NoError(t, err)
 	assert.True(t, reserved)
-	assert.Equal(t, 10, getUserQuotaFromDB(t, user.Id), "batch delta is not flushed yet")
+	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id), "wallet sources commit immediately even when usage statistics are batched")
 
 	reserved, err = TryReserveUserQuota(user.Id, 3)
 	require.NoError(t, err)
@@ -129,13 +129,20 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 3, false)
 	require.NoError(t, err)
 	assert.False(t, reserved)
-	assert.Equal(t, 9, getTokenFromDB(t, token.Id).RemainQuota)
+	assert.Equal(t, 2, getTokenFromDB(t, token.Id).RemainQuota, "token quota commits immediately for wallet and subscription paths")
+	require.NoError(t, IncreaseTokenQuota(token.Id, token.Key, 3))
+	assert.Equal(t, 5, getTokenFromDB(t, token.Id).RemainQuota)
+	require.NoError(t, DecreaseTokenQuota(token.Id, token.Key, 2))
+	assert.Equal(t, 3, getTokenFromDB(t, token.Id).RemainQuota)
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Lock()
+	assert.Empty(t, batchUpdateStores[BatchUpdateTypeTokenQuota], "none of the token reserve, credit or debit entries can be deferred")
+	batchUpdateLocks[BatchUpdateTypeTokenQuota].Unlock()
 
 	batchUpdate()
 	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id))
 	reloadedToken := getTokenFromDB(t, token.Id)
-	assert.Equal(t, 2, reloadedToken.RemainQuota)
-	assert.Equal(t, 7, reloadedToken.UsedQuota)
+	assert.Equal(t, 3, reloadedToken.RemainQuota)
+	assert.Equal(t, 6, reloadedToken.UsedQuota)
 }
 
 func TestBatchUpdateAccumulatesTwoMaximumRequestCharges(t *testing.T) {
@@ -214,10 +221,8 @@ func TestSynchronousReserveCompensatesCacheWhenPersistenceFails(t *testing.T) {
 	reserved, err = TryReserveTokenQuota(token.Id, token.Key, 7, false)
 	assert.False(t, reserved)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
-	cachedToken, cacheErr := cacheGetTokenByKey(token.Key)
-	require.NoError(t, cacheErr)
-	assert.Equal(t, 12, cachedToken.RemainQuota)
-	assert.Zero(t, cachedToken.UsedQuota)
+	_, cacheErr = cacheGetTokenByKey(token.Key)
+	assert.Error(t, cacheErr, "a deleted token's stale cache must be fenced and removed")
 }
 
 func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.T) {
@@ -230,21 +235,13 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	require.NoError(t, err)
 	stale := *loaded
 
-	result, err := cacheApplyTokenQuotaDelta(token.Id, token.Key, -70)
+	reserved, err := TryReserveTokenQuota(token.Id, token.Key, 70, false)
 	require.NoError(t, err)
-	require.Equal(t, cacheQuotaOK, result)
-
-	// 已存在的哈希只刷新 TTL：数据库快照不得覆盖已被原子预扣的余额。
-	code, err := cacheInitToken(stale)
-	require.NoError(t, err)
-	assert.Equal(t, 2, code)
-	cached, err := cacheGetTokenByKey(token.Key)
-	require.NoError(t, err)
-	assert.Equal(t, 30, cached.RemainQuota)
+	require.True(t, reserved)
+	assert.Equal(t, 30, getTokenFromDB(t, token.Id).RemainQuota)
 
 	// 变更期间：fence 删除缓存并拦截并发读者手中的过期快照。
-	require.NoError(t, invalidateTokenCacheForMutation(token.Key))
-	code, err = cacheInitToken(stale)
+	code, err := cacheInitToken(stale)
 	require.NoError(t, err)
 	assert.Zero(t, code, "the pre-mutation snapshot must not be published while fenced")
 	_, err = cacheGetTokenByKey(token.Key)
@@ -254,8 +251,14 @@ func TestTokenCacheInitPreservesLiveQuotaAndFenceBlocksStaleSnapshot(t *testing.
 	server.FastForward(time.Duration(tokenCacheFenceSeconds+1) * time.Second)
 	fresh, err := GetTokenByKey(token.Key, false)
 	require.NoError(t, err)
-	assert.Equal(t, 100, fresh.RemainQuota)
+	assert.Equal(t, 30, fresh.RemainQuota)
+	cached, err := cacheGetTokenByKey(token.Key)
+	require.NoError(t, err)
+	assert.Equal(t, 30, cached.RemainQuota)
+	code, err = cacheInitToken(stale)
+	require.NoError(t, err)
+	assert.Equal(t, 2, code, "a live primary-database snapshot is not overwritten by a stale reader")
 	cached, err = cacheGetTokenByKey(token.Key)
 	require.NoError(t, err)
-	assert.Equal(t, 100, cached.RemainQuota)
+	assert.Equal(t, 30, cached.RemainQuota)
 }

@@ -39,6 +39,11 @@ func TestMain(m *testing.M) {
 	if err := db.AutoMigrate(
 		&Task{},
 		&User{},
+		&WalletFundingLot{},
+		&WalletFundingRequest{},
+		&WalletFundingAllocation{},
+		&WalletFundingEvent{},
+		&ModelProfitBillingRecord{},
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
@@ -80,6 +85,11 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM tokens")
 		DB.Exec("DELETE FROM user_access_tokens")
 		DB.Exec("DELETE FROM user_oauth_bindings")
+		DB.Exec("DELETE FROM wallet_funding_allocations")
+		DB.Exec("DELETE FROM wallet_funding_requests")
+		DB.Exec("DELETE FROM wallet_funding_lots")
+		DB.Exec("DELETE FROM wallet_funding_events")
+		DB.Exec("DELETE FROM model_profit_billing_records")
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM logs")
 		DB.Exec("DELETE FROM channels")

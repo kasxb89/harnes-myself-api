@@ -16,9 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Maximize, Minimize } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
@@ -31,13 +31,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toIntlLocale } from '@/i18n/languages'
 import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { formatNumber } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, type AuthUser } from '@/stores/auth-store'
 
 import { getModelProfits } from './api'
 import { CostRulesDialog } from './components/cost-rules-dialog'
 import { ProfitDashboard } from './components/profit-dashboard'
 import { ProfitFilters } from './components/profit-filters'
+import { ProfitFormulas } from './components/profit-formulas'
+import { ProfitFundingDetails } from './components/profit-funding-details'
+import { ProfitFundingNotice } from './components/profit-funding-notice'
 import { ProfitSummary } from './components/profit-summary'
 import { ProfitTable } from './components/profit-table'
 import { profitModelOptions } from './lib/chart-data'
@@ -45,11 +49,75 @@ import { formatProfitCny } from './lib/format'
 import { parseProfitPeriod, profitPreset } from './lib/period'
 import { useProfitFullscreen } from './lib/use-profit-fullscreen'
 
+function profitAccessScope(
+  user: AuthUser | null,
+  sessionId: string | undefined
+): string {
+  return `${user?.id ?? ''}:${sessionId ?? ''}:${canAccessAdminRoute(user, '/model-profits')}:${Boolean(user && user.role >= ROLE.SUPER_ADMIN)}`
+}
+
 export function ModelProfitsPage() {
+  const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const sessionId = useAuthStore((state) => state.auth.session?.sid)
+  const client = useQueryClient()
+  const [generation, setGeneration] = useState(0)
+  useEffect(
+    () =>
+      useAuthStore.subscribe((state, previous) => {
+        if (
+          profitAccessScope(state.auth.user, state.auth.session?.sid) ===
+          profitAccessScope(previous.auth.user, previous.auth.session?.sid)
+        ) {
+          return
+        }
+        for (const feature of ['model-profits', 'model-profit-cost-rules']) {
+          const queryKey = [
+            feature,
+            previous.auth.user?.id,
+            previous.auth.session?.sid ?? '',
+          ]
+          void client.cancelQueries({ queryKey })
+          client.removeQueries({ queryKey })
+        }
+        setGeneration((value) => value + 1)
+      }),
+    [client]
+  )
+  if (!user || !canAccessAdminRoute(user, '/model-profits')) {
+    return <ErrorState title={t('Access denied')} />
+  }
+  return (
+    <ModelProfitReport
+      key={`${profitAccessScope(user, sessionId)}:${generation}`}
+      userId={user.id}
+      sessionId={sessionId ?? ''}
+      generation={generation}
+    />
+  )
+}
+
+function ModelProfitReport(props: {
+  userId: number
+  sessionId: string
+  generation: number
+}) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  const user = useAuthStore((state) => state.auth.user)
-  const allowed = canAccessAdminRoute(user, '/model-profits')
+  const client = useQueryClient()
+  useEffect(
+    () => () => {
+      const queryKey = [
+        'model-profits',
+        props.userId,
+        props.sessionId,
+        props.generation,
+      ]
+      void client.cancelQueries({ queryKey })
+      client.removeQueries({ queryKey })
+    },
+    [client, props.userId, props.sessionId, props.generation]
+  )
   const [view, setView] = useState('details')
   const fullscreen = useProfitFullscreen()
   const [draft, setDraft] = useState(() => profitPreset('month'))
@@ -60,15 +128,19 @@ export function ModelProfitsPage() {
   })
   const parsed = parseProfitPeriod(draft)
   const profits = useQuery({
-    queryKey: ['model-profits', user?.id, filters],
-    queryFn: () => getModelProfits(filters),
-    enabled: allowed,
+    queryKey: [
+      'model-profits',
+      props.userId,
+      props.sessionId,
+      props.generation,
+      filters,
+    ],
+    queryFn: ({ signal }) => getModelProfits(filters, signal),
     retry: false,
   })
   const refresh = () => {
     void profits.refetch()
   }
-  if (!allowed) return <ErrorState title={t('Access denied')} />
   return (
     <SectionPageLayout stackActionsOnMobile>
       <SectionPageLayout.Title>{t('Model profits')}</SectionPageLayout.Title>
@@ -100,7 +172,12 @@ export function ModelProfitsPage() {
             )}
             <p className='text-muted-foreground text-sm'>
               {t(
-                'Billed gross profit is customer balance charges minus known upstream costs. Gift balance consumption is included; this is not cash receipts or net profit.'
+                'Cash profit equals revenue attributed to paid funds minus all upstream costs. Consumed registration and administrator gifts have zero cash revenue; unused gifts incur no generation cost.'
+              )}
+            </p>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Usage count means original calls. Unit prices are period averages per call after settlement and refunds, not current token, second or image tariffs. Pending, incomplete or refund-only periods remain unconfirmed.'
               )}
             </p>
             <details open={!fullscreen.active}>
@@ -203,12 +280,15 @@ export function ModelProfitsPage() {
                       </AlertDescription>
                     </Alert>
                   )}
+                  <ProfitFundingNotice report={profits.data} />
                   <ProfitSummary data={profits.data.summary} />
+                  <ProfitFundingDetails data={profits.data.summary} />
+                  <ProfitFormulas />
                   {profits.data.summary.unknown_cost_events > 0 && (
                     <Alert>
                       <AlertDescription>
                         {t(
-                          '{{count}} billing events have unknown upstream costs. Gross profit and margin cover only events with configured price rules; missing costs are never counted as zero.',
+                          '{{count}} billing events have unknown upstream costs. Cash profit remains pending confirmation; missing costs are never counted as zero.',
                           { count: profits.data.summary.unknown_cost_events }
                         )}
                       </AlertDescription>
@@ -216,8 +296,15 @@ export function ModelProfitsPage() {
                   )}
                   <p className='text-muted-foreground text-xs'>
                     {t(
-                      'Pending settlement: {{count}} requests, {{amount}} reserved balance. Pending amounts are excluded from settled profit.',
+                      'Billing events awaiting settlement: {{events}}; original calls: {{count}}; reserved balance: {{amount}}. Pending amounts are excluded from cash profit.',
                       {
+                        events:
+                          profits.data.summary.pending_billing_events == null
+                            ? t('Pending confirmation')
+                            : formatNumber(
+                                profits.data.summary.pending_billing_events,
+                                locale
+                              ),
                         count: formatNumber(
                           profits.data.summary.pending_requests,
                           locale
@@ -257,7 +344,7 @@ export function ModelProfitsPage() {
                   </TabsContent>
                   <p className='text-muted-foreground text-xs'>
                     {t(
-                      'Historical charges are converted using the current instance quota and exchange rate. Upstream prepayments, customer top-ups, operating costs and taxes are not deducted here.'
+                      'Balance charges use the current instance quota and exchange rate for display. Cash profit excludes operating expenses and taxes; upstream prepayments and unused gifts are not generation costs.'
                     )}
                   </p>
                   <p className='text-muted-foreground text-xs'>

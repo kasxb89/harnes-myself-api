@@ -47,7 +47,7 @@ type phoneAuthTestResponse struct {
 
 func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 	t.Helper()
-	models := []any{&model.User{}, &model.AuthFlow{}, &model.Token{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.Log{}, &model.AuditLog{}}
+	models := append([]any{&model.User{}, &model.AuthFlow{}, &model.Token{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.Log{}, &model.AuditLog{}}, model.WalletFundingModels()...)
 	var db *gorm.DB
 	dialect := common.DatabaseType(os.Getenv("TEST_TASK_DB_DIALECT"))
 	if dialect == "" || dialect == common.DatabaseTypeSQLite {
