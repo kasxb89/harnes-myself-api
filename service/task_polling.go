@@ -160,6 +160,20 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 	}
 
 	common.SysLog(common.LogText("task progress polling started"))
+	// Only an original host-verified create refusal may recover a pending
+	// refund here. A missing provider ID or local timeout is never sufficient.
+	if rejectedTasks, err := model.PendingMediaCreateRejectionTasks(ctx, 100); err != nil {
+		logger.LogError(ctx, "Failed to read pending verified video creation refunds")
+	} else {
+		for _, task := range rejectedTasks {
+			if ctx.Err() != nil {
+				return summary
+			}
+			if err := model.RefundMediaCreateRejection(ctx, task); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("Verified video creation refund remains pending for task %s", task.TaskID))
+			}
+		}
+	}
 	sweepTimedOutTasks(ctx)
 	afterID := taskPollingCursor.Load()
 	allTasks := model.GetUnfinishedSyncTasksAfterCursor(constant.TaskQueryLimit, afterID)

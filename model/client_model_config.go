@@ -206,7 +206,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 	channels := make(map[int]Channel, len(channelIDs))
 	for start := 0; start < len(channelIDs); start += 500 {
 		var batch []Channel
-		if err := DB.Model(&Channel{}).Select("id", "type", "settings", "model_mapping").
+		if err := DB.Model(&Channel{}).Select("id", "type", "settings", "setting", "model_mapping", "key", "base_url", "header_override", "channel_info").
 			Where("id IN ? AND status = ?", channelIDs[start:min(start+500, len(channelIDs))], common.ChannelStatusEnabled).
 			Find(&batch).Error; err != nil {
 			return nil, ErrClientModelCatalog
@@ -236,7 +236,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 	byID := make(map[string]ClientModelCandidate)
 	for _, ability := range abilities {
 		channel, enabled := channels[ability.ChannelId]
-		if !enabled || !validClientModelID(ability.Model) {
+		if !enabled || !validClientModelID(ability.Model) || !BlackrxCatalogAllowsModel(&channel, ability.Model) {
 			continue
 		}
 		candidate := byID[ability.Model]

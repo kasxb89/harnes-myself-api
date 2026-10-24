@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  'Upstream rejected video creation because the model is unavailable',
   // Image/video navigation, editable filters and accounting evidence labels.
   'Task records',
   'Task history by model',

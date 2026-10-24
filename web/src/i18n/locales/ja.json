@@ -7097,6 +7097,7 @@
     "Task records": "タスク数",
     "Task terminal result": "タスクの最終結果",
     "Task timed out": "タスクがタイムアウトしました",
+    "Upstream rejected video creation because the model is unavailable": "モデルが利用できないため、上流サービスが動画の作成を拒否しました",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "タスクがタイムアウトしました（旧システムのタスクは返金されません。管理者に連絡してください）",
     "Task timeout": "タスクのタイムアウト",
     "Task trend bucket values": "タスクトレンドの区間別数値",

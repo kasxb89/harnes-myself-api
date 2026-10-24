@@ -713,6 +713,11 @@ func executeTaskSubmissionWith(
 	var mediaRetryKey string
 	var mediaRetryKeyIndex int
 	mediaAttemptedKeys := make(map[int]map[string]bool)
+	// Catalog rejection candidates are verified before any admission or funds.
+	// They have a separate budget and never masquerade as capacity failures.
+	relay.BeginTaskCatalogCandidateBudget(c)
+	catalogCandidates := 0
+	var lastCatalogError *taskdto.TaskError
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		stage = "select_channel"
@@ -742,6 +747,10 @@ func executeTaskSubmissionWith(
 			var channelErr *types.NewAPIError
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
+				if lastCatalogError != nil {
+					taskErr = lastCatalogError
+					break
+				}
 				if len(h3FullChannels(c)) > 0 {
 					taskErr = service.TaskErrorWrapperLocal(model.ErrH3Capacity, service.H3CapacityCode, http.StatusTooManyRequests)
 					taskErr.NoRetry = true
@@ -774,6 +783,46 @@ func executeTaskSubmissionWith(
 
 		stage = "submit"
 		result, taskErr = submit(c, relayInfo)
+		if relay.ConsumeTaskCatalogUnsentRejection(c, relayInfo, taskErr) {
+			catalogCandidates++
+			lastCatalogError = taskErr
+			diagnostics.attemptFailed(retryParam.GetRetry()+1, channel, taskErr, false)
+			if catalogCandidates >= 16 || !relay.TaskCatalogCandidateBudgetAvailable(c) {
+				break
+			}
+			attempted := mediaAttemptedKeys[channel.Id]
+			if attempted == nil {
+				attempted = make(map[string]bool)
+				mediaAttemptedKeys[channel.Id] = attempted
+			}
+			attempted[common.GetContextKeyString(c, constant.ContextKeyChannelKey)] = true
+			nextKey, nextIndex, nextErr := service.NextMediaAdmissionKey(c, channel, relayInfo, attempted)
+			if nextErr != nil {
+				break
+			}
+			if nextKey != "" {
+				mediaRetryChannel, mediaRetryKey, mediaRetryKeyIndex = channel, nextKey, nextIndex
+				retryParam.ResetRetryNextTry()
+				continue
+			}
+			_, pinned, _ := service.GetChannelConstraints(c).ResolvedPin()
+			if pinned || relayInfo.LockedChannel != nil || policy.SessionMode == "strict" {
+				break
+			}
+			service.GetChannelConstraints(c).AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterExcludedChannels, ExcludedChannelIDs: []int{channel.Id}})
+			retryParam.ResetRetryNextTry()
+			continue
+		}
+		lastCatalogError = nil
+		if media := service.MediaSubmissionFromContext(c); media != nil && media.Rejected {
+			diagnosticErr := service.RecordMediaAttemptFailure(c, relayInfo, channel.Id, taskErr)
+			diagnostics.attemptFailed(retryParam.GetRetry()+1, channel, diagnosticErr, false)
+			if err := service.ResolveMediaCreateRejection(c, relayInfo); err != nil {
+				service.PreserveMediaUnknown(media)
+				return mediaUnknownOutcome(c, relayInfo), nil
+			}
+			return nil, taskErr
+		}
 		if media := service.MediaSubmissionFromContext(c); media != nil && media.MayHaveSent && (taskErr != nil || result == nil) {
 			diagnosticErr := service.RecordMediaAttemptFailure(c, relayInfo, channel.Id, taskErr)
 			diagnostics.attemptFailed(retryParam.GetRetry()+1, channel, diagnosticErr, false)

@@ -7097,6 +7097,7 @@
     "Task records": "任务数",
     "Task terminal result": "任务终态结果",
     "Task timed out": "任务超时",
+    "Upstream rejected video creation because the model is unavailable": "上游已拒绝创建视频：该型号当前不可用",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "任务超时（旧系统遗留任务，不进行退款，请联系管理员）",
     "Task timeout": "任务超时",
     "Task trend bucket values": "任务趋势分桶数值",

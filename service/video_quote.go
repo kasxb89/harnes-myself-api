@@ -36,6 +36,7 @@ type videoQuoteCandidate struct {
 	Version   string                 `json:"version"`
 	Expr      string                 `json:"expression"`
 	Ratio     float64                `json:"group_ratio"`
+	Durations []int                  `json:"durations,omitempty"`
 	Plugin    *jsplugin.LoadedPlugin `json:"-"`
 }
 
@@ -101,9 +102,10 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 		var agreement string
 		var selectedFacts map[string]any
 		var selectedQuota int
+		durationUnavailable := false
 		evaluated := make(map[string]bool)
 		for _, candidate := range pricing.Candidates {
-			evaluationKey := candidate.PluginKey + ":" + candidate.Model + ":" + candidate.Expr + ":" + strconv.FormatFloat(candidate.Ratio, 'g', -1, 64)
+			evaluationKey := candidate.PluginKey + ":" + candidate.Model + ":" + candidate.Expr + ":" + strconv.FormatFloat(candidate.Ratio, 'g', -1, 64) + ":" + fmt.Sprint(candidate.Durations)
 			if evaluated[evaluationKey] {
 				continue
 			}
@@ -174,6 +176,16 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 			if factsErr != nil || !factsOK || validateVideoQuoteFacts(facts, schema) != nil {
 				return nil, unavailable
 			}
+			if candidate.PluginKey == "blackrxai-video" {
+				seconds, valid := videoQuoteNumber(facts["seconds"])
+				if !valid || seconds <= 0 || seconds > relaycommon.MaxTaskDurationSeconds || math.Trunc(seconds) != seconds {
+					return nil, invalid
+				}
+				if !slices.Contains(candidate.Durations, int(seconds)) {
+					durationUnavailable = true
+					continue
+				}
+			}
 			// H3 reference-video settlement uses measured input_seconds. We
 			// deliberately make no network request to measure an input here.
 			if number, _ := videoQuoteNumber(facts["input_video_seconds"]); number > 0 {
@@ -190,6 +202,12 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 				return nil, unavailable
 			}
 			agreement, selectedFacts, selectedQuota = canonical, facts, result.ActualQuotaAfterGroup
+		}
+		if agreement == "" {
+			if durationUnavailable {
+				return nil, &types.VideoQuoteError{Code: "video_duration_unavailable", Message: "该视频型号当前不支持本次时长，请重新选择可用时长", StatusCode: http.StatusBadRequest}
+			}
+			return nil, unavailable
 		}
 		if response.OneWorkQuota > common.MaxWalletQuota-selectedQuota {
 			return nil, invalid
@@ -267,9 +285,36 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 	if len(ids) == 0 || len(ids) > 64 {
 		return pricing, fmt.Errorf("no bounded eligible route")
 	}
-	channels, err := model.GetVideoQuoteChannels(ids)
+	catalogChannels, err := model.BlackrxCatalogChannelSnapshots(c.Request.Context(), ids)
 	if err != nil {
 		return pricing, err
+	}
+	// Quote routing and private catalog discovery use the same owned DB
+	// snapshot. Do not read a cached Channel while its key status is changing.
+	// The expression/pricing projection below deliberately excludes secrets.
+	channels := make([]model.Channel, 0, len(catalogChannels))
+	for _, id := range ids {
+		if channel := catalogChannels[id]; channel != nil {
+			channels = append(channels, model.Channel{Id: channel.Id, Type: channel.Type, Status: channel.Status,
+				Models: channel.Models, Group: channel.Group, OtherSettings: channel.OtherSettings,
+				Setting: channel.Setting, ModelMapping: channel.ModelMapping, ParamOverride: channel.ParamOverride, HeaderOverride: channel.HeaderOverride})
+		}
+	}
+	catalogAvailable := make(map[int]bool)
+	catalogDurations := make(map[int][]int)
+	for index := range channels {
+		channel := &channels[index]
+		if !model.IsBlackrxCatalogChannel(channel) {
+			continue
+		}
+		// Keep private account values out of the pricing snapshot and complete
+		// discovery before acquiring the option-map read lock.
+		catalogChannel := catalogChannels[channel.Id]
+		mapped, mapErr := videoQuoteMappedModel(requestedModel, channel.GetModelMapping())
+		if catalogChannel != nil && mapErr == nil && catalogChannel.Status == common.ChannelStatusEnabled && model.IsBlackrxCatalogChannel(catalogChannel) {
+			catalogAvailable[channel.Id] = CheckBlackrxChannelModelAvailability(c.Request.Context(), catalogChannel, requestedModel, mapped) == nil
+			catalogDurations[channel.Id] = model.BlackrxChannelDurations(catalogChannel, mapped)
+		}
 	}
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
@@ -304,6 +349,9 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 		mapped, mapErr := videoQuoteMappedModel(requestedModel, channel.GetModelMapping())
 		if mapErr != nil {
 			return pricing, mapErr
+		}
+		if model.IsBlackrxCatalogChannel(&channel) && (!catalogAvailable[channel.Id] || len(catalogDurations[channel.Id]) == 0) {
+			continue
 		}
 		endpointModel, declared := generation.CanonicalModel(requestedModel)
 		// The normal create path decodes once before channel mapping and
@@ -350,7 +398,7 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 				return pricing, fmt.Errorf("invalid group ratio")
 			}
 			pricing.Candidates = append(pricing.Candidates, videoQuoteCandidate{ChannelID: channel.Id, Group: group,
-				Model: mapped, PluginKey: plugin.Meta.Key, Version: plugin.Meta.Version, Expr: expression, Ratio: ratio, Plugin: plugin})
+				Model: mapped, PluginKey: plugin.Meta.Key, Version: plugin.Meta.Version, Expr: expression, Ratio: ratio, Plugin: plugin, Durations: catalogDurations[channel.Id]})
 			if len(pricing.Candidates) > 64 {
 				return pricing, fmt.Errorf("too many quote routes")
 			}

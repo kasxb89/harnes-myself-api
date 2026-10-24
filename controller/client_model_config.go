@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,6 +16,7 @@ func GetClientModelConfig(c *gin.Context) {
 }
 
 func GetClientModelCandidates(c *gin.Context) {
+	service.RefreshBlackrxCatalog(c.Request.Context())
 	models, err := model.ListClientModelCandidates()
 	if err != nil {
 		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Failed to load client model catalog"))

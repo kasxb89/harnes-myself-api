@@ -128,6 +128,10 @@ func newVideoQuoteFixture(t *testing.T) *videoQuoteFixture {
 			require.True(t, ok)
 			channel.Models = strings.Join(plugin.Meta.Models, ",")
 			channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "blackrxai-video"})
+			// This pricing fixture explicitly makes every declared model
+			// available. Provider discovery failures/removals are covered by
+			// the catalog's HTTP tests; quotes here remain entirely offline.
+			model.RecordBlackrxCatalog(channel, channel.Key, plugin.Meta.Models, time.Now())
 		}
 		require.NoError(t, database.Create(channel).Error)
 		require.NoError(t, channel.AddAbilities(database))
@@ -226,6 +230,38 @@ func (fixture *videoQuoteFixture) successfulQuote(t *testing.T, body string) typ
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &quote))
 	assert.Equal(t, before, fixture.snapshot(t))
 	return quote
+}
+
+func TestVideoQuoteHTTPBlackrxLiveDurationPolicy(t *testing.T) {
+	fixture := newVideoQuoteFixture(t)
+	fixture.setExpressions(t, map[string]string{
+		"blackrxai-video::video-sd25-480p": `tier("base", u("seconds") * 0.1)`,
+		"blackrxai-video::sd2-th-2.0-720p": `tier("base", u("seconds") * 0.1)`,
+	})
+	var channel model.Channel
+	require.NoError(t, fixture.db.First(&channel, 871).Error)
+	plugin, registered := jsplugin.DefaultRegistry.Get("blackrxai-video")
+	require.True(t, registered)
+	model.RecordBlackrxCatalogPolicies(&channel, channel.Key, plugin.Meta.Models, map[string]model.BlackrxDurationPolicy{
+		"video-sd25-480p": {Values: []int{15, 16, 17, 18, 19, 20}, Default: 20},
+		"sd2-th-2.0-720p": {Values: []int{10}, Default: 10},
+	}, time.Now())
+	before := fixture.snapshot(t)
+	quote := fixture.successfulQuote(t, `{"model":"video-sd25-480p","works_count":1,"segments":[{"id":"clip","parameters":{"seconds":20,"size":"1280x720"}}]}`)
+	require.Len(t, quote.Segments, 1)
+	assert.EqualValues(t, 20, quote.Segments[0].Usage["seconds"])
+	for _, parameters := range []string{`{"seconds":30,"size":"1280x720"}`, `{"size":"1280x720"}`} {
+		// The installed plugin defaults to 30s. A live restriction must
+		// reject that value rather than silently change the caller's length.
+		body := `{"model":"video-sd25-480p","works_count":1,"segments":[{"id":"clip","parameters":` + parameters + `}]}`
+		response := fixture.request(t, body, "Bearer sk-quoteonly", "application/json")
+		assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+		assert.Contains(t, response.Body.String(), `"code":"video_duration_unavailable"`)
+	}
+	response := fixture.request(t, `{"model":"sd2-th-2.0-720p","works_count":1,"segments":[{"id":"clip","parameters":{"seconds":15,"size":"1280x720"}}]}`, "Bearer sk-quoteonly", "application/json")
+	assert.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"code":"quote_unavailable"`, "the old 15s and upstream 10s contracts have no intersection")
+	assert.Equal(t, before, fixture.snapshot(t))
 }
 
 func TestVideoQuoteHTTPRejectsMalformedAndUnboundedWorkloads(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -193,12 +194,61 @@ func ApplyOriginTaskAffinity(c *gin.Context, info *relaycommon.RelayInfo) *dto.T
 	return ApplyChannelPin(c, info)
 }
 
+const taskCatalogBudgetKey = "host_task_catalog_budget"
+const taskCatalogRejectionKey = "host_task_catalog_rejection"
+
+type taskCatalogCandidateBudget struct{ Deadline time.Time }
+type taskCatalogUnsentRejection struct {
+	Info                               *relaycommon.RelayInfo
+	Error                              *dto.TaskError
+	ChannelID                          int
+	Key, RequestedModel, UpstreamModel string
+}
+
+// BeginTaskCatalogCandidateBudget bounds discovery only. Its context never
+// becomes the actual provider POST context, which keeps the normal send fence.
+func BeginTaskCatalogCandidateBudget(c *gin.Context) {
+	c.Set(taskCatalogBudgetKey, taskCatalogCandidateBudget{Deadline: time.Now().Add(20 * time.Second)})
+	c.Set(taskCatalogRejectionKey, nil)
+}
+
+func TaskCatalogCandidateBudgetAvailable(c *gin.Context) bool {
+	value, _ := c.Get(taskCatalogBudgetKey)
+	budget, ok := value.(taskCatalogCandidateBudget)
+	return ok && time.Now().Before(budget.Deadline)
+}
+
+// ConsumeTaskCatalogUnsentRejection accepts only the host's exact preflight
+// error for this selected route/key. Error text, HTTP status and client JSON
+// alone cannot authorize switching a provider candidate.
+func ConsumeTaskCatalogUnsentRejection(c *gin.Context, info *relaycommon.RelayInfo, taskErr *dto.TaskError) bool {
+	value, _ := c.Get(taskCatalogRejectionKey)
+	c.Set(taskCatalogRejectionKey, nil)
+	proof, ok := value.(taskCatalogUnsentRejection)
+	return ok && info != nil && info.ChannelMeta != nil && taskErr != nil && proof.Info == info && proof.Error == taskErr &&
+		proof.ChannelID == info.ChannelId && proof.Key == info.ApiKey && proof.Key == common.GetContextKeyString(c, constant.ContextKeyChannelKey) &&
+		proof.RequestedModel == info.OriginModelName && proof.UpstreamModel == info.UpstreamModelName &&
+		service.MediaSubmissionFromContext(c) == nil && service.H3SubmissionFromContext(c) == nil && info.Billing == nil &&
+		taskErr.LocalError && taskErr.NoRetry && (taskErr.Code == "model_not_available" || taskErr.Code == "video_duration_unavailable" || taskErr.Code == "upstream_catalog_unverified")
+}
+
+func taskCatalogPreflightRejection(c *gin.Context, info *relaycommon.RelayInfo, unavailable *service.BlackrxModelAvailabilityError) *dto.TaskError {
+	taskErr := service.TaskErrorWrapperLocal(unavailable, unavailable.Code, unavailable.HTTPStatus)
+	taskErr.NoRetry = true
+	if info != nil && info.ChannelMeta != nil && service.MediaSubmissionFromContext(c) == nil && service.H3SubmissionFromContext(c) == nil && info.Billing == nil &&
+		(unavailable.Code == "model_not_available" || unavailable.Code == "video_duration_unavailable" || unavailable.Code == "upstream_catalog_unverified") {
+		c.Set(taskCatalogRejectionKey, taskCatalogUnsentRejection{Info: info, Error: taskErr, ChannelID: info.ChannelId, Key: info.ApiKey, RequestedModel: info.OriginModelName, UpstreamModel: info.UpstreamModelName})
+	}
+	return taskErr
+}
+
 // RelayTaskSubmit 完成 task 提交的全部流程（每次尝试调用一次）：
 // 刷新渠道元数据 → 确定 platform/adaptor → 验证请求 →
 // 估算计费(EstimateBilling) → 计算价格 → 预扣费（仅首次）→
 // 构建/发送/解析上游请求 → 提交后计费调整(AdjustBillingOnSubmit)。
 // 共享控制器编排负责未落库退款、最终额度预留、落库和结算。
 func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitResult, *dto.TaskError) {
+	c.Set(taskCatalogRejectionKey, nil)
 	info.InitChannelMeta(c)
 
 	// 1. 确定 platform → 创建适配器 → 验证请求
@@ -213,6 +263,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	// buildSubmitRequest runs during validation and the unreleased plugin
 	// contract exposes this host-generated id to that hook.
+	if queueTaskID := service.VideoQueueTaskID(c); queueTaskID != "" {
+		if info.PublicTaskID != "" && info.PublicTaskID != queueTaskID {
+			return nil, service.TaskErrorWrapperLocal(model.ErrVideoQueueState, "video_queue_state_unconfirmed", http.StatusServiceUnavailable)
+		}
+		info.PublicTaskID = queueTaskID
+	}
 	if info.PublicTaskID == "" {
 		info.PublicTaskID = model.GenerateTaskID()
 	}
@@ -230,14 +286,73 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
 		}
 	}
+	// Availability is checked against this account before admission or funds.
+	// Historical retrieval never enters this fence and keeps its original ID.
+	if platform == "blackrxai-video" {
+		value, _ := c.Get(taskCatalogBudgetKey)
+		budget, ok := value.(taskCatalogCandidateBudget)
+		if !ok {
+			BeginTaskCatalogCandidateBudget(c)
+			value, _ = c.Get(taskCatalogBudgetKey)
+			budget = value.(taskCatalogCandidateBudget)
+		}
+		catalogCtx, cancelCatalog := context.WithDeadline(c.Request.Context(), budget.Deadline)
+		defer cancelCatalog()
+		if catalogCtx.Err() != nil {
+			return nil, taskCatalogPreflightRejection(c, info, &service.BlackrxModelAvailabilityError{Code: "upstream_catalog_unverified", HTTPStatus: http.StatusServiceUnavailable})
+		}
+		catalogChannel, err := model.GetChannelById(info.ChannelId, true)
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "upstream_catalog_unverified", http.StatusServiceUnavailable)
+		}
+		if err := service.CheckBlackrxModelAvailability(catalogCtx, catalogChannel, info.ApiKey, info.OriginModelName, info.UpstreamModelName); err != nil {
+			var unavailable *service.BlackrxModelAvailabilityError
+			if errors.As(err, &unavailable) {
+				return nil, taskCatalogPreflightRejection(c, info, unavailable)
+			}
+			return nil, service.TaskErrorWrapperLocal(err, "upstream_catalog_unverified", http.StatusServiceUnavailable)
+		}
+		// Resolve the installed plugin's exact duration, including its default,
+		// before reserving a slot or money. Live discovery may only narrow it.
+		if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+			return nil, taskErr
+		}
+		usageProvider, supported := adaptor.(channel.TaskValidatedUsageFactsProvider)
+		if !supported {
+			return nil, service.TaskErrorWrapperLocal(errors.New("Video duration could not be verified"), "video_duration_unavailable", http.StatusBadRequest)
+		}
+		facts, usageErr := usageProvider.ExtractUsageFactsValidated(c, info)
+		if usageErr != nil {
+			return nil, service.TaskErrorWrapperLocal(usageErr, "plugin_usage_invalid", http.StatusBadRequest)
+		}
+		encoded, encodeErr := common.Marshal(facts)
+		var duration struct {
+			Seconds float64 `json:"seconds"`
+		}
+		if encodeErr != nil || common.Unmarshal(encoded, &duration) != nil || math.IsNaN(duration.Seconds) || math.IsInf(duration.Seconds, 0) || duration.Seconds < 1 || duration.Seconds > relaycommon.MaxTaskDurationSeconds || math.Trunc(duration.Seconds) != duration.Seconds {
+			return nil, service.TaskErrorWrapperLocal(errors.New("Video duration could not be verified"), "video_duration_unavailable", http.StatusBadRequest)
+		}
+		if catalogCtx.Err() != nil {
+			return nil, taskCatalogPreflightRejection(c, info, &service.BlackrxModelAvailabilityError{Code: "upstream_catalog_unverified", HTTPStatus: http.StatusServiceUnavailable})
+		}
+		if err := service.CheckBlackrxVideoDuration(catalogCtx, catalogChannel, info.ApiKey, info.OriginModelName, info.UpstreamModelName, int(duration.Seconds)); err != nil {
+			var unavailable *service.BlackrxModelAvailabilityError
+			if errors.As(err, &unavailable) {
+				return nil, taskCatalogPreflightRejection(c, info, unavailable)
+			}
+			return nil, service.TaskErrorWrapperLocal(err, "upstream_catalog_unverified", http.StatusServiceUnavailable)
+		}
+	}
 	if taskErr := service.PrepareH3Submission(c, info, platform); taskErr != nil {
 		return nil, taskErr
 	}
 	if taskErr := service.PrepareMediaSubmission(c, info, platform); taskErr != nil {
 		return nil, taskErr
 	}
-	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
-		return nil, taskErr
+	if platform != "blackrxai-video" {
+		if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+			return nil, taskErr
+		}
 	}
 
 	// 2. 确定模型名称
@@ -389,12 +504,17 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// or 202 Accepted, and parseSubmitResponse receives the exact status code.
 	if resp.StatusCode/100 != 2 {
 		reader := io.Reader(resp.Body)
-		if service.H3SubmissionFromContext(c) != nil {
+		if service.H3SubmissionFromContext(c) != nil || service.MediaSubmissionFromContext(c) != nil {
 			reader = io.LimitReader(resp.Body, (1<<20)+1)
 		}
 		responseBody, readErr := io.ReadAll(reader)
 		if readErr == nil && service.ClassifyH3SubmitAuthRejection(c, resp.StatusCode, responseBody) {
 			rejected := service.TaskErrorWrapperLocal(errors.New("Upstream authentication rejected the video submission"), service.H3AuthRejectedCode, http.StatusBadGateway)
+			rejected.NoRetry = true
+			return nil, rejected
+		}
+		if readErr == nil && service.ClassifyMediaCreateRejection(c, info, resp, responseBody) {
+			rejected := service.TaskErrorWrapperLocal(errors.New("Upstream rejected video creation because the model is unavailable"), service.MediaRejectedCode, http.StatusBadRequest)
 			rejected.NoRetry = true
 			return nil, rejected
 		}

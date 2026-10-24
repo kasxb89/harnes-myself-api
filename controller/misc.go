@@ -51,7 +51,20 @@ func GetStatus(c *gin.Context) {
 	legalSetting := system_setting.GetLegalSettings()
 
 	data := gin.H{
-		"version":                   common.Version,
+		"version": common.Version,
+		"video_queue": gin.H{
+			"schema_version":           1,
+			"enabled":                  constant.UpdateTask && service.VideoQueueDispatcherReady(),
+			"create_path":              "/v1/video/queue",
+			"retrieve_path_template":   "/v1/video/queue/:queue_id",
+			"cancel_path_template":     "/v1/video/queue/:queue_id/cancel",
+			"max_count_per_item":       1,
+			"body_max_bytes":           model.VideoQueueBodyLimit,
+			"poll_interval_seconds":    15,
+			"client_generated_id":      true,
+			"queued_charge_reserved":   false,
+			"lost_ack_recovery_method": http.MethodGet,
+		},
 		"desktop_update":            system_setting.GetDesktopUpdateStatus(),
 		"client_model_config":       clientModelConfig,
 		"client_model_presentation": clientModelPresentation,

@@ -36,6 +36,7 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 }
 
 func GetPricing(c *gin.Context) {
+	service.RefreshBlackrxCatalog(c.Request.Context())
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
@@ -57,6 +58,25 @@ func GetPricing(c *gin.Context) {
 
 	usableGroup = service.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	groups := make([]string, 0, len(usableGroup))
+	for usable := range usableGroup {
+		groups = append(groups, usable)
+	}
+	names := make([]string, 0, len(pricing))
+	for _, item := range pricing {
+		names = append(names, item.ModelName)
+	}
+	available := make(map[string]bool, len(names))
+	for _, name := range service.FilterUnavailableCatalogModels(names, groups) {
+		available[name] = true
+	}
+	filteredPricing := make([]model.Pricing, 0, len(pricing))
+	for _, item := range pricing {
+		if available[item.ModelName] {
+			filteredPricing = append(filteredPricing, item)
+		}
+	}
+	pricing = service.NarrowBlackrxPricingParameters(filteredPricing, groups)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {

@@ -73,9 +73,11 @@ type MediaAdmission struct {
 	State            string `gorm:"type:varchar(20);index" json:"-"`
 	BillingState     string `gorm:"type:varchar(24)" json:"-"`
 	ProviderTerminal bool   `json:"-"`
-	SendingAt        int64  `json:"-"`
-	CreatedAt        int64  `json:"-"`
-	UpdatedAt        int64  `json:"-"`
+	// CreateRejection is a host-verified original create response, never vendor task data.
+	CreateRejection string `gorm:"type:text" json:"-"`
+	SendingAt       int64  `json:"-"`
+	CreatedAt       int64  `json:"-"`
+	UpdatedAt       int64  `json:"-"`
 }
 
 type MediaPoolSnapshot struct {

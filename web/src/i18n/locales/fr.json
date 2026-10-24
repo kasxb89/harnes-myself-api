@@ -7097,6 +7097,7 @@
     "Task records": "Tâches",
     "Task terminal result": "Résultat final de tâche",
     "Task timed out": "La tâche a expiré",
+    "Upstream rejected video creation because the model is unavailable": "Le fournisseur a refusé la création de la vidéo : ce modèle est indisponible",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "La tâche a expiré (une tâche laissée par l'ancien système n'est pas remboursée ; contactez l'administrateur)",
     "Task timeout": "Expiration de tâche",
     "Task trend bucket values": "Valeurs des segments de tendance des tâches",

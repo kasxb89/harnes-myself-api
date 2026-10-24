@@ -24,6 +24,8 @@ import (
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -626,15 +628,25 @@ func (transport mediaNativeTransport) RoundTrip(request *http.Request) (*http.Re
 	target := *request.URL
 	target.Scheme, target.Host = transport.base.Scheme, transport.base.Host
 	local.URL, local.Host = &target, transport.base.Host
-	return transport.next.RoundTrip(local)
+	response, err := transport.next.RoundTrip(local)
+	if response != nil {
+		response.Request = request
+	}
+	return response, err
 }
 
 type mediaNativeFixture struct {
 	*h3RouterFixture
-	mu          sync.Mutex
-	posts, gets int
-	postMode    string
-	queryMode   string
+	mu           sync.Mutex
+	posts, gets  int
+	postMode     string
+	postBody     string
+	postStatus   int
+	catalogByKey map[string]string
+	catalogKeys  []string
+	postKeys     []string
+	postedBodies []map[string]any
+	queryMode    string
 }
 
 func newMediaNativeFixture(t *testing.T) *mediaNativeFixture {
@@ -663,14 +675,46 @@ func newMediaNativeFixture(t *testing.T) *mediaNativeFixture {
 		require.NoError(t, channel.AddAbilities(base.db))
 	}
 	model.InitChannelCache()
+	base.engine = gin.New()
+	base.engine.Use(middleware.RequestId())
+	SetRouter(base.engine, WebAssets{})
 	fixture := &mediaNativeFixture{h3RouterFixture: base, queryMode: "queued"}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fixture.mu.Lock()
 		defer fixture.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+			key := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			fixture.catalogKeys = append(fixture.catalogKeys, key)
+			if fixture.catalogByKey != nil {
+				_, _ = io.WriteString(w, fixture.catalogByKey[key])
+				return
+			}
+			_, _ = io.WriteString(w, `{"object":"list","data":[{"id":"bt-seedance-2.0","object":"model"}]}`)
+			return
+		}
 		image := strings.Contains(r.URL.Path, "/images/")
 		if r.Method == http.MethodPost {
 			fixture.posts++
+			fixture.postKeys = append(fixture.postKeys, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+			if fixture.catalogByKey != nil {
+				var submitted map[string]any
+				if common.DecodeJson(r.Body, &submitted) == nil {
+					fixture.postedBodies = append(fixture.postedBodies, submitted)
+				}
+			}
+			if fixture.postMode == "transport" {
+				connection, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					_ = connection.Close()
+				}
+				return
+			}
+			if fixture.postStatus != 0 {
+				w.WriteHeader(fixture.postStatus)
+				_, _ = io.WriteString(w, fixture.postBody)
+				return
+			}
 			if fixture.postMode == "http503" {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				_, _ = io.WriteString(w, `{"error":{"code":"fixture_provider_unavailable","message":"fixture provider temporarily unavailable"}}`)
@@ -1128,6 +1172,7 @@ func TestMediaConcurrencyContentDoesNotRebindAcceptedCredential(t *testing.T) {
 	organization, headers := "original-organization", `{"X-Provider-Auth":"original-auth-setting"}`
 	original.OpenAIOrganization, original.HeaderOverride = &organization, &headers
 	require.NoError(t, f.db.Save(&original).Error)
+	model.RecordBlackrxCatalog(&original, original.Key, []string{"bt-seedance-2.0"}, time.Now())
 	model.InitChannelCache()
 	accepted := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"local content regression","seconds":10,"size":"1792x1024"}`)
 	require.Equal(t, http.StatusOK, accepted.Code, accepted.Body.String())
@@ -1186,4 +1231,640 @@ func TestMediaConcurrencyHistoricalSavedURLSurvivesDeletedChannelWithoutCredenti
 	stored := f.task(t, legacy.TaskID)
 	assert.Empty(t, stored.PrivateData.Key)
 	assert.Empty(t, stored.PrivateData.RouteDigest)
+}
+
+func TestMediaCreateRejectionExactResponseRefundAndRecovery(t *testing.T) {
+	for _, test := range []struct {
+		name, body string
+		status     int
+		rejected   bool
+	}{
+		{"exact", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, true},
+		{"whitespace", ` { "error" : { "type" : "invalid_request_error", "message" : "模型不存在：bt-seedance-2.0" } } `, 404, true},
+		{"extra_id", `{"id":"already-created","error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+		{"nested_id", `{"error":{"id":"already-created","message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+		{"receipt", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"},"media_submission_receipt":{"billing_state":"refunded"}}`, 404, false},
+		{"duplicate", `{"error":{"message":"accepted","message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+		{"html", `<html>模型不存在：bt-seedance-2.0</html>`, 404, false},
+		{"other_model", `{"error":{"message":"模型不存在：other-model","type":"invalid_request_error"}}`, 404, false},
+		{"other_type", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"server_error"}}`, 404, false},
+		{"contradiction", `{"status":"queued","error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+		{"truncated", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}`, 404, false},
+		{"503", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 503, false},
+		{"429", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 429, false},
+		{"2xx_bad", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 200, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			f.postStatus, f.postBody = test.status, test.body
+			beforeWallet, beforeToken := f.balance(t)
+			response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"free loopback create refusal","seconds":10,"size":"1792x1024"}`)
+			var wire struct {
+				ID      string                          `json:"id"`
+				Receipt *service.MediaSubmissionReceipt `json:"media_submission_receipt"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+			require.NotEmpty(t, wire.ID)
+			task := f.task(t, wire.ID)
+			var admission model.MediaAdmission
+			require.NoError(t, f.db.Where("id = ?", wire.ID).First(&admission).Error)
+			assert.Positive(t, admission.SendingAt)
+			assert.False(t, admission.ProviderTerminal)
+			assert.Equal(t, "synthetic-media-blackrxai-video", task.PrivateData.Key)
+			assert.NotEmpty(t, task.PrivateData.RouteDigest)
+			assert.Empty(t, task.PrivateData.UpstreamTaskID)
+			var pool model.MediaPool
+			require.NoError(t, f.db.Where("id = ?", admission.PoolID).First(&pool).Error)
+			afterWallet, afterToken := f.balance(t)
+			if test.rejected {
+				assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+				require.NotNil(t, wire.Receipt)
+				assert.Equal(t, service.MediaRejectedCode, wire.Receipt.SubmissionCode)
+				assert.Equal(t, "not_submitted", wire.Receipt.SubmissionState)
+				assert.Equal(t, "refunded", wire.Receipt.BillingState)
+				assert.True(t, wire.Receipt.RefundConfirmed)
+				assert.True(t, wire.Receipt.ProviderResponseReceived)
+				assert.True(t, wire.Receipt.UpstreamSubmitted, "a confirmed create refusal is not a not-sent proof")
+				if test.name == "exact" {
+					t.Logf("API_HANDLER_FIXTURE rejected-create %s", response.Body.String())
+				}
+				assert.Equal(t, "upstream_model_not_available", wire.Receipt.RejectionReason)
+				assert.Equal(t, model.MediaReleased, admission.State)
+				assert.Equal(t, "refunded", admission.BillingState)
+				assert.Zero(t, pool.Occupied)
+				assert.Zero(t, task.Quota)
+				assert.EqualValues(t, model.TaskStatusFailure, task.Status)
+				assert.Equal(t, beforeWallet, afterWallet)
+				assert.Equal(t, beforeToken, afterToken)
+				require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
+				require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
+			} else {
+				assert.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+				assert.Nil(t, wire.Receipt)
+				assert.Equal(t, model.MediaUnknown, admission.State)
+				assert.Empty(t, admission.CreateRejection)
+				assert.Equal(t, 1, pool.Occupied)
+				assert.Less(t, afterWallet, beforeWallet)
+				assert.Less(t, afterToken, beforeToken)
+				assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
+			}
+			for range 2 {
+				require.NoError(t, model.MigrateMediaAdmission(f.db))
+				get := f.request(t, http.MethodGet, "/v1/tasks/"+wire.ID, "")
+				require.Equal(t, 200, get.Code)
+				if test.rejected {
+					assert.Contains(t, get.Body.String(), `"provider_response_received":true`)
+					assert.Contains(t, get.Body.String(), `"status":"FAILURE"`)
+					if test.name == "exact" {
+						t.Logf("API_HANDLER_FIXTURE rejected-get %s", get.Body.String())
+					}
+				} else {
+					assert.NotContains(t, get.Body.String(), `"media_submission_receipt"`)
+					assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
+				}
+			}
+			f.mu.Lock()
+			assert.Equal(t, 1, f.posts)
+			assert.Zero(t, f.gets)
+			f.mu.Unlock()
+			finalWallet, finalToken := f.balance(t)
+			assert.Equal(t, afterWallet, finalWallet)
+			assert.Equal(t, afterToken, finalToken)
+		})
+	}
+}
+
+func TestMediaCreateRejectionRefundFailureIsAtomicAndRecoverable(t *testing.T) {
+	for _, failure := range []string{"proof_write", "token_refund", "subscription_refund"} {
+		t.Run(failure, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			f.postStatus = 404
+			f.postBody = `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+			if failure == "subscription_refund" {
+				require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("setting", `{"billing_preference":"subscription_only"}`).Error)
+				plan := model.SubscriptionPlan{Id: 791, Title: "local rejection test", TotalAmount: 100000000, QuotaResetPeriod: "never"}
+				require.NoError(t, f.db.Create(&plan).Error)
+				sub := model.UserSubscription{Id: 791, UserId: 791, PlanId: 791, AmountTotal: 100000000, Status: "active", StartTime: time.Now().Unix(), EndTime: time.Now().Add(time.Hour).Unix()}
+				require.NoError(t, f.db.Create(&sub).Error)
+			}
+			beforeWallet, beforeToken := f.balance(t)
+			callback := "media_create_rejection_" + failure
+			require.NoError(t, f.db.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+				values, ok := tx.Statement.Dest.(map[string]any)
+				if !ok {
+					return
+				}
+				fail := failure == "proof_write" && tx.Statement.Table == "media_admissions" && values["create_rejection"] != nil || failure == "token_refund" && tx.Statement.Table == "tokens" && values["remain_quota"] != nil && values["accessed_time"] == nil || failure == "subscription_refund" && tx.Statement.Table == "subscription_pre_consume_records" && values["status"] == "refunded"
+				if fail {
+					tx.AddError(fmt.Errorf("synthetic %s failure", failure))
+				}
+			}))
+			response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"free atomic refund fixture","seconds":10,"size":"1792x1024"}`)
+			require.NoError(t, f.db.Callback().Update().Remove(callback))
+			require.Equal(t, 202, response.Code, response.Body.String())
+			var wire struct {
+				ID string `json:"id"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+			task := f.task(t, wire.ID)
+			var admission model.MediaAdmission
+			require.NoError(t, f.db.Where("id = ?", wire.ID).First(&admission).Error)
+			assert.Equal(t, model.MediaUnknown, admission.State)
+			assert.Positive(t, admission.SendingAt)
+			assert.False(t, admission.ProviderTerminal)
+			assert.EqualValues(t, model.TaskStatusUnknown, task.Status)
+			assert.Positive(t, task.Quota)
+			wallet, token := f.balance(t)
+			assert.Less(t, token, beforeToken)
+			if failure == "subscription_refund" {
+				assert.Equal(t, beforeWallet, wallet)
+			} else {
+				assert.Less(t, wallet, beforeWallet)
+			}
+			if failure == "proof_write" {
+				assert.Empty(t, admission.CreateRejection)
+				assert.Equal(t, "reserved", admission.BillingState)
+				assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
+			} else {
+				assert.NotEmpty(t, admission.CreateRejection)
+				assert.Equal(t, "refund_pending", admission.BillingState)
+				pending, err := model.PendingMediaCreateRejectionTasks(context.Background(), 100)
+				require.NoError(t, err)
+				require.Len(t, pending, 1)
+				assert.Equal(t, task.TaskID, pending[0].TaskID)
+				errors := make(chan error, 2)
+				var wait sync.WaitGroup
+				for range 2 {
+					wait.Go(func() { errors <- model.RefundMediaCreateRejection(context.Background(), task) })
+				}
+				wait.Wait()
+				close(errors)
+				for err := range errors {
+					require.NoError(t, err)
+				}
+				require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
+				wallet, token = f.balance(t)
+				assert.Equal(t, beforeWallet, wallet)
+				assert.Equal(t, beforeToken, token)
+				get := f.request(t, http.MethodGet, "/v1/tasks/"+wire.ID, "")
+				assert.Contains(t, get.Body.String(), `"billing_state":"refunded"`)
+				var pool model.MediaPool
+				require.NoError(t, f.db.Where("id = ?", admission.PoolID).First(&pool).Error)
+				assert.Zero(t, pool.Occupied)
+			}
+			f.mu.Lock()
+			assert.Equal(t, 1, f.posts)
+			assert.Zero(t, f.gets)
+			f.mu.Unlock()
+		})
+	}
+}
+
+func TestMediaCreateRejectionMigrationPreservesOriginalUnknownTasks(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic pre-upgrade accepted task","seconds":10,"size":"1792x1024"}`)
+	require.Equal(t, 200, response.Code, response.Body.String())
+	var wire struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+	before := f.task(t, wire.ID)
+	var admission model.MediaAdmission
+	require.NoError(t, f.db.Where("id = ?", wire.ID).First(&admission).Error)
+	// Previous released schema has no host create-refusal proof. Upgrading it
+	// must never reinterpret an old sent task as unsent or reset its capacity.
+	require.NoError(t, f.db.Migrator().DropColumn(&model.MediaAdmission{}, "CreateRejection"))
+	for range 2 {
+		require.NoError(t, model.MigrateMediaAdmission(f.db))
+	}
+	require.True(t, f.db.Migrator().HasColumn(&model.MediaAdmission{}, "CreateRejection"))
+	after := f.task(t, wire.ID)
+	assert.Equal(t, before, after)
+	var upgraded model.MediaAdmission
+	require.NoError(t, f.db.Where("id = ?", wire.ID).First(&upgraded).Error)
+	assert.Equal(t, admission, upgraded)
+	assert.Empty(t, upgraded.CreateRejection)
+	receipt, terminal, err := service.ProjectMediaTaskSubmission(context.Background(), after)
+	require.NoError(t, err)
+	assert.Nil(t, receipt)
+	assert.False(t, terminal)
+	assert.Error(t, model.RefundMediaCreateRejection(context.Background(), after))
+	var pool model.MediaPool
+	require.NoError(t, f.db.Where("id = ?", admission.PoolID).First(&pool).Error)
+	assert.Equal(t, 1, pool.Occupied)
+	var duplicate model.MediaAdmission = upgraded
+	duplicate.ID = "other-upgrade-task"
+	assert.Error(t, f.db.Create(&duplicate).Error, "task-to-admission uniqueness must survive both upgrade runs")
+}
+
+func TestMediaCreateRejectionRestoresOriginalPaidAndGiftLots(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 0).Error)
+	cash := decimal.RequireFromString("0.064")
+	require.NoError(t, f.db.Transaction(func(tx *gorm.DB) error {
+		return model.CreditWalletFundingWithTx(tx, 791, 40000, model.WalletFundingPaid, "synthetic-verified-recharge", &cash)
+	}))
+	require.NoError(t, model.CreditUserGiftQuota(791, 100000, "synthetic-registration-gift"))
+	var beforeLots []model.WalletFundingLot
+	require.NoError(t, f.db.Where("user_id = ? AND remaining_quota > 0", 791).Order("id").Find(&beforeLots).Error)
+	require.Len(t, beforeLots, 2)
+	f.postStatus, f.postBody = 404, `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+	beforeWallet, beforeToken := f.balance(t)
+	response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic mixed funding refusal","seconds":10,"size":"1792x1024"}`)
+	require.Equal(t, 400, response.Code, response.Body.String())
+	var wire struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+	task := f.task(t, wire.ID)
+	require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
+	afterWallet, afterToken := f.balance(t)
+	assert.Equal(t, beforeWallet, afterWallet)
+	assert.Equal(t, beforeToken, afterToken)
+	var afterLots []model.WalletFundingLot
+	require.NoError(t, f.db.Where("user_id = ? AND remaining_quota > 0", 791).Order("id").Find(&afterLots).Error)
+	assert.Equal(t, beforeLots, afterLots)
+	funding, err := model.GetWalletFundingSnapshot(791, task.PrivateData.FundingRequestId, "relay")
+	require.NoError(t, err)
+	assert.Zero(t, funding.Quota)
+	assert.Zero(t, funding.PaidQuota)
+	assert.Zero(t, funding.GiftQuota)
+	var user model.User
+	require.NoError(t, f.db.First(&user, 791).Error)
+	assert.Zero(t, user.UsedQuota)
+	var channel model.Channel
+	require.NoError(t, f.db.First(&channel, 880).Error)
+	assert.Zero(t, channel.UsedQuota)
+}
+
+func TestMediaCreateRejectionRejectsChangedPluginSource(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	source, err := os.ReadFile("../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	plugin, err := jsplugin.DefaultRegistry.Register(string(source)+"\n// a different, unreviewed implementation", jsplugin.Options{})
+	require.NoError(t, err)
+	assert.NotEqual(t, model.BlackrxCreateRejectionSourceHash, plugin.SourceHash)
+	f.postStatus, f.postBody = 404, `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+	beforeWallet, beforeToken := f.balance(t)
+	response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic unreviewed plugin refusal","seconds":10,"size":"1792x1024"}`)
+	require.Equal(t, 202, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), `"media_submission_receipt"`)
+	var wire struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+	task := f.task(t, wire.ID)
+	require.NotNil(t, task.PrivateData.Execution.TaskPlugin)
+	assert.Equal(t, plugin.SourceHash, task.PrivateData.Execution.TaskPlugin.SourceHash)
+	assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
+	afterWallet, afterToken := f.balance(t)
+	assert.Less(t, afterWallet, beforeWallet)
+	assert.Less(t, afterToken, beforeToken)
+	pending, err := model.PendingMediaCreateRejectionTasks(context.Background(), 100)
+	require.NoError(t, err)
+	assert.Empty(t, pending)
+	f.mu.Lock()
+	assert.Equal(t, 1, f.posts)
+	assert.Zero(t, f.gets)
+	f.mu.Unlock()
+}
+
+func TestMediaCreateRejectionZeroPriceSubscriptionRestoresActualMinimum(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{billing_setting.PluginBillingExprOption: `{"blackrxai-video::bt-seedance-2.0":"u(\"seconds\") * 0"}`}))
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("setting", `{"billing_preference":"subscription_only"}`).Error)
+	plan := model.SubscriptionPlan{Id: 791, Title: "zero-price rejection fixture", TotalAmount: 1000, QuotaResetPeriod: "never"}
+	require.NoError(t, f.db.Create(&plan).Error)
+	sub := model.UserSubscription{Id: 791, UserId: 791, PlanId: 791, AmountTotal: 1000, Status: "active", StartTime: time.Now().Unix(), EndTime: time.Now().Add(time.Hour).Unix()}
+	require.NoError(t, f.db.Create(&sub).Error)
+	f.postStatus, f.postBody = 404, `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+	beforeWallet, beforeToken := f.balance(t)
+	response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"free subscription minimum rejection","seconds":10,"size":"1792x1024"}`)
+	require.Equal(t, 400, response.Code, response.Body.String())
+	var record model.SubscriptionPreConsumeRecord
+	require.NoError(t, f.db.Where("user_id = ?", 791).First(&record).Error)
+	assert.EqualValues(t, 1, record.PreConsumed)
+	assert.Equal(t, "refunded", record.Status)
+	require.NoError(t, f.db.First(&sub, 791).Error)
+	assert.Zero(t, sub.AmountUsed)
+	afterWallet, afterToken := f.balance(t)
+	assert.Equal(t, beforeWallet, afterWallet)
+	assert.Equal(t, beforeToken, afterToken)
+	assert.Contains(t, response.Body.String(), `"refund_confirmed":true`)
+}
+
+type mediaRejectionResponseTransport struct {
+	next     http.RoundTripper
+	mutation string
+}
+
+func (transport mediaRejectionResponseTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	response, err := transport.next.RoundTrip(request)
+	if response == nil || request.Method != http.MethodPost {
+		return response, err
+	}
+	cloned := request.Clone(request.Context())
+	copied := *request.URL
+	cloned.URL = &copied
+	response.Request = cloned
+	switch transport.mutation {
+	case "wrong_host":
+		cloned.URL.Host = "unrelated.invalid"
+	case "wrong_path":
+		cloned.URL.Path = "/v1/videos/not-a-create"
+	case "wrong_method":
+		cloned.Method = http.MethodGet
+	case "receipt_header":
+		response.Header.Set("X-Task-Id", "already-accepted")
+	case "html_content_type":
+		response.Header.Set("Content-Type", "text/html")
+	}
+	return response, err
+}
+
+func TestMediaCreateRejectionUntrustedTransportEvidenceKeepsOriginalReservation(t *testing.T) {
+	for _, mutation := range []string{"transport", "wrong_host", "wrong_path", "wrong_method", "receipt_header", "html_content_type"} {
+		t.Run(mutation, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			if mutation == "transport" {
+				f.postMode = "transport"
+			} else {
+				f.postStatus, f.postBody = 404, `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+				for _, client := range []*http.Client{service.GetHttpClient(), service.GetSSRFProtectedHTTPClient()} {
+					previous := client.Transport
+					client.Transport = mediaRejectionResponseTransport{next: previous, mutation: mutation}
+					t.Cleanup(func() { client.Transport = previous })
+				}
+			}
+			beforeWallet, beforeToken := f.balance(t)
+			response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic original transport evidence","seconds":10,"size":"1792x1024"}`)
+			require.Equal(t, 202, response.Code, response.Body.String())
+			assert.NotContains(t, response.Body.String(), `"media_submission_receipt"`)
+			var wire struct {
+				ID string `json:"id"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+			task := f.task(t, wire.ID)
+			var admission model.MediaAdmission
+			require.NoError(t, f.db.Where("id = ?", task.TaskID).First(&admission).Error)
+			assert.Equal(t, model.MediaUnknown, admission.State)
+			assert.Empty(t, admission.CreateRejection)
+			assert.Positive(t, admission.SendingAt)
+			assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
+			wallet, token := f.balance(t)
+			assert.Less(t, wallet, beforeWallet)
+			assert.Less(t, token, beforeToken)
+			f.mu.Lock()
+			assert.Equal(t, 1, f.posts)
+			assert.Zero(t, f.gets)
+			f.mu.Unlock()
+		})
+	}
+}
+
+func TestMediaCreateRejectionSubscriptionRecoveryNeverCreditsAnotherQuotaPeriod(t *testing.T) {
+	for _, reset := range []string{"admin_keep_dates", "admin_advance_dates", "automatic_due", "legacy_missing_epoch"} {
+		t.Run(reset, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("setting", `{"billing_preference":"subscription_only"}`).Error)
+			plan := model.SubscriptionPlan{Id: 791, Title: "quota cycle refusal fixture", TotalAmount: 100000000, QuotaResetPeriod: model.SubscriptionResetNever}
+			if reset == "automatic_due" {
+				plan.QuotaResetPeriod = model.SubscriptionResetCustom
+				plan.QuotaResetCustomSeconds = 3600
+			}
+			require.NoError(t, f.db.Create(&plan).Error)
+			model.InvalidateSubscriptionPlanCache(plan.Id)
+			now := time.Now().Unix()
+			sub := model.UserSubscription{Id: 791, UserId: 791, PlanId: 791, AmountTotal: 100000000, Status: "active", StartTime: now - 600, EndTime: now + 7200, LastResetTime: now - 600, NextResetTime: now + 3000}
+			require.NoError(t, f.db.Create(&sub).Error)
+			f.postStatus, f.postBody = 404, `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+			const callback = "media-rejection-cycle-delayed-refund"
+			require.NoError(t, f.db.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+				values, ok := tx.Statement.Dest.(map[string]any)
+				if ok && tx.Statement.Table == "tokens" && values["remain_quota"] != nil && values["accessed_time"] == nil {
+					tx.AddError(fmt.Errorf("synthetic refund delay before cycle change"))
+				}
+			}))
+			response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic delayed original cycle refund","seconds":10,"size":"1792x1024"}`)
+			require.NoError(t, f.db.Callback().Update().Remove(callback))
+			require.Equal(t, 202, response.Code, response.Body.String())
+			var wire struct {
+				ID string `json:"id"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+			task := f.task(t, wire.ID)
+			var admission model.MediaAdmission
+			require.NoError(t, f.db.Where("id = ?", task.TaskID).First(&admission).Error)
+			require.NotEmpty(t, admission.CreateRejection)
+			require.Equal(t, "refund_pending", admission.BillingState)
+			var original model.SubscriptionPreConsumeRecord
+			require.NoError(t, f.db.Where("request_id = ?", task.PrivateData.Execution.RequestID).First(&original).Error)
+			require.NotNil(t, original.QuotaEpoch)
+			require.NoError(t, f.db.First(&sub, 791).Error)
+			oldEpoch := sub.QuotaEpoch
+			oldLast, oldNext := sub.LastResetTime, sub.NextResetTime
+			switch reset {
+			case "admin_keep_dates", "admin_advance_dates":
+				_, err := model.AdminResetUserSubscriptionsByPlan(791, 791, reset == "admin_advance_dates")
+				require.NoError(t, err)
+			case "automatic_due":
+				require.NoError(t, f.db.Model(&model.UserSubscription{}).Where("id = ?", 791).Updates(map[string]any{"last_reset_time": now - 7200, "next_reset_time": now - 1}).Error)
+				count, err := model.ResetDueSubscriptions(10)
+				require.NoError(t, err)
+				require.Equal(t, 1, count)
+			case "legacy_missing_epoch":
+				require.NoError(t, f.db.Model(&model.SubscriptionPreConsumeRecord{}).Where("id = ?", original.Id).Update("quota_epoch", nil).Error)
+			}
+			require.NoError(t, f.db.First(&sub, 791).Error)
+			if reset != "legacy_missing_epoch" {
+				assert.Greater(t, sub.QuotaEpoch, oldEpoch)
+				assert.Zero(t, sub.AmountUsed)
+			}
+			if reset == "admin_keep_dates" {
+				assert.Equal(t, oldLast, sub.LastResetTime)
+				assert.Equal(t, oldNext, sub.NextResetTime)
+			}
+			if reset != "legacy_missing_epoch" {
+				_, err := model.PreConsumeUserSubscription("new-cycle-"+task.TaskID, 791, "bt-seedance-2.0", 0, 200000)
+				require.NoError(t, err)
+			}
+			require.NoError(t, f.db.First(&sub, 791).Error)
+			newUsed := sub.AmountUsed
+			wallet, token := f.balance(t)
+			for range 2 {
+				assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
+			}
+			var after model.UserSubscription
+			require.NoError(t, f.db.First(&after, 791).Error)
+			assert.Equal(t, newUsed, after.AmountUsed)
+			assert.Equal(t, sub.QuotaEpoch, after.QuotaEpoch)
+			afterWallet, afterToken := f.balance(t)
+			assert.Equal(t, wallet, afterWallet)
+			assert.Equal(t, token, afterToken)
+			require.NoError(t, f.db.Where("id = ?", task.TaskID).First(&admission).Error)
+			assert.Equal(t, "refund_pending", admission.BillingState)
+			assert.Equal(t, model.MediaUnknown, admission.State)
+			get := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "")
+			assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
+			assert.NotContains(t, get.Body.String(), `"media_submission_receipt"`)
+		})
+	}
+}
+
+func TestMediaCreateRejectionUpgradeLeavesHistoricalSubscriptionEpochUnproven(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	sub := model.UserSubscription{Id: 791, UserId: 791, PlanId: 791, AmountTotal: 1000000, AmountUsed: 123, Status: "active", StartTime: 1, EndTime: time.Now().Add(time.Hour).Unix()}
+	require.NoError(t, f.db.Create(&sub).Error)
+	record := model.SubscriptionPreConsumeRecord{RequestId: "legacy-refusal-reservation", UserId: 791, UserSubscriptionId: 791, PreConsumed: 123, Status: "consumed"}
+	require.NoError(t, f.db.Create(&record).Error)
+	require.NoError(t, f.db.Migrator().DropColumn(&model.UserSubscription{}, "QuotaEpoch"))
+	require.NoError(t, f.db.Migrator().DropColumn(&model.SubscriptionPreConsumeRecord{}, "QuotaEpoch"))
+	for range 2 {
+		require.NoError(t, f.db.AutoMigrate(&model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}))
+		require.NoError(t, model.MigrateMediaAdmission(f.db))
+	}
+	var upgraded model.UserSubscription
+	require.NoError(t, f.db.First(&upgraded, 791).Error)
+	assert.Equal(t, sub, upgraded)
+	var reservation model.SubscriptionPreConsumeRecord
+	require.NoError(t, f.db.First(&reservation, record.Id).Error)
+	assert.Equal(t, record, reservation)
+	assert.Nil(t, reservation.QuotaEpoch)
+}
+
+func TestMediaCreateRejectionSubscriptionResetEpochNeverWraps(t *testing.T) {
+	for _, mode := range []string{"administrator", "automatic"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			plan := model.SubscriptionPlan{Id: 791, Title: "epoch upper-bound fixture", TotalAmount: 1000000, QuotaResetPeriod: model.SubscriptionResetCustom, QuotaResetCustomSeconds: 3600}
+			require.NoError(t, f.db.Create(&plan).Error)
+			model.InvalidateSubscriptionPlanCache(plan.Id)
+			now := time.Now().Unix()
+			sub := model.UserSubscription{Id: 791, UserId: 791, PlanId: 791, AmountTotal: 1000000, AmountUsed: 123, QuotaEpoch: 1<<63 - 1, Status: "active", StartTime: now - 7200, EndTime: now + 7200, LastResetTime: now - 7200, NextResetTime: now - 1}
+			require.NoError(t, f.db.Create(&sub).Error)
+			if mode == "administrator" {
+				_, err := model.AdminResetUserSubscriptionsByPlan(791, 791, false)
+				require.ErrorContains(t, err, "epoch cannot advance")
+			} else {
+				_, err := model.ResetDueSubscriptions(10)
+				require.ErrorContains(t, err, "epoch cannot advance")
+			}
+			var after model.UserSubscription
+			require.NoError(t, f.db.First(&after, 791).Error)
+			assert.Equal(t, sub, after)
+		})
+	}
+}
+
+func TestMediaCatalogCandidateSelectionBeforeAnyAdmissionOrCharge(t *testing.T) {
+	const duration10 = `{"data":[{"id":"bt-seedance-2.0","durations":[10],"duration_policy":{"mode":"fixed","values":[10],"default":10}}]}`
+	const duration15 = `{"data":[{"id":"bt-seedance-2.0","durations":[15],"duration_policy":{"mode":"fixed","values":[15],"default":15}}]}`
+	const otherModel = `{"data":[{"id":"other-upstream-model"}]}`
+	for _, test := range []struct {
+		name                                                          string
+		keyCount                                                      int
+		firstCatalog                                                  string
+		allUnavailable, disabledSecond, otherChannel, providerUnknown bool
+		wantStatus                                                    int
+		wantCode                                                      string
+		wantCatalogs                                                  int
+	}{
+		{name: "key_a_15_key_b_10", keyCount: 2, firstCatalog: duration15, wantStatus: 200, wantCatalogs: 2},
+		{name: "key_a_model_missing_key_b_available", keyCount: 2, firstCatalog: otherModel, wantStatus: 200, wantCatalogs: 2},
+		{name: "key_a_catalog_unknown_key_b_available", keyCount: 2, firstCatalog: `{"data":[]}`, wantStatus: 200, wantCatalogs: 2},
+		{name: "all_keys_duration_unavailable", keyCount: 2, firstCatalog: duration15, allUnavailable: true, wantStatus: 400, wantCode: "video_duration_unavailable", wantCatalogs: 2},
+		{name: "all_keys_catalog_unknown", keyCount: 2, firstCatalog: `{"data":[]}`, allUnavailable: true, wantStatus: 503, wantCode: "upstream_catalog_unverified", wantCatalogs: 2},
+		{name: "disabled_key_is_never_used", keyCount: 2, firstCatalog: duration15, disabledSecond: true, wantStatus: 400, wantCode: "video_duration_unavailable", wantCatalogs: 1},
+		{name: "bounded_sixteen_candidates", keyCount: 20, firstCatalog: duration15, allUnavailable: true, wantStatus: 400, wantCode: "video_duration_unavailable", wantCatalogs: 16},
+		{name: "other_eligible_channel", keyCount: 1, firstCatalog: duration15, otherChannel: true, wantStatus: 200, wantCatalogs: 2},
+		{name: "actual_provider_unknown_never_tries_second_key", keyCount: 2, firstCatalog: duration10, providerUnknown: true, wantStatus: 202, wantCatalogs: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newMediaNativeFixture(t)
+			keys := make([]string, test.keyCount)
+			f.catalogByKey = make(map[string]string)
+			for index := range keys {
+				keys[index] = fmt.Sprintf("synthetic-catalog-%s-%d", test.name, index)
+				f.catalogByKey[keys[index]] = duration10
+				if index == 0 || test.allUnavailable {
+					f.catalogByKey[keys[index]] = test.firstCatalog
+				}
+			}
+			var original model.Channel
+			require.NoError(t, f.db.First(&original, 880).Error)
+			original.Key = strings.Join(keys, "\n")
+			original.ChannelInfo = model.ChannelInfo{IsMultiKey: len(keys) > 1, MultiKeySize: len(keys), MultiKeyMode: constant.MultiKeyModePolling}
+			if test.disabledSecond {
+				original.ChannelInfo.MultiKeyStatusList = map[int]int{1: common.ChannelStatusManuallyDisabled}
+			}
+			priority := int64(100)
+			original.Priority = &priority
+			require.NoError(t, f.db.Save(&original).Error)
+			require.NoError(t, original.UpdateAbilities(nil))
+			expectedKey := keys[0]
+			if len(keys) > 1 {
+				expectedKey = keys[1]
+			}
+			if test.otherChannel {
+				alternate := original
+				alternate.Id = 882
+				alternate.Name = "synthetic other eligible account"
+				alternate.Key = "synthetic-catalog-eligible-other-channel"
+				alternate.ChannelInfo = model.ChannelInfo{}
+				zero := int64(0)
+				alternate.Priority = &zero
+				require.NoError(t, f.db.Create(&alternate).Error)
+				require.NoError(t, alternate.AddAbilities(f.db))
+				f.catalogByKey[alternate.Key] = duration10
+				expectedKey = alternate.Key
+			}
+			if test.providerUnknown {
+				f.postMode = "http503"
+				expectedKey = keys[0]
+			}
+			model.InitChannelCache()
+			beforeWallet, beforeToken := f.balance(t)
+			response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"free synthetic exact duration candidate","seconds":10,"size":"1792x1024"}`)
+			t.Logf("catalog candidate API status=%d response=%s", response.Code, response.Body.String())
+			require.Equal(t, test.wantStatus, response.Code, response.Body.String())
+			if test.wantCode != "" {
+				assert.Contains(t, response.Body.String(), `"code":"`+test.wantCode+`"`)
+				assert.NotContains(t, response.Body.String(), service.MediaCapacityCode)
+			}
+			f.mu.Lock()
+			assert.Len(t, f.catalogKeys, test.wantCatalogs)
+			catalogKeys := append([]string(nil), f.catalogKeys...)
+			postKeys := append([]string(nil), f.postKeys...)
+			postedBodies := append([]map[string]any(nil), f.postedBodies...)
+			assert.Zero(t, f.gets)
+			f.mu.Unlock()
+			assert.Equal(t, keys[0], catalogKeys[0], "first selected key must really fail its own preflight")
+			afterWallet, afterToken := f.balance(t)
+			var taskCount, admissionCount, requestCount int64
+			require.NoError(t, f.db.Model(&model.Task{}).Count(&taskCount).Error)
+			require.NoError(t, f.db.Model(&model.MediaAdmission{}).Count(&admissionCount).Error)
+			require.NoError(t, f.db.Model(&model.WalletFundingRequest{}).Count(&requestCount).Error)
+			if test.wantStatus == 200 || test.providerUnknown {
+				require.Equal(t, []string{expectedKey}, postKeys)
+				require.Len(t, postedBodies, 1)
+				assert.Equal(t, float64(10), postedBodies[0]["seconds"])
+				assert.Equal(t, "bt-seedance-2.0", postedBodies[0]["model"])
+				assert.Less(t, afterWallet, beforeWallet)
+				assert.Less(t, afterToken, beforeToken)
+				assert.EqualValues(t, 1, taskCount)
+				assert.EqualValues(t, 1, admissionCount)
+				assert.EqualValues(t, 1, requestCount)
+				var task model.Task
+				require.NoError(t, f.db.First(&task).Error)
+				assert.Equal(t, expectedKey, task.PrivateData.Key)
+			} else {
+				assert.Empty(t, postKeys)
+				assert.Equal(t, beforeWallet, afterWallet)
+				assert.Equal(t, beforeToken, afterToken)
+				assert.Zero(t, taskCount)
+				assert.Zero(t, admissionCount)
+				assert.Zero(t, requestCount)
+			}
+		})
+	}
 }

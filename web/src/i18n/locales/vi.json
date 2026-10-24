@@ -7097,6 +7097,7 @@
     "Task records": "Số tác vụ",
     "Task terminal result": "Kết quả cuối cùng của tác vụ",
     "Task timed out": "Tác vụ hết thời gian",
+    "Upstream rejected video creation because the model is unavailable": "Nhà cung cấp từ chối tạo video vì mô hình hiện không khả dụng",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "Tác vụ hết thời gian (tác vụ còn sót từ hệ thống cũ không được hoàn tiền; hãy liên hệ quản trị viên)",
     "Task timeout": "Tác vụ hết thời gian chờ",
     "Task trend bucket values": "Giá trị xu hướng tác vụ theo khoảng",

@@ -1,6 +1,7 @@
 package jsplugin
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"strings"
@@ -11,6 +12,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCompilePluginBindsExactHostSource(t *testing.T) {
+	source := routingTestPluginSource("source-provenance", 0, `["model"]`, "", "")
+	compiled, err := CompilePlugin(source, Options{})
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("%x", sha256.Sum256([]byte(source))), compiled.SourceHash)
+	modified, err := CompilePlugin(source+"\n// source changed\n", Options{})
+	require.NoError(t, err)
+	assert.NotEqual(t, compiled.SourceHash, modified.SourceHash)
+}
 
 func TestRegistryOverrideTakesPrecedenceOverFactory(t *testing.T) {
 	registry := NewRegistry()

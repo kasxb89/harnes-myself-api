@@ -66,9 +66,10 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 			}
 			meta := pinned.Plugin.Meta
 			snapshot.TaskPlugin = &model.TaskPluginSnapshot{
-				Key:     meta.Key,
-				Name:    meta.Name,
-				Version: meta.Version,
+				SourceHash: pinned.Plugin.SourceHash,
+				Key:        meta.Key,
+				Name:       meta.Name,
+				Version:    meta.Version,
 				Author: &model.TaskPluginAuthorSnapshot{
 					Name: meta.Author.Name,
 					URL:  meta.Author.URL,

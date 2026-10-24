@@ -257,6 +257,8 @@ type UserSubscription struct {
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
+	// QuotaEpoch changes on every real quota reset, including resets preserving dates.
+	QuotaEpoch int64 `json:"-" gorm:"type:bigint;not null;default:0"`
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
@@ -1016,6 +1018,10 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
 	}
+	if sub.QuotaEpoch < 0 || sub.QuotaEpoch >= 1<<63-1 {
+		return errors.New("subscription quota epoch cannot advance")
+	}
+	sub.QuotaEpoch++
 	sub.AmountUsed = 0
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
@@ -1244,9 +1250,11 @@ type SubscriptionPreConsumeRecord struct {
 	UserId             int    `json:"user_id" gorm:"index"`
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
-	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
-	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
+	// Nil identifies legacy reservations whose reset cycle cannot be proven.
+	QuotaEpoch *int64 `json:"-" gorm:"type:bigint"`
+	Status     string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
+	CreatedAt  int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt  int64  `json:"updated_at" gorm:"bigint;index"`
 }
 
 func (r *SubscriptionPreConsumeRecord) BeforeCreate(tx *gorm.DB) error {
@@ -1291,6 +1299,10 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 		}
 		return nil
 	}
+	if sub.QuotaEpoch < 0 || sub.QuotaEpoch >= 1<<63-1 {
+		return errors.New("subscription quota epoch cannot advance")
+	}
+	sub.QuotaEpoch++
 	sub.AmountUsed = 0
 	sub.LastResetTime = base.Unix()
 	sub.NextResetTime = next
@@ -1365,6 +1377,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 				UserId:             userId,
 				UserSubscriptionId: sub.Id,
 				PreConsumed:        amount,
+				QuotaEpoch:         &sub.QuotaEpoch,
 				Status:             "consumed",
 			}
 			if err := tx.Create(record).Error; err != nil {

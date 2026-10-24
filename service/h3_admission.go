@@ -114,8 +114,12 @@ func PrepareH3Submission(c *gin.Context, info *relaycommon.RelayInfo, platform c
 	if task.PrivateData.RouteDigest == "" {
 		return TaskErrorWrapperLocal(errors.New("Media execution route is unconfirmed"), "media_admission_unavailable", http.StatusServiceUnavailable)
 	}
+	if err := BindVideoQueueTask(c, task); err != nil {
+		return TaskErrorWrapperLocal(err, "video_queue_state_unconfirmed", http.StatusServiceUnavailable)
+	}
 	if err := model.AcquireH3Admission(c.Request.Context(), task, info.ApiKey); err != nil {
 		if errors.Is(err, model.ErrH3Capacity) {
+			RecordVideoQueueCapacityCandidate(c, task)
 			return TaskErrorWrapperLocal(err, H3CapacityCode, http.StatusTooManyRequests)
 		}
 		return TaskErrorWrapperLocal(errors.New("H3 account admission is unavailable"), "h3_admission_unavailable", http.StatusServiceUnavailable)
@@ -156,6 +160,9 @@ func BeginH3SubmissionSend(c *gin.Context) *dto.TaskError {
 	submission := H3SubmissionFromContext(c)
 	if submission == nil {
 		return nil
+	}
+	if err := VerifyVideoQueueSending(c, submission.Task); err != nil {
+		return TaskErrorWrapperLocal(err, "video_queue_state_unconfirmed", http.StatusServiceUnavailable)
 	}
 	submission.MayHaveSent = true
 	if err := model.MarkH3Sending(c.Request.Context(), submission.Task.PrivateData.H3AdmissionID); err != nil {

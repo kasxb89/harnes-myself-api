@@ -368,6 +368,8 @@ func migrateDB() error {
 		&UpstreamTopup{},
 		&QuotaData{},
 		&Task{},
+		&VideoQueueItem{},
+		&VideoQueueGuard{},
 		&H3Account{},
 		&H3Admission{},
 		&MediaPool{},

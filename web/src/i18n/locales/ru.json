@@ -7097,6 +7097,7 @@
     "Task records": "Задачи",
     "Task terminal result": "Конечный результат задачи",
     "Task timed out": "Истекло время выполнения задачи",
+    "Upstream rejected video creation because the model is unavailable": "Провайдер отклонил создание видео: модель недоступна",
     "Task timed out (a task left by the old system is not refunded; contact the administrator)": "Истекло время выполнения задачи (задачи старой системы не возмещаются; обратитесь к администратору)",
     "Task timeout": "Тайм-аут задачи",
     "Task trend bucket values": "Значения интервалов тренда задач",

@@ -1,5 +1,17 @@
 package i18n
 
+// Durable video queue responses retain separate, localizable failure reasons.
+const (
+	MsgVideoQueueInvalidRequest     = "video_queue.invalid_request"
+	MsgVideoQueueUnavailable        = "video_queue.unavailable"
+	MsgVideoQueueConflict           = "video_queue.conflict"
+	MsgVideoQueueFull               = "video_queue.full"
+	MsgVideoQueueCreateRate         = "video_queue.create_rate"
+	MsgVideoQueueDisabled           = "video_queue.disabled"
+	MsgVideoQueueNotFound           = "video_queue.not_found"
+	MsgVideoQueueAlreadyDispatching = "video_queue.already_dispatching"
+)
+
 // Free video estimate errors never include provider responses.
 const (
 	MsgVideoQuoteInvalidRequest = "video_quote.invalid_request"
