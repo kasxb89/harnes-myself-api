@@ -187,6 +187,12 @@ export function useSidebarData(): SidebarData {
             icon: ClipboardList,
             items: [
               {
+                title: t('Server load'),
+                url: '/server-load',
+                icon: ServerCog,
+                requiredRole: ROLE.ADMIN,
+              },
+              {
                 title: t('API Error Logs'),
                 url: '/usage-logs/errors',
                 icon: AlertTriangle,

@@ -24,6 +24,22 @@ import type { AuthUser } from '@/stores/auth-store'
 const admin: AuthUser = { id: 7, username: 'operator', role: 10 }
 
 describe('administrative route permissions', () => {
+  it('allows server load only with diagnostic read permission and keeps system info restricted', () => {
+    const diagnostic = {
+      ...admin,
+      permissions: { admin_permissions: { diagnostics: { read: true } } },
+    }
+    expect(canAccessAdminRoute(diagnostic, '/server-load')).toBe(true)
+    expect(canAccessAdminRoute(diagnostic, '/system-info')).toBe(false)
+    expect(canAccessAdminRoute(admin, '/server-load')).toBe(false)
+    expect(
+      canAccessAdminRoute({ ...diagnostic, role: 1 }, '/server-load')
+    ).toBe(false)
+    expect(canAccessAdminRoute({ ...admin, role: 100 }, '/server-load')).toBe(
+      true
+    )
+  })
+
   it('denies missing capabilities and never trusts a normal user with forged grants', () => {
     expect(canAccessAdminRoute(admin, '/model-profits')).toBe(false)
     expect(

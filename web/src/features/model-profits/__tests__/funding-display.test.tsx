@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { act, cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { afterEach, expect, it } from 'vitest'
@@ -112,6 +113,12 @@ it('keeps the five requested columns while exposing confirmed paid income, recha
   const cells = within(within(table).getAllByRole('row')[1]).getAllByRole(
     'cell'
   )
+  const rowDetails = within(cells[0]).getByRole('button', {
+    name: 'Funding allocation details',
+  })
+  expect(rowDetails).toHaveAttribute('aria-expanded', 'false')
+  expect(within(cells[0]).queryByText('CN¥8.00')).not.toBeInTheDocument()
+  await userEvent.click(rowDetails)
   expect(cells[0]).toHaveTextContent(
     'Confirmed paid consumption revenue: CN¥8.00'
   )
@@ -130,7 +137,7 @@ it('shows missing ledger metadata as unconfirmed while preserving an explicitly 
       <ProfitFundingDetails data={{ ...row, funding_policy: undefined }} />
     </I18nextProvider>
   )
-  expect(screen.getAllByText('Pending confirmation')).toHaveLength(4)
+  expect(screen.getAllByText('Pending confirmation')).toHaveLength(5)
   view.rerender(
     <I18nextProvider i18n={i18n}>
       <ProfitFundingDetails
@@ -153,9 +160,7 @@ it('shows the new collection policy only with explicit FIFO metadata and falls b
       <ProfitFundingNotice report={report} />
     </I18nextProvider>
   )
-  expect(screen.getByRole('alert')).toHaveTextContent(
-    'Funding allocations are recorded for new operations.'
-  )
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   view.rerender(
     <I18nextProvider i18n={i18n}>
       <ProfitFundingNotice
@@ -164,7 +169,7 @@ it('shows the new collection policy only with explicit FIFO metadata and falls b
     </I18nextProvider>
   )
   expect(screen.getByRole('alert')).toHaveTextContent(
-    'Funding allocation metadata is unavailable'
+    'Funding records are unavailable. Actual profit remains pending confirmation.'
   )
 })
 
@@ -176,6 +181,9 @@ it.each(Object.keys(resources))(
       <I18nextProvider i18n={i18n}>
         <ProfitFormulas />
       </I18nextProvider>
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: i18n.t('Calculation notes') })
     )
     const region = screen.getByRole('region', {
       name: i18n.t('Profit formulas'),
@@ -239,12 +247,18 @@ it('does not classify proven paid face value as unknown-source consumption when 
   })
   expect(within(details).getByText('CN¥10.00')).toBeVisible()
   expect(within(details).getAllByText('CN¥0.00')).toHaveLength(3)
+  await userEvent.click(
+    within(details).getByRole('button', { name: 'View accounting details' })
+  )
   expect(details).toHaveTextContent(
     'Missing cash receipt amounts or CNY evidence keep total profit pending confirmation.'
   )
   const table = screen.getByRole('table', { name: 'Profit by model' })
   const cells = within(within(table).getAllByRole('row')[1]).getAllByRole(
     'cell'
+  )
+  await userEvent.click(
+    within(cells[0]).getByRole('button', { name: 'Funding allocation details' })
   )
   expect(cells[0]).toHaveTextContent(
     'Consumed face value awaiting attribution: CN¥0.00'
@@ -269,6 +283,9 @@ it('keeps computable procurement cost and book margin visible while explaining s
         }}
       />
     </I18nextProvider>
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'View accounting details' })
   )
   expect(screen.getByText('CN¥14.00')).toBeVisible()
   expect(
@@ -329,6 +346,9 @@ it('old service responses omit reason groups and future reason codes use a reada
       />
     </I18nextProvider>
   )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'View accounting details' })
+  )
   expect(
     screen.getByText('Other missing accounting evidence:', { exact: false })
   ).toHaveTextContent('Other missing accounting evidence: 2')
@@ -336,4 +356,72 @@ it('old service responses omit reason groups and future reason codes use a reada
   expect(
     screen.queryByText('Recorded billable usage is invalid')
   ).not.toBeInTheDocument()
+})
+
+it('keeps calculation notes collapsed until requested and supports closing them again', async () => {
+  const i18n = await languageInstance()
+  const user = userEvent.setup()
+  render(
+    <I18nextProvider i18n={i18n}>
+      <ProfitFormulas />
+    </I18nextProvider>
+  )
+  const trigger = screen.getByRole('button', { name: 'Calculation notes' })
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(
+    screen.queryByText(
+      'Paid revenue = Σ(consumed paid face value × original cash received ÷ original credited face value).'
+    )
+  ).not.toBeInTheDocument()
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(
+    screen.getByText(
+      'Paid revenue = Σ(consumed paid face value × original cash received ÷ original credited face value).'
+    )
+  ).toBeVisible()
+  await user.click(trigger)
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+})
+
+it('shows confirmed consumption amounts while keeping accounting evidence details collapsed', async () => {
+  const i18n = await languageInstance()
+  const user = userEvent.setup()
+  render(
+    <I18nextProvider i18n={i18n}>
+      <ProfitFundingDetails
+        data={{
+          ...row,
+          unknown_cost_reasons: { procurement_price_missing: 2 },
+          unconfirmed_funding_reasons: {
+            historical_funding_evidence_missing: 3,
+          },
+        }}
+      />
+    </I18nextProvider>
+  )
+  const details = screen.getByRole('region', {
+    name: 'Funding allocation details',
+  })
+  expect(within(details).getByText('CN¥8.00')).toBeVisible()
+  expect(within(details).getByText('CN¥7.00')).toBeVisible()
+  expect(within(details).getByText('Pending confirmation')).toBeVisible()
+  const trigger = within(details).getByRole('button', {
+    name: 'View accounting details',
+  })
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(
+    screen.queryByRole('region', { name: 'Missing cost evidence' })
+  ).not.toBeInTheDocument()
+  await user.click(trigger)
+  expect(
+    screen.getByRole('region', { name: 'Missing cost evidence' })
+  ).toHaveTextContent(
+    'Procurement price missing for this channel, model or effective period: 2'
+  )
+  expect(
+    screen.getByRole('region', { name: 'Missing paid-versus-gift evidence' })
+  ).toHaveTextContent(
+    'Historical paid-versus-gift allocation evidence is missing: 3'
+  )
 })

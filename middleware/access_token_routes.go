@@ -75,6 +75,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/model-profit/cost-rules": accessTokenSessionRule,
 	"PUT /api/model-profit/cost-rules": accessTokenSessionRule,
 	"GET /api/operations/overview":     accessTokenSessionRule,
+	"GET /api/operations/server-load":  accessTokenSessionRule,
 	"GET /api/upstream-topup/":         accessTokenSessionRule,
 	"POST /api/upstream-topup/":        accessTokenSessionRule,
 	"PUT /api/upstream-topup/:id":      accessTokenSessionRule,

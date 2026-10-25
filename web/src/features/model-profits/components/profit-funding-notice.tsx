@@ -24,21 +24,19 @@ import type { ModelProfitResult } from '../types'
 
 export function ProfitFundingNotice(props: { report: ModelProfitResult }) {
   const { t } = useTranslation()
-  let message =
-    'Funding allocation metadata is unavailable from this service; paid and gifted consumption cannot be confirmed.'
-  if (props.report.funding_collection_status === 'not_collected') {
-    message =
-      'Paid-versus-gift funding allocations are not collected in this version. New consumption also remains unverified until a funding ledger is implemented.'
-  } else if (
+  if (
     props.report.funding_collection_status === 'collected' &&
     props.report.summary.funding_policy === 'fifo'
   ) {
-    message =
-      'Funding allocations are recorded for new operations. Unverifiable historical balances, non-CNY receipts and subscription funding remain pending confirmation.'
+    return null
   }
   return (
     <Alert>
-      <AlertDescription>{t(message)}</AlertDescription>
+      <AlertDescription>
+        {t(
+          'Funding records are unavailable. Actual profit remains pending confirmation.'
+        )}
+      </AlertDescription>
     </Alert>
   )
 }

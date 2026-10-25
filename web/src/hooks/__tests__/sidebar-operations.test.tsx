@@ -309,3 +309,29 @@ it('keeps the operations screen hidden when no tab has a read grant', async () =
     screen.queryByRole('link', { name: 'Operations screen' })
   ).not.toBeInTheDocument()
 })
+
+it('places delegated server load once under tasks and diagnostics and respects its independent sidebar preference', async () => {
+  await setup(ROLE.ADMIN, undefined, { diagnostics: { read: true } })
+  const operations = screen.getByRole('region', { name: 'Platform operations' })
+  expect(
+    within(operations).getByRole('link', { name: 'Server load' })
+  ).toHaveAttribute('href', '/server-load')
+  expect(screen.getAllByRole('link', { name: 'Server load' })).toHaveLength(1)
+})
+it('keeps server load hidden without diagnostic access even for a finance administrator', async () => {
+  await setup(ROLE.ADMIN, undefined, { model_profits: { read: true } })
+  expect(
+    screen.queryByRole('link', { name: 'Server load' })
+  ).not.toBeInTheDocument()
+})
+it('honors server load platform disablement without hiding diagnostic logs', async () => {
+  await setup(
+    ROLE.ADMIN,
+    { media: { server_load: false } },
+    { diagnostics: { read: true } }
+  )
+  expect(
+    screen.queryByRole('link', { name: 'Server load' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'API Error Logs' })).toBeVisible()
+})

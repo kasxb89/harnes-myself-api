@@ -192,6 +192,12 @@ export const SIDEBAR_MODULE_SECTIONS: SidebarModuleSection[] = [
     descriptionKey: 'Media tasks, concurrency and usage analytics.',
     modules: [
       {
+        key: 'server_load',
+        titleKey: 'Server load',
+        descriptionKey:
+          'Inspect deployment CPU, memory, storage and connection pools.',
+      },
+      {
         key: 'operations',
         titleKey: 'Image and video operations',
         descriptionKey: 'Inspect media tasks and upstream concurrency.',
@@ -387,6 +393,7 @@ export const SIDEBAR_URL_MODULES: Record<
   '/image-management': { section: 'media', module: 'operations' },
   '/video-management': { section: 'media', module: 'video_usage' },
   '/video-usage': { section: 'media', module: 'video_usage' },
+  '/server-load': { section: 'media', module: 'server_load' },
   '/system-info': { section: 'system', module: 'info' },
   '/task-plugins': { section: 'system', module: 'task_plugin' },
   '/system-settings': { section: 'system', module: 'setting' },

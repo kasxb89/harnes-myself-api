@@ -38,7 +38,7 @@ function OperationsSnapshotDetails(props: { snapshot: OperationsSnapshot }) {
   switch (snapshot.tab) {
     case 'profit':
       return (
-        <div className='min-w-0 space-y-5'>
+        <div className='flex min-w-0 flex-col gap-4'>
           <ProfitFundingNotice report={snapshot.report} />
           {snapshot.report.consumption_logging_enabled === false && (
             <Alert variant='destructive'>
@@ -51,13 +51,8 @@ function OperationsSnapshotDetails(props: { snapshot: OperationsSnapshot }) {
           )}
           <ProfitSummary data={snapshot.report.summary} />
           <ProfitFundingDetails data={snapshot.report.summary} />
-          <ProfitFormulas />
-          <p className='text-muted-foreground text-xs'>
-            {t(
-              'Unit prices are net averages per request in this query window, not current advertised token, image or second prices. Missing cost evidence remains pending confirmation.'
-            )}
-          </p>
           <ProfitTable rows={snapshot.report.rows} />
+          <ProfitFormulas />
         </div>
       )
     case 'concurrency':

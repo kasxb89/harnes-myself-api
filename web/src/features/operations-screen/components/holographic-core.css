@@ -19,193 +19,344 @@ For commercial licensing, please contact support@quantumnous.com
 .operations-screen .ops-holo-core {
   position: relative;
   isolation: isolate;
+  display: grid;
   width: 100%;
   min-width: 0;
-  color: #242424;
-  text-align: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  overflow: hidden;
+  border: 1px solid #345b76;
+  border-radius: 8px;
+  color: #e6f5ff;
+  background:
+    radial-gradient(ellipse at 6% 0, #23729432, transparent 48%),
+    linear-gradient(110deg, #112c41eb, #0c1c30f2 60%);
+  box-shadow:
+    inset 0 1px #a4efff14,
+    0 7px 28px #0000001a;
+}
+.operations-screen .ops-holo-core::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  inset: 0 auto auto 0;
+  width: 25%;
+  height: 2px;
+  background: linear-gradient(90deg, #9bf1ff, #55c4e280, transparent);
+  box-shadow: 0 0 10px #5ad6ff40;
+  pointer-events: none;
 }
 .operations-screen .ops-holo-core .ops-holo-stage {
   position: relative;
-  width: min(100%, 480px);
-  aspect-ratio: 1;
-  margin-inline: auto;
+  display: flex;
+  min-width: 0;
+  min-height: 138px;
+  align-items: center;
+  padding: 14px 25px;
+  overflow: hidden;
 }
-.operations-screen .ops-holo-core .ops-holo-core__art {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
+.operations-screen .ops-holo-core .ops-holo-stage::after {
+  content: '';
+  position: absolute;
+  inset: 23px 0;
+  width: 1px;
+  margin-left: auto;
+  background: linear-gradient(180deg, transparent, #4e93ac80, transparent);
+  pointer-events: none;
 }
-.operations-screen .ops-holo-core .ops-ink-brush {
-  stroke: #242424;
-  stroke-width: 8;
-  opacity: 0.72;
-}
-.operations-screen .ops-holo-core .ops-ink-brush path:first-child {
-  stroke-dasharray: 923 9 155 4 130 6;
-  stroke-width: 9;
-}
-.operations-screen .ops-holo-core .ops-ink-brush path:nth-child(2) {
-  stroke-width: 2;
+.operations-screen .ops-holo-core .ops-holo-accent {
+  position: absolute;
+  inset: 20px 12px 20px auto;
+  width: 112px;
   opacity: 0.6;
+  background: repeating-linear-gradient(
+    130deg,
+    transparent 0 17px,
+    #64d9f914 17px 18px,
+    transparent 18px 35px
+  );
+  mask-image: linear-gradient(90deg, transparent, #000);
+  pointer-events: none;
 }
-.operations-screen .ops-holo-core .ops-ink-brush path:nth-child(3) {
-  stroke-width: 4;
-  opacity: 0.18;
-}
-.operations-screen .ops-holo-core .ops-ink-ripple {
-  stroke: #777777;
-  stroke-width: 1;
-  opacity: 0.16;
-  transform-origin: 300px 456px;
-  animation: ops-ink-water 9s ease-in-out infinite alternate;
-}
-.operations-screen .ops-holo-core .ops-ink-mist {
-  animation: ops-ink-drift 16s ease-in-out infinite alternate;
-}
-.operations-screen .ops-holo-core .ops-ink-birds {
-  stroke-width: 1.6;
-  opacity: 0.7;
+.operations-screen .ops-holo-core .ops-holo-accent::after {
+  content: '';
+  position: absolute;
+  inset: 50% 10px auto auto;
+  width: 43px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #7ee1f5);
+  box-shadow:
+    0 8px #5cb9d333,
+    0 -8px #5cb9d333;
 }
 .operations-screen .ops-holo-core .ops-holo-readout {
-  position: absolute;
-  inset: 0 0 8%;
+  position: relative;
+  z-index: 1;
   display: flex;
+  min-width: 0;
+  width: 100%;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 10px;
-  width: 58%;
-  margin-inline: auto;
+  gap: 5px;
 }
 .operations-screen .ops-holo-core .ops-holo-eyebrow {
+  display: flex;
+  margin: 0 0 2px;
+  align-items: center;
+  gap: 7px;
+  color: #a6dce9;
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+}
+.operations-screen .ops-holo-core .ops-holo-eyebrow::before {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #84e8f3;
+  box-shadow: 0 0 6px #5ad6ff70;
+}
+.operations-screen .ops-holo-core .ops-holo-label {
   margin: 0;
-  color: #626262;
-  font-size: clamp(9px, 0.8vw, 11px);
-  letter-spacing: 0.2em;
+  max-width: 100%;
+  color: #c6e1f3;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .operations-screen .ops-holo-core .ops-holo-value {
   display: block;
   max-width: 100%;
   overflow-wrap: anywhere;
-  color: #181818;
-  font-family: 'STSong', 'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif;
-  font-size: clamp(32px, 4.7vw, 76px);
-  font-weight: 500;
+  color: #effcff;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(30px, 3vw, 46px);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-  letter-spacing: -0.04em;
-}
-.operations-screen .ops-holo-core .ops-holo-label {
-  margin: 0;
-  max-width: 100%;
-  color: #404040;
-  font-size: clamp(10px, 0.95vw, 13px);
-  font-weight: 500;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  line-height: 1.15;
+  letter-spacing: -0.05em;
+  text-shadow: 0 0 22px #62dbff30;
 }
 .operations-screen .ops-holo-core .ops-holo-readout__rule {
   display: flex;
-  gap: 5px;
-  margin-top: 5px;
+  gap: 4px;
+  height: 2px;
+  margin-top: 1px;
 }
 .operations-screen .ops-holo-core .ops-holo-readout__rule i {
-  width: 10px;
-  height: 1px;
-  background: #888888;
+  width: 9px;
+  background: #4b8ba9;
 }
 .operations-screen .ops-holo-core .ops-holo-readout__rule i:nth-child(2) {
-  width: 38px;
-  background: #333333;
+  width: 36px;
+  background: #7ce4fa;
 }
 .operations-screen .ops-holo-core .ops-holo-telemetry {
   display: grid;
+  min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  width: min(92%, 430px);
-  margin: -8px auto 10px;
+  gap: 0;
+  align-items: stretch;
+  margin: 0;
 }
 .operations-screen .ops-holo-core .ops-holo-stat {
+  position: relative;
+  display: flex;
   min-width: 0;
-  padding: 9px 4px;
-  border-top: 1px solid #b7b7b7;
-  background: linear-gradient(180deg, #ffffff80, transparent);
+  flex-direction: column;
+  justify-content: center;
+  gap: 11px;
+  padding: 18px 27px;
+}
+.operations-screen .ops-holo-core .ops-holo-stat + .ops-holo-stat::before {
+  content: '';
+  position: absolute;
+  inset: 25px auto 25px 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, #4e93ac70, transparent);
+  pointer-events: none;
 }
 .operations-screen .ops-holo-core .ops-holo-stat dt {
-  color: #626262;
-  font-size: 10px;
-  line-height: 1.5;
+  color: #b9d5e9;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 .operations-screen .ops-holo-core .ops-holo-stat dd {
-  margin: 4px 0 0;
-  color: #303030;
-  font-size: clamp(12px, 1.25vw, 17px);
+  margin: 0;
+  color: #a4eaff;
   font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(21px, 2.1vw, 32px);
+  font-weight: 550;
   font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  letter-spacing: -0.04em;
   overflow-wrap: anywhere;
 }
 .operations-screen .ops-holo-core .ops-holo-note {
-  width: min(94%, 460px);
-  margin: 8px auto 0;
-  color: #626262;
-  font-size: 10px;
-  line-height: 1.6;
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 7px 20px;
+  border-top: 1px solid #2b4a62;
+  color: #aac3d8;
+  background: #08162680;
+  font-size: 11px;
+  line-height: 1.7;
   text-wrap: pretty;
 }
 .operations-screen .ops-holo-core .ops-holo-note--funding {
-  color: #404040;
+  color: #ecd3aa;
+  background: #2a292466;
+}
+.operations-screen .ops-holo-core[data-secondary-count='0'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.operations-screen
+  .ops-holo-core[data-secondary-count='0']
+  .ops-holo-stage::after {
+  display: none;
 }
 .operations-screen .ops-holo-core[data-stale='true'] .ops-holo-eyebrow {
+  color: #f3cb8a;
   text-decoration: underline dotted;
   text-underline-offset: 4px;
 }
-.operations-screen .ops-holo-core[data-paused='true'] * {
-  animation-play-state: paused;
+.operations-screen .ops-holo-core[data-stale='true'] .ops-holo-eyebrow::before {
+  background: #f3cb8a;
+  box-shadow: none;
 }
-@keyframes ops-ink-water {
-  from {
-    transform: scaleX(0.96);
-    opacity: 0.12;
-  }
-  to {
-    transform: scaleX(1.03);
-    opacity: 0.22;
-  }
+.operations-screen .ops-holo-core[data-paused='true'] *,
+.operations-screen .ops-holo-core[data-paused='true'] *::before,
+.operations-screen .ops-holo-core[data-paused='true'] *::after {
+  animation-play-state: paused !important;
 }
-@keyframes ops-ink-drift {
-  from {
-    transform: translateX(-8px);
-    opacity: 0.55;
-  }
-  to {
-    transform: translateX(8px);
-    opacity: 0.9;
-  }
+/* Renderer state controls progressive enhancement; all geometry belongs to WebGL. */
+.operations-screen .ops-hud-projection {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  min-height: 360px;
+  height: 100%;
+  align-self: stretch;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+  background: radial-gradient(ellipse at 50% 48%, #0b1d2c12, #06132120 78%);
+  pointer-events: none;
+  user-select: none;
 }
-@media (min-width: 1200px) {
+.operations-screen .ops-hud-projection .ops-reactor-canvas,
+.operations-screen .ops-hud-projection .ops-reactor-canvas canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.operations-screen .ops-hud-projection .ops-reactor-canvas {
+  visibility: hidden;
+}
+.operations-screen
+  .ops-hud-projection[data-renderer='webgl']
+  .ops-reactor-canvas {
+  visibility: visible;
+}
+.operations-screen .ops-reactor-fallback {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.operations-screen .ops-reactor-fallback::before,
+.operations-screen .ops-reactor-fallback::after {
+  content: '';
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  border-radius: 5px;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.operations-screen .ops-reactor-fallback::before {
+  width: 84px;
+  height: 84px;
+  border: 1px solid #578394;
+  background: linear-gradient(145deg, #2c4351, #102333 55%, #203a48);
+  box-shadow:
+    inset 0 1px #dcf9ff3b,
+    inset 0 -1px #06121e,
+    0 8px 24px #00000033,
+    0 0 0 6px #73e2ff08;
+}
+.operations-screen .ops-reactor-fallback::after {
+  width: 31px;
+  height: 31px;
+  border: 1px solid #a8eff5;
+  background: linear-gradient(135deg, #d6fcff, #6fd4df 45%, #2b788d);
+  box-shadow: 0 0 16px #6de9ff33;
+}
+.operations-screen
+  .ops-hud-projection[data-renderer='webgl']
+  .ops-reactor-fallback {
+  display: none;
+}
+@media (max-width: 799px) {
+  .operations-screen .ops-holo-core {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .operations-screen .ops-holo-core .ops-holo-stage {
-    width: min(100%, 440px, 48dvh);
+    min-height: 123px;
+    padding: 15px 20px;
   }
-}
-@media (min-width: 1100px) and (max-height: 850px) {
-  .operations-screen .ops-holo-core .ops-holo-stage {
-    width: min(100%, 320px, 44dvh);
+  .operations-screen .ops-holo-core .ops-holo-stage::after {
+    display: none;
   }
-}
-@media (max-width: 639px) {
-  .operations-screen .ops-holo-core .ops-holo-stage {
-    width: min(100%, 300px);
+  .operations-screen .ops-holo-core .ops-holo-accent {
+    width: 96px;
+    right: 16px;
+  }
+  .operations-screen .ops-holo-core .ops-holo-readout {
+    gap: 5px;
   }
   .operations-screen .ops-holo-core .ops-holo-value {
-    font-size: 38px;
+    font-size: 34px;
   }
   .operations-screen .ops-holo-core .ops-holo-telemetry {
-    margin-top: 0;
+    border-top: 1px solid #29475f;
+    background: #0b1b2c80;
+  }
+  .operations-screen .ops-holo-core .ops-holo-stat {
+    gap: 5px;
+    padding: 12px 19px;
+  }
+  .operations-screen .ops-holo-core .ops-holo-stat + .ops-holo-stat::before {
+    inset-block: 13px;
+  }
+  .operations-screen .ops-holo-core .ops-holo-stat dt {
+    font-size: 11px;
+  }
+  .operations-screen .ops-holo-core .ops-holo-stat dd {
+    font-size: 23px;
+  }
+  .operations-screen .ops-holo-core .ops-holo-note {
+    padding: 9px 16px;
+    font-size: 10px;
+    line-height: 1.65;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .operations-screen .ops-holo-core * {
+  .operations-screen :is(.ops-holo-core, .ops-hud-projection) *,
+  .operations-screen :is(.ops-holo-core, .ops-hud-projection) *::before,
+  .operations-screen :is(.ops-holo-core, .ops-hud-projection) *::after {
     animation: none !important;
   }
 }

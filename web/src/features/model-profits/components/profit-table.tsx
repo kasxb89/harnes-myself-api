@@ -23,6 +23,12 @@ import {
   type StaticDataTableColumn,
 } from '@/components/data-table'
 import { EmptyState } from '@/components/empty-state'
+import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
@@ -48,49 +54,69 @@ export function ProfitTable(props: { rows: ModelProfitRow[] }) {
       header: t('Model name'),
       className: 'min-w-52',
       cell: (row) => (
-        <div className='space-y-2'>
+        <div className='flex flex-col items-start gap-1'>
           <span className='font-mono text-xs break-all'>
             {row.model_name || t('Unknown model')}
           </span>
           {row.funding_policy === 'fifo' && (
-            <dl className='text-muted-foreground space-y-1 text-xs'>
-              <div>
-                <dt className='inline'>
-                  {t('Confirmed paid consumption revenue')}:{' '}
-                </dt>
-                <dd className='inline tabular-nums'>
-                  {money(
-                    verifiedFundingAmount(row, 'confirmed_cash_revenue_cny')
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className='inline'>{t('Consumed paid face value')}: </dt>
-                <dd className='inline tabular-nums'>
-                  {money(
-                    verifiedFundingAmount(row, 'confirmed_paid_consumed_cny')
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className='inline'>{t('Consumed gifted face value')}: </dt>
-                <dd className='inline tabular-nums'>
-                  {money(
-                    verifiedFundingAmount(row, 'confirmed_gift_consumed_cny')
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className='inline'>
-                  {t('Consumed face value awaiting attribution')}:{' '}
-                </dt>
-                <dd className='inline tabular-nums'>
-                  {money(
-                    verifiedFundingAmount(row, 'unknown_funding_consumed_cny')
-                  )}
-                </dd>
-              </div>
-            </dl>
+            <Collapsible>
+              <CollapsibleTrigger render={<Button variant='link' size='xs' />}>
+                {t('Funding allocation details')}
+              </CollapsibleTrigger>
+              <CollapsibleContent className='pt-2'>
+                <dl className='text-muted-foreground flex flex-col gap-1 text-xs'>
+                  <div>
+                    <dt className='inline'>
+                      {t('Confirmed paid consumption revenue')}:{' '}
+                    </dt>
+                    <dd className='inline tabular-nums'>
+                      {money(
+                        verifiedFundingAmount(row, 'confirmed_cash_revenue_cny')
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className='inline'>
+                      {t('Consumed paid face value')}:{' '}
+                    </dt>
+                    <dd className='inline tabular-nums'>
+                      {money(
+                        verifiedFundingAmount(
+                          row,
+                          'confirmed_paid_consumed_cny'
+                        )
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className='inline'>
+                      {t('Consumed gifted face value')}:{' '}
+                    </dt>
+                    <dd className='inline tabular-nums'>
+                      {money(
+                        verifiedFundingAmount(
+                          row,
+                          'confirmed_gift_consumed_cny'
+                        )
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className='inline'>
+                      {t('Consumed face value awaiting attribution')}:{' '}
+                    </dt>
+                    <dd className='inline tabular-nums'>
+                      {money(
+                        verifiedFundingAmount(
+                          row,
+                          'unknown_funding_consumed_cny'
+                        )
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </CollapsibleContent>
+            </Collapsible>
           )}
         </div>
       ),

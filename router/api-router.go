@@ -350,6 +350,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		apiRouter.GET("/operations/overview", middleware.DisableCache(), middleware.AdminAuth(), middleware.RequirePermission(authz.OperationsRead), controller.GetOperationsOverview)
+		apiRouter.GET("/operations/server-load", middleware.DisableCache(), middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.GetServerLoad)
 		apiRouter.GET("/balance-ledger/", middleware.AdminAuth(), middleware.RequirePermission(authz.BalanceLedgerRead), controller.GetBalanceLedger)
 		apiRouter.GET("/model-profit/", middleware.AdminAuth(), middleware.RequirePermission(authz.ModelProfitsRead), controller.GetModelProfits)
 		apiRouter.GET("/model-profit/cost-rules", middleware.AdminAuth(), middleware.RequirePermission(authz.ModelProfitsRead), controller.GetModelProfitCostRules)

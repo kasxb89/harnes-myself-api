@@ -155,6 +155,7 @@ export function canAccessAdminRoute(
     ['/creation-content', 'creation_content'],
     ['/usage-logs/errors', 'diagnostics'],
     ['/client-errors', 'diagnostics'],
+    ['/server-load', 'diagnostics'],
     ['/channels', 'channel'],
   ]
   for (const [prefix, resource] of resources) {

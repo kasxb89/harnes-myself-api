@@ -16,56 +16,62 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+/* The dashboard owns its palette; the rest of the admin console is unchanged. */
 .operations-screen-host {
-  background: #eeeeee;
+  background: #060c18;
 }
 
 .operations-screen {
-  --ops-cyan: #181818;
-  --ops-blue: #686868;
-  --ops-green: #4c4c4c;
-  --ops-amber: #848484;
-  --ops-magenta: #767676;
-  --ops-axis: #535353;
-  --ops-grid: #dedede;
-  --ops-tooltip-bg: #ffffff;
-  --background: #f9f9f9;
-  --foreground: #202020;
-  --card: #ffffff;
-  --card-foreground: #202020;
-  --popover: #ffffff;
-  --popover-foreground: #202020;
-  --primary: #202020;
-  --primary-foreground: #ffffff;
-  --secondary: #eeeeee;
-  --secondary-foreground: #303030;
-  --muted: #eeeeee;
-  --muted-foreground: #626262;
-  --accent: #e8e8e8;
-  --accent-foreground: #181818;
-  --border: #d6d6d6;
-  --input: #b7b7b7;
-  --ring: #303030;
-  --destructive: #202020;
-  --table-header: #eeeeee;
-  --table-header-hover: #e4e4e4;
+  --ops-cyan: #59e1ff;
+  --ops-blue: #5d9eff;
+  --ops-green: #5bdbc3;
+  --ops-amber: #f3bf72;
+  --ops-magenta: #b79aff;
+  --ops-axis: #a7bbd3;
+  --ops-grid: #20354f;
+  --ops-tooltip-bg: #101e32;
+  --background: #081221;
+  --foreground: #e6f1ff;
+  --card: #0d1b2e;
+  --card-foreground: #e6f1ff;
+  --popover: #101e32;
+  --popover-foreground: #e6f1ff;
+  --primary: #65deff;
+  --primary-foreground: #061321;
+  --secondary: #162940;
+  --secondary-foreground: #d8edff;
+  --muted: #14243a;
+  --muted-foreground: #a7bbd3;
+  --accent: #1c354e;
+  --accent-foreground: #e6f5ff;
+  --border: #29425e;
+  --input: #3b5877;
+  --ring: #67dfff;
+  --destructive: #ffacac;
+  --table-header: #15273d;
+  --table-header-hover: #1d3650;
   --chart-1: var(--ops-cyan);
   --chart-2: var(--ops-blue);
   --chart-3: var(--ops-green);
   --chart-4: var(--ops-amber);
   --chart-5: var(--ops-magenta);
+  color-scheme: dark;
+  container: ops-dashboard / inline-size;
   position: relative;
   isolation: isolate;
   min-height: 100%;
-  border: 1px solid #cccccc;
-  border-radius: 3px;
+  border: 1px solid #315273;
+  border-radius: 12px;
   color: var(--foreground);
   background:
-    radial-gradient(ellipse at 2% 90%, #3333330a, transparent 38%),
-    radial-gradient(ellipse at 100% 5%, #3333330b, transparent 35%),
-    repeating-linear-gradient(94deg, #00000002 0 1px, transparent 1px 5px),
-    #fafafa;
-  box-shadow: 0 12px 38px #0000000b;
+    radial-gradient(ellipse at 50% -15%, #18537980, transparent 50%),
+    radial-gradient(ellipse at 100% 80%, #0c5d6820, transparent 42%),
+    linear-gradient(90deg, #3b83ba0b 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(#3b83ba0b 1px, transparent 1px) 0 0 / 32px 32px,
+    #081221;
+  box-shadow:
+    inset 0 1px #8adfff12,
+    0 18px 64px #00000038;
 }
 
 .operations-screen::before,
@@ -73,21 +79,23 @@ For commercial licensing, please contact support@quantumnous.com
   content: '';
   position: absolute;
   z-index: 2;
-  width: 44px;
-  height: 17px;
-  border-color: #333333;
+  width: 74px;
+  height: 24px;
+  border-color: #78e6ff;
   pointer-events: none;
-  opacity: 0.65;
+  filter: drop-shadow(0 0 5px #48d6ff55);
 }
 .operations-screen::before {
-  inset: 0 auto auto 0;
-  border-top: 2px solid;
-  border-left: 2px solid;
+  inset: -1px auto auto -1px;
+  border-top: 2px solid #78e6ff;
+  border-left: 2px solid #78e6ff;
+  border-top-left-radius: 12px;
 }
 .operations-screen::after {
-  inset: auto 0 0 auto;
-  border-right: 2px solid;
-  border-bottom: 2px solid;
+  inset: auto -1px -1px auto;
+  border-right: 2px solid #78e6ff;
+  border-bottom: 2px solid #78e6ff;
+  border-bottom-right-radius: 12px;
 }
 .operations-screen:fullscreen {
   width: 100vw;
@@ -95,148 +103,252 @@ For commercial licensing, please contact support@quantumnous.com
   max-width: none;
   margin: 0;
   border: 0;
+  border-radius: 0;
+  padding: 18px 24px;
 }
 .operations-screen .ops-screen-layer {
   position: relative;
   z-index: 1;
   display: grid;
   min-width: 0;
-  gap: 12px;
+  gap: 8px;
 }
 .operations-screen .ops-scanline {
   position: absolute;
   inset: 0;
   z-index: 0;
   overflow: hidden;
+  border-radius: inherit;
   pointer-events: none;
+}
+.operations-screen .ops-scanline::before {
+  content: '';
+  position: absolute;
+  inset: -32px 0;
+  opacity: 0.3;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 31px,
+    #57d3ff0b 31px 32px
+  );
+  animation: ops-grid-flow 18s linear infinite;
 }
 .operations-screen .ops-scanline::after {
   content: '';
   position: absolute;
-  inset: 12% -20% auto;
-  height: 30%;
-  opacity: 0.3;
-  background: radial-gradient(ellipse, #bcbcbc15, transparent 64%);
-  animation: ops-ink-cloud 24s ease-in-out infinite alternate;
+  top: -220px;
+  left: -20%;
+  width: 140%;
+  height: 220px;
+  opacity: 0;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    #63dfff04 50%,
+    #63dfff12 96%,
+    #7de8ff26 99%,
+    transparent
+  );
+  animation: ops-screen-sweep 15s linear infinite;
 }
 .operations-screen .ops-perimeter-ticks {
   position: absolute;
-  inset: 12px 5px;
+  inset: 54px 6px 18px;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.28;
+  opacity: 0.3;
   background:
-    repeating-linear-gradient(180deg, #777777 0 1px, transparent 1px 18px) left
+    repeating-linear-gradient(180deg, #7fceec 0 1px, transparent 1px 16px) left
       top / 2px 100% no-repeat,
-    repeating-linear-gradient(180deg, #777777 0 1px, transparent 1px 18px) right
+    repeating-linear-gradient(180deg, #7fceec 0 1px, transparent 1px 16px) right
       top / 2px 100% no-repeat;
+}
+.operations-screen .ops-perimeter-ticks::before {
+  content: '';
+  position: absolute;
+  inset: auto -15% -92px;
+  height: 330px;
+  opacity: 0.8;
+  background:
+    linear-gradient(90deg, #66daff45 1px, transparent 1px) 0 0 / 60px 60px,
+    linear-gradient(#66daff45 1px, transparent 1px) 0 0 / 60px 60px;
+  mask-image: linear-gradient(180deg, transparent, #000 75%);
+  transform: perspective(300px) rotateX(55deg);
+  transform-origin: center bottom;
+}
+.operations-screen .ops-perimeter-ticks::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.8;
+  background:
+    radial-gradient(circle at 13% 9%, #a7edff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 81% 17%, #a7edff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 57% 42%, #83cce7 0 1px, transparent 1.8px),
+    radial-gradient(circle at 92% 61%, #a7edff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 7% 78%, #83cce7 0 1px, transparent 1.8px),
+    radial-gradient(circle at 67% 92%, #83cce7 0 1px, transparent 1.8px);
 }
 .operations-screen .ops-command-header {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto) minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
-  padding: 8px 0 20px;
+  gap: 12px;
+  padding: 4px 3px 17px;
 }
 .operations-screen .ops-command-header::before,
 .operations-screen .ops-command-header::after {
   content: '';
   position: absolute;
   bottom: 0;
-  width: calc(50% - 110px);
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #888888);
+  width: calc(50% - 132px);
+  height: 11px;
+  border-bottom: 2px solid #63dcff;
+  background:
+    repeating-linear-gradient(120deg, transparent 0 14px, #71dfff33 14px 16px),
+    linear-gradient(90deg, #12304a0a, #1d66845c);
+  filter: drop-shadow(0 0 5px #52cfff45);
+  pointer-events: none;
 }
 .operations-screen .ops-command-header::before {
   left: 0;
+  clip-path: polygon(0 0, 96% 0, 100% 100%, 0 100%);
 }
 .operations-screen .ops-command-header::after {
   right: 0;
   transform: scaleX(-1);
+  clip-path: polygon(0 0, 96% 0, 100% 100%, 0 100%);
 }
 .operations-screen .ops-command-context {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 .operations-screen .ops-context-empty {
-  color: #626262;
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 .operations-screen .ops-brand {
   position: relative;
   min-width: 0;
-  padding-inline: 12px;
+  isolation: isolate;
+  padding: 2px 16px 7px;
   text-align: center;
 }
+.operations-screen .ops-brand::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: -6px -24px 0;
+  border-top: 1px solid #78dfff66;
+  border-bottom: 2px solid #81e9ff;
+  background:
+    linear-gradient(90deg, transparent, #4cc9f01c, transparent),
+    linear-gradient(180deg, #21537836, #102d465c);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 23px) 100%, 23px 100%);
+  pointer-events: none;
+}
+.operations-screen .ops-brand::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 36px;
+  height: 3px;
+  background: #b0f2ff;
+  box-shadow:
+    -30px 0 #4fc9ec80,
+    30px 0 #4fc9ec80,
+    0 0 14px #67e0ff;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
 .operations-screen .ops-title-track {
+  position: relative;
   display: block;
-  width: 94px;
-  height: 4px;
-  margin: 12px auto 0;
-  border-radius: 50%;
-  background: linear-gradient(90deg, transparent, #222222 30% 65%, transparent);
-  transform: rotate(-1deg);
+  overflow: hidden;
+  width: 146px;
+  height: 3px;
+  margin: 7px auto 0;
+  background: linear-gradient(90deg, transparent, #53c6f05c, transparent);
+}
+.operations-screen .ops-title-track::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -38px;
+  width: 38px;
+  background: linear-gradient(90deg, transparent, #c9f8ff, transparent);
+  box-shadow: 0 0 10px #73e6ff;
+  animation: ops-title-trace 5s ease-in-out infinite;
 }
 .operations-screen .ops-kicker {
-  margin-bottom: 5px;
-  color: #626262;
+  margin-bottom: 3px;
+  color: #a5c8e2;
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.22em;
 }
 .operations-screen .ops-command-title {
-  color: #181818;
-  font-family: 'STSong', 'Songti SC', 'Noto Serif CJK SC', 'SimSun', serif;
-  font-size: clamp(26px, 2.7vw, 38px);
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.2em;
+  color: #edfaff;
+  font-size: clamp(25px, 2.4vw, 36px);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 22px #59d8ff45;
 }
 .operations-screen .ops-command-description {
-  max-width: 36rem;
-  color: #626262;
-  font-size: 10px;
-  line-height: 1.5;
+  max-width: 35rem;
+  color: #a7bbd3;
+  font-size: 11px;
+  line-height: 1.6;
   text-align: right;
 }
 .operations-screen .ops-controls {
   justify-content: flex-end;
 }
 .operations-screen .ops-controls [data-slot='button'] {
-  min-height: 34px;
-  border-color: #b8b8b8;
-  border-radius: 2px;
-  color: #333333;
-  background: #ffffffa8;
+  min-height: 32px;
+  height: 32px;
+  border-color: #345674;
+  border-radius: 5px;
+  color: #d7edff;
+  background: linear-gradient(180deg, #1a334b, #102238);
+  box-shadow: inset 0 1px #6bcaff0c;
   font-size: 12px;
 }
 .operations-screen .ops-controls [data-slot='button']:hover {
-  border-color: #303030;
-  color: #111111;
-  background: #eeeeee;
+  border-color: #75dfff;
+  color: #ffffff;
+  background: #1d3c53;
 }
 .operations-screen .ops-controls [aria-pressed='true'] {
-  border-color: #303030;
-  color: #111111;
-  background: #e6e6e6;
+  border-color: #72d7ef;
+  color: #b9f3ff;
+  background: #154456;
+}
+.operations-screen
+  :is(button, input, summary, [role='combobox']):focus-visible {
+  outline: 2px solid #8ae9ff;
+  outline-offset: 3px;
 }
 .operations-screen .ops-observation-rail {
-  padding: 8px 11px;
-  border-block: 1px solid #d0d0d0;
-  background: #ffffff6b;
+  padding: 6px 12px;
+  border: 1px solid #37617f;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #102a3bba, #0f1d31ba);
 }
 .operations-screen .ops-status-light {
   position: relative;
   width: 7px;
   height: 7px;
-  margin-right: 3px;
+  margin-right: 4px;
   flex-shrink: 0;
   border-radius: 50%;
-  color: #333333;
+  color: #70e7d3;
   background: currentColor;
+  box-shadow: 0 0 9px #59dfc74a;
 }
 .operations-screen .ops-status-light::after {
   content: '';
@@ -244,7 +356,7 @@ For commercial licensing, please contact support@quantumnous.com
   inset: -4px;
   border: 1px solid currentColor;
   border-radius: 50%;
-  animation: ops-pulse 3.8s ease-out infinite;
+  animation: ops-status-pulse 3.8s ease-out infinite;
 }
 .operations-screen
   .ops-observation-status:is(
@@ -253,33 +365,37 @@ For commercial licensing, please contact support@quantumnous.com
     [data-state='stale']
   )
   .ops-status-light {
+  color: var(--ops-amber);
   background: transparent;
   border: 1px solid;
+  box-shadow: none;
 }
 .operations-screen
   .ops-observation-status:is([data-state='offline'], [data-state='failed'])
   .ops-status-light {
-  border-radius: 0;
+  color: #ffacac;
+  border-radius: 1px;
+  box-shadow: none;
 }
 .operations-screen .ops-status-badge {
   padding-inline: 0;
   border: 0;
   border-radius: 0;
-  color: #303030;
+  color: #d8efff;
   background: transparent;
   font-weight: 600;
 }
 .operations-screen .ops-refresh-cadence {
-  padding-left: 9px;
-  border-left: 1px solid #bbbbbb;
+  padding-left: 10px;
+  border-left: 1px solid #3c5873;
 }
 .operations-screen .ops-window-picker {
-  color: #303030;
+  color: #d5eafd;
 }
 .operations-screen .ops-window-picker > [data-slot] {
-  border-color: #b7b7b7;
-  border-radius: 2px;
-  background: #ffffff;
+  border-color: #3b5877;
+  border-radius: 4px;
+  background: #0a1a2d;
 }
 .operations-screen .ops-time-rail {
   display: flex;
@@ -287,7 +403,7 @@ For commercial licensing, please contact support@quantumnous.com
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 6px 16px;
+  gap: 4px 16px;
   padding: 0 3px;
 }
 .operations-screen .ops-time-cell {
@@ -301,123 +417,208 @@ For commercial licensing, please contact support@quantumnous.com
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #626262;
+  color: #aac3d9;
   font-size: 11px;
 }
 .operations-screen .ops-time-label > svg {
   width: 12px;
   height: 12px;
-  color: #626262;
+  color: #73cce8;
 }
 .operations-screen time {
-  color: #404040;
+  color: #c9dff2;
   font-family: ui-monospace, monospace;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.operations-screen .ops-filter-console {
+  padding: 8px 12px;
+  border: 1px solid #2e4a65;
+  border-radius: 6px;
+  background: #091827a8;
+}
+.operations-screen .ops-filter-console > .grid {
+  gap: 8px;
+}
+.operations-screen .ops-filter-console [data-slot='field'] {
+  gap: 5px;
+}
+.operations-screen .ops-filter-console > p {
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.operations-screen .ops-filter-console [data-slot='field-label'] {
+  color: #b2cde4;
+  font-size: 11px;
+}
+.operations-screen
+  .ops-filter-console
+  :is(input, [data-slot='button'], [role='combobox']) {
+  border-color: #395777;
+  border-radius: 4px;
+  color: #daebff;
+  background-color: #0e2034;
+}
+.operations-screen .ops-filter-console input::placeholder {
+  color: #a7bbd3;
+}
+.operations-screen .ops-filter-console [data-slot='button']:hover {
+  border-color: #6bcee8;
+  background-color: #17344d;
+}
+.operations-screen .ops-tab-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 3px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #3c6b87 #0b182a;
+  scroll-padding-inline: 12px;
 }
 .operations-screen .ops-tab-strip {
+  width: max-content;
+  min-width: 100%;
   height: auto;
   min-height: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   flex-shrink: 0;
-  align-items: center;
-  align-content: flex-start;
+  align-items: stretch;
   gap: 6px;
-  justify-content: center;
-  padding: 8px 0 13px;
-  border-bottom: 1px solid #bbbbbb;
-  border-radius: 0;
-  background: transparent;
+  justify-content: flex-start;
+  padding: 4px;
+  border: 1px solid #345b78;
+  border-radius: 7px;
+  background: #081725b8;
 }
 .operations-screen .ops-tab {
   position: relative;
-  height: 40px;
-  min-height: 40px;
-  gap: 9px;
+  height: 38px;
+  min-height: 38px;
+  min-width: 115px;
+  flex: 1 0 auto;
+  gap: 8px;
+  padding-inline: 14px;
   border: 1px solid transparent;
-  border-radius: 2px;
-  color: #626262;
+  border-radius: 4px;
+  color: #b3c9df;
   background: transparent;
   font-size: 13px;
+  white-space: nowrap;
   transition:
     color 150ms,
     border-color 150ms,
     background-color 150ms;
 }
+.operations-screen .ops-tab:hover {
+  border-color: #456a87;
+  color: #e3f5ff;
+  background: #173047;
+}
 .operations-screen .ops-tab-index {
-  color: #757575;
+  color: #8da9c4;
   font-family: ui-monospace, monospace;
   font-size: 10px;
 }
 .operations-screen .ops-tab[data-active] {
-  border-color: #b7b7b7;
-  color: #111111;
-  background: #ffffff;
-  box-shadow: inset 0 -2px #303030;
+  border-color: #57cbe9a8;
+  color: #e7faff;
+  background: linear-gradient(180deg, #1d4c62a6, #143044b3);
+  box-shadow:
+    inset 0 -2px #72e5ff,
+    0 0 18px #2bc7f00c;
 }
 .operations-screen .ops-tab[data-active] .ops-tab-index,
 .operations-screen .ops-tab[data-active] > svg {
-  color: #303030;
+  color: #88e9ff;
 }
 .operations-screen .ops-detail-link {
-  color: #404040;
+  color: #b8dbf2;
   font-size: 11px;
 }
 .operations-screen
   .ops-screen-panel
   :where(section[class*='grid'], [data-slot='card']) {
-  border-color: #cccccc;
-  border-radius: 2px;
-  background: #ffffffa8;
+  border-color: #2b4663;
+  border-radius: 6px;
+  background: #0b1c2dbd;
 }
 .operations-screen .ops-screen-panel [data-slot='alert'] {
-  border-color: #aaaaaa;
-  border-radius: 2px;
-  color: #333333;
-  background: #eeeeeed9;
+  border-color: #7b6547;
+  border-radius: 6px;
+  color: #f0d9b4;
+  background: #302c25;
 }
 .operations-screen .ops-screen-panel [data-slot='table-container'] {
-  border-radius: 2px;
-  background: #ffffffbf;
+  border: 1px solid #29425e;
+  border-radius: 5px;
+  background: #0b192bd9;
 }
 .operations-screen .ops-screen-panel [data-slot='table-head'] {
-  border-color: #cccccc;
-  color: #404040;
-  background: #eeeeee;
+  border-color: #29425e;
+  color: #b9d5ea;
+  background: #15273d;
   font-size: 11px;
 }
 .operations-screen .ops-screen-panel [data-slot='table-cell'] {
-  border-color: #dddddd;
-  color: #303030;
+  border-color: #22384f;
+  color: #d2e4f6;
 }
 .operations-screen .ops-screen-panel [data-slot='table-row'] {
-  border-color: #dddddd;
+  border-color: #22384f;
+}
+.operations-screen .ops-screen-panel [data-slot='table-row']:hover {
+  background: #173047;
 }
 .operations-screen .ops-screen-panel h2:not(.ops-holo-label),
 .operations-screen .ops-screen-panel h3 {
-  padding-left: 10px;
-  border-left: 2px solid #303030;
-  color: #303030;
-  font-weight: 550;
+  padding-left: 11px;
+  border-left: 2px solid #62dfff;
+  color: #d9f1ff;
+  font-weight: 600;
   letter-spacing: 0.035em;
 }
 .operations-screen .ops-chart-panel {
   position: relative;
   min-width: 0;
-  padding: 16px;
-  border: 1px solid #cccccc;
-  border-radius: 2px;
-  background: #ffffffb3;
-  box-shadow: 0 6px 20px #00000003;
+  padding: 16px 16px 9px;
+  border: 1px solid #37617f;
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at 0 0, #1c527029, transparent 64%),
+    linear-gradient(150deg, #0c2034b8, #091827bf);
+  box-shadow:
+    inset 0 1px #86e6ff0a,
+    0 7px 24px #0000001a;
 }
-.operations-screen .ops-chart-panel::before {
+.operations-screen .ops-chart-panel::before,
+.operations-screen .ops-chart-panel::after {
   content: '';
   position: absolute;
-  top: -1px;
-  left: -1px;
-  width: 22px;
-  height: 5px;
-  border-top: 2px solid #404040;
   pointer-events: none;
+}
+.operations-screen .ops-chart-panel::before {
+  inset: -1px;
+  border-radius: 8px;
+  background:
+    linear-gradient(#89edff, #89edff) left top / 29px 2px no-repeat,
+    linear-gradient(#89edff, #89edff) left top / 2px 15px no-repeat,
+    linear-gradient(#62cde8, #62cde8) right top / 29px 2px no-repeat,
+    linear-gradient(#62cde8, #62cde8) right top / 2px 15px no-repeat,
+    linear-gradient(#62cde8, #62cde8) left bottom / 20px 1px no-repeat,
+    linear-gradient(#62cde8, #62cde8) left bottom / 1px 12px no-repeat,
+    linear-gradient(#89edff, #89edff) right bottom / 20px 1px no-repeat,
+    linear-gradient(#89edff, #89edff) right bottom / 1px 12px no-repeat;
+  filter: drop-shadow(0 0 3px #59d9ff3b);
+}
+.operations-screen .ops-chart-panel::after {
+  top: -1px;
+  left: 14%;
+  width: 56px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #c9f8ff, transparent);
+  box-shadow: 0 0 9px #73e6ff60;
+  animation: ops-panel-node 10s ease-in-out infinite;
 }
 .operations-screen .ops-chart-header {
   display: flex;
@@ -428,24 +629,31 @@ For commercial licensing, please contact support@quantumnous.com
   margin-bottom: 16px;
 }
 .operations-screen .ops-chart-title {
-  color: #303030;
-  font-size: 13px;
+  color: #e3f3ff;
+  font-size: 14px;
   font-weight: 600;
 }
 .operations-screen .ops-chart-note {
-  color: #626262;
+  color: #a9bfd7;
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 .ops-screen-popover {
-  --popover: #ffffff;
-  --popover-foreground: #202020;
-  --accent: #eeeeee;
-  --accent-foreground: #181818;
-  --muted-foreground: #626262;
-  border-color: #aaaaaa;
-  color: #202020;
-  background: #ffffff;
+  --popover: #101e32;
+  --popover-foreground: #e6f1ff;
+  --accent: #1c354e;
+  --accent-foreground: #e6f5ff;
+  --muted-foreground: #a7bbd3;
+  --background: #101e32;
+  --foreground: #e6f1ff;
+  --border: #3b5877;
+  --input: #3b5877;
+  --ring: #67dfff;
+  color-scheme: dark;
+  border-color: #3b5877;
+  color: #e6f1ff;
+  background: #101e32;
+  box-shadow: 0 16px 38px #00000060;
 }
 .operations-screen .ops-chart-grid {
   display: grid;
@@ -455,6 +663,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 .operations-screen .ops-chart-canvas {
   min-width: 0;
+  height: 300px;
   color: var(--ops-axis);
 }
 .operations-screen .ops-chart-canvas .recharts-cartesian-grid line {
@@ -465,11 +674,11 @@ For commercial licensing, please contact support@quantumnous.com
   font-size: 11px;
 }
 .operations-screen .ops-chart-canvas .recharts-tooltip-cursor {
-  fill: #00000006;
+  fill: #68dcff0c;
 }
-.operations-screen .ops-chart-canvas [data-slot='chart-tooltip-content'] {
-  border-color: #aaaaaa;
-  color: #202020;
+.operations-screen .ops-chart-canvas .ops-chart-tooltip {
+  border-color: #42627f;
+  color: #e6f1ff;
   background: var(--ops-tooltip-bg);
 }
 .operations-screen .ops-chart-legend {
@@ -477,7 +686,7 @@ For commercial licensing, please contact support@quantumnous.com
   min-width: 0;
   flex-wrap: wrap;
   gap: 8px 14px;
-  color: #404040;
+  color: #bbd3e7;
   font-size: 11px;
 }
 .operations-screen .ops-hud-deck {
@@ -485,61 +694,133 @@ For commercial licensing, please contact support@quantumnous.com
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  gap: 18px;
+  align-items: start;
+  gap: 14px;
+}
+.operations-screen .ops-hud-projection {
+  display: none;
 }
 .operations-screen .ops-hud-core-slot {
   position: relative;
-  z-index: 2;
+  z-index: 1;
   min-width: 0;
+  grid-column: 1 / -1;
   grid-row: 1;
-  padding-block: 4px;
 }
 .operations-screen .ops-hud-flank {
   position: relative;
   z-index: 1;
   min-width: 0;
-  align-self: center;
+  align-self: stretch;
 }
 .operations-screen .ops-hud-flank .ops-chart-panel {
-  padding: 15px 13px 9px;
+  height: 100%;
 }
 .operations-screen .ops-hud-flank .ops-chart-header {
   display: block;
   margin-bottom: 8px;
 }
 .operations-screen .ops-hud-flank .ops-chart-note {
-  font-size: 10px;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.65;
 }
 .operations-screen .ops-hud-flank .ops-chart-canvas {
-  height: 250px;
-  margin-top: 8px;
-}
-.operations-screen .ops-hud-flank .ops-chart-title {
-  font-size: 13px;
+  height: 300px;
+  margin-top: 16px;
 }
 .operations-screen .ops-hud-flank details > summary {
-  color: #535353;
-  font-size: 10px;
+  color: #a8c9e2;
+  font-size: 11px;
 }
 .operations-screen .ops-hud-pending {
   display: grid;
-  min-height: 260px;
+  min-height: 300px;
   place-items: center;
   padding: 20px;
-  border: 1px solid #cccccc;
-  color: #626262;
-  background: #ffffff8a;
+  border: 1px dashed #345674;
+  border-radius: 8px;
+  color: #adc7dd;
+  background: #0d1e31c9;
   font-size: 12px;
+}
+.operations-screen .ops-hud-pending [data-slot='empty'] {
+  min-height: 220px;
 }
 .operations-screen .ops-hud-link {
   display: none;
 }
+.operations-screen .ops-chart-empty {
+  position: relative;
+  isolation: isolate;
+  min-height: 280px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 45%, #17617f24, transparent 52%);
+}
+.operations-screen .ops-chart-empty::before,
+.operations-screen .ops-chart-empty::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 45%;
+  left: 50%;
+  width: 154px;
+  height: 154px;
+  margin: -77px 0 0 -77px;
+  border: 1px solid #63d7f633;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.operations-screen .ops-chart-empty::before {
+  background:
+    linear-gradient(
+      transparent calc(50% - 0.5px),
+      #67d7f526 50%,
+      transparent calc(50% + 0.5px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(50% - 0.5px),
+      #67d7f526 50%,
+      transparent calc(50% + 0.5px)
+    );
+  box-shadow:
+    0 0 0 18px #5abed60a,
+    0 0 0 37px #5abed606;
+}
+.operations-screen .ops-chart-empty::after {
+  border-top-color: #80e7ff;
+  border-right-color: #80e7ff66;
+  background: conic-gradient(
+    from 0deg,
+    #5fdbff00 0 290deg,
+    #5fdbff1c 350deg,
+    #5fdbff00 360deg
+  );
+  animation: ops-empty-radar 12s linear infinite;
+}
+.operations-screen .ops-chart-empty [data-slot='empty-media'] {
+  color: #a6e9ff;
+  border: 1px solid #3c6a86;
+  background: #113247;
+  box-shadow: 0 0 25px #4cc6ec1a;
+}
+.operations-screen .ops-chart-empty [data-slot='empty-title'] {
+  color: #cce6f8;
+  font-size: 13px;
+}
+.operations-screen .ops-section-tabs {
+  gap: 2px;
+}
+.operations-screen .ops-screen-panel {
+  padding-top: 4px;
+}
 .operations-screen .ops-details-console {
   min-width: 0;
   margin-top: 8px;
-  border-top: 1px solid #bbbbbb;
+  padding: 5px 12px;
+  border: 1px solid #29435d;
+  border-radius: 6px;
+  background: #0a192ba6;
 }
 .operations-screen .ops-detail-row {
   display: flex;
@@ -548,10 +829,10 @@ For commercial licensing, please contact support@quantumnous.com
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding-block: 6px;
+  padding-block: 4px;
 }
 .operations-screen .ops-details-trigger {
-  color: #404040;
+  color: #c4e2f6;
   font-size: 12px;
 }
 .operations-screen .ops-details-trigger > svg {
@@ -563,52 +844,156 @@ For commercial licensing, please contact support@quantumnous.com
 .operations-screen .ops-details-content {
   padding-block: 12px;
 }
-.operations-screen[data-paused='true'] .ops-scanline::after,
-.operations-screen[data-paused='true'] .ops-status-light::after {
-  animation-play-state: paused;
+/* Pausing observation also freezes every decorative layer, including pseudo-elements. */
+.operations-screen[data-paused='true'] *,
+.operations-screen[data-paused='true'] *::before,
+.operations-screen[data-paused='true'] *::after {
+  animation-play-state: paused !important;
 }
-@keyframes ops-ink-cloud {
-  from {
-    transform: translateX(-7%);
-    opacity: 0.2;
+@keyframes ops-panel-node {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.35;
   }
+  50% {
+    transform: translateX(120px);
+    opacity: 0.9;
+  }
+}
+@keyframes ops-empty-radar {
   to {
-    transform: translateX(7%);
-    opacity: 0.45;
+    transform: rotate(360deg);
   }
 }
-@keyframes ops-pulse {
+@keyframes ops-grid-flow {
+  to {
+    transform: translateY(32px);
+  }
+}
+@keyframes ops-screen-sweep {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.65;
+  }
+  82% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translateY(1500px);
+    opacity: 0;
+  }
+}
+@keyframes ops-title-trace {
+  0%,
+  15% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  25%,
+  65% {
+    opacity: 1;
+  }
+  85%,
+  100% {
+    transform: translateX(188px);
+    opacity: 0;
+  }
+}
+@keyframes ops-status-pulse {
   from {
     transform: scale(0.6);
     opacity: 0.65;
   }
   to {
-    transform: scale(1.4);
+    transform: scale(1.5);
     opacity: 0;
   }
 }
 @media (min-width: 1100px) {
   .operations-screen .ops-hud-deck {
-    grid-template-columns: minmax(0, 1fr) minmax(310px, 1.25fr) minmax(0, 1fr);
-    gap: 20px;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 18px;
   }
-  .operations-screen .ops-hud-core-slot {
-    grid-row: auto;
+  .operations-screen .ops-hud-flank .ops-chart-canvas {
+    height: 320px;
   }
-}
-@media (min-width: 1280px) {
   .operations-screen .ops-chart-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 799px) {
+/* Reserve a projection bay only when the real content width can spare it. */
+@media (min-width: 1100px) {
+  @container ops-dashboard (min-width: 960px) {
+    .operations-screen .ops-hud-deck {
+      grid-template-columns: minmax(300px, 1fr) 280px minmax(300px, 1fr);
+    }
+    .operations-screen .ops-hud-projection {
+      display: block;
+      grid-column: 2;
+      grid-row: 2;
+    }
+    .operations-screen .ops-hud-flank--left {
+      grid-column: 1;
+      grid-row: 2;
+    }
+    .operations-screen .ops-hud-flank--right {
+      grid-column: 3;
+      grid-row: 2;
+    }
+  }
+}
+@media (min-width: 1400px) {
+  @container ops-dashboard (min-width: 1080px) {
+    .operations-screen .ops-hud-deck {
+      grid-template-columns: minmax(300px, 1fr) 400px minmax(300px, 1fr);
+    }
+  }
+}
+@media (max-width: 1099px) {
   .operations-screen .ops-command-header {
-    grid-template-columns: 1fr;
-    gap: 9px;
-    padding-bottom: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 10px;
   }
   .operations-screen .ops-brand {
+    grid-column: 1 / -1;
     grid-row: 1;
+    padding-bottom: 3px;
+  }
+  .operations-screen .ops-command-context {
+    grid-row: 2;
+  }
+  .operations-screen .ops-controls {
+    grid-row: 2;
+  }
+  .operations-screen .ops-command-description {
+    text-align: left;
+  }
+}
+@media (max-width: 640px) {
+  .operations-screen-host > .ops-screen-viewport {
+    padding: 8px;
+  }
+  .operations-screen,
+  .operations-screen:fullscreen {
+    padding: 15px 10px;
+  }
+  .operations-screen .ops-screen-layer {
+    gap: 11px;
+  }
+  .operations-screen .ops-command-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding-bottom: 17px;
+  }
+  .operations-screen .ops-brand {
+    grid-column: 1;
+  }
+  .operations-screen .ops-command-title {
+    font-size: 27px;
   }
   .operations-screen .ops-command-context {
     flex-direction: row;
@@ -618,33 +1003,8 @@ For commercial licensing, please contact support@quantumnous.com
     gap: 5px 10px;
   }
   .operations-screen .ops-controls {
+    grid-row: 3;
     justify-content: center;
-  }
-  .operations-screen .ops-command-title {
-    font-size: 28px;
-  }
-  .operations-screen .ops-command-description {
-    display: none;
-  }
-  .operations-screen .ops-time-cell {
-    display: flex;
-    gap: 3px 8px;
-  }
-  .operations-screen .ops-time-label {
-    margin: 0;
-  }
-}
-@media (max-width: 640px) {
-  .operations-screen-host > .ops-screen-viewport {
-    padding: 8px;
-  }
-  .operations-screen {
-    padding: 13px 10px;
-  }
-  .operations-screen:fullscreen {
-    padding: 14px 10px;
-  }
-  .operations-screen .ops-controls {
     width: 100%;
   }
   .operations-screen .ops-controls [data-slot='button'] {
@@ -652,39 +1012,45 @@ For commercial licensing, please contact support@quantumnous.com
     padding-inline: 7px;
     font-size: 11px;
   }
+  .operations-screen .ops-command-description {
+    font-size: 10px;
+  }
   .operations-screen .ops-observation-rail {
     padding: 10px;
   }
   .operations-screen .ops-refresh-cadence {
-    width: 100%;
     margin-left: 10px;
-    padding: 0;
-    border: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+  .operations-screen .ops-filter-console {
+    padding: 11px;
   }
   .operations-screen .ops-tab {
-    flex: 1 1 calc(25% - 5px);
-    min-width: 0;
-    gap: 5px;
-    padding-inline: 5px;
-    font-size: 11px;
+    min-width: 112px;
+    gap: 7px;
+    padding-inline: 11px;
+    font-size: 12px;
   }
   .operations-screen .ops-tab-index {
-    display: none;
+    font-size: 9px;
   }
   .operations-screen .ops-chart-panel {
-    padding: 12px;
+    padding: 15px 11px 8px;
   }
   .operations-screen .ops-chart-header {
     margin-bottom: 12px;
   }
+  .operations-screen .ops-hud-flank .ops-chart-canvas {
+    height: 280px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .operations-screen .ops-scanline::after,
-  .operations-screen .ops-status-light::after {
-    animation: none;
-  }
-  .operations-screen .ops-tab,
-  .operations-screen .ops-details-trigger > svg {
-    transition: none;
+  .operations-screen *,
+  .operations-screen *::before,
+  .operations-screen *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

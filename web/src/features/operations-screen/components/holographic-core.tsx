@@ -38,8 +38,7 @@ interface CoreStat {
 interface CoreObservation {
   primary: CoreStat
   stats: CoreStat[]
-  noteKey: string
-  fundingNotCollected?: boolean
+  noteKey?: string
 }
 function count(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -75,10 +74,6 @@ function observation(snapshot: OperationsSnapshot): CoreObservation {
             currency: true,
           },
         ],
-        noteKey:
-          'Usage count means original calls. Unit prices are period averages per call after settlement and refunds, not current token, second or image tariffs. Pending, incomplete or refund-only periods remain unconfirmed.',
-        fundingNotCollected:
-          snapshot.report.funding_collection_status === 'not_collected',
       }
     case 'concurrency':
       return {
@@ -179,59 +174,6 @@ function observation(snapshot: OperationsSnapshot): CoreObservation {
   }
 }
 
-function InkLandscapeArtwork() {
-  const id = useId().replaceAll(':', '')
-  return (
-    <svg
-      className='ops-holo-core__art'
-      viewBox='0 0 600 600'
-      aria-hidden='true'
-      focusable='false'
-    >
-      <defs>
-        <linearGradient id={`${id}-mountain`} x1='0' y1='0' x2='0' y2='1'>
-          <stop stopColor='#242424' stopOpacity='.24' />
-          <stop offset='1' stopColor='#242424' stopOpacity='0' />
-        </linearGradient>
-        <linearGradient id={`${id}-mist`} x1='0' y1='0' x2='1' y2='0'>
-          <stop stopColor='#fafafa' stopOpacity='0' />
-          <stop offset='.5' stopColor='#fafafa' stopOpacity='.94' />
-          <stop offset='1' stopColor='#fafafa' stopOpacity='0' />
-        </linearGradient>
-      </defs>
-      <g className='ops-ink-landscape' fill={`url(#${id}-mountain)`}>
-        <path d='M15 419L64 361L101 381L148 312L175 347L207 287L247 333L276 309L305 362L335 321L370 362L409 283L440 328L473 301L527 370L584 413V505H15Z' />
-        <path
-          d='M14 441L69 405L111 421L158 370L200 405L242 381L290 433L331 395L372 429L420 368L473 398L527 384L587 440V505H14Z'
-          opacity='.65'
-        />
-      </g>
-      <g className='ops-ink-brush' fill='none' strokeLinecap='round'>
-        <path d='M121 111C204 42 351 34 449 105C547 177 565 305 514 405C464 509 355 555 240 533C135 512 63 427 55 326C45 232 72 159 121 111' />
-        <path d='M159 78C242 35 353 47 429 97M515 183C561 301 516 444 409 507M126 469C47 393 32 269 87 174' />
-        <path d='M155 102C239 58 365 65 445 145M500 339C479 427 406 486 326 498M105 345C89 292 101 223 131 178' />
-      </g>
-      <g className='ops-ink-ripple' fill='none'>
-        <ellipse cx='300' cy='456' rx='181' ry='19' />
-        <ellipse cx='300' cy='456' rx='225' ry='30' />
-      </g>
-      <path
-        className='ops-ink-mist'
-        d='M30 382Q170 351 300 383T570 382V435Q410 401 300 425T30 423Z'
-        fill={`url(#${id}-mist)`}
-      />
-      <g
-        className='ops-ink-birds'
-        fill='none'
-        stroke='#3d3d3d'
-        strokeLinecap='round'
-      >
-        <path d='M424 149Q433 143 441 149Q448 140 456 141M451 165Q458 161 464 166Q469 159 477 161' />
-      </g>
-    </svg>
-  )
-}
-
 export function HolographicCore({
   snapshot,
   paused,
@@ -263,19 +205,21 @@ export function HolographicCore({
       data-paused={paused || stale || !snapshot ? 'true' : 'false'}
       data-stale={stale && snapshot ? 'true' : 'false'}
       data-observed={Boolean(snapshot)}
+      data-tab={snapshot?.tab}
+      data-secondary-count={data?.stats.length ?? 0}
       aria-labelledby={labelId}
-      aria-describedby={noteId}
+      aria-describedby={snapshot?.tab === 'profit' ? undefined : noteId}
     >
       <div className='ops-holo-stage'>
-        <InkLandscapeArtwork />
+        <div className='ops-holo-accent' aria-hidden='true' />
         <div className='ops-holo-readout'>
-          <p className='ops-holo-eyebrow'>{t(status)}</p>
-          <output className='ops-holo-value' aria-labelledby={labelId}>
-            {data ? format(data.primary) : '—'}
-          </output>
           <h2 id={labelId} className='ops-holo-label'>
             {t(data?.primary.labelKey ?? 'No successful sample yet')}
           </h2>
+          <output className='ops-holo-value' aria-labelledby={labelId}>
+            {data ? format(data.primary) : '—'}
+          </output>
+          <p className='ops-holo-eyebrow'>{t(status)}</p>
           <div className='ops-holo-readout__rule' aria-hidden='true'>
             <i />
             <i />
@@ -293,14 +237,9 @@ export function HolographicCore({
           ))}
         </dl>
       )}
-      <p id={noteId} className='ops-holo-note'>
-        {t(data?.noteKey ?? 'No chart observations')}
-      </p>
-      {data?.fundingNotCollected && (
-        <p className='ops-holo-note ops-holo-note--funding'>
-          {t(
-            'Paid-versus-gift funding allocations are not collected in this version. New consumption also remains unverified until a funding ledger is implemented.'
-          )}
+      {snapshot?.tab !== 'profit' && (
+        <p id={noteId} className='ops-holo-note'>
+          {t(data?.noteKey ?? 'No chart observations')}
         </p>
       )}
     </section>

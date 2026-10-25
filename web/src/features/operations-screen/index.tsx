@@ -50,8 +50,10 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { HologramCanvas } from './components/hologram-canvas'
 import { HolographicCore } from './components/holographic-core'
 import { OperationsObservationFilters } from './components/observation-filters'
+import { RobotBackground } from './components/robot-background'
 import { OperationsScienceCharts } from './components/science-charts'
 import { OperationsScreenToolbar } from './components/screen-toolbar'
 import { OperationsSnapshotContent } from './components/snapshot-content'
@@ -144,7 +146,13 @@ function OperationsScreenReport(props: {
   const query = observation.query
   const snapshot =
     observation.authorized && !observation.invalid ? query.data : undefined
-  const decorationPaused = paused || !observation.visible || !observation.online
+  const decorationPaused =
+    paused ||
+    !observation.visible ||
+    !observation.online ||
+    observation.stale ||
+    query.isError ||
+    !snapshot
   useEffect(() => setSelection(props.requestedTab), [props.requestedTab])
   const changeTab = (value: unknown) => {
     const next = props.available.find((item) => item === value)
@@ -188,13 +196,14 @@ function OperationsScreenReport(props: {
           <div
             ref={fullscreen.ref}
             data-paused={decorationPaused}
-            data-appearance='ink'
+            data-appearance='technology'
             className={cn(
               'operations-screen min-w-0 max-w-full overflow-x-hidden p-3 sm:p-5',
               fullscreen.active &&
                 'h-screen overflow-y-auto rounded-none p-4 sm:p-8'
             )}
           >
+            <RobotBackground paused={decorationPaused} />
             <div className='ops-scanline' aria-hidden='true' />
             <div className='ops-perimeter-ticks' aria-hidden='true' />
             <div className='ops-screen-layer'>
@@ -254,29 +263,31 @@ function OperationsScreenReport(props: {
                 onValueChange={changeTab}
                 className='ops-section-tabs min-w-0'
               >
-                <TabsList
-                  aria-label={t('Operations screen sections')}
-                  className='ops-tab-strip h-auto w-full flex-wrap justify-start gap-1 group-data-horizontal/tabs:h-auto'
-                >
-                  {operationsTabs
-                    .filter((item) => props.available.includes(item.value))
-                    .map((item, index) => {
-                      const Icon = tabIcons[item.value]
-                      return (
-                        <TabsTrigger
-                          key={item.value}
-                          value={item.value}
-                          className='ops-tab min-h-10 min-w-24 flex-none px-3 whitespace-normal sm:px-4'
-                        >
-                          <span className='ops-tab-index' aria-hidden='true'>
-                            {String(index + 1).padStart(2, '0')}
-                          </span>
-                          <Icon aria-hidden='true' />
-                          {t(item.labelKey)}
-                        </TabsTrigger>
-                      )
-                    })}
-                </TabsList>
+                <div className='ops-tab-scroll'>
+                  <TabsList
+                    aria-label={t('Operations screen sections')}
+                    className='ops-tab-strip h-auto min-w-full justify-start gap-1 group-data-horizontal/tabs:h-auto'
+                  >
+                    {operationsTabs
+                      .filter((item) => props.available.includes(item.value))
+                      .map((item, index) => {
+                        const Icon = tabIcons[item.value]
+                        return (
+                          <TabsTrigger
+                            key={item.value}
+                            value={item.value}
+                            className='ops-tab min-h-10 min-w-24 flex-none px-3 sm:px-4'
+                          >
+                            <span className='ops-tab-index' aria-hidden='true'>
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <Icon aria-hidden='true' />
+                            {t(item.labelKey)}
+                          </TabsTrigger>
+                        )
+                      })}
+                  </TabsList>
+                </div>
                 <TabsContent
                   value={tab}
                   className='ops-screen-panel min-w-0 space-y-5 pt-3'
@@ -285,6 +296,13 @@ function OperationsScreenReport(props: {
                     className='ops-hud-deck'
                     aria-label={t('Operations screen')}
                   >
+                    <div className='ops-hud-core-slot'>
+                      <HolographicCore
+                        snapshot={snapshot}
+                        paused={decorationPaused}
+                        stale={observation.stale || query.isError}
+                      />
+                    </div>
                     <div className='ops-hud-flank ops-hud-flank--left'>
                       {snapshot ? (
                         <OperationsScienceCharts
@@ -301,13 +319,7 @@ function OperationsScreenReport(props: {
                         </div>
                       )}
                     </div>
-                    <div className='ops-hud-core-slot'>
-                      <HolographicCore
-                        snapshot={snapshot}
-                        paused={decorationPaused}
-                        stale={observation.stale || query.isError}
-                      />
-                    </div>
+                    <HologramCanvas paused={decorationPaused} />
                     <div className='ops-hud-flank ops-hud-flank--right'>
                       {snapshot ? (
                         <OperationsScienceCharts

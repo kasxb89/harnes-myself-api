@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ChartNoAxesCombined } from 'lucide-react'
 import { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -34,6 +35,7 @@ import {
   StaticDataTable,
   type StaticDataTableColumn,
 } from '@/components/data-table'
+import { EmptyState } from '@/components/empty-state'
 import {
   ChartContainer,
   ChartLegend,
@@ -197,7 +199,7 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
       aria-labelledby={headingId}
       aria-describedby={noteId}
     >
-      <header className='ops-chart-header space-y-2'>
+      <header className='ops-chart-header flex flex-col gap-2'>
         <h3 id={headingId} className='ops-chart-title font-semibold'>
           {title}
         </h3>
@@ -328,7 +330,11 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
           className='ops-chart-canvas flex h-80 items-center justify-center text-sm'
           role='status'
         >
-          {t(empty)}
+          <EmptyState
+            icon={ChartNoAxesCombined}
+            title={t(empty)}
+            className='ops-chart-empty'
+          />
         </div>
       )}
       <details className='mt-3 min-w-0 text-xs'>

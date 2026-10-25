@@ -69,6 +69,17 @@ const concurrency = {
   pools: [],
 }
 const calls: string[] = []
+function preferReducedMotion(reduced: boolean): void {
+  const originalMatchMedia = window.matchMedia.bind(window)
+  vi.spyOn(window, 'matchMedia').mockImplementation((query) => {
+    const media = originalMatchMedia(query)
+    if (!query.includes('prefers-reduced-motion')) return media
+    return {
+      ...media,
+      matches: query.includes('no-preference') ? !reduced : reduced,
+    }
+  })
+}
 function setPermissions(permissions: AdminPermissionMatrix, id = 7) {
   useAuthStore.getState().auth.setUser({
     id,
@@ -179,12 +190,22 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
   vi.restoreAllMocks()
 })
-it('puts the ink observation core and two chart stations before collapsed details and expands records without another request', async () => {
+it('reads the primary summary before both charts and expands collapsed records without another request', async () => {
   await setup()
   const deck = await screen.findByRole('region', { name: 'Operations screen' })
-  expect(deck).toHaveClass('ops-hud-deck')
-  expect(deck.querySelector('.ops-hud-core-slot')).not.toBeNull()
-  expect(deck.querySelectorAll('.ops-hud-flank')).toHaveLength(2)
+  const summary = await within(deck).findByRole('status', {
+    name: 'Usage count',
+  })
+  for (const title of [
+    'Model balance charges and known costs',
+    'Billing cost evidence',
+  ]) {
+    const chartHeading = within(deck).getByRole('heading', { name: title })
+    expect(
+      summary.compareDocumentPosition(chartHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0)
+  }
   expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute(
     'aria-expanded',
     'false'
@@ -208,7 +229,7 @@ it('shows one screen title in the page without an extra page-layout heading', as
     screen.getByRole('heading', { name: 'Operations screen', level: 1 })
   ).toBeVisible()
 })
-it('offers separate image and video tabs, wraps the mobile strip, and loads only the selected read-only report', async () => {
+it('offers separate image and video tabs and loads only the selected read-only report', async () => {
   await setup()
   const tabs = screen.getByRole('tablist', {
     name: 'Operations screen sections',
@@ -227,7 +248,6 @@ it('offers separate image and video tabs, wraps the mobile strip, and loads only
       label
     )
   }
-  expect(tabs).toHaveClass('flex-wrap', 'w-full')
   await expandDetails()
   await screen.findByRole('table', { name: 'Profit by model' })
   expect(calls).toEqual(['/api/model-profit/'])
@@ -276,14 +296,25 @@ it('falls back from an unauthorized initial tab and cancels and clears the sampl
     expect(view.client.getQueryCache().getAll()).toHaveLength(0)
   )
 })
-it('marks the retained ink sample stale and stops its animation after a failed refresh', async () => {
+it('marks the retained sample stale and stops its animation after a failed refresh', async () => {
+  preferReducedMotion(false)
   setPermissions({ media_operations: { read: true } })
   await setup()
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Details' })).toBeEnabled()
   )
   const core = screen.getByRole('region', { name: 'Occupied admission slots' })
+  const shell = screen
+    .getByRole('heading', { name: 'Operations screen', level: 1 })
+    .closest('.operations-screen')
+  const projection = shell?.querySelector('.ops-hud-projection')
   expect(core).toHaveAttribute('data-stale', 'false')
+  expect(shell).toHaveAttribute('data-paused', 'false')
+  expect(projection).toHaveAttribute('data-paused', 'false')
+  expect(shell?.querySelector('.ops-robot-background')).toHaveAttribute(
+    'data-paused',
+    'false'
+  )
   api.defaults.adapter = async (config) => ({
     data: { success: false, message: 'Fixture refresh unavailable' },
     status: 200,
@@ -297,52 +328,78 @@ it('marks the retained ink sample stale and stops its animation after a failed r
   )
   expect(core).toHaveAttribute('data-stale', 'true')
   expect(core).toHaveAttribute('data-paused', 'true')
+  expect(shell).toHaveAttribute('data-paused', 'true')
+  expect(projection).toHaveAttribute('data-paused', 'true')
+  expect(shell?.querySelector('.ops-robot-background')).toHaveAttribute(
+    'data-paused',
+    'true'
+  )
   expect(within(core).getByText('Stale sample')).toBeVisible()
 })
-it('exposes pause and refresh state through accessible controls', async () => {
-  setPermissions({ media_operations: { read: true } })
-  await setup()
-  await expandDetails()
-  await screen.findByText('No registered image or video account pools')
-  const shell = screen
-    .getByRole('heading', { name: 'Operations screen', level: 1 })
-    .closest('.operations-screen')
-  expect(shell).toHaveAttribute('data-paused', 'false')
-  expect(shell?.querySelector('.ops-scanline')).toHaveAttribute(
-    'aria-hidden',
-    'true'
-  )
-  await userEvent.click(screen.getByRole('button', { name: 'Pause' }))
-  expect(shell).toHaveAttribute('data-paused', 'true')
-  expect(
-    screen.getByRole('region', { name: 'Occupied admission slots' })
-  ).toHaveAttribute('data-paused', 'true')
-  expect(screen.getByRole('button', { name: 'Resume' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
-  expect(
-    within(screen.getByRole('status', { name: 'Refresh status' })).getByText(
-      'Paused'
+it.each([false, true])(
+  'exposes pause and refresh controls while preserving reduced-motion preference %s',
+  async (reducedMotion) => {
+    preferReducedMotion(reducedMotion)
+    setPermissions({ media_operations: { read: true } })
+    await setup()
+    await expandDetails()
+    await screen.findByText('No registered image or video account pools')
+    const shell = screen
+      .getByRole('heading', { name: 'Operations screen', level: 1 })
+      .closest('.operations-screen')
+    const projection = shell?.querySelector('.ops-hud-projection')
+    expect(shell).toHaveAttribute('data-paused', 'false')
+    expect(projection).toHaveAttribute('data-paused', String(reducedMotion))
+    const robot = shell?.querySelector('.ops-robot-background')
+    expect(robot).toHaveAttribute('data-paused', String(reducedMotion))
+    expect(robot).toHaveAttribute('aria-hidden', 'true')
+    expect(projection).toHaveAttribute('aria-hidden', 'true')
+    expect(shell?.querySelector('.ops-scanline')).toHaveAttribute(
+      'aria-hidden',
+      'true'
     )
-  ).toBeVisible()
-  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-  await waitFor(() => expect(calls).toHaveLength(2))
-  expect(screen.getByRole('button', { name: 'Resume' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
-  screen.getByRole('tab', { name: 'Concurrency' }).focus()
-  await userEvent.keyboard('{ArrowRight}{Enter}')
-  expect(screen.getByRole('tab', { name: 'Image' })).toHaveAttribute(
-    'aria-selected',
-    'true'
-  )
-  await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-  expect(
-    await screen.findByRole('table', { name: 'Current task records' })
-  ).toBeVisible()
-})
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    expect(shell).toHaveAttribute('data-paused', 'true')
+    expect(projection).toHaveAttribute('data-paused', 'true')
+    expect(robot).toHaveAttribute('data-paused', 'true')
+    expect(
+      screen.getByRole('region', { name: 'Occupied admission slots' })
+    ).toHaveAttribute('data-paused', 'true')
+    expect(screen.getByRole('button', { name: 'Resume' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(
+      within(screen.getByRole('status', { name: 'Refresh status' })).getByText(
+        'Paused'
+      )
+    ).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(calls).toHaveLength(2))
+    expect(screen.getByRole('button', { name: 'Resume' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Resume' }))
+    expect(shell).toHaveAttribute('data-paused', 'false')
+    expect(projection).toHaveAttribute('data-paused', String(reducedMotion))
+    expect(robot).toHaveAttribute('data-paused', String(reducedMotion))
+    expect(screen.getByRole('button', { name: 'Pause' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    )
+    screen.getByRole('tab', { name: 'Concurrency' }).focus()
+    await userEvent.keyboard('{ArrowRight}{Enter}')
+    expect(screen.getByRole('tab', { name: 'Image' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(
+      await screen.findByRole('table', { name: 'Current task records' })
+    ).toBeVisible()
+  }
+)
 
 it('keeps the selected profit route across fullscreen entry and exit after starting on activity, with the picker inside fullscreen', async () => {
   const descriptors = [
@@ -460,14 +517,31 @@ it('keeps the selected profit route across fullscreen entry and exit after start
 })
 it('shows a failed first observation without presenting a successful zero sample', async () => {
   setPermissions({ diagnostics: { read: true } })
-  api.defaults.adapter = async (config) => ({
-    data: { success: false, message: 'Fixture read unavailable' },
-    status: 200,
-    statusText: 'OK',
-    headers: {},
-    config,
+  let resolveResponse!: () => void
+  const response = new Promise<void>((resolve) => {
+    resolveResponse = resolve
   })
+  api.defaults.adapter = async (config) => {
+    await response
+    return {
+      data: { success: false, message: 'Fixture read unavailable' },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }
+  }
   await setup()
+  const shell = screen
+    .getByRole('heading', { name: 'Operations screen', level: 1 })
+    .closest('.operations-screen')
+  const projection = shell?.querySelector('.ops-hud-projection')
+  expect(shell).toHaveAttribute('data-paused', 'true')
+  expect(projection).toHaveAttribute('data-paused', 'true')
+  expect(
+    screen.getByRole('status', { name: 'No successful sample yet' })
+  ).toHaveTextContent('—')
+  await act(async () => resolveResponse())
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Fixture read unavailable'
   )
@@ -476,6 +550,8 @@ it('shows a failed first observation without presenting a successful zero sample
       'Refresh failed'
     )
   ).toBeVisible()
+  expect(shell).toHaveAttribute('data-paused', 'true')
+  expect(projection).toHaveAttribute('data-paused', 'true')
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
   expect(
     screen.queryByText('Consumption records in range')

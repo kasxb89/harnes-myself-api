@@ -231,16 +231,16 @@ it('keeps exactly five requested columns and leaves cash profit unconfirmed when
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
   expect(within(summary).getByText('Cash revenue')).toBeVisible()
   expect(within(summary).getByText('Cash profit')).toBeVisible()
-  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(2)
   expect(within(summary).getByText('CN¥5.00')).toBeVisible()
-  expect(within(summary).getByText('50%')).toBeVisible()
   expect(within(summary).queryByText('CN¥3.00')).not.toBeInTheDocument()
-  expect(
-    screen.getByText(/missing costs are never counted as zero/)
-  ).toBeVisible()
+  const allocation = screen.getByRole('region', {
+    name: 'Funding allocation details',
+  })
+  expect(within(allocation).getByText(/Missing cost evidence: 1/)).toBeVisible()
   expect(
     screen.getByText(
-      /New consumption also remains unverified until a funding ledger is implemented/
+      'Funding records are unavailable. Actual profit remains pending confirmation.'
     )
   ).toBeVisible()
 })
@@ -463,13 +463,11 @@ it('keeps all-unknown summary amounts unknown in the dashboard', async () => {
   await screen.findByText('unknown-model')
   fireEvent.click(screen.getByRole('tab', { name: 'Profit dashboard' }))
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
-  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(4)
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
   expect(
     within(summary).queryByText('CN¥9.00', { selector: '.text-destructive' })
   ).not.toBeInTheDocument()
-  expect(
-    screen.getByText(/missing costs are never counted as zero/)
-  ).toBeVisible()
+  expect(screen.getAllByText('Pending confirmation').length).toBeGreaterThan(0)
 })
 
 it('keeps a failed dashboard free of stale charts and supports Retry', async () => {
@@ -602,9 +600,17 @@ it('labels pending reserved balance charges separately from unconfirmed cash pro
     })
   ).toHaveTextContent('CN¥27.00')
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
-  expect(within(summary).getByText('CN¥27.00')).toBeVisible()
+  expect(within(summary).queryByText('CN¥27.00')).not.toBeInTheDocument()
+  await userEvent.click(
+    screen.getByRole('button', { name: 'View accounting details' })
+  )
+  expect(
+    screen.getByText(
+      /Billing events awaiting settlement: 1; original calls: 1; reserved balance: CN¥7.00/
+    )
+  ).toBeVisible()
   expect(within(summary).getByText('Cash profit')).toBeVisible()
-  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(2)
   expect(within(summary).queryByText('CN¥22.00')).not.toBeInTheDocument()
 })
 
@@ -707,9 +713,8 @@ it('older service responses keep absent cash and unit-price fields unconfirmed w
   const row = await screen.findByRole('row', { name: /partial-model/ })
   expect(within(row).getAllByText('Pending confirmation')).toHaveLength(3)
   const summary = screen.getByRole('region', { name: 'Model profit summary' })
-  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(3)
-  expect(within(summary).getByText('Balance charges')).toBeVisible()
-  expect(within(summary).getByText('CN¥20.00')).toBeVisible()
+  expect(within(summary).getAllByText('Pending confirmation')).toHaveLength(2)
+  expect(within(summary).queryByText('CN¥20.00')).not.toBeInTheDocument()
 })
 
 it('attributed synthetic records preserve real zero and negative cash profit while gift consumption retains its full cost', async () => {
@@ -790,6 +795,13 @@ it('an unsettled zero-delta event blocks both period unit prices even when origi
   setup({ data: { ...payload, rows: [pending], summary: pending } })
   const row = await screen.findByRole('row', { name: /partial-model/ })
   expect(within(row).getAllByText('Pending confirmation')).toHaveLength(3)
+  const funding = screen.getByRole('region', {
+    name: 'Funding allocation details',
+  })
+  expect(within(funding).getByText(/Awaiting settlement: 1/)).toBeVisible()
+  await userEvent.click(
+    within(funding).getByRole('button', { name: 'View accounting details' })
+  )
   expect(
     screen.getByText(
       /Billing events awaiting settlement: 1; original calls: 0;/

@@ -151,11 +151,11 @@ it('uses CNY values with negative refunds and exposes unknown cost instead of a 
   const unknown = within(table).getByRole('row', { name: /unknown-cost/ })
   expect(within(unknown).getByText('Unknown')).toBeVisible()
   expect(within(unknown).getByText(/CN¥0\.00/)).toBeVisible()
-  expect(
-    screen.getByText(
-      'Paid-versus-gift funding allocations are not collected in this version. New consumption also remains unverified until a funding ledger is implemented.'
-    )
-  ).toBeVisible()
+  const fundingNotice = screen.getByRole('alert')
+  expect(fundingNotice).toBeVisible()
+  expect(fundingNotice).toHaveTextContent(
+    'Funding records are unavailable. Actual profit remains pending confirmation.'
+  )
   expect(screen.getAllByText('Pending confirmation').length).toBeGreaterThan(0)
 })
 it('does not draw a fabricated ring for all-zero persisted tasks and labels task units correctly', () => {

@@ -28,9 +28,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { PortalContainerContext } from '@/components/ui/portal-container'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { toIntlLocale } from '@/i18n/languages'
 import { canAccessAdminRoute } from '@/lib/admin-permissions'
-import { formatNumber } from '@/lib/format'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { useAuthStore, type AuthUser } from '@/stores/auth-store'
@@ -45,7 +43,6 @@ import { ProfitFundingNotice } from './components/profit-funding-notice'
 import { ProfitSummary } from './components/profit-summary'
 import { ProfitTable } from './components/profit-table'
 import { profitModelOptions } from './lib/chart-data'
-import { formatProfitCny } from './lib/format'
 import { parseProfitPeriod, profitPreset } from './lib/period'
 import { useProfitFullscreen } from './lib/use-profit-fullscreen'
 
@@ -102,8 +99,7 @@ function ModelProfitReport(props: {
   sessionId: string
   generation: number
 }) {
-  const { t, i18n } = useTranslation()
-  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const { t } = useTranslation()
   const client = useQueryClient()
   useEffect(
     () => () => {
@@ -170,16 +166,6 @@ function ModelProfitReport(props: {
                 {t('Model profit dashboard')}
               </h2>
             )}
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'Cash profit equals revenue attributed to paid funds minus all upstream costs. Consumed registration and administrator gifts have zero cash revenue; unused gifts incur no generation cost.'
-              )}
-            </p>
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Usage count means original calls. Unit prices are period averages per call after settlement and refunds, not current token, second or image tariffs. Pending, incomplete or refund-only periods remain unconfirmed.'
-              )}
-            </p>
             <details open={!fullscreen.active}>
               <summary
                 className={
@@ -283,39 +269,6 @@ function ModelProfitReport(props: {
                   <ProfitFundingNotice report={profits.data} />
                   <ProfitSummary data={profits.data.summary} />
                   <ProfitFundingDetails data={profits.data.summary} />
-                  <ProfitFormulas />
-                  {profits.data.summary.unknown_cost_events > 0 && (
-                    <Alert>
-                      <AlertDescription>
-                        {t(
-                          '{{count}} billing events have unknown upstream costs. Cash profit remains pending confirmation; missing costs are never counted as zero.',
-                          { count: profits.data.summary.unknown_cost_events }
-                        )}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  <p className='text-muted-foreground text-xs'>
-                    {t(
-                      'Billing events awaiting settlement: {{events}}; original calls: {{count}}; reserved balance: {{amount}}. Pending amounts are excluded from cash profit.',
-                      {
-                        events:
-                          profits.data.summary.pending_billing_events == null
-                            ? t('Pending confirmation')
-                            : formatNumber(
-                                profits.data.summary.pending_billing_events,
-                                locale
-                              ),
-                        count: formatNumber(
-                          profits.data.summary.pending_requests,
-                          locale
-                        ),
-                        amount: formatProfitCny(
-                          profits.data.summary.pending_revenue_cny,
-                          locale
-                        ),
-                      }
-                    )}
-                  </p>
                   <p className='text-muted-foreground text-xs'>
                     {t(
                       'Showing {{start}} to {{end}} inclusive, Asia/Shanghai. All amounts are CNY.',
@@ -333,25 +286,13 @@ function ModelProfitReport(props: {
                       }
                     )}
                   </p>
-                  <p className='text-muted-foreground font-mono text-xs'>
-                    {filters.model_name || t('All models')}
-                  </p>
                   <TabsContent value='details'>
                     <ProfitTable rows={profits.data.rows} />
                   </TabsContent>
                   <TabsContent value='dashboard'>
                     <ProfitDashboard data={profits.data} />
                   </TabsContent>
-                  <p className='text-muted-foreground text-xs'>
-                    {t(
-                      'Balance charges use the current instance quota and exchange rate for display. Cash profit excludes operating expenses and taxes; upstream prepayments and unused gifts are not generation costs.'
-                    )}
-                  </p>
-                  <p className='text-muted-foreground text-xs'>
-                    {t(
-                      'Upstream costs are estimated from configured supplier prices, not reconciled supplier deductions or invoices.'
-                    )}
-                  </p>
+                  <ProfitFormulas />
                 </>
               )}
             </Tabs>

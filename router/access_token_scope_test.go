@@ -925,10 +925,10 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 		{"GET", "/api/client-activity/summary", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions/1", authz.UserActivityRead},
 		{"GET", "/api/media-operations", authz.MediaOperationsRead}, {"GET", "/api/media-concurrency", authz.MediaOperationsRead}, {"GET", "/api/video-usage", authz.VideoUsageRead},
 		{"GET", "/api/operations/overview", authz.OperationsRead}, {"GET", "/api/data/", authz.OperationsRead}, {"GET", "/api/data/users", authz.OperationsRead}, {"GET", "/api/data/flow", authz.OperationsRead},
-		{"GET", "/api/status/test", authz.DiagnosticsRead}, {"GET", "/api/log/", authz.DiagnosticsRead}, {"GET", "/api/log/stat", authz.DiagnosticsRead}, {"GET", "/api/log/search", authz.DiagnosticsRead}, {"GET", "/api/log/export", authz.DiagnosticsRead}, {"GET", "/api/log/channel_affinity_usage_cache", authz.DiagnosticsRead},
+		{"GET", "/api/operations/server-load", authz.DiagnosticsRead}, {"GET", "/api/status/test", authz.DiagnosticsRead}, {"GET", "/api/log/", authz.DiagnosticsRead}, {"GET", "/api/log/stat", authz.DiagnosticsRead}, {"GET", "/api/log/search", authz.DiagnosticsRead}, {"GET", "/api/log/export", authz.DiagnosticsRead}, {"GET", "/api/log/channel_affinity_usage_cache", authz.DiagnosticsRead},
 	}
 
-	for _, entry := range []struct{ method, path string }{{"GET", "/api/announcements"}, {"PUT", "/api/announcements"}, {"GET", "/api/customer-service"}, {"PUT", "/api/customer-service"}, {"POST", "/api/customer-service/assets"}} {
+	for _, entry := range []struct{ method, path string }{{"GET", "/api/announcements"}, {"PUT", "/api/announcements"}, {"GET", "/api/customer-service"}, {"PUT", "/api/customer-service"}, {"POST", "/api/customer-service/assets"}, {"GET", "/api/operations/server-load"}} {
 		for _, token := range []string{legacy, pat} {
 			w := request(entry.method, entry.path, token, `{}`, "http://example.com")
 			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
@@ -945,6 +945,18 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 			require.NoError(t, authz.ClearUserPermissions(users["admin"]))
 		})
 	}
+	t.Run("server load is an authenticated read-only diagnostic", func(t *testing.T) {
+		path := "/api/operations/server-load"
+		assert.Equal(t, http.StatusUnauthorized, request("GET", path, "", "", "http://example.com").Code)
+		require.NoError(t, authz.ClearUserPermissions(users["admin"]))
+		w := request("GET", path, credentials["admin"], "", "http://example.com")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Body.String(), `"schema_version":1`)
+		assert.Contains(t, w.Body.String(), `"refresh_interval_seconds":10`)
+		assert.NotContains(t, w.Body.String(), "permission-fixture")
+		assert.NotContains(t, w.Body.String(), "dsn")
+	})
 	t.Run("dedicated announcement grant preserves root system boundary", func(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, request("GET", "/api/announcements", credentials["admin"], "", "http://example.com").Code)
 		require.NoError(t, db.Transaction(func(tx *gorm.DB) error {

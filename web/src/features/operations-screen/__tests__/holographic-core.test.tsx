@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, it } from 'vitest'
 
 import { mediaPayload } from '@/features/media-operations/__tests__/fixtures'
@@ -25,6 +26,7 @@ import type { ClientActivitySummary } from '@/features/user-activity/types'
 
 import type { OperationsSnapshot } from '../api'
 import { HolographicCore } from '../components/holographic-core'
+import { OperationsSnapshotContent } from '../components/snapshot-content'
 
 const window = { start_timestamp: 100, end_timestamp: 200 }
 const totals = {
@@ -103,16 +105,29 @@ const concurrency: Extract<OperationsSnapshot, { tab: 'concurrency' }> = {
   },
 }
 
-it('shows original calls rather than billing events while preserving negative CNY cost and unverified cash profit', () => {
-  render(
+it('reads the primary label before its original call count while preserving negative CNY cost and unverified cash profit', () => {
+  const { container } = render(
     <HolographicCore
       snapshot={{ tab: 'profit', window, report }}
       paused={false}
     />
   )
-  expect(screen.getByRole('status', { name: 'Usage count' })).toHaveTextContent(
-    '3'
+  const primary = screen.getByRole('status', { name: 'Usage count' })
+  expect(primary).toHaveTextContent('3')
+  expect(
+    screen
+      .getByRole('heading', { name: 'Usage count' })
+      .compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).not.toBe(0)
+  expect(
+    screen.getByRole('region', { name: 'Usage count' })
+  ).not.toHaveAccessibleDescription()
+  expect(container.querySelector('.ops-holo-accent')).toHaveAttribute(
+    'aria-hidden',
+    'true'
   )
+  expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
   expect(screen.getByText('Cash profit').nextElementSibling).toHaveTextContent(
     'Pending confirmation'
   )
@@ -121,10 +136,10 @@ it('shows original calls rather than billing events while preserving negative CN
       .nextElementSibling
   ).toHaveTextContent('-CN¥1.00')
   expect(
-    screen.getByText(
+    screen.queryByText(
       'Paid-versus-gift funding allocations are not collected in this version. New consumption also remains unverified until a funding ledger is implemented.'
     )
-  ).toBeVisible()
+  ).not.toBeInTheDocument()
 })
 it('preserves verified negative cash profit and genuine zero calls instead of converting them into unknown or random animated digits', () => {
   render(
@@ -263,7 +278,10 @@ it('marks stale retained observations and pauses decoration without retaining a 
     'data-paused',
     'true'
   )
-  expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  expect(container.querySelector('.ops-holo-accent')).toHaveAttribute(
+    'aria-hidden',
+    'true'
+  )
   rerender(<HolographicCore paused />)
   expect(screen.getByText('Awaiting data')).toBeVisible()
   expect(
@@ -299,5 +317,33 @@ it('keeps an unobserved or first-failed core awaiting data with frozen decoratio
   expect(container.querySelector('.ops-holo-core')).toHaveAttribute(
     'data-paused',
     'false'
+  )
+})
+
+it('keeps the profit screen free of repeated accounting notes while making formulas available on demand', async () => {
+  const snapshot: OperationsSnapshot = { tab: 'profit', window, report }
+  render(
+    <>
+      <HolographicCore snapshot={snapshot} paused={false} />
+      <OperationsSnapshotContent snapshot={snapshot} showCharts={false} />
+    </>
+  )
+  expect(
+    screen.queryByText(
+      'Usage count means original calls. Unit prices are period averages per call after settlement and refunds, not current token, second or image tariffs. Pending, incomplete or refund-only periods remain unconfirmed.'
+    )
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(
+      'Paid revenue = Σ(consumed paid face value × original cash received ÷ original credited face value).'
+    )
+  ).not.toBeInTheDocument()
+  const notes = screen.getByRole('button', { name: 'Calculation notes' })
+  expect(notes).toHaveAttribute('aria-expanded', 'false')
+  await userEvent.click(notes)
+  expect(
+    screen.getByRole('region', { name: 'Profit formulas' })
+  ).toHaveTextContent(
+    'Paid revenue = Σ(consumed paid face value × original cash received ÷ original credited face value).'
   )
 })
