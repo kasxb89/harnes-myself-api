@@ -106,7 +106,7 @@ func defaultMediaConcurrencyPolicy() MediaConcurrencyPolicy {
 }
 
 func MigrateMediaAdmission(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Option{}, &MediaPool{}, &MediaAdmission{}); err != nil {
+	if err := db.AutoMigrate(&Option{}, &MediaPool{}, &MediaAdmission{}, &MediaHistoricalReconciliation{}); err != nil {
 		return err
 	}
 	return db.Transaction(func(tx *gorm.DB) error { _, err := mediaPolicyForUpdate(tx); return err })

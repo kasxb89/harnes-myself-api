@@ -48,6 +48,8 @@ type MediaSubmissionReceipt struct {
 	MediaKind                string `json:"media_kind"`
 	RejectionReason          string `json:"rejection_reason,omitempty"`
 	ProviderResponseReceived bool   `json:"provider_response_received,omitempty"`
+	HistoricalReconciliation bool   `json:"-"`
+	FundsPendingReview       bool   `json:"-"`
 }
 
 func MediaSubmissionFromContext(c *gin.Context) *MediaSubmission {
@@ -330,6 +332,31 @@ func ProjectMediaTaskSubmission(ctx context.Context, task *model.Task) (*MediaSu
 		}
 		_, terminal, err := ProjectH3TaskSubmission(ctx, task)
 		return nil, terminal, err
+	}
+	historical, historicalErr := model.MediaHistoricalTaskState(ctx, task)
+	if historicalErr != nil {
+		return nil, false, historicalErr
+	}
+	if historical != nil {
+		billing := "refunded"
+		if historical.FundsPending {
+			billing = "settlement_uncertain"
+		}
+		receipt := &MediaSubmissionReceipt{H3SubmissionReceipt: H3SubmissionReceipt{ID: task.TaskID, TaskID: task.TaskID, SubmissionCode: "media_submission_historically_reconciled", SubmissionState: "rejected", BillingState: billing, UpstreamSubmitted: true, Resubmittable: historical.Refunded, RefundConfirmed: historical.Refunded}, SchemaVersion: 1, Model: task.Properties.OriginModelName, MediaKind: task.PrivateData.MediaKind, RejectionReason: "historical_original_create_rejected", HistoricalReconciliation: true, FundsPendingReview: historical.FundsPending}
+		// The original POST did receive a model-unavailable refusal. Reuse
+		// that established semantic contract after the audited refund; the
+		// historical evidence remains distinct in the main-DB receipt.
+		if historical.Refunded {
+			receipt.SubmissionCode = MediaRejectedCode
+			receipt.SubmissionState = "not_submitted"
+			receipt.RejectionReason = "upstream_model_not_available"
+			receipt.ProviderResponseReceived = true
+		} else {
+			receipt.SubmissionCode = MediaUnknownCode
+			receipt.SubmissionState = "unknown"
+		}
+		receipt.Recovery.Method, receipt.Recovery.Path = http.MethodGet, "/v1/tasks/"+task.TaskID
+		return receipt, false, nil
 	}
 	rejected, rejectionErr := model.MediaConfirmedCreateRejectionState(ctx, task)
 	if rejectionErr != nil {

@@ -2,6 +2,8 @@ package router
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -1233,104 +1235,152 @@ func TestMediaConcurrencyHistoricalSavedURLSurvivesDeletedChannelWithoutCredenti
 	assert.Empty(t, stored.PrivateData.RouteDigest)
 }
 
-func TestMediaCreateRejectionExactResponseRefundAndRecovery(t *testing.T) {
-	for _, test := range []struct {
-		name, body string
-		status     int
-		rejected   bool
-	}{
-		{"exact", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, true},
-		{"whitespace", ` { "error" : { "type" : "invalid_request_error", "message" : "模型不存在：bt-seedance-2.0" } } `, 404, true},
-		{"extra_id", `{"id":"already-created","error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
-		{"nested_id", `{"error":{"id":"already-created","message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
-		{"receipt", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"},"media_submission_receipt":{"billing_state":"refunded"}}`, 404, false},
-		{"duplicate", `{"error":{"message":"accepted","message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
-		{"html", `<html>模型不存在：bt-seedance-2.0</html>`, 404, false},
-		{"other_model", `{"error":{"message":"模型不存在：other-model","type":"invalid_request_error"}}`, 404, false},
-		{"other_type", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"server_error"}}`, 404, false},
-		{"contradiction", `{"status":"queued","error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
-		{"truncated", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}`, 404, false},
-		{"503", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 503, false},
-		{"429", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 429, false},
-		{"2xx_bad", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 200, false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			f := newMediaNativeFixture(t)
-			f.postStatus, f.postBody = test.status, test.body
-			beforeWallet, beforeToken := f.balance(t)
-			response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"free loopback create refusal","seconds":10,"size":"1792x1024"}`)
-			var wire struct {
-				ID      string                          `json:"id"`
-				Receipt *service.MediaSubmissionReceipt `json:"media_submission_receipt"`
+func TestMediaCreateRejectionSupportedModelContract(t *testing.T) {
+	source, err := os.ReadFile("../deploy/instance/blackrxai-video-plugin.js")
+	require.NoError(t, err)
+	registry := jsplugin.NewRegistry()
+	plugin, err := registry.Register(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, registry.Unregister(plugin.Meta.Key)) })
+	require.Equal(t, model.BlackrxCreateRejectionSourceHash, plugin.SourceHash)
+	for _, modelName := range plugin.Meta.Models {
+		t.Run(modelName, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"error":{"message":"模型不存在：%s","type":"invalid_request_error"}}`, modelName))
+			assert.True(t, model.IsBlackrxModelMissingCreateBody(body, modelName))
+			assert.False(t, model.IsBlackrxModelMissingCreateBody(body, modelName+"-unlisted"))
+			otherModel := "bt-seedance-2.0"
+			if modelName == otherModel {
+				otherModel = "sd2-hn2-480-pro"
 			}
-			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
-			require.NotEmpty(t, wire.ID)
-			task := f.task(t, wire.ID)
-			var admission model.MediaAdmission
-			require.NoError(t, f.db.Where("id = ?", wire.ID).First(&admission).Error)
-			assert.Positive(t, admission.SendingAt)
-			assert.False(t, admission.ProviderTerminal)
-			assert.Equal(t, "synthetic-media-blackrxai-video", task.PrivateData.Key)
-			assert.NotEmpty(t, task.PrivateData.RouteDigest)
-			assert.Empty(t, task.PrivateData.UpstreamTaskID)
-			var pool model.MediaPool
-			require.NoError(t, f.db.Where("id = ?", admission.PoolID).First(&pool).Error)
-			afterWallet, afterToken := f.balance(t)
-			if test.rejected {
-				assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
-				require.NotNil(t, wire.Receipt)
-				assert.Equal(t, service.MediaRejectedCode, wire.Receipt.SubmissionCode)
-				assert.Equal(t, "not_submitted", wire.Receipt.SubmissionState)
-				assert.Equal(t, "refunded", wire.Receipt.BillingState)
-				assert.True(t, wire.Receipt.RefundConfirmed)
-				assert.True(t, wire.Receipt.ProviderResponseReceived)
-				assert.True(t, wire.Receipt.UpstreamSubmitted, "a confirmed create refusal is not a not-sent proof")
-				if test.name == "exact" {
-					t.Logf("API_HANDLER_FIXTURE rejected-create %s", response.Body.String())
-				}
-				assert.Equal(t, "upstream_model_not_available", wire.Receipt.RejectionReason)
-				assert.Equal(t, model.MediaReleased, admission.State)
-				assert.Equal(t, "refunded", admission.BillingState)
-				assert.Zero(t, pool.Occupied)
-				assert.Zero(t, task.Quota)
-				assert.EqualValues(t, model.TaskStatusFailure, task.Status)
-				assert.Equal(t, beforeWallet, afterWallet)
-				assert.Equal(t, beforeToken, afterToken)
-				require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
-				require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
-			} else {
-				assert.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
-				assert.Nil(t, wire.Receipt)
-				assert.Equal(t, model.MediaUnknown, admission.State)
-				assert.Empty(t, admission.CreateRejection)
-				assert.Equal(t, 1, pool.Occupied)
-				assert.Less(t, afterWallet, beforeWallet)
-				assert.Less(t, afterToken, beforeToken)
-				assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
-			}
-			for range 2 {
-				require.NoError(t, model.MigrateMediaAdmission(f.db))
-				get := f.request(t, http.MethodGet, "/v1/tasks/"+wire.ID, "")
-				require.Equal(t, 200, get.Code)
-				if test.rejected {
-					assert.Contains(t, get.Body.String(), `"provider_response_received":true`)
-					assert.Contains(t, get.Body.String(), `"status":"FAILURE"`)
-					if test.name == "exact" {
-						t.Logf("API_HANDLER_FIXTURE rejected-get %s", get.Body.String())
-					}
-				} else {
-					assert.NotContains(t, get.Body.String(), `"media_submission_receipt"`)
-					assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
-				}
-			}
-			f.mu.Lock()
-			assert.Equal(t, 1, f.posts)
-			assert.Zero(t, f.gets)
-			f.mu.Unlock()
-			finalWallet, finalToken := f.balance(t)
-			assert.Equal(t, afterWallet, finalWallet)
-			assert.Equal(t, afterToken, finalToken)
+			assert.False(t, model.IsBlackrxModelMissingCreateBody(body, otherModel), "another supported model is still a mismatched refusal")
 		})
+	}
+	for _, unsupported := range []string{"", "video-sd25-720p", "other-model", "BT-seedance-2.0", "sd2-hn2-480-pro "} {
+		body := []byte(fmt.Sprintf(`{"error":{"message":"模型不存在：%s","type":"invalid_request_error"}}`, unsupported))
+		assert.False(t, model.IsBlackrxModelMissingCreateBody(body, unsupported))
+	}
+}
+
+func TestMediaCreateRejectionExactResponseRefundAndRecovery(t *testing.T) {
+	for _, modelName := range []string{"bt-seedance-2.0", "sd2-hn2-480-pro", "sd2-th-2.0-720p"} {
+		for _, test := range []struct {
+			name, body string
+			status     int
+			rejected   bool
+		}{
+			{"exact", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, true},
+			{"whitespace", ` { "error" : { "type" : "invalid_request_error", "message" : "模型不存在：bt-seedance-2.0" } } `, 404, true},
+			{"extra_id", `{"id":"already-created","error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+			{"nested_id", `{"error":{"id":"already-created","message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+			{"receipt", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"},"media_submission_receipt":{"billing_state":"refunded"}}`, 404, false},
+			{"duplicate", `{"error":{"message":"accepted","message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+			{"duplicate_error", `{"error":{"id":"already-created"},"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+			{"escaped_model", `{"error":{"message":"模型不存在：bt-seedance-2\u002e0","type":"invalid_request_error"}}`, 404, false},
+			{"html", `<html>模型不存在：bt-seedance-2.0</html>`, 404, false},
+			{"other_model", `{"error":{"message":"模型不存在：other-model","type":"invalid_request_error"}}`, 404, false},
+			{"other_type", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"server_error"}}`, 404, false},
+			{"contradiction", `{"status":"queued","error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 404, false},
+			{"truncated", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}`, 404, false},
+			{"503", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 503, false},
+			{"429", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 429, false},
+			{"2xx_bad", `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`, 200, false},
+		} {
+			t.Run(modelName+"/"+test.name, func(t *testing.T) {
+				f := newMediaNativeFixture(t)
+				seconds := 10
+				accountKey := "synthetic-media-blackrxai-video"
+				if modelName != "bt-seedance-2.0" {
+					seconds = 15
+					accountKey += "-" + modelName
+					require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", 880).Update("key", accountKey).Error)
+					model.InitChannelCache()
+					pricing, err := common.Marshal(map[string]string{"blackrxai-video::" + modelName: `u("seconds") * 0.02`})
+					require.NoError(t, err)
+					require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{billing_setting.PluginBillingExprOption: string(pricing)}))
+					f.catalogByKey = map[string]string{accountKey: fmt.Sprintf(`{"data":[{"id":%q}]}`, modelName)}
+				}
+				f.postStatus, f.postBody = test.status, strings.ReplaceAll(test.body, "bt-seedance-2.0", modelName)
+				beforeWallet, beforeToken := f.balance(t)
+				response := f.request(t, http.MethodPost, "/v1/videos", fmt.Sprintf(`{"model":%q,"prompt":"free loopback create refusal","seconds":%d,"size":"1792x1024"}`, modelName, seconds))
+				var wire struct {
+					ID      string                          `json:"id"`
+					Receipt *service.MediaSubmissionReceipt `json:"media_submission_receipt"`
+				}
+				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+				require.NotEmpty(t, wire.ID, response.Body.String())
+				task := f.task(t, wire.ID)
+				var admission model.MediaAdmission
+				require.NoError(t, f.db.Where("id = ?", wire.ID).First(&admission).Error)
+				assert.Positive(t, admission.SendingAt)
+				assert.False(t, admission.ProviderTerminal)
+				assert.Equal(t, accountKey, task.PrivateData.Key)
+				assert.NotEmpty(t, task.PrivateData.RouteDigest)
+				assert.Empty(t, task.PrivateData.UpstreamTaskID)
+				var pool model.MediaPool
+				require.NoError(t, f.db.Where("id = ?", admission.PoolID).First(&pool).Error)
+				afterWallet, afterToken := f.balance(t)
+				if test.rejected {
+					assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+					require.NotNil(t, wire.Receipt)
+					assert.Equal(t, service.MediaRejectedCode, wire.Receipt.SubmissionCode)
+					assert.Equal(t, "not_submitted", wire.Receipt.SubmissionState)
+					assert.Equal(t, "refunded", wire.Receipt.BillingState)
+					assert.True(t, wire.Receipt.RefundConfirmed)
+					assert.True(t, wire.Receipt.ProviderResponseReceived)
+					assert.True(t, wire.Receipt.UpstreamSubmitted, "a confirmed create refusal is not a not-sent proof")
+					if test.name == "exact" {
+						t.Logf("API_HANDLER_FIXTURE rejected-create %s", response.Body.String())
+					}
+					assert.Equal(t, "upstream_model_not_available", wire.Receipt.RejectionReason)
+					assert.Equal(t, model.MediaReleased, admission.State)
+					assert.Equal(t, "refunded", admission.BillingState)
+					assert.Zero(t, pool.Occupied)
+					assert.Zero(t, task.Quota)
+					assert.EqualValues(t, model.TaskStatusFailure, task.Status)
+					assert.Equal(t, beforeWallet, afterWallet)
+					assert.Equal(t, beforeToken, afterToken)
+					var eventsBefore int64
+					require.NoError(t, f.db.Model(&model.WalletFundingEvent{}).Where("user_id = ? AND request_id = ?", task.UserId, task.PrivateData.FundingRequestId).Count(&eventsBefore).Error)
+					assert.EqualValues(t, 2, eventsBefore, "exactly one reservation and its reversal")
+					require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
+					require.NoError(t, model.RefundMediaCreateRejection(context.Background(), task))
+					var eventsAfter int64
+					require.NoError(t, f.db.Model(&model.WalletFundingEvent{}).Where("user_id = ? AND request_id = ?", task.UserId, task.PrivateData.FundingRequestId).Count(&eventsAfter).Error)
+					assert.Equal(t, eventsBefore, eventsAfter, "recovery cannot append another refund")
+				} else {
+					assert.Equal(t, http.StatusAccepted, response.Code, response.Body.String())
+					assert.Nil(t, wire.Receipt)
+					assert.Equal(t, model.MediaUnknown, admission.State)
+					assert.Empty(t, admission.CreateRejection)
+					assert.Equal(t, 1, pool.Occupied)
+					assert.Less(t, afterWallet, beforeWallet)
+					assert.Less(t, afterToken, beforeToken)
+					assert.Error(t, model.RefundMediaCreateRejection(context.Background(), task))
+				}
+				for range 2 {
+					require.NoError(t, model.MigrateMediaAdmission(f.db))
+					get := f.request(t, http.MethodGet, "/v1/tasks/"+wire.ID, "")
+					require.Equal(t, 200, get.Code)
+					if test.rejected {
+						assert.Contains(t, get.Body.String(), `"provider_response_received":true`)
+						assert.Contains(t, get.Body.String(), `"status":"FAILURE"`)
+						if test.name == "exact" {
+							t.Logf("API_HANDLER_FIXTURE rejected-get %s", get.Body.String())
+						}
+					} else {
+						assert.NotContains(t, get.Body.String(), `"media_submission_receipt"`)
+						assert.Contains(t, get.Body.String(), `"status":"UNKNOWN"`)
+					}
+				}
+				f.mu.Lock()
+				assert.Equal(t, 1, f.posts)
+				assert.Zero(t, f.gets)
+				f.mu.Unlock()
+				finalWallet, finalToken := f.balance(t)
+				assert.Equal(t, afterWallet, finalWallet)
+				assert.Equal(t, afterToken, finalToken)
+			})
+		}
 	}
 }
 
@@ -1867,4 +1917,76 @@ func TestMediaCatalogCandidateSelectionBeforeAnyAdmissionOrCharge(t *testing.T) 
 			}
 		})
 	}
+}
+
+// The history transaction is covered across all three databases in model.
+// This fixture supplies its committed audit row to the actual GET presenter,
+// proving that the existing strict desktop rejection contract stays unchanged.
+func TestMediaHistoricalReconciliationGETPreservesDesktopReceiptContract(t *testing.T) {
+	f := newMediaNativeFixture(t)
+	f.postStatus = http.StatusNotFound
+	f.postBody = `{"error":{"message":"模型不存在：bt-seedance-2.0","type":"invalid_request_error"}}`
+	response := f.request(t, http.MethodPost, "/v1/videos", `{"model":"bt-seedance-2.0","prompt":"synthetic historical projection","seconds":10,"size":"1792x1024"}`)
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	var created struct {
+		ID string `json:"id"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &created))
+	task := f.task(t, created.ID)
+	// The ordinary router fixture disables usage logging. Supply the original
+	// log store explicitly for this committed-history projection fixture.
+	require.NoError(t, f.db.AutoMigrate(&model.Log{}, &model.SubscriptionPreConsumeRecord{}))
+	previousLogDB := model.LOG_DB
+	model.LOG_DB = f.db
+	defer func() { model.LOG_DB = previousLogDB }()
+	require.NoError(t, f.db.Create(&model.Log{Id: 1, UserId: task.UserId, ChannelId: task.ChannelId, TokenId: task.PrivateData.TokenId, ModelName: task.Properties.OriginModelName, Type: model.LogTypeError, RequestId: task.PrivateData.Execution.RequestID}).Error)
+	var admission model.MediaAdmission
+	require.NoError(t, f.db.Where("task_db_id = ?", task.ID).First(&admission).Error)
+	var original model.MediaCreateRejection
+	require.NoError(t, common.UnmarshalJsonStr(admission.CreateRejection, &original))
+	require.NoError(t, f.db.Model(&model.MediaAdmission{}).Where("id = ?", admission.ID).Update("create_rejection", nil).Error)
+	before := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "")
+	require.Equal(t, http.StatusOK, before.Code, before.Body.String())
+	assert.Contains(t, before.Body.String(), `"status":"UNKNOWN"`)
+	assert.NotContains(t, before.Body.String(), `"media_submission_receipt"`)
+	snapshot, err := model.InspectMediaHistoricalReconciliation(context.Background(), []int64{task.ID})
+	require.NoError(t, err)
+	hashes, err := common.Marshal(snapshot.Entries[0].Hashes)
+	require.NoError(t, err)
+	receipt := model.MediaHistoricalReconciliation{TaskDBID: task.ID, TaskID: task.TaskID, UserID: task.UserId, OperationID: "synthetic-committed-historical-audit", ManifestSHA256: strings.Repeat("a", 64), EntrySHA256: strings.Repeat("b", 64), Action: model.MediaHistoricalRefund, OriginalQuota: original.OriginalQuota, BeforeHashes: string(hashes), AfterHashes: string(hashes), Evidence: "synthetic operator receipt fixture", CreatedAt: time.Now().Unix()}
+	encoded, err := common.Marshal(receipt)
+	require.NoError(t, err)
+	sum := sha256.Sum256(encoded)
+	receipt.ReceiptSHA256 = hex.EncodeToString(sum[:])
+	require.NoError(t, f.db.Create(&receipt).Error)
+	get := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "")
+	require.Equal(t, http.StatusOK, get.Code, get.Body.String())
+	var recovered struct {
+		Status  string                          `json:"status"`
+		Receipt *service.MediaSubmissionReceipt `json:"media_submission_receipt"`
+	}
+	require.NoError(t, common.Unmarshal(get.Body.Bytes(), &recovered))
+	require.NotNil(t, recovered.Receipt)
+	assert.Equal(t, "FAILURE", recovered.Status)
+	assert.Equal(t, service.MediaRejectedCode, recovered.Receipt.SubmissionCode)
+	assert.Equal(t, "not_submitted", recovered.Receipt.SubmissionState)
+	assert.Equal(t, "refunded", recovered.Receipt.BillingState)
+	assert.Equal(t, "upstream_model_not_available", recovered.Receipt.RejectionReason)
+	assert.True(t, recovered.Receipt.RefundConfirmed)
+	assert.True(t, recovered.Receipt.ProviderResponseReceived)
+	assert.True(t, recovered.Receipt.UpstreamSubmitted)
+	assert.True(t, recovered.Receipt.Resubmittable)
+	assert.NotContains(t, get.Body.String(), "historical_reconciliation")
+	assert.NotContains(t, get.Body.String(), "funds_pending_review")
+	assert.NotContains(t, get.Body.String(), "provider_terminal_confirmed")
+	admissionID := admission.ID
+	admission = model.MediaAdmission{}
+	require.NoError(t, f.db.Where("id = ?", admissionID).First(&admission).Error)
+	assert.Empty(t, admission.CreateRejection)
+	assert.False(t, admission.ProviderTerminal)
+	t.Logf("API_HANDLER_FIXTURE historical-reconciled-get %s", get.Body.String())
+	f.mu.Lock()
+	assert.Equal(t, 1, f.posts)
+	assert.Zero(t, f.gets)
+	f.mu.Unlock()
 }

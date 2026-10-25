@@ -50,8 +50,10 @@ type MediaCreateRejection struct {
 // finite create rejection shape. Duplicate keys, IDs, receipts, extra fields,
 // HTML, truncated JSON and contradictory states cannot match it. Whitespace
 // outside JSON strings is immaterial; escaped/alternative shapes remain unknown.
+// Model identity is bounded by the host's existing Blackrx video input schema,
+// while callers separately require the frozen, reviewed plugin source.
 func IsBlackrxModelMissingCreateBody(body []byte, upstreamModel string) bool {
-	if len(body) == 0 || len(body) > 4096 || !utf8.Valid(body) || upstreamModel != "bt-seedance-2.0" {
+	if len(body) == 0 || len(body) > 4096 || !utf8.Valid(body) || len(BlackrxSupportedDurations(upstreamModel)) == 0 {
 		return false
 	}
 	var decoded any
