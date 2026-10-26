@@ -196,7 +196,10 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 	status := rateLimitFactory(120, 60, "GA:status")
 	account := userRateLimitFactory(120, 60, "management-account")
 	statistics := userRateLimitFactory(60, 60, "management-statistics")
-	history := userRateLimitFactory(60, 60, "management-history")
+	// Old clients fetch a receipt per request when opening long histories.
+	// Preserve the deployed 360-request/180-second burst and window while
+	// moving it to the verified user, separate from account and activity reads.
+	history := userRateLimitFactory(360, 180, "management-history")
 	return func(c *gin.Context) {
 		// These public reads and high-entropy session renewals have their own
 		// bounded IP protection. They must not share a history-query budget.

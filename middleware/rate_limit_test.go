@@ -358,13 +358,13 @@ func TestManagementReadRateLimitsIsolateHistoryAndIdentity(t *testing.T) {
 				require.Equal(t, http.StatusNoContent, managementRateLimitRequest(router, http.MethodGet, "/api/other", remoteAddr, "").Code)
 			}
 			require.Equal(t, http.StatusTooManyRequests, managementRateLimitRequest(router, http.MethodGet, "/api/other", remoteAddr, "").Code)
-			for range 60 {
+			for range 360 {
 				require.Equal(t, http.StatusNoContent, managementRateLimitRequest(router, http.MethodGet, "/api/log/self", remoteAddr, token).Code)
 			}
 			historyLimited := managementRateLimitRequest(router, http.MethodGet, "/api/log/self", remoteAddr, token)
 			require.Equal(t, http.StatusTooManyRequests, historyLimited.Code)
 			assert.JSONEq(t, `{"success":false,"code":"API_RATE_LIMITED","message":"Too many requests","message_key":"Too many requests"}`, historyLimited.Body.String())
-			assert.Equal(t, "60", historyLimited.Header().Get("Retry-After"))
+			assert.Equal(t, "180", historyLimited.Header().Get("Retry-After"))
 			assert.Equal(t, "no-store", historyLimited.Header().Get("Cache-Control"))
 			assert.Contains(t, historyLimited.Header().Values("Vary"), "Authorization")
 			assert.Empty(t, historyLimited.Header().Values("Set-Cookie"))
