@@ -52,6 +52,16 @@ func GetStatus(c *gin.Context) {
 
 	data := gin.H{
 		"version": common.Version,
+		"usage_receipts": gin.H{
+			"schema_version":         1,
+			"batch_path":             "/api/log/self/batch",
+			"method":                 http.MethodPost,
+			"max_request_ids":        model.MaxReceiptBatchRequestIDs,
+			"max_body_bytes":         model.MaxReceiptBatchBodyBytes,
+			"max_consume_logs":       model.MaxReceiptBatchLogRows,
+			"refund_state":           false,
+			"final_settlement_state": false,
+		},
 		"video_queue": gin.H{
 			"schema_version":           1,
 			"enabled":                  constant.UpdateTask && service.VideoQueueDispatcherReady(),

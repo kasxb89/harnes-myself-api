@@ -414,10 +414,15 @@ func TestAccessTokenIdentityAndSingleLookup(t *testing.T) {
 
 	router := gin.New()
 	router.Use(AccessTokenAudit())
-	router.GET("/api/user/self", UserAuth(), func(c *gin.Context) {
+	router.GET("/api/user/self", func(c *gin.Context) {
+		if !ensureDashboardAuth(c, common.RoleCommonUser, nil) {
+			return
+		}
+		c.Set("id", -1)
+	}, UserAuth(), func(c *gin.Context) {
 		_, session := GetSessionAuthIdentity(c)
 		identity, stepUp := GetStepUpIdentity(c)
-		c.JSON(http.StatusOK, gin.H{"session": session, "step_up": stepUp, "identity": identity})
+		c.JSON(http.StatusOK, gin.H{"session": session, "step_up": stepUp, "identity": identity, "user_id": c.GetInt("id")})
 	})
 
 	var queries []string
@@ -453,9 +458,11 @@ func TestAccessTokenIdentityAndSingleLookup(t *testing.T) {
 				Session  bool                 `json:"session"`
 				StepUp   bool                 `json:"step_up"`
 				Identity service.AuthIdentity `json:"identity"`
+				UserID   int                  `json:"user_id"`
 			}
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
 			assert.False(t, body.Session, "an access token is never a browser session")
+			assert.Equal(t, user.Id, body.UserID, "verified authentication restores identity instead of trusting context id")
 			assert.Equal(t, test.stepUp, body.StepUp)
 			if test.stepUp {
 				assert.Equal(t, service.AuthIdentity{UserID: user.Id, SessionID: model.AccessTokenSessionID(token.Id), UserAuthVersion: user.AuthVersion, SessionVersion: model.AccessTokenSessionVersion}, body.Identity)
@@ -546,4 +553,43 @@ func TestApplyWebSocketSubprotocolAuthorizationReadsRepeatedHeaders(t *testing.T
 
 	assert.True(t, applyWebSocketSubprotocolAuthorization(header))
 	assert.Equal(t, "Bearer sk-later-field", header.Get("Authorization"))
+}
+
+func TestDashboardAuthProofDoesNotCrossCredentialsRolesOrRequests(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	_, identity, token := managementRateLimitSession(t, "proof-boundaries")
+	for _, test := range []struct {
+		name   string
+		change gin.HandlerFunc
+		auth   gin.HandlerFunc
+		status int
+		code   string
+	}{
+		{name: "changed authorization", change: func(c *gin.Context) { c.Request.Header.Set("Authorization", "Bearer unknown") }, auth: UserAuth(), status: http.StatusUnauthorized, code: "AUTH_UNAUTHORIZED"},
+		{name: "higher role", change: func(c *gin.Context) { c.Set("role", common.RoleRootUser) }, auth: AdminAuth(), status: http.StatusForbidden, code: "AUTH_INSUFFICIENT_PRIVILEGE"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			router := gin.New()
+			router.GET("/protected", func(c *gin.Context) {
+				if !ensureDashboardAuth(c, common.RoleCommonUser, nil) {
+					return
+				}
+				test.change(c)
+			}, test.auth, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+			response := middlewareBearerRequest(router, "/protected", token)
+			assert.Equal(t, test.status, response.Code)
+			assert.Contains(t, response.Body.String(), test.code)
+		})
+	}
+	router := gin.New()
+	router.GET("/protected", UserAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	require.Equal(t, http.StatusNoContent, middlewareBearerRequest(router, "/protected", token).Code)
+	tampered := middlewareBearerRequest(router, "/protected", tamperDashboardToken(token))
+	assert.Equal(t, http.StatusUnauthorized, tampered.Code, "success is never reused by another request")
+	changed, err := model.RevokeUserSession(identity.UserID, identity.SessionID, "test")
+	require.NoError(t, err)
+	require.True(t, changed)
+	revoked := middlewareBearerRequest(router, "/protected", token)
+	assert.Equal(t, http.StatusUnauthorized, revoked.Code)
+	assert.Contains(t, revoked.Body.String(), "AUTH_SESSION_REVOKED", "an earlier success cannot outlive a session revocation on the next request")
 }

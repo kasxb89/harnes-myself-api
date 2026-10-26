@@ -25,6 +25,7 @@ import (
 
 const (
 	authIdentityContextKey        = "auth_identity"
+	dashboardAuthProofContextKey  = "dashboard_auth_proof"
 	accessTokenLookupContextKey   = "access_token_lookup"
 	accessTokenIdentityContextKey = "access_token_identity"
 	accessTokenSessionRequiredMsg = "a dashboard login session is required"
@@ -49,37 +50,100 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
-func authHelper(c *gin.Context, minRole int) {
-	if _, started := c.Get(accessTokenAuditContextKey); !started {
-		defer finishAccessTokenAudit(c)
+// dashboardAuthProof is a successful verification for this exact request and
+// route. Context fields such as id alone are never an authentication proof.
+type dashboardAuthProof struct {
+	request        *http.Request
+	method         string
+	path           string
+	authorization  string
+	minRole        int
+	user           *model.UserBase
+	identity       service.AuthIdentity
+	useAccessToken bool
+	lookup         *accessTokenLookup
+}
+
+// ensureDashboardAuth verifies without advancing Gin's handler chain. The
+// optional rejection limiter keeps failed probes under the normal IP budget
+// without charging successfully authenticated reads to a shared IP bucket.
+func ensureDashboardAuth(c *gin.Context, minRole int, rejectionLimit gin.HandlerFunc) bool {
+	if value, exists := c.Get(dashboardAuthProofContextKey); exists {
+		if proof, ok := value.(*dashboardAuthProof); ok && proof.request == c.Request &&
+			proof.method == c.Request.Method && proof.path == c.FullPath() &&
+			proof.authorization == c.GetHeader("Authorization") && proof.minRole >= minRole {
+			setDashboardAuthContext(c, proof.user, proof.identity, proof.useAccessToken)
+			if proof.lookup != nil {
+				setAccessTokenContext(c, proof.lookup)
+			}
+			return true
+		}
 	}
 	user, identity, useAccessToken, err := authenticateDashboardRequest(c)
 	if err != nil {
+		if rejectionLimit != nil {
+			rejectionLimit(c)
+			if c.IsAborted() {
+				return false
+			}
+		}
 		writeDashboardAuthError(c, err)
-		return
+		return false
 	}
-	if user.Status != common.UserStatusEnabled {
-		abortWithWebMessage(c, http.StatusUnauthorized, "AUTH_USER_DISABLED", common.NewMessage("User has been banned"))
-		return
-	}
-	if user.Role < minRole {
-		abortWithWebMessage(c, http.StatusForbidden, "AUTH_INSUFFICIENT_PRIVILEGE", common.NewMessage("Unauthorized, insufficient privileges"))
-		return
+	code, status := "", 0
+	var message *common.Message
+	switch {
+	case user.Status != common.UserStatusEnabled:
+		code, status, message = "AUTH_USER_DISABLED", http.StatusUnauthorized, common.NewMessage("User has been banned")
+	case user.Role < minRole:
+		code, status, message = "AUTH_INSUFFICIENT_PRIVILEGE", http.StatusForbidden, common.NewMessage("Unauthorized, insufficient privileges")
 	}
 	var lookup *accessTokenLookup
 	if useAccessToken {
 		lookup = requestAccessTokenLookup(c)
-		if !enforceAccessTokenRoute(c, lookup, true) {
-			return
+	}
+	if status != 0 || lookup != nil && !enforceAccessTokenRoute(c, lookup, false) {
+		if rejectionLimit != nil {
+			rejectionLimit(c)
+			if c.IsAborted() {
+				return false
+			}
 		}
+		if status != 0 {
+			abortWithWebMessage(c, status, code, message)
+		} else {
+			enforceAccessTokenRoute(c, lookup, true)
+		}
+		return false
 	}
 	if !validUserInfo(user.Username, user.Role) {
+		if rejectionLimit != nil {
+			rejectionLimit(c)
+			if c.IsAborted() {
+				return false
+			}
+		}
 		abortWithWebMessage(c, http.StatusUnauthorized, "AUTH_USER_INVALID", common.NewMessage("Unauthorized, invalid user info"))
-		return
+		return false
 	}
 	setDashboardAuthContext(c, user, identity, useAccessToken)
 	if lookup != nil {
 		setAccessTokenContext(c, lookup)
+	}
+	c.Set(dashboardAuthProofContextKey, &dashboardAuthProof{
+		request: c.Request, method: c.Request.Method, path: c.FullPath(),
+		authorization: c.GetHeader("Authorization"), minRole: minRole,
+		user: user, identity: identity, useAccessToken: useAccessToken, lookup: lookup,
+	})
+	return true
+}
+
+func authHelper(c *gin.Context, minRole int) {
+	if _, started := c.Get(accessTokenAuditContextKey); !started {
+		defer finishAccessTokenAudit(c)
+	}
+	if !ensureDashboardAuth(c, minRole, nil) {
+		return
 	}
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
@@ -89,9 +153,7 @@ func authHelper(c *gin.Context, minRole int) {
 	if minRole >= common.RoleAdminUser {
 		auditWriter = beginAdminAudit(c)
 	}
-
 	c.Next()
-
 	finishAdminAudit(c, auditWriter)
 }
 

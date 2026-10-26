@@ -244,6 +244,246 @@ func TestLogExportRules(t *testing.T) {
 	})
 }
 
+func callReceiptBatchHandler(t *testing.T, userID, role int, body string) (*httptest.ResponseRecorder, map[string]any) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/log/self/batch?user_id=2", strings.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Request.Header.Set("New-Api-User", "2")
+	ctx.Request.Header.Set("X-User-Id", "2")
+	ctx.Set("id", userID)
+	ctx.Set("role", role)
+	GetUserLogReceipts(ctx)
+	var response map[string]any
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	return recorder, response
+}
+
+func TestUserLogReceiptsDatabaseMatrix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = true
+	t.Cleanup(func() { common.IsMasterNode = previousMaster })
+	for _, tc := range []struct {
+		kind, env string
+		typ       common.DatabaseType
+	}{
+		{"sqlite", "", common.DatabaseTypeSQLite},
+		{"mysql", "AUDIT_MYSQL_DSN", common.DatabaseTypeMySQL},
+		{"postgres", "AUDIT_POSTGRES_DSN", common.DatabaseTypePostgreSQL},
+		{"clickhouse", "AUDIT_CLICKHOUSE_DSN", common.DatabaseTypeClickHouse},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			dsn := os.Getenv(tc.env)
+			if tc.env != "" && dsn == "" {
+				t.Skip(tc.env + " is not configured")
+			}
+			logDB, isolatedDSN := newAuditTestDatabase(t, tc.kind, dsn)
+			mainDB, mainType := logDB, tc.typ
+			if tc.kind == "clickhouse" {
+				mainDB, _ = newAuditTestDatabase(t, "sqlite", "")
+				mainType = common.DatabaseTypeSQLite
+			}
+			useLogExportDatabases(t, mainDB, logDB, mainType, tc.typ)
+			require.NoError(t, mainDB.AutoMigrate(&model.Channel{}))
+			if tc.kind == "clickhouse" {
+				t.Setenv("LOG_SQL_DSN", isolatedDSN)
+				require.NoError(t, model.InitLogDB())
+			} else {
+				require.NoError(t, logDB.AutoMigrate(&model.Log{}))
+			}
+			versionSQL := "SELECT version()"
+			if tc.kind == "sqlite" {
+				versionSQL = "SELECT sqlite_version()"
+			}
+			var version string
+			require.NoError(t, model.LOG_DB.Raw(versionSQL).Scan(&version).Error)
+			t.Logf("receipt log database: %s %s", tc.kind, version)
+			now := time.Now().Unix()
+			seedExportLogs(t, mainDB, model.LOG_DB, now)
+			for _, log := range []model.Log{
+				{UserId: 1, CreatedAt: now - 20, Type: model.LogTypeConsume, RequestId: "a-1", ModelName: "gpt-a", Quota: 15, PromptTokens: 12, CompletionTokens: 34, UseTime: 2,
+					Content: "private-content", Ip: "192.0.2.1", TokenName: "private-token", ChannelId: 9, UpstreamRequestId: "private-upstream", Other: `{"admin_info":{"secret":"private-secret"}}`},
+				{UserId: 2, CreatedAt: now - 10, Type: model.LogTypeConsume, RequestId: "a-1", ModelName: "other-user", Quota: 999},
+				{UserId: 1, CreatedAt: now - 5, Type: model.LogTypeRefund, RequestId: "a-1", ModelName: "gpt-a", Quota: 15},
+				{UserId: 1, CreatedAt: now - 4, Type: model.LogTypeError, RequestId: "a-1", Content: "private-error"},
+				{UserId: 1, CreatedAt: now - 3, Type: model.LogTypeClientError, RequestId: "client-error", Content: "private-client-error"},
+				{UserId: 1, CreatedAt: now - 2, Type: model.LogTypeConsume, RequestId: "zero", ModelName: "free", Quota: 0},
+				{UserId: 2, CreatedAt: now - 1, Type: model.LogTypeConsume, RequestId: "' OR 1=1 --", Quota: 999},
+			} {
+				require.NoError(t, model.LOG_DB.Create(&log).Error)
+			}
+
+			t.Run("ordered unique own consumption and unknown financial state", func(t *testing.T) {
+				recorder, response := callReceiptBatchHandler(t, 1, common.RoleCommonUser,
+					`{"request_ids":["missing","a-1","b-1","a-1","zero","a-2","client-error","' OR 1=1 --"]}`)
+				require.Equal(t, http.StatusOK, recorder.Code)
+				assert.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+				require.Equal(t, true, response["success"])
+				data := response["data"].(map[string]any)
+				assert.EqualValues(t, 1, data["schema_version"])
+				assert.InDelta(t, now-operation_setting.GetLogSetting().MaxRangeSeconds(), data["lookup_window_start_unix"], 5)
+				items := data["items"].([]any)
+				require.Len(t, items, 7)
+				for i, expectedID := range []string{"missing", "a-1", "b-1", "zero", "a-2", "client-error", "' OR 1=1 --"} {
+					item := items[i].(map[string]any)
+					assert.Equal(t, expectedID, item["request_id"])
+					assert.Equal(t, "unknown", item["settlement_status"])
+					assert.Equal(t, "unknown", item["refund_status"])
+					if i != 1 && i != 3 {
+						assert.Equal(t, "not_found", item["status"])
+						assert.Equal(t, []any{}, item["consume_logs"])
+					}
+				}
+				found := items[1].(map[string]any)
+				assert.Equal(t, "found", found["status"])
+				rows := found["consume_logs"].([]any)
+				require.Len(t, rows, 2)
+				assert.Equal(t, map[string]any{"request_id": "a-1", "model_name": "gpt-a", "quota": float64(15), "prompt_tokens": float64(12),
+					"completion_tokens": float64(34), "created_at": float64(now - 20), "use_time": float64(2)}, rows[0])
+				assert.EqualValues(t, 10, rows[1].(map[string]any)["quota"])
+				zero := items[3].(map[string]any)
+				assert.Equal(t, "found", zero["status"])
+				assert.EqualValues(t, 0, zero["consume_logs"].([]any)[0].(map[string]any)["quota"])
+				assert.NotContains(t, recorder.Body.String(), "private-")
+				assert.NotContains(t, recorder.Body.String(), "other-user")
+			})
+
+			t.Run("same history window and old GET contract", func(t *testing.T) {
+				_, response := callReceiptBatchHandler(t, 1, common.RoleCommonUser, `{"request_ids":["a-old"]}`)
+				assert.Equal(t, "not_found", response["data"].(map[string]any)["items"].([]any)[0].(map[string]any)["status"])
+				_, response = callReceiptBatchHandler(t, 1, common.RoleRootUser, `{"request_ids":["a-old","b-1"]}`)
+				data := response["data"].(map[string]any)
+				assert.EqualValues(t, 0, data["lookup_window_start_unix"])
+				items := data["items"].([]any)
+				assert.Equal(t, "found", items[0].(map[string]any)["status"])
+				assert.Equal(t, "not_found", items[1].(map[string]any)["status"], "root remains limited to its own user id")
+				listed := callLogHandler(t, GetUserLogs, 1, common.RoleCommonUser, "type=2&request_id=a-1")[0]
+				require.Equal(t, true, listed["success"])
+				assert.EqualValues(t, 2, listed["data"].(map[string]any)["total"])
+				assert.Len(t, listed["data"].(map[string]any)["items"], 2)
+			})
+
+			t.Run("bounded complete results", func(t *testing.T) {
+				logs := make([]model.Log, model.MaxReceiptBatchLogRows)
+				for i := range logs {
+					logs[i] = model.Log{UserId: 1, CreatedAt: now, Type: model.LogTypeConsume, RequestId: "many", ModelName: "gpt-a", Quota: 1}
+				}
+				// A single insert avoids emulated multi-batch transactions in a
+				// separate ClickHouse log store, which has no SQL transactions.
+				require.NoError(t, model.LOG_DB.Create(&logs).Error)
+				recorder, response := callReceiptBatchHandler(t, 1, common.RoleCommonUser, `{"request_ids":["many"]}`)
+				require.Equal(t, http.StatusOK, recorder.Code)
+				assert.Len(t, response["data"].(map[string]any)["items"].([]any)[0].(map[string]any)["consume_logs"], model.MaxReceiptBatchLogRows)
+				require.NoError(t, model.LOG_DB.Create(&model.Log{UserId: 1, CreatedAt: now, Type: model.LogTypeConsume, RequestId: "many", Quota: 1}).Error)
+				recorder, response = callReceiptBatchHandler(t, 1, common.RoleCommonUser, `{"request_ids":["many","missing"]}`)
+				assert.Equal(t, http.StatusUnprocessableEntity, recorder.Code)
+				assert.Equal(t, false, response["success"])
+				assert.Equal(t, "RECEIPT_RESULT_LIMIT_EXCEEDED", response["code"])
+				assert.NotContains(t, response, "data", "overflow never publishes partial or false missing results")
+			})
+		})
+	}
+}
+
+func TestUserLogReceiptBatchValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, _ := newAuditTestDatabase(t, "sqlite", "")
+	useLogExportDatabases(t, db, db, common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	for _, tc := range []struct {
+		name, body string
+	}{
+		{"malformed", `{"request_ids":`},
+		{"trailing value", `{"request_ids":["a"]} {}`},
+		{"array root", `["a"]`},
+		{"null root", `null`},
+		{"missing ids", `{}`},
+		{"unknown field", `{"request_ids":["a"],"extra":true}`},
+		{"user selection", `{"request_ids":["a"],"user_id":2}`},
+		{"null ids", `{"request_ids":null}`},
+		{"empty ids", `{"request_ids":[]}`},
+		{"wrong ids type", `{"request_ids":"a"}`},
+		{"nonstring id", `{"request_ids":[1]}`},
+		{"empty id", `{"request_ids":[""]}`},
+		{"space id", `{"request_ids":[" a"]}`},
+		{"unicode trailing space", `{"request_ids":["a\u3000"]}`},
+		{"newline id", `{"request_ids":["a\nb"]}`},
+		{"control id", `{"request_ids":["a\u0000b"]}`},
+		{"nonprinting id", `{"request_ids":["a\u200bb"]}`},
+		{"long id", `{"request_ids":["` + strings.Repeat("a", 65) + `"]}`},
+		{"byte rather than rune limit", `{"request_ids":["` + strings.Repeat("你", 22) + `"]}`},
+		{"invalid UTF8", string(append([]byte(`{"request_ids":["`), append([]byte{0xff}, []byte(`"]}`)...)...))},
+		{"too many duplicate input positions", `{"request_ids":[` + strings.Repeat(`"a",`, 100) + `"a"]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder, response := callReceiptBatchHandler(t, 1, common.RoleCommonUser, tc.body)
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Equal(t, false, response["success"])
+			assert.Equal(t, "RECEIPT_INVALID_REQUEST", response["code"])
+			assert.NotContains(t, response, "data")
+		})
+	}
+	t.Run("maximum input count and byte length", func(t *testing.T) {
+		uniqueIDs := make([]string, model.MaxReceiptBatchRequestIDs)
+		for i := range uniqueIDs {
+			uniqueIDs[i] = fmt.Sprintf("request-%d", i)
+		}
+		encoded, err := common.Marshal(gin.H{"request_ids": uniqueIDs})
+		require.NoError(t, err)
+		recorder, response := callReceiptBatchHandler(t, 1, common.RoleCommonUser, string(encoded))
+		require.Equal(t, http.StatusOK, recorder.Code)
+		items := response["data"].(map[string]any)["items"].([]any)
+		require.Len(t, items, model.MaxReceiptBatchRequestIDs)
+		for i, item := range items {
+			assert.Equal(t, uniqueIDs[i], item.(map[string]any)["request_id"])
+		}
+		body := `{"request_ids":[` + strings.Repeat(`"a",`, 99) + `"a"]}`
+		recorder, response = callReceiptBatchHandler(t, 1, common.RoleCommonUser, body)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		assert.Len(t, response["data"].(map[string]any)["items"], 1)
+		body = `{"request_ids":["` + strings.Repeat("a", 64) + `","请求-一"]}`
+		body += strings.Repeat(" ", model.MaxReceiptBatchBodyBytes-len(body))
+		recorder, _ = callReceiptBatchHandler(t, 1, common.RoleCommonUser, body)
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		recorder, response = callReceiptBatchHandler(t, 1, common.RoleCommonUser, body+" ")
+		assert.Equal(t, http.StatusRequestEntityTooLarge, recorder.Code)
+		assert.Equal(t, "RECEIPT_BODY_TOO_LARGE", response["code"])
+	})
+	t.Run("authentication defense", func(t *testing.T) {
+		recorder, response := callReceiptBatchHandler(t, 0, common.RoleCommonUser, `{"request_ids":["a"]}`)
+		assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		assert.Equal(t, "RECEIPT_AUTH_REQUIRED", response["code"])
+	})
+	t.Run("JSON content type required", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/log/self/batch", strings.NewReader(`{"request_ids":["a"]}`))
+		ctx.Request.Header.Set("Content-Type", "text/plain")
+		ctx.Set("id", 1)
+		GetUserLogReceipts(ctx)
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	})
+	t.Run("database error stays safe", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		requestContext, cancel := context.WithCancel(context.Background())
+		cancel()
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/api/log/self/batch", strings.NewReader(`{"request_ids":["a"]}`)).WithContext(requestContext)
+		ctx.Request.Header.Set("Content-Type", "application/json")
+		ctx.Set("id", 1)
+		GetUserLogReceipts(ctx)
+		assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+		var response map[string]any
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		assert.Equal(t, "RECEIPT_QUERY_FAILED", response["code"])
+		assert.Equal(t, "Failed to query logs", response["message"])
+		assert.NotContains(t, recorder.Body.String(), "SELECT")
+		assert.NotContains(t, recorder.Body.String(), "context canceled")
+	})
+}
+
 func TestAcquireLogExportLock(t *testing.T) {
 	for _, useRedis := range []bool{false, true} {
 		t.Run(fmt.Sprintf("redis=%v", useRedis), func(t *testing.T) {

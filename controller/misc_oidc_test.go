@@ -104,3 +104,21 @@ func TestGetStatusReturnsEffectiveOIDCDisplayName(t *testing.T) {
 		})
 	}
 }
+
+func TestGetStatusAdvertisesBoundedUsageReceipts(t *testing.T) {
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	GetStatus(ctx)
+	var wire map[string]any
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &wire))
+	require.Equal(t, true, wire["success"])
+	data, ok := wire["data"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, map[string]any{
+		"schema_version": float64(1), "batch_path": "/api/log/self/batch", "method": "POST",
+		"max_request_ids": float64(100), "max_body_bytes": float64(16384), "max_consume_logs": float64(1000),
+		"refund_state": false, "final_settlement_state": false,
+	}, data["usage_receipts"])
+	assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
+}

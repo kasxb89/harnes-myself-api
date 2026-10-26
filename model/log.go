@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -622,6 +623,77 @@ func GetAllLogs(filter LogFilter, startIdx int, num int) (logs []*Log, total int
 }
 
 const logSearchCountLimit = 10000
+
+const (
+	MaxReceiptBatchRequestIDs = 100
+	MaxReceiptBatchBodyBytes  = 16 << 10
+	MaxReceiptBatchLogRows    = 1000
+)
+
+var ErrReceiptResultLimitExceeded = errors.New("receipt result limit exceeded")
+
+// UserConsumeReceiptLog is the credential-free consumption projection returned
+// by the self receipt lookup. A consumption row can represent a reservation;
+// its presence does not prove final settlement or the absence of a later refund.
+type UserConsumeReceiptLog struct {
+	RequestID        string `json:"request_id" gorm:"column:request_id"`
+	ModelName        string `json:"model_name"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	Quota            int    `json:"quota"`
+	CreatedAt        int64  `json:"created_at"`
+	UseTime          int    `json:"use_time"`
+}
+
+type UserLogReceipt struct {
+	RequestID        string                  `json:"request_id"`
+	Status           string                  `json:"status"`
+	ConsumeLogs      []UserConsumeReceiptLog `json:"consume_logs"`
+	SettlementStatus string                  `json:"settlement_status"`
+	RefundStatus     string                  `json:"refund_status"`
+}
+
+// GetUserLogReceipts reads only the caller's consumption rows in the same
+// permitted window as the self log list. Missing logs cannot establish whether
+// a request was accepted, charged, refunded, or is still running.
+func GetUserLogReceipts(ctx context.Context, userID int, requestIDs []string, startTimestamp int64) ([]UserLogReceipt, error) {
+	if userID <= 0 || len(requestIDs) == 0 || len(requestIDs) > MaxReceiptBatchRequestIDs {
+		return nil, errors.New("invalid receipt lookup")
+	}
+	query := LOG_DB.WithContext(ctx).Model(&Log{}).
+		Select("request_id", "model_name", "prompt_tokens", "completion_tokens", "quota", "created_at", "use_time").
+		Where("user_id = ? AND type = ? AND request_id IN ?", userID, LogTypeConsume, requestIDs)
+	if startTimestamp != 0 {
+		query = query.Where("created_at >= ?", startTimestamp)
+	}
+	var logs []UserConsumeReceiptLog
+	// ClickHouse logs have no persistent numeric ID. Ordering only by projected
+	// columns keeps this bounded lookup valid for a separate ClickHouse LOG_DB.
+	err := query.Order("created_at DESC, request_id ASC, model_name ASC, quota ASC, prompt_tokens ASC, completion_tokens ASC, use_time ASC").
+		Limit(MaxReceiptBatchLogRows + 1).Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(logs) > MaxReceiptBatchLogRows {
+		return nil, ErrReceiptResultLimitExceeded
+	}
+	byRequest := make(map[string][]UserConsumeReceiptLog, len(requestIDs))
+	for _, log := range logs {
+		byRequest[log.RequestID] = append(byRequest[log.RequestID], log)
+	}
+	receipts := make([]UserLogReceipt, 0, len(requestIDs))
+	for _, requestID := range requestIDs {
+		rows := byRequest[requestID]
+		status := "found"
+		if len(rows) == 0 {
+			status = "not_found"
+			rows = []UserConsumeReceiptLog{}
+		}
+		receipts = append(receipts, UserLogReceipt{RequestID: requestID, Status: status,
+			ConsumeLogs: rows, SettlementStatus: "unknown", RefundStatus: "unknown"})
+	}
+	return receipts, nil
+}
 
 func GetUserLogs(userId int, filter LogFilter, startIdx int, num int) (logs []*Log, total int64, err error) {
 	tx, err := filter.apply(LOG_DB.Where("logs.user_id = ?", userId))

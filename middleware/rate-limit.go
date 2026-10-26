@@ -107,7 +107,7 @@ func redisFixedWindowTake(ctx context.Context, key string, maxRequestNum int, du
 	return allowedValue == 1, count, ttlSeconds, nil
 }
 
-func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
+func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string, code string) {
 	allowed, _, ttlSeconds, err := redisFixedWindowTake(
 		c.Request.Context(),
 		redisIPRateLimitKey(mark, c.ClientIP()),
@@ -121,14 +121,14 @@ func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark st
 		return
 	}
 	if !allowed {
-		writeRateLimited(c, ttlSeconds)
+		writeRateLimited(c, ttlSeconds, code)
 	}
 }
 
-func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
+func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string, code string) {
 	key := mark + c.ClientIP()
 	if !inMemoryRateLimiter.Request(key, maxRequestNum, duration) {
-		writeRateLimited(c, duration)
+		writeRateLimited(c, duration, code)
 		return
 	}
 }
@@ -137,24 +137,32 @@ func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark s
 // clients can back off instead of treating the rejection as a fatal error.
 // The in-memory limiter cannot report the remaining window, so callers
 // without a TTL pass the full window duration as a conservative upper bound.
-func writeRateLimited(c *gin.Context, retryAfterSeconds int64) {
-	if retryAfterSeconds > 0 {
-		c.Header("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
+func writeRateLimited(c *gin.Context, retryAfterSeconds int64, codes ...string) {
+	code := "API_RATE_LIMITED"
+	if len(codes) > 0 {
+		code = codes[0]
 	}
-	c.Status(http.StatusTooManyRequests)
+	c.Header("Retry-After", strconv.FormatInt(max(1, retryAfterSeconds), 10))
+	c.Header("Cache-Control", "no-store")
+	c.Writer.Header().Add("Vary", "Authorization")
+	common.ApiErrorStatus(c, http.StatusTooManyRequests, common.NewMessage("Too many requests"), gin.H{"code": code})
 	c.Abort()
 }
 
 func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+	code := "API_RATE_LIMITED"
+	if mark == "auth-refresh" {
+		code = "AUTH_REFRESH_RATE_LIMITED"
+	}
 	if common.RedisEnabled {
 		return func(c *gin.Context) {
-			redisRateLimiter(c, maxRequestNum, duration, mark)
+			redisRateLimiter(c, maxRequestNum, duration, mark, code)
 		}
 	}
 	// It's safe to call multi times.
 	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
 	return func(c *gin.Context) {
-		memoryRateLimiter(c, maxRequestNum, duration, mark)
+		memoryRateLimiter(c, maxRequestNum, duration, mark, code)
 	}
 }
 
@@ -181,10 +189,51 @@ func GlobalWebRateLimit(frontendFS static.ServeFileSystem) func(c *gin.Context) 
 }
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
-	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+	if !common.GlobalApiRateLimitEnable {
+		return defNext
 	}
-	return defNext
+	anonymous := rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+	status := rateLimitFactory(120, 60, "GA:status")
+	account := userRateLimitFactory(120, 60, "management-account")
+	statistics := userRateLimitFactory(60, 60, "management-statistics")
+	history := userRateLimitFactory(60, 60, "management-history")
+	return func(c *gin.Context) {
+		// These public reads and high-entropy session renewals have their own
+		// bounded IP protection. They must not share a history-query budget.
+		key := c.Request.Method + " " + c.FullPath()
+		switch key {
+		case "GET /api/status":
+			status(c)
+			return
+		case "POST /api/user/auth/refresh":
+			// The route still applies its origin guard and mandatory 120/minute
+			// AuthRefreshRateLimit before reading any refresh credential.
+			return
+		}
+		var authenticatedLimit gin.HandlerFunc
+		switch key {
+		case "GET /api/user/self":
+			authenticatedLimit = account
+		case "GET /api/log/self/stat", "GET /api/data/self", "GET /api/data/flow/self":
+			authenticatedLimit = statistics
+		case "GET /api/log/self", "GET /api/log/self/search", "GET /api/log/self/export", "POST /api/log/self/batch":
+			authenticatedLimit = history
+		case "POST /api/client-activity/heartbeat", "POST /api/client-activity/workload-snapshot":
+			// The existing route-specific user limiter remains mandatory.
+		default:
+			anonymous(c)
+			return
+		}
+		if _, started := c.Get(accessTokenAuditContextKey); !started {
+			defer finishAccessTokenAudit(c)
+		}
+		if !ensureDashboardAuth(c, common.RoleCommonUser, anonymous) {
+			return
+		}
+		if authenticatedLimit != nil {
+			authenticatedLimit(c)
+		}
+	}
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
@@ -203,11 +252,6 @@ func AuthRefreshRateLimit() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		limit(c)
-		if c.IsAborted() && c.Writer.Status() == http.StatusTooManyRequests {
-			common.ApiErrorStatus(c, http.StatusTooManyRequests,
-				common.NewMessage("Too many requests"),
-				gin.H{"code": "AUTH_REFRESH_RATE_LIMITED"})
-		}
 	}
 }
 

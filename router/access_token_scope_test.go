@@ -142,11 +142,13 @@ func TestAuthRefreshHasIndependentBoundedRateLimit(t *testing.T) {
 		t.Run(backend, func(t *testing.T) {
 			previousRedis, previousRDB := common.RedisEnabled, common.RDB
 			previousGlobal := common.GlobalApiRateLimitEnable
+			previousGlobalNum, previousGlobalDuration := common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration
 			previousCritical, previousNum, previousDuration := common.CriticalRateLimitEnable, common.CriticalRateLimitNum, common.CriticalRateLimitDuration
 			previousSecure, previousTrusted := common.SessionCookieSecure, common.SessionCookieTrustedURLs
 			t.Cleanup(func() {
 				common.RedisEnabled, common.RDB = previousRedis, previousRDB
 				common.GlobalApiRateLimitEnable = previousGlobal
+				common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration = previousGlobalNum, previousGlobalDuration
 				common.CriticalRateLimitEnable, common.CriticalRateLimitNum, common.CriticalRateLimitDuration = previousCritical, previousNum, previousDuration
 				common.SessionCookieSecure, common.SessionCookieTrustedURLs = previousSecure, previousTrusted
 			})
@@ -158,12 +160,14 @@ func TestAuthRefreshHasIndependentBoundedRateLimit(t *testing.T) {
 				t.Cleanup(func() { _ = client.Close() })
 				common.RedisEnabled, common.RDB = true, client
 			}
-			common.GlobalApiRateLimitEnable = false
+			common.GlobalApiRateLimitEnable = true
+			common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration = 2, 1200
 			common.CriticalRateLimitEnable, common.CriticalRateLimitNum, common.CriticalRateLimitDuration = true, 2, 1200
 			common.SessionCookieSecure, common.SessionCookieTrustedURLs = true, nil
 			engine := gin.New()
 			require.NoError(t, engine.SetTrustedProxies(nil))
 			SetApiRouter(engine)
+			engine.GET("/general-budget", middleware.GlobalAPIRateLimit(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
 			engine.GET("/security-budget", middleware.CriticalRateLimit(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
 			request := func(method, path, remoteAddr, origin string) *httptest.ResponseRecorder {
 				r := httptest.NewRequest(method, path, nil)
@@ -179,6 +183,10 @@ func TestAuthRefreshHasIndependentBoundedRateLimit(t *testing.T) {
 			for range 2 {
 				require.Equal(t, http.StatusNoContent, request(http.MethodGet, "/security-budget", remoteAddr, "http://example.com").Code)
 			}
+			for range 2 {
+				require.Equal(t, http.StatusNoContent, request(http.MethodGet, "/general-budget", remoteAddr, "http://example.com").Code)
+			}
+			require.Equal(t, http.StatusTooManyRequests, request(http.MethodGet, "/general-budget", remoteAddr, "http://example.com").Code)
 			// Password and SMS routes retain their shared credential-attempt limit.
 			for _, path := range []string{"/api/user/login", "/api/user/phone/challenge", "/api/user/phone/login"} {
 				require.Equal(t, http.StatusTooManyRequests, request(http.MethodPost, path, remoteAddr, "http://example.com").Code)
@@ -1065,4 +1073,114 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 		require.NoError(t, authz.ReloadPolicy())
 		assert.False(t, authz.Can(users["admin"], common.RoleAdminUser, authz.AnnouncementsRead))
 	}
+}
+
+// The batch endpoint must enforce the same owner and PAT scope boundary as
+// existing self-usage reads, including when called through the full API router.
+func TestUsageReceiptBatchPreservesAuthenticationAndScope(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/receipt-router.db"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.AuditLog{}, &model.Option{}, &model.Log{}, &model.Token{}))
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
+	oldRedis, oldMemory, oldSecret := common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret
+	oldGlobal := common.GlobalApiRateLimitEnable
+	oldGlobalNum, oldGlobalDuration := common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration
+	model.DB, model.LOG_DB = db, db
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	common.RedisEnabled, common.MemoryCacheEnabled = false, false
+	common.SessionSecret = "isolated-usage-receipt-router-test"
+	common.GlobalApiRateLimitEnable = true
+	common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration = 360, 180
+	t.Cleanup(func() {
+		model.DB, model.LOG_DB = oldDB, oldLogDB
+		common.SetDatabaseTypes(oldMain, oldLog)
+		common.RedisEnabled, common.MemoryCacheEnabled, common.SessionSecret = oldRedis, oldMemory, oldSecret
+		common.GlobalApiRateLimitEnable = oldGlobal
+		common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration = oldGlobalNum, oldGlobalDuration
+		sqlDB, closeErr := db.DB()
+		require.NoError(t, closeErr)
+		require.NoError(t, sqlDB.Close())
+	})
+	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
+	legacy := "receipt-batch-legacy-owner"
+	owner := model.User{Id: 7631, Username: "receipt-owner", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "receipt-owner", AccessToken: &legacy, Quota: 500}
+	other := model.User{Id: 7632, Username: "receipt-other", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "receipt-other", Quota: 700}
+	require.NoError(t, db.Create(&owner).Error)
+	require.NoError(t, db.Create(&other).Error)
+	bundle, err := service.CreateLoginSession(owner.Id, "password", "127.0.0.1", "receipt-router-test")
+	require.NoError(t, err)
+	tokens := map[string]string{}
+	for i, scope := range []string{"usage:read", "profile:read"} {
+		raw := model.AccessTokenPrefix + strings.Repeat(string(rune('a'+i)), 43)
+		pat := model.UserAccessToken{UserId: owner.Id, Name: scope, TokenHash: model.AccessTokenFingerprint(raw), TokenHint: model.AccessTokenHint(raw)}
+		pat.SetScopes([]string{scope})
+		require.NoError(t, db.Create(&pat).Error)
+		tokens[scope] = raw
+	}
+	relay := strings.Repeat("r", 48)
+	require.NoError(t, db.Create(&model.Token{UserId: owner.Id, Key: relay, Status: common.TokenStatusEnabled, Name: "receipt-relay", UnlimitedQuota: true, ExpiredTime: -1}).Error)
+	for _, entry := range []model.Log{
+		{UserId: owner.Id, Type: model.LogTypeConsume, CreatedAt: time.Now().Unix(), RequestId: "shared-receipt", ModelName: "yunshu-flash", Quota: 11},
+		{UserId: other.Id, Type: model.LogTypeConsume, CreatedAt: time.Now().Unix(), RequestId: "shared-receipt", ModelName: "private-other-model", Quota: 99},
+		{UserId: other.Id, Type: model.LogTypeConsume, CreatedAt: time.Now().Unix(), RequestId: "other-only", ModelName: "private-other-model", Quota: 123},
+	} {
+		require.NoError(t, db.Create(&entry).Error)
+	}
+	engine := newAccessTokenScopeTestEngine(t)
+	require.NoError(t, engine.SetTrustedProxies(nil))
+	for _, identity := range []struct {
+		name, token string
+		status      int
+	}{
+		{"session", bundle.AccessToken, http.StatusOK},
+		{"usage PAT", tokens["usage:read"], http.StatusOK},
+		{"legacy compatibility", legacy, http.StatusOK},
+		{"wrong PAT scope", tokens["profile:read"], http.StatusForbidden},
+		{"anonymous", "", http.StatusUnauthorized},
+		{"relay key", relay, http.StatusUnauthorized},
+	} {
+		t.Run(identity.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/log/self/batch?user_id=7632", strings.NewReader(`{"request_ids":["shared-receipt","other-only"]}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("New-Api-User", "7632")
+			if identity.token != "" {
+				request.Header.Set("Authorization", "Bearer "+identity.token)
+			}
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			require.Equal(t, identity.status, response.Code, response.Body.String())
+			if identity.status != http.StatusOK {
+				return
+			}
+			assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
+			var body struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Items []struct {
+						Status string `json:"status"`
+						Logs   []struct {
+							Quota int `json:"quota"`
+						} `json:"consume_logs"`
+						Refund     string `json:"refund_status"`
+						Settlement string `json:"settlement_status"`
+					} `json:"items"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			require.True(t, body.Success)
+			require.Len(t, body.Data.Items, 2)
+			assert.Equal(t, "found", body.Data.Items[0].Status)
+			require.Len(t, body.Data.Items[0].Logs, 1)
+			assert.Equal(t, 11, body.Data.Items[0].Logs[0].Quota)
+			assert.Equal(t, "not_found", body.Data.Items[1].Status)
+			assert.Empty(t, body.Data.Items[1].Logs)
+			assert.Equal(t, "unknown", body.Data.Items[0].Refund)
+			assert.Equal(t, "unknown", body.Data.Items[0].Settlement)
+			assert.NotContains(t, response.Body.String(), "private-other-model")
+		})
+	}
+	var current model.User
+	require.NoError(t, db.First(&current, owner.Id).Error)
+	assert.Equal(t, owner.Quota, current.Quota, "read receipts never change wallet quota")
 }

@@ -1,8 +1,13 @@
 package controller
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -92,6 +97,69 @@ func GetUserLogs(c *gin.Context) {
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+// GetUserLogReceipts batches the existing self-consumption lookup without
+// accepting a target user or exposing internal log metadata.
+func GetUserLogReceipts(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	userID := c.GetInt("id")
+	if userID <= 0 {
+		common.ApiErrorStatus(c, http.StatusUnauthorized, common.NewMessage("Unauthorized"), gin.H{"code": "RECEIPT_AUTH_REQUIRED"})
+		return
+	}
+	if c.ContentType() != "application/json" {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid request parameters"), gin.H{"code": "RECEIPT_INVALID_REQUEST"})
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, model.MaxReceiptBatchBodyBytes+1))
+	if len(body) > model.MaxReceiptBatchBodyBytes {
+		common.ApiErrorStatus(c, http.StatusRequestEntityTooLarge, common.NewMessage("Invalid request parameters"), gin.H{"code": "RECEIPT_BODY_TOO_LARGE"})
+		return
+	}
+	var fields map[string]common.RawMessage
+	if err != nil || !utf8.Valid(body) || common.Unmarshal(body, &fields) != nil || len(fields) != 1 {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid request parameters"), gin.H{"code": "RECEIPT_INVALID_REQUEST"})
+		return
+	}
+	var inputIDs []string
+	if raw, ok := fields["request_ids"]; !ok || common.Unmarshal(raw, &inputIDs) != nil || len(inputIDs) == 0 || len(inputIDs) > model.MaxReceiptBatchRequestIDs {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid request parameters"), gin.H{"code": "RECEIPT_INVALID_REQUEST"})
+		return
+	}
+	requestIDs := make([]string, 0, len(inputIDs))
+	seen := make(map[string]bool, len(inputIDs))
+	for _, requestID := range inputIDs {
+		valid := len(requestID) > 0 && len(requestID) <= 64 && utf8.ValidString(requestID) && strings.TrimSpace(requestID) == requestID
+		for _, character := range requestID {
+			if !unicode.IsPrint(character) {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid request parameters"), gin.H{"code": "RECEIPT_INVALID_REQUEST"})
+			return
+		}
+		if !seen[requestID] {
+			seen[requestID] = true
+			requestIDs = append(requestIDs, requestID)
+		}
+	}
+	var windowStart int64
+	if c.GetInt("role") < common.RoleAdminUser {
+		windowStart = common.GetTimestamp() - operation_setting.GetLogSetting().MaxRangeSeconds()
+	}
+	receipts, err := model.GetUserLogReceipts(c.Request.Context(), userID, requestIDs, windowStart)
+	if errors.Is(err, model.ErrReceiptResultLimitExceeded) {
+		common.ApiErrorStatus(c, http.StatusUnprocessableEntity, common.NewMessage("Invalid request parameters"), gin.H{"code": "RECEIPT_RESULT_LIMIT_EXCEEDED"})
+		return
+	}
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("Failed to query logs"), gin.H{"code": "RECEIPT_QUERY_FAILED"})
+		return
+	}
+	common.ApiSuccess(c, gin.H{"schema_version": 1, "lookup_window_start_unix": windowStart, "items": receipts})
 }
 
 // ExportAllLogs streams every user's logs matching the search.
