@@ -59,6 +59,8 @@ import {
 } from './customer-service-api'
 import {
   CUSTOMER_SERVICE_QUERY_KEY,
+  customerServiceAssetId,
+  customerServiceAssetPath,
   customerServiceSchema,
   EMPTY_CUSTOMER_SERVICE,
   type CustomerService,
@@ -203,16 +205,12 @@ export function CustomerServiceSection() {
                     uploadFile={uploadCustomerServiceAsset}
                     readOnly={!canEdit}
                     label={t('Customer service QR code')}
-                    value={
-                      field.value
-                        ? field.value.slice('/api/creation/assets/'.length)
-                        : null
-                    }
+                    value={customerServiceAssetId(field.value)}
                     onChange={(id) => {
                       if (!canEdit) return
                       const firstUpload =
                         !!id && !query.data.qr_code_url && !field.value
-                      field.onChange(id ? `/api/creation/assets/${id}` : '')
+                      field.onChange(customerServiceAssetPath(id))
                       if (firstUpload) {
                         form.setValue('enabled', true, { shouldDirty: true })
                         if (!form.getValues('title')) {

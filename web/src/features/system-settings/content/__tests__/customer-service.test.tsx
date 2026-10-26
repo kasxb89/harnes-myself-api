@@ -36,6 +36,8 @@ import {
 import { CustomerServiceSection } from '../customer-service-section'
 import {
   CUSTOMER_SERVICE_QUERY_KEY,
+  customerServiceAssetId,
+  customerServiceAssetPath,
   customerServiceSchema,
   EMPTY_CUSTOMER_SERVICE,
   type CustomerService,
@@ -174,65 +176,71 @@ test('keyboard enabling without an image shows validation and does not send a sa
   expect(api.put).not.toHaveBeenCalled()
 })
 
-test('uploading an image reuses the creation upload and saves all fields atomically', async () => {
-  const user = userEvent.setup()
-  const view = renderSettings()
-  const invalidation = vi.spyOn(view.client, 'invalidateQueries')
-  await user.upload(
-    await screen.findByLabelText('Customer service QR code'),
-    new File(['png'], 'support.png', { type: 'image/png' })
-  )
-  expect(
-    await screen.findByRole('img', { name: 'Customer service QR code' })
-  ).toHaveAttribute('src', assetPath)
-  await openDisplaySettings()
-  await user.clear(
-    screen.getByRole('textbox', { name: 'Customer service title (optional)' })
-  )
-  await user.clear(
-    screen.getByRole('textbox', {
-      name: 'Customer service description (optional)',
-    })
-  )
-  await user.type(
-    screen.getByRole('textbox', { name: 'Customer service title (optional)' }),
-    'Support'
-  )
-  await user.type(
-    screen.getByRole('textbox', {
-      name: 'Customer service description (optional)',
-    }),
-    'Scan to contact us'
-  )
-  expect(
-    screen.getByRole('switch', { name: 'Enable customer service QR code' })
-  ).toBeChecked()
-  await user.click(
-    screen.getByRole('button', { name: 'Save customer service settings' })
-  )
-  await waitFor(() =>
-    expect(api.put).toHaveBeenCalledWith('/api/customer-service', {
-      schema_version: 1,
-      enabled: true,
-      qr_code_url: assetPath,
-      title: 'Support',
-      description: 'Scan to contact us',
-    })
-  )
-  expect(api.post).toHaveBeenCalledWith(
-    '/api/customer-service/assets',
-    expect.any(FormData)
-  )
-  expect(invalidation).toHaveBeenCalledWith({ queryKey: ['status'] })
-  expect(invalidation).toHaveBeenCalledWith({
-    queryKey: CUSTOMER_SERVICE_QUERY_KEY,
-  })
-  await waitFor(() =>
+test.each(['', '/harness'])(
+  'uploading an image at base path %s previews it and saves a canonical path atomically',
+  async (basePath) => {
+    api.defaults.baseURL = basePath
+    const user = userEvent.setup()
+    const view = renderSettings()
+    const invalidation = vi.spyOn(view.client, 'invalidateQueries')
+    await user.upload(
+      await screen.findByLabelText('Customer service QR code'),
+      new File(['png'], 'support.png', { type: 'image/png' })
+    )
     expect(
+      await screen.findByRole('img', { name: 'Customer service QR code' })
+    ).toHaveAttribute('src', `${basePath}${assetPath}`)
+    await openDisplaySettings()
+    await user.clear(
+      screen.getByRole('textbox', { name: 'Customer service title (optional)' })
+    )
+    await user.clear(
+      screen.getByRole('textbox', {
+        name: 'Customer service description (optional)',
+      })
+    )
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Customer service title (optional)',
+      }),
+      'Support'
+    )
+    await user.type(
+      screen.getByRole('textbox', {
+        name: 'Customer service description (optional)',
+      }),
+      'Scan to contact us'
+    )
+    expect(
+      screen.getByRole('switch', { name: 'Enable customer service QR code' })
+    ).toBeChecked()
+    await user.click(
       screen.getByRole('button', { name: 'Save customer service settings' })
-    ).toBeDisabled()
-  )
-})
+    )
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/api/customer-service', {
+        schema_version: 1,
+        enabled: true,
+        qr_code_url: assetPath,
+        title: 'Support',
+        description: 'Scan to contact us',
+      })
+    )
+    expect(api.post).toHaveBeenCalledWith(
+      '/api/customer-service/assets',
+      expect.any(FormData)
+    )
+    expect(invalidation).toHaveBeenCalledWith({ queryKey: ['status'] })
+    expect(invalidation).toHaveBeenCalledWith({
+      queryKey: CUSTOMER_SERVICE_QUERY_KEY,
+    })
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save customer service settings' })
+      ).toBeDisabled()
+    )
+  }
+)
 
 test('a failed save retains the draft through a background refetch and requires an explicit retry', async () => {
   const user = userEvent.setup()
@@ -430,6 +438,8 @@ test.each([
   '/api/creation/assets/cc_BAD',
   '//evil.example/x',
   `${assetPath}?x=1`,
+  `/harness${assetPath}`,
+  `${assetPath}/extra`,
 ])(
   'unsupported asset URL %s is rejected before saving',
   async (qr_code_url) => {
@@ -439,6 +449,22 @@ test.each([
     expect(api.put).not.toHaveBeenCalled()
   }
 )
+
+test('the canonical customer service asset path round-trips its exact ID and clears on removal', () => {
+  expect(customerServiceAssetPath(assetId)).toBe(assetPath)
+  expect(customerServiceAssetId(assetPath)).toBe(assetId)
+  expect(customerServiceAssetPath(null)).toBe('')
+  expect(customerServiceAssetId('')).toBeNull()
+})
+
+test.each([
+  `/harness${assetPath}`,
+  `https://external.example${assetPath}`,
+  `${assetPath}?x=1`,
+  '/api/creation/assets/cc_BAD',
+])('the QR preview rejects noncanonical asset path %s', (value) => {
+  expect(customerServiceAssetId(value)).toBeNull()
+})
 
 test('control characters, unsupported schemas and unknown fields fail closed', () => {
   expect(

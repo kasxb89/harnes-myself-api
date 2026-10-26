@@ -19,7 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 
 export const CUSTOMER_SERVICE_QUERY_KEY = ['customer-service'] as const
-const ASSET_PATH = /^\/api\/creation\/assets\/cc_[a-f0-9]{64}$/
+const ASSET_PATH = /^\/api\/creation\/assets\/(cc_[a-f0-9]{64})$/
+
+export function customerServiceAssetPath(id: string | null): string {
+  // Keep stored paths canonical when a deployment rewrites quoted API URLs.
+  return id
+    ? ['api', 'creation', 'assets', id].reduce(
+        (path, segment) => `${path}/${segment}`,
+        ''
+      )
+    : ''
+}
+
+export function customerServiceAssetId(value: string): string | null {
+  return ASSET_PATH.exec(value)?.[1] ?? null
+}
+
 function isPlainCustomerServiceText(value: string): boolean {
   for (const character of value) {
     const code = character.charCodeAt(0)
