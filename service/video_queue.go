@@ -9,7 +9,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
+	kittypes "github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -47,6 +52,49 @@ func CurrentVideoQueueDispatcher() VideoQueueDispatchFunc {
 	return nil
 }
 func VideoQueueDispatcherReady() bool { return videoQueueDispatcher.Load() != nil }
+
+// PreflightVideoQueueBalance is advisory and read-only: it neither reserves
+// money nor supplier capacity. Dispatch still performs the atomic funding check.
+func PreflightVideoQueueBalance(c *gin.Context, request *types.VideoQuoteRequest) *kittypes.NewAPIError {
+	quote, quoteErr := QuoteVideo(c, request)
+	if quoteErr != nil || quote == nil || quote.TotalQuota <= 0 {
+		// Older valid requests may not be quoteable (for example reference
+		// media requiring provider metadata). Keep their existing submit path.
+		return nil
+	}
+	required := quote.TotalQuota
+	if !c.GetBool("token_unlimited_quota") && c.GetInt("token_quota") < required {
+		return kittypes.NewErrorWithStatusCode(
+			errors.New(i18n.T(c, i18n.MsgQuotaPreConsumeInsufficient, map[string]any{"Remaining": logger.FormatQuota(c.GetInt("token_quota")), "Required": logger.FormatQuota(required)})),
+			kittypes.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, kittypes.ErrOptionWithSkipRetry(), kittypes.ErrOptionWithNoRecordErrorLog())
+	}
+	setting, _ := common.GetContextKeyType[kitdto.UserSetting](c, constant.ContextKeyUserSetting)
+	pref := common.NormalizeBillingPreference(setting.BillingPreference)
+	if pref == "subscription_only" {
+		return nil
+	}
+	if pref != "wallet_only" {
+		hasSubscription, err := model.HasActiveUserSubscription(c.GetInt("id"))
+		if err != nil {
+			return kittypes.NewErrorWithStatusCode(errors.New("Unable to check account balance"), kittypes.ErrorCodeQueryDataError, http.StatusServiceUnavailable, kittypes.ErrOptionWithSkipRetry())
+		}
+		if hasSubscription {
+			// Subscription allowance and wallet fallback stay authoritative at
+			// dispatch; wallet balance alone cannot prove a refusal here.
+			return nil
+		}
+	}
+	remaining, err := model.GetUserQuota(c.GetInt("id"), false)
+	if err != nil {
+		return kittypes.NewErrorWithStatusCode(errors.New("Unable to check account balance"), kittypes.ErrorCodeQueryDataError, http.StatusServiceUnavailable, kittypes.ErrOptionWithSkipRetry())
+	}
+	if remaining < required {
+		return kittypes.NewErrorWithStatusCode(
+			errors.New(i18n.T(c, i18n.MsgQuotaPreConsumeInsufficient, map[string]any{"Remaining": logger.FormatQuota(remaining), "Required": logger.FormatQuota(required)})),
+			kittypes.ErrorCodeInsufficientUserQuota, http.StatusForbidden, kittypes.ErrOptionWithSkipRetry(), kittypes.ErrOptionWithNoRecordErrorLog())
+	}
+	return nil
+}
 
 func VideoQueueRequestContext(ctx context.Context, dispatch *VideoQueueDispatch) context.Context {
 	return context.WithValue(ctx, videoQueueDispatchKey{}, dispatch)
@@ -108,8 +156,11 @@ func VerifyVideoQueueSending(c *gin.Context, task *model.Task) error {
 // SyncVideoQueueItem is a database-only observation. It never queries or
 // submits to a provider. Unknown or timed-out observation is not a failed job.
 func SyncVideoQueueItem(ctx context.Context, item *model.VideoQueueItem) error {
-	if item.State != model.VideoQueueDispatching && item.State != model.VideoQueueRunning {
+	if item.State != model.VideoQueueDispatching && item.State != model.VideoQueueRunning && item.State != model.VideoQueueFailed {
 		return nil
+	}
+	if item.State == model.VideoQueueFailed && item.ErrorCode != "video_queue_authorization_revoked" {
+		item.FailureCode, item.FailureReason = TaskSubmissionFailure(item.ErrorCode)
 	}
 	var task model.Task
 	err := model.DB.WithContext(ctx).Where("task_id = ? AND user_id = ?", item.TaskID, item.UserID).First(&task).Error
@@ -146,6 +197,14 @@ func SyncVideoQueueItem(ctx context.Context, item *model.VideoQueueItem) error {
 		if task.PrivateData.UpstreamTaskID != "" {
 			state, submission, code = model.VideoQueueRunning, "accepted", ""
 		}
+	}
+	if state == model.VideoQueueFailed {
+		item.FailureCode = task.PrivateData.SubmissionErrorCode
+		item.FailureReason = task.FailReason
+	}
+	if item.State == model.VideoQueueFailed {
+		// Terminal intent is immutable. Loading details must never resurrect it.
+		return nil
 	}
 	if state == item.State && submission == item.SubmissionState && code == item.ErrorCode {
 		return nil
@@ -229,7 +288,7 @@ func RunVideoQueueOnce(ctx context.Context) (VideoQueueRunSummary, error) {
 		}
 		if count == 0 && !dispatch.Prepared && !dispatch.SendFenced && dispatchErr == nil && status >= 400 && status < 500 {
 			code := "video_queue_preflight_rejected"
-			if dispatch.PreflightCode == "video_queue_authorization_revoked" {
+			if dispatch.PreflightCode != "" {
 				code = dispatch.PreflightCode
 			}
 			if err := model.UpdateVideoQueueState(ctx, item, model.VideoQueueFailed, "not_submitted", code); err != nil {

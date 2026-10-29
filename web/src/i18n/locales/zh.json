@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Insufficient account balance or subscription quota to submit this task": "账户余额或订阅额度不足，无法提交此任务",
+    "Insufficient API token quota to submit this task": "API 令牌额度不足，无法提交此任务",
+    "Task pricing is unavailable": "任务价格未配置或不可用",
+    "The selected video duration is unavailable": "所选视频时长不可用",
+    "Invalid task request parameters": "任务请求参数无效",
+    "Request canceled before task submission": "任务提交前请求已取消",
+    "No available channel for this task": "没有可用渠道执行此任务",
+    "Task submission could not be prepared": "任务提交准备失败",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

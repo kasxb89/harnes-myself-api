@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -18,6 +19,40 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
+
+// TaskSubmissionFailure retains only host-owned business categories. Arbitrary
+// plugin messages, provider responses, URLs and credentials are never persisted.
+func TaskSubmissionFailure(code string) (string, string) {
+	switch {
+	case code == "insufficient_user_quota":
+		return code, "Insufficient account balance or subscription quota to submit this task"
+	case code == "pre_consume_token_quota_failed":
+		return code, "Insufficient API token quota to submit this task"
+	case code == "model_price_error":
+		return code, "Task pricing is unavailable"
+	case code == "video_duration_unavailable":
+		return code, "The selected video duration is unavailable"
+	case strings.HasPrefix(code, "invalid_request") || code == "plugin_request_invalid" || code == "plugin_usage_invalid":
+		return "invalid_request", "Invalid task request parameters"
+	case code == "request_cancelled":
+		return code, "Request canceled before task submission"
+	case code == "get_channel_failed":
+		return code, "No available channel for this task"
+	case code == "build_request_failed":
+		return code, "Task submission could not be prepared"
+	default:
+		return "task_submission_preparation_failed", "Task submission could not be prepared"
+	}
+}
+
+// SetTaskSubmissionFailure is called only after proving the provider send has
+// not begun. Financially uncertain submissions keep their existing unknown state.
+func SetTaskSubmissionFailure(task *model.Task, taskErr *taskdto.TaskError) {
+	if task == nil || taskErr == nil {
+		return
+	}
+	task.PrivateData.SubmissionErrorCode, task.FailReason = TaskSubmissionFailure(taskErr.Code)
+}
 
 // DecideRelayRetry is the single retry decision for relay attempts. The reason
 // is recorded in the request policy decision events of the log details.

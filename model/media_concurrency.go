@@ -938,7 +938,12 @@ func ReleaseMediaUnsentWithRefund(ctx context.Context, task *Task, refundRequire
 		if err := tx.Model(&MediaAdmission{}).Where("id = ?", admission.ID).Update("billing_state", billingState).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": status, "progress": progress, "finish_time": finish, "fail_reason": "Submission was not sent"}).Error; err != nil {
+		reason := task.FailReason
+		if reason == "" {
+			reason = "Submission was not sent"
+		}
+		persisted.PrivateData.SubmissionErrorCode = task.PrivateData.SubmissionErrorCode
+		if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": status, "progress": progress, "finish_time": finish, "fail_reason": reason, "private_data": persisted.PrivateData}).Error; err != nil {
 			return err
 		}
 		return releaseMediaAdmission(tx, &admission)

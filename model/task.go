@@ -110,8 +110,10 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
-	MediaAdmissionID string `json:"media_admission_id,omitempty"`
-	MediaKind        string `json:"media_kind,omitempty"`
+	// SubmissionErrorCode is a host-owned, credential-free pre-send failure code.
+	SubmissionErrorCode string `json:"submission_error_code,omitempty"`
+	MediaAdmissionID    string `json:"media_admission_id,omitempty"`
+	MediaKind           string `json:"media_kind,omitempty"`
 	// RouteDigest binds a media credential to the execution route captured before sending.
 	// Missing historical provenance is never reconstructed from a current channel.
 	RouteDigest      string `json:"route_digest,omitempty"`
@@ -227,7 +229,7 @@ func (p *TaskPrivateData) Scan(val any) error {
 }
 
 func (p TaskPrivateData) Value() (driver.Value, error) {
-	if p.Key == "" && p.UpstreamTaskID == "" && p.ResultURL == "" &&
+	if p.SubmissionErrorCode == "" && p.Key == "" && p.UpstreamTaskID == "" && p.ResultURL == "" &&
 		p.H3AdmissionID == "" && p.MediaAdmissionID == "" && p.MediaKind == "" && p.RouteDigest == "" && p.H3IdentityDigest == "" && p.Execution == nil && p.BillingSource == "" && p.FundingRequestId == "" && p.SubscriptionId == 0 &&
 		p.TokenId == 0 && p.NodeName == "" && p.BillingContext == nil &&
 		!p.ResponsesBackground && len(p.PluginState) == 0 && p.PollFailures == 0 &&

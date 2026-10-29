@@ -559,6 +559,9 @@ func executeTaskSubmissionWith(
 	service.CaptureTaskClientSource(c)
 	defer func() {
 		if submissionErr != nil {
+			if dispatch := service.VideoQueueDispatchFromContext(c); dispatch != nil && !dispatch.Prepared && !dispatch.SendFenced {
+				dispatch.PreflightCode, _ = service.TaskSubmissionFailure(submissionErr.Code)
+			}
 			service.RecordRelayError(c, taskSubmissionAPIError(submissionErr), relayInfo)
 		}
 	}()
@@ -583,6 +586,7 @@ func executeTaskSubmissionWith(
 			}
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			service.SetTaskSubmissionFailure(media.Task, submissionErr)
 			refundRequired := media.Task.Quota > 0 || relayInfo.Billing != nil && relayInfo.Billing.NeedsRefund()
 			if err := model.ReleaseMediaUnsentWithRefund(cleanupCtx, media.Task, refundRequired); err != nil {
 				service.PreserveMediaUnknown(media)
@@ -644,6 +648,7 @@ func executeTaskSubmissionWith(
 			}
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			service.SetTaskSubmissionFailure(h3.Task, submissionErr)
 			refundRequired := h3.Task.Quota > 0 || (relayInfo.Billing != nil && relayInfo.Billing.NeedsRefund())
 			if releaseErr := model.ReleaseH3BeforeSendWithRefund(cleanupCtx, h3.Task, refundRequired); releaseErr != nil {
 				logger.LogError(c, "failed to release unsent H3 admission")

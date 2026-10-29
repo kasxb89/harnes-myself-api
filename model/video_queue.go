@@ -51,6 +51,8 @@ type VideoQueueItem struct {
 	State            string `json:"state" gorm:"type:varchar(24);index"`
 	SubmissionState  string `json:"submission_state" gorm:"type:varchar(24)"`
 	ErrorCode        string `json:"error_code,omitempty" gorm:"type:varchar(128)"`
+	FailureCode      string `json:"failure_code,omitempty" gorm:"-"`
+	FailureReason    string `json:"failure_reason,omitempty" gorm:"-"`
 	AttemptID        string `json:"-" gorm:"type:varchar(64)"`
 	BoundTask        bool   `json:"-"`
 	SendFenced       bool   `json:"-"`
@@ -149,6 +151,15 @@ func EnqueueVideo(ctx context.Context, item *VideoQueueItem) (*VideoQueueItem, b
 func GetVideoQueueItem(ctx context.Context, userID int, queueID string) (*VideoQueueItem, error) {
 	var item VideoQueueItem
 	err := DB.WithContext(ctx).Where("queue_id = ? AND user_id = ?", queueID, userID).First(&item).Error
+	return &item, err
+}
+
+// GetVideoQueueOperation resolves accepted intent before an advisory balance
+// check. Spending the balance later must not hide an already accepted operation.
+func GetVideoQueueOperation(ctx context.Context, userID int, operationID string) (*VideoQueueItem, error) {
+	digest := sha256.Sum256([]byte(operationID))
+	var item VideoQueueItem
+	err := DB.WithContext(ctx).Where("user_id = ? AND operation_hash = ?", userID, hex.EncodeToString(digest[:])).First(&item).Error
 	return &item, err
 }
 

@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Insufficient account balance or subscription quota to submit this task": "アカウント残高またはサブスクリプションの利用枠が不足しているため、タスクを送信できません",
+    "Insufficient API token quota to submit this task": "API トークンの利用枠が不足しているため、タスクを送信できません",
+    "Task pricing is unavailable": "タスクの料金が設定されていないか、利用できません",
+    "The selected video duration is unavailable": "選択した動画の長さは利用できません",
+    "Invalid task request parameters": "タスクリクエストのパラメータが無効です",
+    "Request canceled before task submission": "タスク送信前にリクエストがキャンセルされました",
+    "No available channel for this task": "このタスクに利用できるチャネルがありません",
+    "Task submission could not be prepared": "タスク送信の準備に失敗しました",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

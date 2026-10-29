@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -115,6 +116,32 @@ func EnqueueVideo(c *gin.Context) {
 	item.ClientSource = clientSource
 	tokenFingerprint := sha256.Sum256([]byte(c.GetString("token_key")))
 	item.TokenFingerprint = hex.EncodeToString(tokenFingerprint[:])
+	// Resolve existing intent before checking today's balance. Reposting an
+	// accepted operation is recovery, not permission to create another task.
+	existing, existingErr := model.GetVideoQueueOperation(c.Request.Context(), item.UserID, item.OperationID)
+	if existingErr == nil {
+		if existing.BodySHA256 != item.BodySHA256 || existing.QueueID != item.QueueID {
+			videoQueueError(c, 409, "video_queue_operation_conflict")
+			return
+		}
+		if service.SyncVideoQueueItem(c.Request.Context(), existing) != nil {
+			videoQueueError(c, 503, "video_queue_unavailable")
+			return
+		}
+		writeVideoQueueItem(c, http.StatusOK, existing)
+		return
+	}
+	if !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+		videoQueueError(c, 503, "video_queue_unavailable")
+		return
+	}
+	if apiErr := service.PreflightVideoQueueBalance(c, &types.VideoQuoteRequest{Model: modelName, WorksCount: 1,
+		Segments: []types.VideoQuoteSegmentRequest{{ID: "queued-video", Parameters: value.(map[string]any)}}}); apiErr != nil {
+		c.Header("Cache-Control", "private, no-store")
+		c.JSON(apiErr.StatusCode, gin.H{"error": apiErr.ToOpenAIError(), "accepted": false,
+			"submission_state": "not_submitted", "retryable": false, "resubmittable": true, "charged": false, "reserved": false})
+		return
+	}
 	result, created, err := model.EnqueueVideo(c.Request.Context(), item)
 	switch {
 	case errors.Is(err, model.ErrVideoQueueConflict):

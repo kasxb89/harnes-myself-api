@@ -86,6 +86,11 @@ func SetVideoQueueRouter(router *gin.Engine) {
 		writer := &videoQueueResponse{header: make(http.Header)}
 		dispatchRouter.ServeHTTP(writer, request)
 		request.Header.Del("Authorization")
+		if writer.status == http.StatusBadRequest && !dispatch.Prepared && !dispatch.SendFenced && dispatch.PreflightCode == "" {
+			// A local decoder can reject before the submission controller runs.
+			// Keep the category without retaining its arbitrary response body.
+			dispatch.PreflightCode = "invalid_request"
+		}
 		if writer.status == 0 {
 			writer.status = http.StatusOK
 		}

@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import i18next from 'i18next'
 import { describe, expect, test } from 'vitest'
 
+import zh from '@/i18n/locales/zh.json'
+
 import {
   getServerErrorMessage,
   getServerErrorMessageKey,
@@ -26,6 +28,32 @@ import {
 } from './server-error-message'
 
 describe('server error message mapping', () => {
+  test('translates persisted submission failure reasons using shipped Chinese text', async () => {
+    i18next.addResourceBundle('zhCN', 'translation', zh.translation)
+    await i18next.changeLanguage('zhCN')
+    try {
+      expect(
+        translateServerText(
+          i18next.t,
+          'Insufficient account balance or subscription quota to submit this task'
+        )
+      ).toBe('账户余额或订阅额度不足，无法提交此任务')
+      expect(
+        translateServerText(
+          i18next.t,
+          'Insufficient API token quota to submit this task'
+        )
+      ).toBe('API 令牌额度不足，无法提交此任务')
+      expect(
+        translateServerText(i18next.t, 'Task pricing is unavailable')
+      ).toBe('任务价格未配置或不可用')
+      expect(
+        translateServerText(i18next.t, 'Invalid task request parameters')
+      ).toBe('任务请求参数无效')
+    } finally {
+      await i18next.changeLanguage('en')
+    }
+  })
   test('maps the active-session limit to recovery instructions', () => {
     const message = getServerErrorMessageKey({ code: 'AUTH_SESSION_LIMIT' })
 

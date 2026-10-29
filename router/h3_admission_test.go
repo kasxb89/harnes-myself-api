@@ -833,6 +833,13 @@ func TestH3AdmissionUnsentReceiptsPreserveBusinessErrorsAcrossEntrypoints(t *tes
 				if source == "token" {
 					code = "pre_consume_token_quota_failed"
 				}
+				persisted := f.task(t, id)
+				assert.Equal(t, code, persisted.PrivateData.SubmissionErrorCode)
+				reason := "Insufficient account balance or subscription quota to submit this task"
+				if source == "token" {
+					reason = "Insufficient API token quota to submit this task"
+				}
+				assert.Equal(t, reason, persisted.FailReason)
 				var body map[string]any
 				require.NoError(t, common.Unmarshal(w.Body.Bytes(), &body))
 				assert.Equal(t, code, body["code"], "receipt must not erase the actionable original business error")
@@ -1441,7 +1448,8 @@ func TestH3AdmissionPreSendBuildFailurePreservesRefundTruth(t *testing.T) {
 				task := f.task(t, id)
 				assert.EqualValues(t, model.TaskStatusFailure, task.Status)
 				assert.Zero(t, task.Quota)
-				assert.Contains(t, strings.ToLower(task.FailReason), "not sent")
+				assert.Equal(t, "Task submission could not be prepared", task.FailReason)
+				assert.Equal(t, "build_request_failed", task.PrivateData.SubmissionErrorCode)
 				assert.NotContains(t, strings.ToLower(task.FailReason), "authentication")
 				wallet, token := f.balance(t)
 				assert.Equal(t, beforeWallet, wallet)

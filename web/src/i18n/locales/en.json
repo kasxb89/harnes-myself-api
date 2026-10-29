@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Insufficient account balance or subscription quota to submit this task": "Insufficient account balance or subscription quota to submit this task",
+    "Insufficient API token quota to submit this task": "Insufficient API token quota to submit this task",
+    "Task pricing is unavailable": "Task pricing is unavailable",
+    "The selected video duration is unavailable": "The selected video duration is unavailable",
+    "Invalid task request parameters": "Invalid task request parameters",
+    "Request canceled before task submission": "Request canceled before task submission",
+    "No available channel for this task": "No available channel for this task",
+    "Task submission could not be prepared": "Task submission could not be prepared",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Insufficient account balance or subscription quota to submit this task": "Số dư tài khoản hoặc hạn mức gói đăng ký không đủ để gửi tác vụ này",
+    "Insufficient API token quota to submit this task": "Hạn mức mã thông báo API không đủ để gửi tác vụ này",
+    "Task pricing is unavailable": "Giá tác vụ chưa được cấu hình hoặc không khả dụng",
+    "The selected video duration is unavailable": "Thời lượng video đã chọn không khả dụng",
+    "Invalid task request parameters": "Tham số yêu cầu tác vụ không hợp lệ",
+    "Request canceled before task submission": "Yêu cầu đã bị hủy trước khi gửi tác vụ",
+    "No available channel for this task": "Không có kênh khả dụng cho tác vụ này",
+    "Task submission could not be prepared": "Không thể chuẩn bị gửi tác vụ",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

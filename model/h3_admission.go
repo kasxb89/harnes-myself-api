@@ -472,7 +472,12 @@ func ReleaseH3BeforeSendWithRefund(ctx context.Context, task *Task, refundRequir
 		if err := tx.Model(&H3Admission{}).Where("id = ?", admission.ID).Update("billing_state", billingState).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": taskStatus, "finish_time": finishTime, "progress": progress, "fail_reason": "Submission was not sent"}).Error; err != nil {
+		reason := task.FailReason
+		if reason == "" {
+			reason = "Submission was not sent"
+		}
+		persisted.PrivateData.SubmissionErrorCode = task.PrivateData.SubmissionErrorCode
+		if err := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(map[string]any{"status": taskStatus, "finish_time": finishTime, "progress": progress, "fail_reason": reason, "private_data": persisted.PrivateData}).Error; err != nil {
 			return err
 		}
 		return releaseH3Admission(tx, &admission)

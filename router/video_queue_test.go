@@ -18,6 +18,8 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -591,4 +593,124 @@ func TestVideoQueueCredentialRotationRevokesQueuedAuthorization(t *testing.T) {
 	assert.Equal(t, beforeToken, afterToken)
 	assert.Zero(t, f.posts)
 	assert.Zero(t, f.occupied(t))
+}
+
+// Use the same offline usage expression for enqueue estimates and dispatch.
+func videoQueueFailurePricing(t *testing.T) {
+	t.Helper()
+	previous := config.GlobalConfig.ExportAllConfigs()
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		billing_setting.PluginBillingExprOption: `{"hailuo::MiniMax-H3":"u(\"seconds\") * 0.01"}`,
+		"billing_setting.billing_mode":          `{}`, "billing_setting.billing_expr": `{}`,
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(previous)) })
+}
+
+func TestVideoQueueInsufficientBalanceRejectedBeforeAcceptance(t *testing.T) {
+	for _, source := range []string{"wallet", "token"} {
+		t.Run(source, func(t *testing.T) {
+			f := newVideoQueueFixture(t, 1)
+			videoQueueFailurePricing(t)
+			if source == "wallet" {
+				require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 1).Error)
+			} else {
+				require.NoError(t, f.db.Model(&model.Token{}).Where("id = ?", 791).Update("remain_quota", 1).Error)
+			}
+			wallet, token := f.balance(t)
+			w := f.request(t, http.MethodPost, "/v1/video/queue", `{"schema_version":1,"queue_id":"vq_00000000-0000-4000-8000-000000000701","operation_id":"failure-balance-operation","request":{"model":"MiniMax-H3","prompt":"balance fixture","seconds":5}}`, "h3routeradmin")
+			require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+			code := "insufficient_user_quota"
+			if source == "token" {
+				code = "pre_consume_token_quota_failed"
+			}
+			assert.Contains(t, w.Body.String(), code)
+			assert.Contains(t, w.Body.String(), `"accepted":false`)
+			assert.Contains(t, w.Body.String(), `"submission_state":"not_submitted"`)
+			for _, table := range []any{&model.VideoQueueItem{}, &model.Task{}, &model.H3Admission{}} {
+				var count int64
+				require.NoError(t, f.db.Model(table).Count(&count).Error)
+				assert.Zero(t, count)
+			}
+			currentWallet, currentToken := f.balance(t)
+			assert.Equal(t, wallet, currentWallet)
+			assert.Equal(t, token, currentToken)
+			assert.Zero(t, f.posts)
+			assert.Zero(t, f.occupied(t))
+		})
+	}
+}
+
+func TestVideoQueueAcceptedOperationStillResolvesAfterBalanceSpent(t *testing.T) {
+	f := newVideoQueueFixture(t, 1)
+	videoQueueFailurePricing(t)
+	item := enqueueQueueFixture(t, f, 702, `{"model":"MiniMax-H3","prompt":"accepted operation fixture","seconds":5}`)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 0).Error)
+	body := `{"schema_version":1,"queue_id":"vq_00000000-0000-4000-8000-000000000702","operation_id":"fixture-operation-702","request":{"model":"MiniMax-H3","prompt":"accepted operation fixture","seconds":5}}`
+	w := f.request(t, http.MethodPost, "/v1/video/queue", body, "h3routeradmin")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), item.TaskID)
+	conflict := f.request(t, http.MethodPost, "/v1/video/queue", strings.Replace(body, "accepted operation fixture", "changed operation", 1), "h3routeradmin")
+	assert.Equal(t, http.StatusConflict, conflict.Code, conflict.Body.String())
+	assert.Zero(t, f.posts)
+}
+
+func TestVideoQueueDispatchFailureRetainsSpecificBalanceReason(t *testing.T) {
+	f := newVideoQueueFixture(t, 1)
+	videoQueueFailurePricing(t)
+	item := enqueueQueueFixture(t, f, 703, `{"model":"MiniMax-H3","prompt":"balance changed during queue","seconds":5}`)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Update("quota", 1).Error)
+	wallet, token := f.balance(t)
+	_, err := service.RunVideoQueueOnce(context.Background())
+	require.NoError(t, err)
+	task := f.task(t, item.TaskID)
+	assert.EqualValues(t, model.TaskStatusFailure, task.Status)
+	assert.Equal(t, "Insufficient account balance or subscription quota to submit this task", task.FailReason)
+	var admission model.H3Admission
+	require.NoError(t, f.db.Where("task_db_id = ?", task.ID).First(&admission).Error)
+	assert.Equal(t, "not_charged", admission.BillingState)
+	assert.Zero(t, admission.SendingAt)
+	for range 2 {
+		w := f.request(t, http.MethodGet, "/v1/video/queue/"+item.QueueID, "", "h3routeradmin")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), `"failure_code":"insufficient_user_quota"`)
+		assert.Contains(t, w.Body.String(), "Insufficient account balance or subscription quota to submit this task")
+		assert.Contains(t, w.Body.String(), `"error_code":"h3_submission_not_sent"`, "the existing submission-receipt contract remains compatible")
+	}
+	currentWallet, currentToken := f.balance(t)
+	assert.Equal(t, wallet, currentWallet)
+	assert.Equal(t, token, currentToken)
+	assert.Zero(t, f.posts)
+	assert.Zero(t, f.occupied(t))
+}
+
+func TestVideoQueuePreSendInvalidParametersHaveSpecificReason(t *testing.T) {
+	f := newVideoQueueFixture(t, 1)
+	item := enqueueQueueFixture(t, f, 704, `{"model":"MiniMax-H3","prompt":"invalid duration fixture","seconds":5,"resolution":"not-a-resolution"}`)
+	_, err := service.RunVideoQueueOnce(context.Background())
+	require.NoError(t, err)
+	for range 2 {
+		w := f.request(t, http.MethodGet, "/v1/video/queue/"+item.QueueID, "", "h3routeradmin")
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Contains(t, w.Body.String(), `"state":"failed"`)
+		assert.Contains(t, w.Body.String(), `"failure_code":"invalid_request"`)
+		assert.Contains(t, w.Body.String(), "Invalid task request parameters")
+	}
+	assert.Zero(t, f.posts)
+	assert.Zero(t, f.occupied(t))
+}
+
+func TestVideoQueueSubscriptionFundingIsNotRejectedByWalletBalance(t *testing.T) {
+	for _, preference := range []string{"subscription_only", "subscription_first", "wallet_first"} {
+		t.Run(preference, func(t *testing.T) {
+			f := newVideoQueueFixture(t, 1)
+			videoQueueFailurePricing(t)
+			require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", 791).Updates(map[string]any{"quota": 1, "setting": fmt.Sprintf(`{"billing_preference":%q}`, preference)}).Error)
+			require.NoError(t, f.db.Create(&model.UserSubscription{UserId: 791, Status: "active", EndTime: time.Now().Unix() + 3600}).Error)
+			enqueueQueueFixture(t, f, 705, `{"model":"MiniMax-H3","prompt":"subscription fixture","seconds":5}`)
+			assert.Zero(t, f.posts)
+			assert.Zero(t, f.occupied(t))
+			wallet, _ := f.balance(t)
+			assert.Equal(t, 1, wallet)
+		})
+	}
 }
