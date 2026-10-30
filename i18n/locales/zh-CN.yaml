@@ -102,3 +102,15 @@ video_queue.create_rate: "本小时新增视频排队额度已用完，请稍后
 video_queue.disabled: "服务器视频队列当前未启用，本次未受理新任务、未扣费"
 video_queue.not_found: "当前账号下未找到这条视频排队记录"
 video_queue.already_dispatching: "这条视频已进入派发，不能按未提交取消，请查看原任务状态"
+
+# Model capacity
+model_capacity.ConfigUnavailable: "模型容量配置暂不可用"
+model_capacity.NoVerifiedRoute: "当前没有已核实容量的可用线路"
+model_capacity.OutputBudget: "最大输出预算必须为正整数"
+model_capacity.ContextExceeded: "估算输入已超出模型上下文窗口，请缩短对话"
+model_capacity.ReadParameters: "无法读取生成参数"
+model_capacity.NormalizeParameters: "无法规范化生成预算参数"
+model_capacity.RouteUnverified: "当前线路无法保证已声明的模型容量"
+model_capacity.RouteChanged: "线路配置已变更，需要重新核实模型容量"
+model_capacity.JsonRequired: "模型容量校验要求 JSON 格式的生成请求"
+model_capacity.NestedBudget: "嵌套的最大输出预算必须为正整数"

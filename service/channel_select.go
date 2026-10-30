@@ -151,7 +151,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 				autoGroup,
 				param.ModelName,
 				priorityRetry,
-				filters,
+				CapacityChannelFilters(param.Ctx, param.ModelName, autoGroup, filters),
 			)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
@@ -194,7 +194,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			param.TokenGroup,
 			param.ModelName,
 			param.GetRetry(),
-			filters,
+			CapacityChannelFilters(param.Ctx, param.ModelName, param.TokenGroup, filters),
 		)
 		if err != nil {
 			return nil, param.TokenGroup, err
@@ -282,6 +282,7 @@ type ChannelSelectError struct {
 // callers. The caller still applies SetupContextForSelectedChannel.
 func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam) (*model.Channel, string, *ChannelSelectError) {
 	constraints := GetChannelConstraints(c)
+	capacityFilters := CapacityChannelFilters(c, modelName, retry.TokenGroup, constraints.Filters)
 	if pin, found, overridden := constraints.ResolvedPin(); found {
 		for _, lost := range overridden {
 			logger.LogWarn(c, common.LogText(
@@ -296,7 +297,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 		if channel.Status != common.ChannelStatusEnabled {
 			return nil, "", pinnedChannelUnavailable(pin, http.StatusForbidden, i18n.MsgDistributorChannelDisabled)
 		}
-		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
+		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, capacityFilters); !ok {
 			return nil, "", &ChannelSelectError{
 				StatusCode: http.StatusBadRequest, Code: types.ErrorCode(kind), MessageID: i18n.MsgDistributorNoAvailableChannel,
 				Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},
@@ -315,7 +316,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 			preferred, err := model.CacheGetChannel(preferredChannelID)
 			affinitySatisfied := false
 			if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
-				affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelName, constraints.Filters)
+				affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelName, capacityFilters)
 			}
 			if affinitySatisfied {
 				if usingGroup == "auto" {
@@ -366,7 +367,7 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 			}
 		}
 	}
-	if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
+	if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, capacityFilters); !ok {
 		return nil, selectGroup, &ChannelSelectError{
 			StatusCode: http.StatusServiceUnavailable, Code: types.ErrorCodeModelNotFound, MessageID: i18n.MsgDistributorNoAvailableChannel,
 			Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},

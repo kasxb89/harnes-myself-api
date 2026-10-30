@@ -4,6 +4,8 @@ import "github.com/QuantumNous/new-api/relaykit/types"
 
 // 这里不好动就不动了，本来想独立出来的（
 type OpenAIModels struct {
+	ContextWindow          *int                 `json:"context_window,omitempty"`
+	MaxOutputTokens        *int                 `json:"max_output_tokens,omitempty"`
 	Id                     string               `json:"id"`
 	Object                 string               `json:"object"`
 	Created                int                  `json:"created"`

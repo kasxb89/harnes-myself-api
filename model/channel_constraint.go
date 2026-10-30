@@ -8,6 +8,7 @@ import (
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
+	dto.FilterModelCapacity,
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
 	dto.FilterResponsesWebSocket,
@@ -90,6 +91,8 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+	case dto.FilterModelCapacity:
+		return slices.Contains(filter.AllowedChannelIDs, ch.Id)
 	case dto.FilterExcludedChannels:
 		return !slices.Contains(filter.ExcludedChannelIDs, ch.Id)
 	case dto.FilterRequestPath:

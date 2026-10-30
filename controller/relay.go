@@ -151,6 +151,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	if newAPIError = service.ClampModelCapacityRequest(c, relayInfo); newAPIError != nil {
+		return
+	}
 	if newAPIError = relay.PrepareRequestBilling(c, relayInfo); newAPIError != nil {
 		return
 	}

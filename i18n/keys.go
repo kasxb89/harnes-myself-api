@@ -128,3 +128,17 @@ const (
 	MsgChannelUpstreamUpdateFailedChannels  = "channel.upstream_update_failed_channels"
 	MsgChannelUpstreamUpdateMoreOmitted     = "channel.upstream_update_more_omitted"
 )
+
+// Exact public model capacity failures.
+const (
+	MsgCapacityConfigUnavailable   = "model_capacity.ConfigUnavailable"
+	MsgCapacityNoVerifiedRoute     = "model_capacity.NoVerifiedRoute"
+	MsgCapacityOutputBudget        = "model_capacity.OutputBudget"
+	MsgCapacityContextExceeded     = "model_capacity.ContextExceeded"
+	MsgCapacityReadParameters      = "model_capacity.ReadParameters"
+	MsgCapacityNormalizeParameters = "model_capacity.NormalizeParameters"
+	MsgCapacityRouteUnverified     = "model_capacity.RouteUnverified"
+	MsgCapacityRouteChanged        = "model_capacity.RouteChanged"
+	MsgCapacityJsonRequired        = "model_capacity.JsonRequired"
+	MsgCapacityNestedBudget        = "model_capacity.NestedBudget"
+)

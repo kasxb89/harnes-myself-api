@@ -281,6 +281,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if strings.EqualFold(key, ModelCapacityOptionKey) {
+		return errors.New("Use the model capacity configuration API")
+	}
 	if isCustomerServiceOption(key) {
 		return errCustomerServiceDedicatedAPI
 	}
@@ -320,6 +323,9 @@ func UpdateOption(key string, value string) error {
 		}
 		if err := tx.Where(&Option{Key: key}).Take(&option).Error; err != nil {
 			return err
+		}
+		if strings.EqualFold(option.Key, ModelCapacityOptionKey) {
+			return errors.New("Use the model capacity configuration API")
 		}
 		if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
 			return ErrModelProfitCostRulesAPI
@@ -378,6 +384,9 @@ func validateClientAnnouncementOptionWrite(tx *gorm.DB, requestedKey, storedKey 
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
 	for key := range values {
+		if strings.EqualFold(key, ModelCapacityOptionKey) {
+			return errors.New("Use the model capacity configuration API")
+		}
 		if isCustomerServiceOption(key) {
 			return errCustomerServiceDedicatedAPI
 		}
@@ -441,6 +450,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
+			}
+			if strings.EqualFold(option.Key, ModelCapacityOptionKey) {
+				return errors.New("Use the model capacity configuration API")
 			}
 			if strings.EqualFold(option.Key, ModelProfitCostRulesKey) {
 				return ErrModelProfitCostRulesAPI

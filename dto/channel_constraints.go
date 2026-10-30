@@ -36,6 +36,7 @@ type ChannelPin struct {
 type ChannelFilterKind string
 
 const (
+	FilterModelCapacity      ChannelFilterKind = "model_capacity"
 	FilterRequestPath        ChannelFilterKind = "request_path"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
 	FilterResponsesWebSocket ChannelFilterKind = "responses_websocket"
@@ -43,6 +44,7 @@ const (
 )
 
 type ChannelFilter struct {
+	AllowedChannelIDs      []int
 	ExcludedChannelIDs     []int
 	Kind                   ChannelFilterKind
 	RequestPath            string

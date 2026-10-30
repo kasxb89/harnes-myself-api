@@ -102,3 +102,15 @@ video_queue.create_rate: "本小時新增影片排隊額度已用完，請稍後
 video_queue.disabled: "伺服器影片佇列目前未啟用，本次未受理新任務、未扣費"
 video_queue.not_found: "目前帳號下找不到這條影片排隊記錄"
 video_queue.already_dispatching: "這條影片已進入派發，不能按未提交取消，請查看原任務狀態"
+
+# Model capacity
+model_capacity.ConfigUnavailable: "模型容量設定暫不可用"
+model_capacity.NoVerifiedRoute: "目前沒有已核實容量的可用線路"
+model_capacity.OutputBudget: "最大輸出預算必須為正整數"
+model_capacity.ContextExceeded: "估算輸入已超出模型上下文視窗，請縮短對話"
+model_capacity.ReadParameters: "無法讀取生成參數"
+model_capacity.NormalizeParameters: "無法正規化生成預算參數"
+model_capacity.RouteUnverified: "目前線路無法保證已聲明的模型容量"
+model_capacity.RouteChanged: "線路設定已變更，需要重新核實模型容量"
+model_capacity.JsonRequired: "模型容量驗證要求 JSON 格式的生成請求"
+model_capacity.NestedBudget: "巢狀的最大輸出預算必須為正整數"

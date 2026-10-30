@@ -216,6 +216,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 }
 
 func ListModels(c *gin.Context, modelType int) {
+	c.Header("Cache-Control", "private, no-store")
 	service.RefreshBlackrxCatalog(c.Request.Context())
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
 	if !acceptUnsetRatioModel {
@@ -270,7 +271,18 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 	userOpenAiModels := make([]dto.OpenAIModels, 0, len(userModelNames))
 	for _, modelName := range userModelNames {
-		userOpenAiModels = append(userOpenAiModels, buildOpenAIModel(modelName, ownerByModel))
+		capacity, err := service.ModelCapacityForGroups(modelName, ownerGroups)
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
+			return
+		}
+		if capacity.Managed && len(capacity.Routes) == 0 {
+			continue
+		}
+		entry := buildOpenAIModel(modelName, ownerByModel)
+		entry.ContextWindow = capacity.ContextWindow
+		entry.MaxOutputTokens = capacity.MaxOutputTokens
+		userOpenAiModels = append(userOpenAiModels, entry)
 	}
 
 	switch modelType {

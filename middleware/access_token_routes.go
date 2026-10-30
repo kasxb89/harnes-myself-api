@@ -188,6 +188,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/api-router.go: /api/option
 	"GET /api/option/":                                           accessTokenScopeRule("option:read"),
+	"GET /api/option/model_capacity":                             accessTokenScopeRule("option:read"),
+	"PUT /api/option/model_capacity":                             accessTokenScopeRule("option:write"),
 	"GET /api/option/request_policy":                             accessTokenScopeRule("option:read"),
 	"PATCH /api/option/request_policy":                           accessTokenScopeRule("option:write"),
 	"PUT /api/option/":                                           accessTokenScopeRule("option:write"),

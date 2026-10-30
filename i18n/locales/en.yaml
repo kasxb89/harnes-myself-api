@@ -101,3 +101,15 @@ video_queue.create_rate: "The hourly new-video queue budget is exhausted; wait b
 video_queue.disabled: "Server video queue dispatch is disabled; no new job was accepted or charged"
 video_queue.not_found: "The video queue item was not found for this account"
 video_queue.already_dispatching: "This video has already entered dispatch and cannot be canceled as unsent; inspect its original task"
+
+# Model capacity
+model_capacity.ConfigUnavailable: "Model capacity configuration is unavailable"
+model_capacity.NoVerifiedRoute: "No verified capacity route is available"
+model_capacity.OutputBudget: "Output budget must be a positive integer"
+model_capacity.ContextExceeded: "Estimated input exceeds the configured context window; shorten the conversation"
+model_capacity.ReadParameters: "Cannot read generation parameters"
+model_capacity.NormalizeParameters: "Cannot normalize generation parameters"
+model_capacity.RouteUnverified: "The selected route cannot guarantee the declared capacity"
+model_capacity.RouteChanged: "The selected route configuration changed; capacity needs verification"
+model_capacity.JsonRequired: "A JSON generation request is required"
+model_capacity.NestedBudget: "Nested output budget must be a positive integer"
