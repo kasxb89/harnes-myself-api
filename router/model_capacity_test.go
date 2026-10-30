@@ -89,6 +89,8 @@ func TestModelCapacityDirectoryAndPersistence(t *testing.T) {
 	assert.Len(t, read.Routes, 2, "omission must not revoke old declarations")
 	cfg.Routes[0] = makeRoute(1, 100, 200)
 	assert.Error(t, model.SaveModelCapacityConfig(cfg))
+	cfg.Routes[0] = makeRoute(1, 2147483647, 2147483647)
+	assert.Error(t, model.SaveModelCapacityConfig(cfg))
 	assert.Error(t, model.UpdateOption(model.ModelCapacityOptionKey, `{}`))
 	// A missing declaration never bans an old model.
 	c, err := service.ModelCapacityForGroups("legacy", []string{"default"})

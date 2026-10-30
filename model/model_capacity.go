@@ -86,6 +86,9 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 				return errors.New("model capacity must be a positive int32")
 			}
 		}
+		if r.MaxOutputTokens != nil && *r.MaxOutputTokens > common.MaxRelayOutputTokens {
+			return errors.New("Output capacity exceeds the gateway request budget limit")
+		}
 		if r.ContextWindow != nil && r.MaxOutputTokens != nil && *r.MaxOutputTokens > *r.ContextWindow {
 			return errors.New("output capacity exceeds context window")
 		}
