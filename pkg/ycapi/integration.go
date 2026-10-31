@@ -3,6 +3,7 @@ package ycapi
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 
@@ -23,6 +24,65 @@ func Lookup(id string) (Model, bool) {
 
 func Models() ([]Model, error) {
 	return slices.Clone(approved.Models), catalogError
+}
+
+// ChatEnvelope targets the supplier endpoint which actually enforces lane_id.
+// Its OpenAI-compatible endpoint silently ignores that field. Messages belong
+// at envelope level; tools, output budgets and reasoning belong inside params.
+func ChatEnvelope(id string, request any) (map[string]any, error) {
+	m, ok := Lookup(id)
+	if !ok || m.Kind != "text" || len(m.Prices) != 2 || m.Prices[0].LaneID != m.Prices[1].LaneID {
+		return nil, fmt.Errorf("invalid fixed-lane chat model")
+	}
+	raw, err := common.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+	var params map[string]any
+	if err = common.Unmarshal(raw, &params); err != nil {
+		return nil, err
+	}
+	for _, key := range []string{"model_id", "modality", "operation", "params", "parameters", "extra_body", "attachments", "lane_ids", "pinned_lane_id", "pinned_lane_ids"} {
+		if params[key] != nil {
+			return nil, fmt.Errorf("a chat request cannot select an upstream envelope or route")
+		}
+	}
+	if model, _ := params["model"].(string); model != "" && model != m.ID && model != m.UpstreamID {
+		return nil, fmt.Errorf("the configured model differs from its verified procurement route")
+	}
+	if lane := params["lane_id"]; lane != nil && lane != m.Prices[0].LaneID {
+		return nil, fmt.Errorf("the configured procurement route differs from its verified route")
+	}
+	messages, ok := params["messages"].([]any)
+	if !ok || len(messages) == 0 {
+		return nil, fmt.Errorf("chat messages are required")
+	}
+	budget := m.MaxOutputTokens
+	for _, key := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
+		if value, exists := params[key]; exists && value != nil {
+			n, ok := value.(float64)
+			if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 || n != math.Trunc(n) || n > math.MaxInt32 {
+				return nil, fmt.Errorf("invalid chat output budget")
+			}
+			budget = min(budget, int(n))
+		}
+	}
+	stream, _ := params["stream"].(bool)
+	capability, err := LookupTextCapability(id)
+	if err != nil {
+		return nil, err
+	}
+	if effort, present := params["reasoning_effort"].(string); present && capability.ReasoningControlMapping["enable_thinking_with_effort"] {
+		params["enable_thinking"] = effort != "none"
+		if effort == "none" && capability.ReasoningControlMapping["omit_effort_on_none"] {
+			delete(params, "reasoning_effort")
+		}
+	}
+	for _, key := range []string{"model", "lane_id", "messages", "stream", "max_completion_tokens", "max_output_tokens"} {
+		delete(params, key)
+	}
+	params["max_tokens"] = budget
+	return map[string]any{"model_id": m.UpstreamID, "modality": "chat", "lane_id": m.Prices[0].LaneID, "messages": messages, "stream": stream, "params": params}, nil
 }
 
 func ClientPrices(id string) []map[string]any {
@@ -128,7 +188,9 @@ func ClientParameters(id string) map[string]any {
 	parameters := map[string]any{"type": "object", "additionalProperties": false, "properties": properties,
 		"x-model-kind": m.Kind, "x-reference-limits": map[string]any{"images": 0, "videos": 0, "audios": 0, "counts_include_files_and_urls": true}}
 	if m.Kind == "text" {
-		parameters["x-text-capabilities"] = map[string]any{"tools": false, "vision": false, "reasoning": false, "stream": true, "max_input_tokens": 32000}
+		parameters["x-text-capabilities"] = PublicTextCapabilities(id)
+		parameters["properties"] = map[string]any{}
+		delete(parameters, "x-reference-limits")
 		return parameters
 	}
 	parameters["x-task-plugin"] = map[string]any{"key": "ycapi", "version": "1.0.0", "api_version": 1}

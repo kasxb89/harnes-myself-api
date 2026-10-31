@@ -124,3 +124,102 @@ func TestPreviewFingerprintChangesAndCatalogRemainsImmutable(t *testing.T) {
 	var v any
 	assert.NoError(t, common.Unmarshal(after, &v))
 }
+
+func TestChatEnvelopePreservesToolsImagesControlsAndSmallerBudgets(t *testing.T) {
+	request := map[string]any{
+		"model": "ycapi-gpt-6.1-sol", "max_completion_tokens": 2048, "stream": true,
+		"messages":    []map[string]any{{"role": "user", "content": []map[string]any{{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64,c3ludGhldGlj"}}, {"type": "text", "text": "Use the echo tool"}}}},
+		"tools":       []map[string]any{{"type": "function", "function": map[string]any{"name": "echo", "parameters": map[string]any{"type": "object"}}}},
+		"tool_choice": "auto", "enable_thinking": false,
+	}
+	envelope, err := ChatEnvelope("ycapi-gpt-6.1-sol", request)
+	require.NoError(t, err)
+	assert.Equal(t, "gpt-6.1-sol", envelope["model_id"])
+	assert.Equal(t, "gpt-6.1-sol@952:codex", envelope["lane_id"])
+	assert.Equal(t, "chat", envelope["modality"])
+	assert.Equal(t, true, envelope["stream"])
+	params := envelope["params"].(map[string]any)
+	assert.EqualValues(t, 2048, params["max_tokens"])
+	assert.Equal(t, false, params["enable_thinking"], "explicit false must not disappear")
+	assert.Equal(t, "auto", params["tool_choice"])
+	assert.Len(t, params["tools"], 1)
+	assert.Nil(t, params["messages"], "supplier only reads messages at envelope level")
+	encoded, err := common.Marshal(envelope["messages"])
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), "data:image/png;base64,c3ludGhldGlj")
+	assert.Contains(t, string(encoded), "Use the echo tool")
+	assert.NotContains(t, envelope, "max_completion_tokens")
+	for _, patch := range []map[string]any{
+		{"model": "another-native-model"}, {"lane_id": "another-lane"},
+		{"pinned_lane_id": "a-lane"}, {"params": map[string]any{"max_tokens": 1}},
+		{"max_tokens": -1}, {"max_tokens": 0}, {"max_tokens": 1.5}, {"max_tokens": "2048"},
+	} {
+		copy := map[string]any{}
+		for key, value := range request {
+			copy[key] = value
+		}
+		for key, value := range patch {
+			copy[key] = value
+		}
+		_, err := ChatEnvelope("ycapi-gpt-6.1-sol", copy)
+		assert.Error(t, err)
+	}
+}
+
+func TestChatRuntimeUnwrapKeepsUsageWithoutSupplierFinance(t *testing.T) {
+	clean, status, err := PublicChatResponse([]byte(`{"object":"model_runtime.invoke","status":"succeeded","lane":{"provider":"private-route"},"billing":{"settled_amount_credits":99},"routing_receipt":{"selected_lane_id":"private-lane"},"result":{"id":"chat1","object":"chat.completion","choices":[{"message":{"content":"OK","tool_calls":[{"id":"call1","function":{"name":"echo","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":11,"completion_tokens":23,"completion_tokens_details":{"reasoning_tokens":17},"cost_rmb":9,"balance_rmb":99}}}`), nil)
+	require.NoError(t, err)
+	assert.Zero(t, status)
+	for _, private := range []string{"private-route", "private-lane", "settled_amount", "cost_rmb", "balance_rmb", "routing_receipt"} {
+		assert.NotContains(t, string(clean), private)
+	}
+	var value map[string]any
+	require.NoError(t, common.Unmarshal(clean, &value))
+	usage := value["usage"].(map[string]any)
+	assert.EqualValues(t, 11, usage["prompt_tokens"])
+	assert.EqualValues(t, 23, usage["completion_tokens"])
+	assert.EqualValues(t, 17, usage["completion_tokens_details"].(map[string]any)["reasoning_tokens"])
+	assert.Contains(t, string(clean), "call1")
+	assert.Contains(t, string(clean), "tool_calls")
+	clean, status, err = PublicChatResponse([]byte(`{"object":"model_runtime.invoke","status":"failed","error_code":"insufficient_balance","error":"private supplier account balance"}`), nil)
+	require.NoError(t, err)
+	assert.Equal(t, 503, status)
+	assert.Contains(t, string(clean), "upstream_balance_unavailable")
+	assert.NotContains(t, string(clean), "private supplier account balance")
+	clean, _, err = PublicChatResponse([]byte(`{"error":{"message":"stream HTTP403: no access to secret-supplier-group","error_class":"vendor_model_unavailable","type":"stream_error","fallback_safe":true,"billed_or_processing":false}}`), nil)
+	require.NoError(t, err)
+	assert.NotContains(t, string(clean), "secret-supplier-group")
+	assert.Contains(t, string(clean), "model_route_unavailable")
+	assert.Contains(t, string(clean), `"billed_or_processing":false`)
+}
+
+func TestTextCapabilityFactsAndPublicCopyStaySeparate(t *testing.T) {
+	require.NoError(t, textCapabilityError)
+	blocked := PublicTextCapabilities("ycapi-claude-fable-5-1")
+	assert.Equal(t, "fixed_lane_unavailable", blocked["operational_status"])
+	assert.Equal(t, false, blocked["tools"])
+	assert.Equal(t, "unverified", blocked["verification"].(map[string]any)["tools"])
+	capability := PublicTextCapabilities("ycapi-glm-5.2")
+	assert.Equal(t, true, capability["tools"])
+	assert.Equal(t, false, capability["vision"])
+	assert.Equal(t, "unsupported", capability["verification"].(map[string]any)["vision"])
+	encoded, err := common.Marshal(capability)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "lane_id")
+	assert.NotContains(t, string(encoded), "procurement")
+	controls := capability["reasoning_controls"].(map[string]any)["properties"].(map[string]any)["reasoning_effort"].(map[string]any)
+	controls["enum"].([]any)[0] = "forged"
+	unchanged := PublicTextCapabilities("ycapi-glm-5.2")["reasoning_controls"].(map[string]any)["properties"].(map[string]any)["reasoning_effort"].(map[string]any)
+	assert.Equal(t, "none", unchanged["enum"].([]any)[0])
+	for _, effort := range []string{"none", "high"} {
+		envelope, err := ChatEnvelope("ycapi-glm-5.2", map[string]any{"model": "ycapi-glm-5.2", "messages": []map[string]string{{"role": "user", "content": "hello"}}, "max_tokens": 2048, "reasoning_effort": effort})
+		require.NoError(t, err)
+		params := envelope["params"].(map[string]any)
+		assert.Equal(t, effort != "none", params["enable_thinking"])
+		if effort == "none" {
+			assert.NotContains(t, params, "reasoning_effort")
+		} else {
+			assert.Equal(t, effort, params["reasoning_effort"])
+		}
+	}
+}

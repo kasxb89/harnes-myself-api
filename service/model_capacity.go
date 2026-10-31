@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -81,27 +83,53 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 		if approved.Kind != "text" || !isText {
 			return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		meta := request.GetTokenCountMeta()
-		estimate := tokenkit.Count(approved.UpstreamID, meta.CombineText) + meta.MessagesCount*3 + meta.NameCount*3 + meta.ToolsCount*8 + 3
+		capability, err := ycapi.LookupTextCapability(approved.ID)
+		if err != nil {
+			return capacityError(c, "model_capability_unavailable", "Model capability configuration is unavailable")
+		}
+		if capability.OperationalStatus == "fixed_lane_unavailable" || capability.OperationalStatus == "upstream_quota_exhausted" {
+			return types.WithOpenAIError(types.OpenAIError{Message: i18n.T(c, "The configured upstream route is temporarily unavailable"), Type: "service_unavailable", Code: "model_route_unavailable"}, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+		}
 		var body map[string]any
 		if common.UnmarshalBodyReusable(c, &body) != nil {
 			return types.NewErrorWithStatusCode(errors.New("Invalid text request"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		for _, key := range []string{"tools", "functions", "tool_choice", "function_call", "lane_id", "pinned_lane_id", "reasoning", "reasoning_effort"} {
+		for _, key := range []string{"lane_id", "pinned_lane_id"} {
 			value, present := body[key]
 			if !present || value == nil {
 				continue
 			}
-			if key == "tools" || key == "functions" {
-				if entries, ok := value.([]any); ok && len(entries) == 0 {
-					continue
-				}
-			}
-			if (key == "tool_choice" || key == "function_call" || key == "reasoning_effort") && value == "none" {
+			return capacityError(c, "model_route_override_not_allowed", "The model procurement route cannot be overridden")
+		}
+		for _, key := range []string{"tools", "functions", "tool_choice", "function_call"} {
+			value, present := body[key]
+			if !present || value == nil || capability.Tools {
 				continue
 			}
-			if present {
-				return types.NewErrorWithStatusCode(errors.New("This approved text offer does not support tools, media or route overrides"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			if entries, ok := value.([]any); ok && len(entries) == 0 {
+				continue
+			}
+			if value == "none" {
+				continue
+			}
+			return capacityError(c, "model_tools_unavailable", "Tool calling is unavailable on the selected model route")
+		}
+		for _, key := range []string{"reasoning", "reasoning_effort", "enable_thinking", "thinking_budget", "thinking", "chat_template_kwargs", "extra_body"} {
+			value, present := body[key]
+			if !present || value == nil {
+				continue
+			}
+			field, declared := capability.ReasoningControls.Properties[key]
+			valid := false
+			if declared && capability.Reasoning {
+				if field.Type == "boolean" {
+					_, valid = value.(bool)
+				} else if text, ok := value.(string); ok {
+					valid = slices.Contains(field.Enum, text)
+				}
+			}
+			if !valid {
+				return capacityError(c, "model_reasoning_control_unavailable", "The reasoning control is unavailable on the selected model route")
 			}
 		}
 		messages, _ := body["messages"].([]any)
@@ -110,20 +138,31 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 			if !ok {
 				return types.NewErrorWithStatusCode(errors.New("Text messages are required"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
-			if message["role"] == "tool" || message["role"] == "function" || message["tool_calls"] != nil || message["function_call"] != nil {
-				return types.NewErrorWithStatusCode(errors.New("This approved text offer does not support tool messages"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			if !capability.Tools && (message["role"] == "tool" || message["role"] == "function" || message["tool_calls"] != nil || message["function_call"] != nil) {
+				return capacityError(c, "model_tools_unavailable", "Tool calling is unavailable on the selected model route")
 			}
 			if content, ok := message["content"].([]any); ok {
 				for _, part := range content {
 					item, ok := part.(map[string]any)
-					if !ok || item["type"] != "text" {
-						return types.NewErrorWithStatusCode(errors.New("This approved offer supports text input only"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+					if ok && item["type"] == "image_url" && !capability.Vision {
+						if capability.Verification.Vision == "unsupported" {
+							return capacityError(c, "model_image_input_unsupported", "The selected upstream model route does not accept image input")
+						}
+						return capacityError(c, "model_image_input_temporarily_unavailable", "Image input is temporarily unavailable on the selected model route")
+					}
+					if !ok || (item["type"] != "text" && (item["type"] != "image_url" || !capability.Vision)) {
+						return capacityError(c, "model_input_modality_unavailable", "The input modality is unavailable on the selected model route")
 					}
 				}
 			}
 		}
-		if len(meta.Files) > 0 || meta.ToolsCount > 0 || estimate > 32000 {
-			return types.NewErrorWithStatusCode(errors.New("This approved text offer accepts at most 32000 input tokens and text only"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		meta := request.GetTokenCountMeta()
+		estimate, err := CountRequestToken(c, meta, info)
+		if err != nil {
+			return capacityError(c, "model_input_size_unavailable", "The input size could not be determined for the selected model")
+		}
+		if estimate > 32000 {
+			return capacityError(c, "model_input_limit_exceeded", "This model route accepts at most 32000 input tokens")
 		}
 	}
 	caps, err := capacityForRequest(c, info.OriginModelName)
@@ -284,6 +323,20 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 	if err := common.Unmarshal(body, &object); err != nil {
 		return capacityError(c, "invalid_capacity_request", i18n.MsgCapacityJsonRequired)
 	}
+	var chatEnvelope map[string]any
+	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+		params, valid := object["params"].(map[string]any)
+		if !valid || object["model_id"] != approved.UpstreamID || object["modality"] != "chat" || object["lane_id"] != approved.Prices[0].LaneID {
+			return capacityError(c, "model_route_unavailable", "The outgoing request does not match its verified model route")
+		}
+		chatEnvelope = object
+		object = maps.Clone(params)
+		object["messages"] = chatEnvelope["messages"]
+		body, err = common.Marshal(object)
+		if err != nil {
+			return err
+		}
+	}
 	limit := caps.MaxOutputTokens
 	if route.MaxOutputTokens != nil && (limit == nil || *route.MaxOutputTokens < *limit) {
 		limit = route.MaxOutputTokens
@@ -343,7 +396,9 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 			}
 		}
 		budgetField := route.BudgetField
-		if strings.Contains(req.URL.Path, "/responses") {
+		if chatEnvelope != nil {
+			budgetField = "max_tokens"
+		} else if strings.Contains(req.URL.Path, "/responses") {
 			budgetField = "max_output_tokens"
 		} else if strings.Contains(req.URL.Path, "/messages") {
 			budgetField = "max_tokens"
@@ -359,6 +414,18 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 			return err
 		}
 		c.Set("model_capacity_effective_output_tokens", effective)
+	}
+	if chatEnvelope != nil {
+		var params map[string]any
+		if err = common.Unmarshal(body, &params); err != nil {
+			return err
+		}
+		delete(params, "messages")
+		chatEnvelope["params"] = params
+		body, err = common.Marshal(chatEnvelope)
+		if err != nil {
+			return err
+		}
 	}
 	req.Body = io.NopCloser(strings.NewReader(string(body)))
 	req.ContentLength = int64(len(body))

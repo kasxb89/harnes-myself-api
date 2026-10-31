@@ -199,8 +199,12 @@ func BuildPreview(req PreviewRequest) (Preview, error) {
 		official = input.Official.Mul(decimal.NewFromInt(int64(in))).Add(output.Official.Mul(decimal.NewFromInt(int64(out)))).Div(scale)
 		result.Estimated = true
 		if m.Kind == "text" {
-			result.Endpoint = "/v1/chat/completions"
-			result.Body = map[string]any{"model": m.UpstreamID, "messages": []map[string]string{{"role": "user", "content": req.Prompt}}, "max_tokens": maxOut, "stream": true, "stream_options": map[string]bool{"include_usage": true}, "lane_id": input.LaneID}
+			result.Endpoint = "/api/v1/model-runtime/invoke"
+			var err error
+			result.Body, err = ChatEnvelope(m.ID, map[string]any{"model": m.UpstreamID, "messages": []map[string]string{{"role": "user", "content": req.Prompt}}, "max_tokens": maxOut, "stream": true, "stream_options": map[string]bool{"include_usage": true}})
+			if err != nil {
+				return result, err
+			}
 		} else {
 			if utf8.RuneCountInString(req.Prompt) > 2000 {
 				return result, fmt.Errorf("YCAPI audio text exceeds 2000 characters")

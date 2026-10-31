@@ -8,7 +8,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -123,6 +125,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var streamFunctionCallNames []string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" && data != "" && data != "[DONE]" {
+			clean, _, err := ycapi.PublicChatResponse([]byte(data), func(message string) string { return i18n.T(c, message) })
+			if err != nil {
+				sr.Error(fmt.Errorf("invalid upstream chat stream frame"))
+				return
+			}
+			data = string(clean)
+		}
 		if lastStreamData != "" {
 			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
 				common.SysLog(common.LogText("error handling stream format: %s", err.Error()))

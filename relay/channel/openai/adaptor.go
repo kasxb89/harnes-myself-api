@@ -15,7 +15,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
@@ -112,6 +114,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+		return strings.TrimRight(info.ChannelBaseUrl, "/") + "/api/v1/model-runtime/invoke", nil
+	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
 		if after, ok := strings.CutPrefix(info.ChannelBaseUrl, "https://"); ok {
 			baseUrl := after
@@ -253,6 +258,12 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
+	}
+	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+		// The supplier translates the native model itself. Preserve its verified
+		// reasoning fields rather than applying model-family guesses here.
+		info.SetReasoningEffort(request.ReasoningEffort)
+		return request, nil
 	}
 	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeAzure {
 		request.StreamOptions = nil
@@ -750,6 +761,48 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+		// Wrap after parameter overrides, including body passthrough, so neither
+		// path can bypass the fixed model/lane or the final output budget.
+		var request map[string]any
+		if err := common.DecodeJson(requestBody, &request); err != nil {
+			return nil, err
+		}
+		envelope, err := ycapi.ChatEnvelope(approved.ID, request)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := common.Marshal(envelope)
+		if err != nil {
+			return nil, err
+		}
+		requestBody = bytes.NewReader(raw)
+		response, err := channel.DoApiRequest(a, c, info, requestBody)
+		if err != nil || response == nil {
+			return response, err
+		}
+		if response.Body == nil {
+			return nil, errors.New("upstream chat response body is missing")
+		}
+		if !strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream") {
+			body, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			if readErr != nil {
+				return nil, readErr
+			}
+			clean, status, cleanErr := ycapi.PublicChatResponse(body, func(message string) string { return i18n.T(c, message) })
+			if cleanErr != nil {
+				return nil, cleanErr
+			}
+			response.Body = io.NopCloser(bytes.NewReader(clean))
+			response.ContentLength = int64(len(clean))
+			response.Header.Del("Content-Length")
+			if status != 0 {
+				response.StatusCode = status
+			}
+		}
+		return response, nil
+	}
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
 		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
