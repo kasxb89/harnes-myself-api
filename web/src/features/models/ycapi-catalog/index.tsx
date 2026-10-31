@@ -48,9 +48,9 @@ export function YcapiCatalog() {
     <div className='h-full min-h-0 space-y-4 overflow-y-auto pr-1 pb-4'>
       <div className='flex flex-wrap gap-2'>
         <Badge variant='secondary'>
-          {t('61 models · 40 text · 8 image · 10 video · 3 audio')}
+          {t('43 models · 22 text · 8 image · 10 video · 3 audio')}
         </Badge>
-        <Badge variant='outline'>{t('149 price rows')}</Badge>
+        <Badge variant='outline'>{t('113 price rows')}</Badge>
         <Badge variant='outline'>{t('Approved price snapshot')}</Badge>
       </div>
       <Alert>

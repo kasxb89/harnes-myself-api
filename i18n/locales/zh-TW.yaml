@@ -130,3 +130,5 @@ model_capacity.NestedBudget: "巢狀的最大輸出預算必須為正整數"
 "The upstream provider account has insufficient funds": "上游供應商帳戶餘額不足，請聯絡管理員處理"
 "The selected upstream model route does not accept image input": "目前上游模型管道不支援圖片輸入"
 "Image input is temporarily unavailable on the selected model route": "目前模型管道的圖片輸入暫不可用"
+
+"The selected model is not included in the current catalog": "所選模型已不在目前可用目錄中"

@@ -8629,6 +8629,8 @@
     "Generation was rejected by content moderation": "生成内容未通过上游审核",
     "Upstream generation timed out": "上游生成超时",
     "The configured upstream model is unavailable": "配置的上游模型或渠道不可用",
-    "Audio defaults to one request per key; change its pool override to adjust it.": "音訊預設每個金鑰同時處理1個請求，可透過帳戶池覆寫值調整。"
+    "Audio defaults to one request per key; change its pool override to adjust it.": "音訊預設每個金鑰同時處理1個請求，可透過帳戶池覆寫值調整。",
+    "43 models · 22 text · 8 image · 10 video · 3 audio": "43款模型 · 22款文本 · 8款图片 · 10款视频 · 3款语音",
+    "113 price rows": "113条价格规格"
   }
 }

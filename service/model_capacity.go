@@ -78,7 +78,11 @@ func capacityError(c *gin.Context, code, message string) *types.NewAPIError {
 
 // Clamp before quota reservation. Unknown metadata leaves the old path alone.
 func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
-	if approved, ok := ycapi.Lookup(info.OriginModelName); ok {
+	approved, catalogued := ycapi.Lookup(info.OriginModelName)
+	if ycapi.IsExcludedChatModel(info.OriginModelName) {
+		return capacityError(c, "model_not_available", "The selected model is not included in the current catalog")
+	}
+	if catalogued {
 		request, isText := info.Request.(*dto.GeneralOpenAIRequest)
 		if approved.Kind != "text" || !isText {
 			return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())

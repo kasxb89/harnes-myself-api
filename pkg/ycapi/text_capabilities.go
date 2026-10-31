@@ -51,10 +51,11 @@ type TextCapability struct {
 }
 
 type textCapabilitySnapshot struct {
-	SchemaVersion int              `json:"schema_version"`
-	Revision      string           `json:"revision"`
-	CheckedAt     string           `json:"checked_at"`
-	Models        []TextCapability `json:"models"`
+	SchemaVersion    int              `json:"schema_version"`
+	Revision         string           `json:"revision"`
+	CheckedAt        string           `json:"checked_at"`
+	Models           []TextCapability `json:"models"`
+	ExcludedModelIDs []string         `json:"excluded_model_ids"`
 }
 
 var textCapabilities, textCapabilityError = loadTextCapabilities()
@@ -64,11 +65,24 @@ func loadTextCapabilities() (textCapabilitySnapshot, error) {
 	if err := common.Unmarshal(textCapabilityData, &snapshot); err != nil {
 		return snapshot, err
 	}
-	if snapshot.SchemaVersion != 2 || snapshot.Revision == "" || snapshot.CheckedAt == "" || len(snapshot.Models) != 40 {
+	if snapshot.SchemaVersion != 2 || snapshot.Revision == "" || snapshot.CheckedAt == "" || len(snapshot.Models) != 22 {
 		return snapshot, fmt.Errorf("invalid text capability snapshot")
 	}
 	seen := map[string]bool{}
+	if len(snapshot.ExcludedModelIDs) != 18 {
+		return snapshot, fmt.Errorf("invalid excluded chat model selection")
+	}
+	for _, id := range snapshot.ExcludedModelIDs {
+		_, active := Lookup(id)
+		if id == "" || active || seen[id] {
+			return snapshot, fmt.Errorf("excluded chat model is still active or duplicated")
+		}
+		seen[id] = true
+	}
 	for _, capability := range snapshot.Models {
+		if !capability.Tools || !capability.Vision || capability.Verification.Tools != "supported" || capability.Verification.Vision != "supported" || capability.OperationalStatus != "available" {
+			return snapshot, fmt.Errorf("chat catalog requires verified available tool and image support")
+		}
 		m, ok := Lookup(capability.ModelID)
 		if !ok || m.Kind != "text" || seen[m.ID] || len(m.Prices) != 2 || capability.LaneID != m.Prices[0].LaneID || capability.LaneID != m.Prices[1].LaneID {
 			return snapshot, fmt.Errorf("text capability and approved procurement route differ")
@@ -100,6 +114,12 @@ func loadTextCapabilities() (textCapabilitySnapshot, error) {
 		}
 	}
 	return snapshot, nil
+}
+
+// IsExcludedChatModel protects stale saved selections and stale channels while
+// preserving the normal behavior of administrator-defined custom models.
+func IsExcludedChatModel(id string) bool {
+	return slices.Contains(textCapabilities.ExcludedModelIDs, id)
 }
 
 func LookupTextCapability(id string) (TextCapability, error) {

@@ -213,8 +213,8 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 			assert.EqualValues(t, 8192, entry["max_output_tokens"])
 		}
 	}
-	assert.Equal(t, 61, count)
-	assert.Equal(t, 149, priceRows)
+	assert.Equal(t, 43, count)
+	assert.Equal(t, 113, priceRows)
 	for _, key := range []string{"procurement", "lane_id", "channel_id", "synthetic-ycapi-only", "ycapi-flux-2\"", "ycapi-seedance-2-5-special\""} {
 		assert.NotContains(t, models.Body.String(), key)
 	}
@@ -225,6 +225,34 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 	assert.NotContains(t, pricing.Body.String(), `"procurementCny"`)
 	protected := f.request(t, http.MethodGet, "/api/ycapi/catalog", "", "h3routermember")
 	assert.NotContains(t, protected.Body.String(), `"procurementCny"`)
+}
+
+func TestYcapiRemovedModelRejectsStaleChannelBeforeQuotaOrUpstream(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	posts := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(provider.Close)
+	base, err := url.Parse(provider.URL)
+	require.NoError(t, err)
+	service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
+	staleBase := "https://ycapi.fixture"
+	channel := model.Channel{Id: 998, Type: constant.ChannelTypeOpenAI, Key: "synthetic-ycapi-only", Name: "stale removed model", Models: "ycapi-grok-4.5", Group: "default", Status: common.ChannelStatusEnabled, BaseURL: &staleBase}
+	require.NoError(t, channel.Insert())
+	model.InitChannelCache()
+	var before, after model.User
+	require.NoError(t, f.db.First(&before, 792).Error)
+	response := f.request(t, http.MethodPost, "/v1/chat/completions", `{"model":"ycapi-grok-4.5","messages":[{"role":"user","content":"stale selection"}],"stream":true}`, "h3routermember")
+	assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), "model_not_available")
+	assert.Zero(t, posts)
+	require.NoError(t, f.db.First(&after, 792).Error)
+	assert.Equal(t, before.Quota, after.Quota)
+	var charged int64
+	require.NoError(t, f.logDB.Model(&model.Log{}).Where("model_name = ? AND type = ?", "ycapi-grok-4.5", model.LogTypeConsume).Count(&charged).Error)
+	assert.Zero(t, charged)
 }
 
 func TestYcapiTextPinsRuntimeLaneClampsBudgetAndRejectsRouteOverrides(t *testing.T) {
@@ -660,7 +688,7 @@ func TestYcapiAll44VideoQuotesUseExactApprovedQualityAndCNY(t *testing.T) {
 	assert.Zero(t, f.posts)
 }
 
-func TestYcapiAll40TextRoutesKeepApprovedBudgetAndLane(t *testing.T) {
+func TestYcapiAll22MultimodalRoutesKeepApprovedBudgetAndLane(t *testing.T) {
 	f := newYcapiRouterFixture(t)
 	var wire map[string]any
 	posts := 0

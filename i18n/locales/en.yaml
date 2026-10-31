@@ -129,3 +129,5 @@ model_capacity.NestedBudget: "Nested output budget must be a positive integer"
 "The upstream provider account has insufficient funds": "The upstream provider account has insufficient funds"
 "The selected upstream model route does not accept image input": "The selected upstream model route does not accept image input"
 "Image input is temporarily unavailable on the selected model route": "Image input is temporarily unavailable on the selected model route"
+
+"The selected model is not included in the current catalog": "The selected model is not included in the current catalog"

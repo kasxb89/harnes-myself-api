@@ -64,11 +64,11 @@ function renderPreview(id: string) {
   )
   return model
 }
-it('preserves the approved61 models and149 price rows in the API schema', () => {
-  expect(catalog.models).toHaveLength(61)
+it('keeps the selected43 models and113 original price rows in the API schema', () => {
+  expect(catalog.models).toHaveLength(43)
   expect(
     catalog.models.reduce((n, m) => n + (m.priceRows?.length || 0), 0)
-  ).toBe(149)
+  ).toBe(113)
   expect(catalog.generationEnabled).toBe(false)
 })
 it('video selection submits the whole selected specification and clears an obsolete quote', async () => {

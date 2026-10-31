@@ -54,7 +54,7 @@ func TestApprovedSaleRowsUseTheExistingQuotaConversion(t *testing.T) {
 			rows++
 		}
 	}
-	assert.Equal(t, 149, rows)
+	assert.Equal(t, 113, rows)
 }
 
 func TestApprovedCatalogPreviews(t *testing.T) {
@@ -77,7 +77,7 @@ func TestApprovedCatalogPreviews(t *testing.T) {
 			specs++
 		}
 	}
-	assert.Equal(t, map[string]int{"text": 40, "image": 8, "video": 10, "audio": 3}, counts)
+	assert.Equal(t, map[string]int{"text": 22, "image": 8, "video": 10, "audio": 3}, counts)
 	assert.Equal(t, 106, specs)
 }
 func TestPreviewUsesNativeClipTotalAndPinnedLane(t *testing.T) {
@@ -229,31 +229,25 @@ func TestTextCapabilityFactsAndPublicCopyStaySeparate(t *testing.T) {
 			assert.IsType(t, false, mapping["omit_effort_on_none"], model.ModelID)
 		}
 	}
-	blocked := PublicTextCapabilities("ycapi-claude-fable-5-1")
-	assert.Equal(t, "fixed_lane_unavailable", blocked["operational_status"])
-	assert.Equal(t, false, blocked["tools"])
-	assert.Equal(t, "unverified", blocked["verification"].(map[string]any)["tools"])
-	capability := PublicTextCapabilities("ycapi-glm-5.2")
+	_, removedErr := LookupTextCapability("ycapi-claude-fable-5-1")
+	assert.Error(t, removedErr)
+	capability := PublicTextCapabilities("ycapi-claude-haiku-4-5")
 	assert.Equal(t, true, capability["tools"])
-	assert.Equal(t, false, capability["vision"])
-	assert.Equal(t, "unsupported", capability["verification"].(map[string]any)["vision"])
+	assert.Equal(t, true, capability["vision"])
+	assert.Equal(t, "supported", capability["verification"].(map[string]any)["vision"])
 	encoded, err := common.Marshal(capability)
 	require.NoError(t, err)
 	assert.NotContains(t, string(encoded), "lane_id")
 	assert.NotContains(t, string(encoded), "procurement")
 	controls := capability["reasoning_controls"].(map[string]any)["properties"].(map[string]any)["reasoning_effort"].(map[string]any)
 	controls["enum"].([]any)[0] = "forged"
-	unchanged := PublicTextCapabilities("ycapi-glm-5.2")["reasoning_controls"].(map[string]any)["properties"].(map[string]any)["reasoning_effort"].(map[string]any)
+	unchanged := PublicTextCapabilities("ycapi-claude-haiku-4-5")["reasoning_controls"].(map[string]any)["properties"].(map[string]any)["reasoning_effort"].(map[string]any)
 	assert.Equal(t, "none", unchanged["enum"].([]any)[0])
 	for _, effort := range []string{"none", "high"} {
-		envelope, err := ChatEnvelope("ycapi-glm-5.2", map[string]any{"model": "ycapi-glm-5.2", "messages": []map[string]string{{"role": "user", "content": "hello"}}, "max_tokens": 2048, "reasoning_effort": effort})
+		envelope, err := ChatEnvelope("ycapi-claude-haiku-4-5", map[string]any{"model": "ycapi-claude-haiku-4-5", "messages": []map[string]string{{"role": "user", "content": "hello"}}, "max_tokens": 2048, "reasoning_effort": effort})
 		require.NoError(t, err)
 		params := envelope["params"].(map[string]any)
 		assert.Equal(t, effort != "none", params["enable_thinking"])
-		if effort == "none" {
-			assert.NotContains(t, params, "reasoning_effort")
-		} else {
-			assert.Equal(t, effort, params["reasoning_effort"])
-		}
+		assert.Equal(t, effort, params["reasoning_effort"])
 	}
 }

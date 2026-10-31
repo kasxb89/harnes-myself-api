@@ -130,3 +130,5 @@ model_capacity.NestedBudget: "嵌套的最大输出预算必须为正整数"
 "The upstream provider account has insufficient funds": "上游供应商账户余额不足，请联系管理员处理"
 "The selected upstream model route does not accept image input": "当前上游模型渠道不支持图片输入"
 "Image input is temporarily unavailable on the selected model route": "当前模型渠道的图片输入暂不可用"
+
+"The selected model is not included in the current catalog": "所选模型已不在当前可用目录中"

@@ -66,7 +66,7 @@ func loadCatalog() (Catalog, error) {
 	if err := common.Unmarshal(catalogData, &c); err != nil {
 		return c, err
 	}
-	if c.Count != 61 || len(c.Models) != c.Count {
+	if c.Count != 43 || len(c.Models) != c.Count {
 		return c, fmt.Errorf("invalid YCAPI catalog size")
 	}
 	ids := map[string]bool{}
@@ -83,7 +83,7 @@ func loadCatalog() (Catalog, error) {
 			rows++
 		}
 	}
-	if rows != 149 {
+	if rows != 113 {
 		return c, fmt.Errorf("invalid YCAPI price count")
 	}
 	return c, nil
