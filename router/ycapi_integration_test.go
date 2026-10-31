@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"maps"
@@ -415,4 +417,48 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestYcapiSpeechLeavesExistingProvidersOnLegacyRoute(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	base := "https://ycapi.fixture"
+	legacy := model.Channel{Id: 1000, Type: constant.ChannelTypeOpenAI, Key: "synthetic-legacy-speech", Name: "Existing speech fixture", Models: "tts-1", Group: "default", Status: common.ChannelStatusEnabled, BaseURL: &base}
+	require.NoError(t, legacy.Insert())
+	model.InitChannelCache()
+	wav := bytes.NewBuffer(nil)
+	_, _ = wav.WriteString("RIFF")
+	require.NoError(t, binary.Write(wav, binary.LittleEndian, uint32(68)))
+	_, _ = wav.WriteString("WAVEfmt ")
+	for _, field := range []any{uint32(16), uint16(1), uint16(1), uint32(16000), uint32(32000), uint16(2), uint16(16)} {
+		require.NoError(t, binary.Write(wav, binary.LittleEndian, field))
+	}
+	_, _ = wav.WriteString("data")
+	require.NoError(t, binary.Write(wav, binary.LittleEndian, uint32(32)))
+	_, _ = wav.Write(make([]byte, 32))
+	posts := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts++
+		assert.Equal(t, "/v1/audio/speech", r.URL.Path)
+		var body map[string]any
+		data, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, common.Unmarshal(data, &body))
+		assert.Equal(t, "tts-1", body["model"])
+		assert.Equal(t, "alloy", body["voice"])
+		assert.NotContains(t, body, "quote_id")
+		w.Header().Set("Content-Type", "audio/wav")
+		_, _ = w.Write(wav.Bytes())
+	}))
+	t.Cleanup(provider.Close)
+	url, err := url.Parse(provider.URL)
+	require.NoError(t, err)
+	service.GetHttpClient().Transport = ycapiFixtureTransport{base: url}
+	response := f.request(t, http.MethodPost, "/v1/audio/speech", `{"model":"tts-1","input":"Legacy local speech","voice":"alloy","response_format":"wav"}`, "h3routermember")
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, "audio/wav", response.Header().Get("Content-Type"))
+	assert.Equal(t, wav.Bytes(), response.Body.Bytes())
+	assert.Equal(t, 1, posts)
+	var admissions int64
+	require.NoError(t, f.db.Model(&model.MediaAdmission{}).Count(&admissions).Error)
+	assert.Zero(t, admissions, "legacy speech must not enter the YCAPI task lifecycle")
 }
