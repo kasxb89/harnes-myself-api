@@ -82,6 +82,13 @@ func loadTextCapabilities() (textCapabilitySnapshot, error) {
 		if !slices.Contains([]string{"configurable", "always_on", "automatic", "unsupported", "unknown"}, capability.ReasoningMode) || capability.ReasoningControls.Type != "object" || capability.ReasoningControls.AdditionalProperties {
 			return snapshot, fmt.Errorf("invalid text reasoning control schema")
 		}
+		if len(capability.ReasoningControlMapping) > 0 {
+			_, enablePresent := capability.ReasoningControlMapping["enable_thinking_with_effort"]
+			_, omitPresent := capability.ReasoningControlMapping["omit_effort_on_none"]
+			if !enablePresent || !omitPresent || len(capability.ReasoningControlMapping) != 2 {
+				return snapshot, fmt.Errorf("incomplete text reasoning control mapping")
+			}
+		}
 		for name, field := range capability.ReasoningControls.Properties {
 			if name == "reasoning_effort" && field.Type == "string" && len(field.Enum) > 0 {
 				continue

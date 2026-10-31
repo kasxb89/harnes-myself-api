@@ -195,6 +195,15 @@ func TestChatRuntimeUnwrapKeepsUsageWithoutSupplierFinance(t *testing.T) {
 
 func TestTextCapabilityFactsAndPublicCopyStaySeparate(t *testing.T) {
 	require.NoError(t, textCapabilityError)
+	// Host and Pi validate these as required booleans when a mapping is active.
+	// An omitted false value invalidates the entire discovery catalog there.
+	for _, model := range textCapabilities.Models {
+		mapping := PublicTextCapabilities(model.ModelID)["reasoning_control_mapping"].(map[string]any)
+		if len(mapping) > 0 {
+			assert.IsType(t, false, mapping["enable_thinking_with_effort"], model.ModelID)
+			assert.IsType(t, false, mapping["omit_effort_on_none"], model.ModelID)
+		}
+	}
 	blocked := PublicTextCapabilities("ycapi-claude-fable-5-1")
 	assert.Equal(t, "fixed_lane_unavailable", blocked["operational_status"])
 	assert.Equal(t, false, blocked["tools"])

@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "revision": "fixed40-817fc9d23a0de85bef0b",
+  "revision": "fixed40-e02f246922fb59b10a07",
   "checked_at": "2026-10-31T15:12:46.072136+00:00",
   "models": [
     {
@@ -126,7 +126,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -285,7 +286,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -377,7 +379,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -433,7 +436,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -526,7 +530,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -583,7 +588,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -640,7 +646,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -697,7 +704,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -747,7 +755,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -797,7 +806,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -1021,7 +1031,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -1077,7 +1088,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -1488,7 +1500,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
@@ -1919,7 +1932,8 @@
         "additionalProperties": false
       },
       "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true
+        "enable_thinking_with_effort": true,
+        "omit_effort_on_none": false
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
