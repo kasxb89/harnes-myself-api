@@ -517,3 +517,48 @@ func TestYcapiAll44VideoQuotesUseExactApprovedQualityAndCNY(t *testing.T) {
 	assert.Zero(t, tasks)
 	assert.Zero(t, f.posts)
 }
+
+func TestYcapiAll40TextRoutesKeepApprovedBudgetAndLane(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	var wire map[string]any
+	posts := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts++
+		data, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		wire = nil
+		require.NoError(t, common.Unmarshal(data, &wire))
+		assert.Equal(t, "/v1/chat/completions", r.URL.Path)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"id\":\"synthetic\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"local\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"synthetic\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":50,\"completion_tokens\":30,\"total_tokens\":80}}\n\ndata: [DONE]\n\n")
+	}))
+	t.Cleanup(provider.Close)
+	base, err := url.Parse(provider.URL)
+	require.NoError(t, err)
+	service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
+	models, err := ycapi.Models()
+	require.NoError(t, err)
+	for _, m := range models {
+		if m.Kind != "text" {
+			continue
+		}
+		t.Run(m.ID, func(t *testing.T) {
+			encoded, err := common.Marshal(map[string]any{"model": m.ID, "messages": []map[string]string{{"role": "user", "content": "Synthetic plain text fixture"}}, "max_tokens": 16384, "stream": true, "stream_options": map[string]bool{"include_usage": true}})
+			require.NoError(t, err)
+			response := f.request(t, http.MethodPost, "/v1/chat/completions", string(encoded), "h3routermember")
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), "[DONE]")
+			assert.Equal(t, m.UpstreamID, wire["model"])
+			assert.Equal(t, m.Prices[0].LaneID, wire["lane_id"])
+			budget := wire["max_tokens"]
+			if budget == nil {
+				budget = wire["max_completion_tokens"]
+			}
+			assert.EqualValues(t, 8192, budget)
+			assert.Nil(t, wire["tools"])
+			assert.Nil(t, wire["reasoning"])
+			assert.True(t, wire["reasoning_effort"] == nil || wire["reasoning_effort"] == "none")
+		})
+	}
+	assert.Equal(t, 40, posts)
+}
