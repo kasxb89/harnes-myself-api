@@ -268,98 +268,102 @@ func TestYcapiTextPinsRuntimeLaneClampsBudgetAndRejectsRouteOverrides(t *testing
 }
 
 func TestYcapiTextToolRoundtripImageControlsAndPrivateUsage(t *testing.T) {
-	f := newYcapiRouterFixture(t)
-	var pngBytes bytes.Buffer
-	require.NoError(t, png.Encode(&pngBytes, image.NewRGBA(image.Rect(0, 0, 1, 1))))
-	imageURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes.Bytes())
-	posts := 0
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		posts++
-		require.Equal(t, "/api/v1/model-runtime/invoke", r.URL.Path)
-		var wire map[string]any
-		require.NoError(t, common.DecodeJson(r.Body, &wire))
-		assert.Equal(t, "qwen3.6-plus", wire["model_id"])
-		assert.Equal(t, "qwen3.6-plus@VST:zq-qwen", wire["lane_id"])
-		params := wire["params"].(map[string]any)
-		assert.EqualValues(t, 2048, params["max_tokens"])
-		assert.Len(t, params["tools"], 1)
-		assert.NotContains(t, params, "messages")
-		messages := wire["messages"].([]any)
-		parts := messages[0].(map[string]any)["content"].([]any)
-		assert.Equal(t, imageURL, parts[1].(map[string]any)["image_url"].(map[string]any)["url"])
-		w.Header().Set("Content-Type", "text/event-stream")
-		if posts == 1 {
-			assert.Equal(t, false, params["enable_thinking"], "the explicit off value must survive the gateway")
-			_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_fixture_echo\",\"type\":\"function\",\"function\":{\"name\":\"echo\",\"arguments\":\"{\\\"value\\\":\\\"fixture\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":23,\"total_tokens\":40,\"completion_tokens_details\":{\"reasoning_tokens\":7}}}\n\n")
-		} else {
-			assert.Equal(t, true, params["enable_thinking"])
-			assert.Equal(t, "call_fixture_echo", messages[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)["id"])
-			assert.Equal(t, "tool", messages[2].(map[string]any)["role"])
-			assert.Equal(t, "call_fixture_echo", messages[2].(map[string]any)["tool_call_id"])
-			assert.Equal(t, "fixture-echo-ack", messages[2].(map[string]any)["content"])
-			_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"fixture-echo-ack\",\"reasoning_content\":\"synthetic reasoning\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":23,\"total_tokens\":40,\"completion_tokens_details\":{\"reasoning_tokens\":7}}}\n\n")
-		}
-		// Real supplier compatibility: this separate last usage frame is private
-		// procurement accounting, not a zero-token usage or a customer charge.
-		_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[],\"usage\":{\"cost_rmb\":9123,\"balance_rmb\":19876,\"cost_currency\":\"CNY\"}}\n\ndata: {\"omf_billing\":{\"actual_cost_credits\":9123,\"channel_id\":\"private-supplier-route\"}}\n\ndata: [DONE]\n\n")
-	}))
-	t.Cleanup(provider.Close)
-	base, err := url.Parse(provider.URL)
-	require.NoError(t, err)
-	service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
-	messages := []map[string]any{{"role": "user", "content": []map[string]any{{"type": "text", "text": "Read the image using echo"}, {"type": "image_url", "image_url": map[string]string{"url": imageURL}}}}}
-	request := map[string]any{"model": "ycapi-qwen3.6-plus", "messages": messages, "max_tokens": 2048, "stream": true, "stream_options": map[string]bool{"include_usage": true}, "enable_thinking": false, "tools": []map[string]any{{"type": "function", "function": map[string]any{"name": "echo", "parameters": map[string]any{"type": "object", "properties": map[string]any{"value": map[string]string{"type": "string"}}}}}}}
-	raw, err := common.Marshal(request)
-	require.NoError(t, err)
-	first := f.request(t, http.MethodPost, "/v1/chat/completions", string(raw), "h3routermember")
-	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
-	assert.Contains(t, first.Body.String(), "call_fixture_echo")
-	assert.Contains(t, first.Body.String(), "tool_calls")
-	request["messages"] = append(messages, map[string]any{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_fixture_echo", "type": "function", "function": map[string]string{"name": "echo", "arguments": `{"value":"fixture"}`}}}}, map[string]any{"role": "tool", "tool_call_id": "call_fixture_echo", "content": "fixture-echo-ack"})
-	request["enable_thinking"] = true
-	raw, err = common.Marshal(request)
-	require.NoError(t, err)
-	second := f.request(t, http.MethodPost, "/v1/chat/completions", string(raw), "h3routermember")
-	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
-	assert.Contains(t, second.Body.String(), "fixture-echo-ack")
-	assert.Contains(t, second.Body.String(), "reasoning_content")
-	for _, response := range []*httptest.ResponseRecorder{first, second} {
-		assert.NotContains(t, response.Body.String(), "cost_rmb")
-		assert.NotContains(t, response.Body.String(), "balance_rmb")
-		assert.NotContains(t, response.Body.String(), "19876")
-		assert.NotContains(t, response.Body.String(), "omf_billing")
-		assert.NotContains(t, response.Body.String(), "private-supplier-route")
-		assert.NotContains(t, response.Body.String(), `"usage":{}`)
-		usageFrames := 0
-		for _, line := range strings.Split(response.Body.String(), "\n") {
-			if !strings.HasPrefix(line, "data: ") || strings.TrimSpace(line) == "data: [DONE]" {
-				continue
+	for _, includeUsage := range []bool{true, false} {
+		t.Run(fmt.Sprintf("include_usage_%t", includeUsage), func(t *testing.T) {
+			f := newYcapiRouterFixture(t)
+			var pngBytes bytes.Buffer
+			require.NoError(t, png.Encode(&pngBytes, image.NewRGBA(image.Rect(0, 0, 1, 1))))
+			imageURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngBytes.Bytes())
+			posts := 0
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				posts++
+				require.Equal(t, "/api/v1/model-runtime/invoke", r.URL.Path)
+				var wire map[string]any
+				require.NoError(t, common.DecodeJson(r.Body, &wire))
+				assert.Equal(t, "qwen3.6-plus", wire["model_id"])
+				assert.Equal(t, "qwen3.6-plus@VST:zq-qwen", wire["lane_id"])
+				params := wire["params"].(map[string]any)
+				assert.EqualValues(t, 2048, params["max_tokens"])
+				assert.Len(t, params["tools"], 1)
+				assert.NotContains(t, params, "messages")
+				messages := wire["messages"].([]any)
+				parts := messages[0].(map[string]any)["content"].([]any)
+				assert.Equal(t, imageURL, parts[1].(map[string]any)["image_url"].(map[string]any)["url"])
+				w.Header().Set("Content-Type", "text/event-stream")
+				if posts == 1 {
+					assert.Equal(t, false, params["enable_thinking"], "the explicit off value must survive the gateway")
+					_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_fixture_echo\",\"type\":\"function\",\"function\":{\"name\":\"echo\",\"arguments\":\"{\\\"value\\\":\\\"fixture\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":23,\"total_tokens\":40,\"completion_tokens_details\":{\"reasoning_tokens\":7}}}\n\n")
+				} else {
+					assert.Equal(t, true, params["enable_thinking"])
+					assert.Equal(t, "call_fixture_echo", messages[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)["id"])
+					assert.Equal(t, "tool", messages[2].(map[string]any)["role"])
+					assert.Equal(t, "call_fixture_echo", messages[2].(map[string]any)["tool_call_id"])
+					assert.Equal(t, "fixture-echo-ack", messages[2].(map[string]any)["content"])
+					_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"fixture-echo-ack\",\"reasoning_content\":\"synthetic reasoning\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":23,\"total_tokens\":40,\"completion_tokens_details\":{\"reasoning_tokens\":7}}}\n\n")
+				}
+				// Real supplier compatibility: this separate last usage frame is private
+				// procurement accounting, not a zero-token usage or a customer charge.
+				_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[],\"usage\":{\"cost_rmb\":9123,\"balance_rmb\":19876,\"cost_currency\":\"CNY\"}}\n\ndata: {\"omf_billing\":{\"actual_cost_credits\":9123,\"channel_id\":\"private-supplier-route\"}}\n\ndata: [DONE]\n\n")
+			}))
+			t.Cleanup(provider.Close)
+			base, err := url.Parse(provider.URL)
+			require.NoError(t, err)
+			service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
+			messages := []map[string]any{{"role": "user", "content": []map[string]any{{"type": "text", "text": "Read the image using echo"}, {"type": "image_url", "image_url": map[string]string{"url": imageURL}}}}}
+			request := map[string]any{"model": "ycapi-qwen3.6-plus", "messages": messages, "max_tokens": 2048, "stream": true, "stream_options": map[string]bool{"include_usage": includeUsage}, "enable_thinking": false, "tools": []map[string]any{{"type": "function", "function": map[string]any{"name": "echo", "parameters": map[string]any{"type": "object", "properties": map[string]any{"value": map[string]string{"type": "string"}}}}}}}
+			raw, err := common.Marshal(request)
+			require.NoError(t, err)
+			first := f.request(t, http.MethodPost, "/v1/chat/completions", string(raw), "h3routermember")
+			require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+			assert.Contains(t, first.Body.String(), "call_fixture_echo")
+			assert.Contains(t, first.Body.String(), "tool_calls")
+			request["messages"] = append(messages, map[string]any{"role": "assistant", "tool_calls": []map[string]any{{"id": "call_fixture_echo", "type": "function", "function": map[string]string{"name": "echo", "arguments": `{"value":"fixture"}`}}}}, map[string]any{"role": "tool", "tool_call_id": "call_fixture_echo", "content": "fixture-echo-ack"})
+			request["enable_thinking"] = true
+			raw, err = common.Marshal(request)
+			require.NoError(t, err)
+			second := f.request(t, http.MethodPost, "/v1/chat/completions", string(raw), "h3routermember")
+			require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+			assert.Contains(t, second.Body.String(), "fixture-echo-ack")
+			assert.Contains(t, second.Body.String(), "reasoning_content")
+			for _, response := range []*httptest.ResponseRecorder{first, second} {
+				assert.NotContains(t, response.Body.String(), "cost_rmb")
+				assert.NotContains(t, response.Body.String(), "balance_rmb")
+				assert.NotContains(t, response.Body.String(), "19876")
+				assert.NotContains(t, response.Body.String(), "omf_billing")
+				assert.NotContains(t, response.Body.String(), "private-supplier-route")
+				assert.NotContains(t, response.Body.String(), `"usage":{}`)
+				usageFrames := 0
+				for _, line := range strings.Split(response.Body.String(), "\n") {
+					if !strings.HasPrefix(line, "data: ") || strings.TrimSpace(line) == "data: [DONE]" {
+						continue
+					}
+					var frame map[string]any
+					require.NoError(t, common.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame))
+					if usage, present := frame["usage"]; present {
+						values := usage.(map[string]any)
+						assert.EqualValues(t, 17, values["prompt_tokens"])
+						assert.EqualValues(t, 23, values["completion_tokens"])
+						assert.EqualValues(t, 40, values["total_tokens"])
+						usageFrames++
+					}
+				}
+				assert.Positive(t, usageFrames, "ordinary SDKs must receive the actual token usage")
 			}
-			var frame map[string]any
-			require.NoError(t, common.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame))
-			if usage, present := frame["usage"]; present {
-				values := usage.(map[string]any)
-				assert.EqualValues(t, 17, values["prompt_tokens"])
-				assert.EqualValues(t, 23, values["completion_tokens"])
-				assert.EqualValues(t, 40, values["total_tokens"])
-				usageFrames++
+			assert.Equal(t, 2, posts)
+			var logs []model.Log
+			require.NoError(t, f.logDB.Where("model_name = ? AND type = ?", "ycapi-qwen3.6-plus", model.LogTypeConsume).Find(&logs).Error)
+			require.Len(t, logs, 2)
+			m, ok := ycapi.Lookup("ycapi-qwen3.6-plus")
+			require.True(t, ok)
+			cny := m.Prices[0].Retail.Mul(decimal.NewFromInt(17)).Add(m.Prices[1].Retail.Mul(decimal.NewFromInt(23))).Div(decimal.NewFromInt(1000000))
+			expected, clamp := common.QuotaRoundChecked(cny.Div(decimal.NewFromFloat(operation_setting.USDExchangeRate)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).InexactFloat64())
+			require.Nil(t, clamp)
+			for _, log := range logs {
+				assert.Equal(t, 17, log.PromptTokens)
+				assert.Equal(t, 23, log.CompletionTokens)
+				assert.Equal(t, expected, log.Quota, "reasoning tokens included in completion must not be charged twice")
 			}
-		}
-		assert.Positive(t, usageFrames, "ordinary SDKs must receive the actual token usage")
-	}
-	assert.Equal(t, 2, posts)
-	var logs []model.Log
-	require.NoError(t, f.logDB.Where("model_name = ? AND type = ?", "ycapi-qwen3.6-plus", model.LogTypeConsume).Find(&logs).Error)
-	require.Len(t, logs, 2)
-	m, ok := ycapi.Lookup("ycapi-qwen3.6-plus")
-	require.True(t, ok)
-	cny := m.Prices[0].Retail.Mul(decimal.NewFromInt(17)).Add(m.Prices[1].Retail.Mul(decimal.NewFromInt(23))).Div(decimal.NewFromInt(1000000))
-	expected, clamp := common.QuotaRoundChecked(cny.Div(decimal.NewFromFloat(operation_setting.USDExchangeRate)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).InexactFloat64())
-	require.Nil(t, clamp)
-	for _, log := range logs {
-		assert.Equal(t, 17, log.PromptTokens)
-		assert.Equal(t, 23, log.CompletionTokens)
-		assert.Equal(t, expected, log.Quota, "reasoning tokens included in completion must not be charged twice")
+		})
 	}
 }
 
