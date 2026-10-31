@@ -102,7 +102,7 @@ func TestYcapiApprovedMediaWirePlansAndDurableTerminalState(t *testing.T) {
 		}
 	}
 	ctx := map[string]any{"model": "ycapi-gpt-4o-mini-tts", "upstreamModel": "ycapi-gpt-4o-mini-tts", "taskId": "provider-original", "state": map[string]any{"kind": "audio", "format": "wav", "facts": map[string]any{"input_tokens": 1, "output_tokens": 8192}}}
-	body := map[string]any{"task_id": "provider-original", "status": "completed", "is_final": true, "outputs": []any{map[string]any{"url": "https://cdn.example/audio.wav"}}}
+	body := map[string]any{"task_id": "provider-original", "status": "completed", "is_final": true, "outputs": []any{map[string]any{"url": "https://cdn.example/audio.wav"}}, "usage": map[string]int{"input_tokens": 5, "output_tokens": 10}}
 	value, err := plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, body)
 	require.NoError(t, err)
 	terminal := value.(map[string]any)
@@ -317,7 +317,11 @@ func TestYcapiSpeechQuoteRejectsChangedExpiredAndForeignRequestsBeforeAdmission(
 
 func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 	for _, kind := range []string{"image", "video", "audio"} {
-		for _, scenario := range []string{"success", "lost-create-response"} {
+		scenarios := []string{"success", "lost-create-response"}
+		if kind == "audio" {
+			scenarios = append(scenarios, "immediate-with-usage", "completed-without-usage")
+		}
+		for _, scenario := range scenarios {
 			t.Run(kind+"/"+scenario, func(t *testing.T) {
 				f := newYcapiRouterFixture(t)
 				posts := 0
@@ -341,12 +345,21 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 							_, _ = io.WriteString(w, `{"task_id":`)
 							return
 						}
+						if scenario == "immediate-with-usage" {
+							encoded, _ := common.Marshal(map[string]any{"task_id": providerID, "model": upstreamModel, "status": "completed", "is_final": true, "outputs": []any{map[string]any{"url": "https://cdn.example/synthetic-result"}}, "usage": map[string]int{"input_tokens": 5, "output_tokens": 10}})
+							_, _ = w.Write(encoded)
+							return
+						}
 						encoded, _ := common.Marshal(map[string]any{"task_id": providerID, "status": "queued", "is_final": false})
 						_, _ = w.Write(encoded)
 						return
 					}
 					require.True(t, strings.HasSuffix(r.URL.Path, "/"+providerID))
-					encoded, _ := common.Marshal(map[string]any{"task_id": providerID, "model": upstreamModel, "status": "completed", "is_final": true, "outputs": []any{map[string]any{"url": "https://cdn.example/synthetic-result"}}, "usage": map[string]int{"input_tokens": 5, "output_tokens": 10}})
+					body := map[string]any{"task_id": providerID, "model": upstreamModel, "status": "completed", "is_final": true, "outputs": []any{map[string]any{"url": "https://cdn.example/synthetic-result"}}, "usage": map[string]int{"input_tokens": 5, "output_tokens": 10}}
+					if scenario == "completed-without-usage" {
+						delete(body, "usage")
+					}
+					encoded, _ := common.Marshal(body)
 					_, _ = w.Write(encoded)
 				}))
 				t.Cleanup(provider.Close)
@@ -380,6 +393,8 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 				task := tasks[0]
 				require.NotEmpty(t, task.PrivateData.MediaAdmissionID)
 				assert.Equal(t, kind, task.PrivateData.MediaKind)
+				var beforePoll model.User
+				require.NoError(t, f.db.First(&beforePoll, 792).Error)
 				for range 2 {
 					service.RunTaskPollingOnce(context.Background(), nil)
 				}
@@ -389,7 +404,7 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 				foreign := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "", "h3routeradmin")
 				assert.Equal(t, http.StatusNotFound, foreign.Code, foreign.Body.String())
 				assert.NotContains(t, foreign.Body.String(), "cdn.example")
-				if scenario == "success" {
+				if scenario == "success" || scenario == "immediate-with-usage" {
 					assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 					assert.EqualValues(t, model.TaskStatusSuccess, task.Status)
 					assert.Equal(t, model.MediaReleased, admission.State)
@@ -398,6 +413,20 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 					assert.Equal(t, http.StatusOK, artifacts.Code, artifacts.Body.String())
 					assert.Contains(t, artifacts.Body.String(), `"key":"`+kind+`"`)
 					assert.NotContains(t, artifacts.Body.String(), "cdn.example")
+					if kind == "audio" {
+						m, _ := ycapi.Lookup(task.Properties.OriginModelName)
+						cost := decimal.Zero
+						for _, price := range m.Prices {
+							quantity := int64(5)
+							if price.Direction == "output" {
+								quantity = 10
+							}
+							cost = cost.Add(price.Retail.Mul(decimal.NewFromInt(quantity)).Div(decimal.NewFromInt(1000000)))
+						}
+						expected, clamp := common.QuotaRoundChecked(cost.Div(decimal.NewFromFloat(operation_setting.USDExchangeRate)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).InexactFloat64())
+						require.Nil(t, clamp)
+						assert.Equal(t, expected, task.Quota, "actual supplier usage must replace the 8192-token estimate")
+					}
 					if kind == "image" {
 						owner := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "", "h3routermember")
 						assert.Equal(t, http.StatusOK, owner.Code, owner.Body.String())
@@ -407,8 +436,18 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 					}
 				} else {
 					assert.EqualValues(t, model.TaskStatusUnknown, task.Status)
-					assert.Equal(t, model.MediaUnknown, admission.State)
+					if scenario == "lost-create-response" {
+						assert.Equal(t, model.MediaUnknown, admission.State)
+					} else {
+						assert.NotEqual(t, model.MediaReleased, admission.State)
+					}
 					assert.False(t, admission.ProviderTerminal)
+					if scenario == "completed-without-usage" {
+						assert.Equal(t, "reserved", admission.BillingState)
+						var afterPoll model.User
+						require.NoError(t, f.db.First(&afterPoll, 792).Error)
+						assert.Equal(t, beforePoll.Quota, afterPoll.Quota, "missing actual usage must not trigger a final charge or refund")
+					}
 					owner := f.request(t, http.MethodGet, "/v1/tasks/"+task.TaskID, "", "h3routermember")
 					assert.Equal(t, http.StatusOK, owner.Code, owner.Body.String())
 					assert.Contains(t, strings.ToLower(owner.Body.String()), "unknown")
@@ -561,4 +600,30 @@ func TestYcapiAll40TextRoutesKeepApprovedBudgetAndLane(t *testing.T) {
 		})
 	}
 	assert.Equal(t, 40, posts)
+}
+
+func TestYcapiAudioRequiresActualMeteringBeforeFinalSettlement(t *testing.T) {
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	plugin, err := jsplugin.CompilePlugin(source, jsplugin.Options{})
+	require.NoError(t, err)
+	ctx := map[string]any{"model": "ycapi-gpt-4o-mini-tts", "upstreamModel": "ycapi-gpt-4o-mini-tts", "taskId": "provider-audio", "requestBody": map[string]any{"model": "ycapi-gpt-4o-mini-tts", "input": "Hello", "voice": "alloy", "response_format": "mp3"}}
+	body := map[string]any{"task_id": "provider-audio", "status": "completed", "is_final": true, "outputs": []any{map[string]any{"url": "https://cdn.example/audio.mp3"}}, "usage": map[string]int{"input_tokens": 5, "output_tokens": 10}}
+	parsed, err := plugin.Engine.Call(context.Background(), "parseSubmitResponse", ctx, map[string]any{"body": body})
+	require.NoError(t, err)
+	assert.NotContains(t, parsed.(map[string]any), "immediate", "audio must pass the completion usage hook even when invoke returns a ready asset")
+	ctx["state"] = parsed.(map[string]any)["state"]
+	for _, scenario := range []string{"missing", "invalid"} {
+		unknown := maps.Clone(body)
+		delete(unknown, "usage")
+		if scenario == "invalid" {
+			unknown["usage"] = map[string]int64{"input_tokens": 5, "output_tokens": 2147483648}
+		}
+		result, err := plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, unknown)
+		require.NoError(t, err)
+		assert.Equal(t, "UNKNOWN", result.(map[string]any)["status"], "an estimated output budget is not an actual usage statement")
+	}
+	result, err := plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, body)
+	require.NoError(t, err)
+	assert.Equal(t, "SUCCESS", result.(map[string]any)["status"])
 }

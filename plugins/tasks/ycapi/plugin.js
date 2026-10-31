@@ -208,6 +208,8 @@ function snapshot(body, model, expectedId) {
 }
 
 function taskResult(data) {
+  if (data.kind === "audio" && data.is_final && data.status === "completed" && !data.usage)
+    return { status: "UNKNOWN", reason: "Upstream audio usage is unavailable" };
   if (data.is_final && data.status === "completed" && data.outputs.length) return { status: "SUCCESS", progress: "100%" };
   if (data.is_final && ["failed", "cancelled", "canceled"].includes(data.status))
     return { status: "FAILURE", reason: data.failureReason || "Upstream generation failed", progress: "100%" };
@@ -224,9 +226,10 @@ export function parseSubmitResponse(ctx, response) {
   const result = taskResult(data);
   const state = { facts: normalized.facts, kind: model.kind, snapshot: data };
   if (model.kind === "audio") state.format = normalized.params.response_format;
-  // The image protocol discards immediate results. Polling once preserves the
-  // durable artifact that its same-origin URL and original-task recovery use.
-  return { taskId: data.id, taskData: data, state, ...(model.kind !== "image" && ["SUCCESS", "FAILURE"].includes(result.status) ? { immediate: result } : {}) };
+  // Images must preserve a durable artifact. Audio must run the completion
+  // usage hook, including when invoke already returned a ready asset; the
+  // conservative output estimate is never a final usage statement.
+  return { taskId: data.id, taskData: data, state, ...(model.kind === "video" && ["SUCCESS", "FAILURE"].includes(result.status) ? { immediate: result } : {}) };
 }
 
 export function extractUsage(ctx) {
