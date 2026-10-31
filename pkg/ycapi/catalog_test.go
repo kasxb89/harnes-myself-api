@@ -193,6 +193,31 @@ func TestChatRuntimeUnwrapKeepsUsageWithoutSupplierFinance(t *testing.T) {
 	assert.Contains(t, string(clean), `"billed_or_processing":false`)
 }
 
+func TestChatStreamFinanceTailsCannotResetPublicUsage(t *testing.T) {
+	for _, raw := range []string{
+		`{"object":"chat.completion.chunk","choices":[],"usage":{"cost_rmb":9,"balance_rmb":99}}`,
+		`{"omf_billing":{"actual_cost_credits":9,"channel_id":"private-lane"}}`,
+	} {
+		clean, skip, err := PublicChatStreamResponse([]byte(raw), nil)
+		require.NoError(t, err)
+		assert.True(t, skip)
+		assert.Empty(t, clean)
+	}
+	for _, raw := range []string{
+		`{"choices":[],"usage":{"prompt_tokens":50,"completion_tokens":30,"total_tokens":80,"cost_rmb":9}}`,
+		`{"choices":[{"delta":{"content":"OK"}}],"usage":{"cost_rmb":9}}`,
+		`{"error":{"code":"insufficient_quota","message":"private account"},"usage":{"cost_rmb":9}}`,
+		`{"choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`,
+	} {
+		clean, skip, err := PublicChatStreamResponse([]byte(raw), nil)
+		require.NoError(t, err)
+		assert.False(t, skip)
+		assert.NotEmpty(t, clean)
+		assert.NotContains(t, string(clean), "cost_rmb")
+		assert.NotContains(t, string(clean), `"usage":{}`)
+	}
+}
+
 func TestTextCapabilityFactsAndPublicCopyStaySeparate(t *testing.T) {
 	require.NoError(t, textCapabilityError)
 	// Host and Pi validate these as required booleans when a mapping is active.

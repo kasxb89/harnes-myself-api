@@ -7,6 +7,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+var privateChatUsageFields = []string{"cost_rmb", "cost_currency", "balance_rmb", "cost", "cost_micro_usd", "actual_cost_micro_usd"}
+var privateChatResponseFields = []string{"billing", "lane", "routing_receipt", "provider", "upstream_model", "omf_billing"}
+
 // PublicChatResponse unwraps the runtime's nonstream envelope and removes only
 // supplier accounting/route metadata. Token usage and assistant/tool content
 // remain authoritative; supplier wallet costs are not the customer's bill.
@@ -76,14 +79,62 @@ func PublicChatResponse(raw []byte, translate func(string) string) ([]byte, int,
 		}
 		value["error"] = public
 	}
-	for _, field := range []string{"billing", "lane", "routing_receipt", "provider", "upstream_model"} {
+	for _, field := range privateChatResponseFields {
 		delete(value, field)
 	}
 	if usage, ok := value["usage"].(map[string]any); ok {
-		for _, field := range []string{"cost_rmb", "cost_currency", "balance_rmb", "cost", "cost_micro_usd", "actual_cost_micro_usd"} {
+		for _, field := range privateChatUsageFields {
 			delete(usage, field)
+		}
+		if len(usage) == 0 {
+			delete(value, "usage")
 		}
 	}
 	clean, err := common.Marshal(value)
 	return clean, status, err
+}
+
+// PublicChatStreamResponse omits supplier accounting-only events entirely.
+// Sending a sanitized usage:{} tail makes compatible SDKs overwrite the real
+// cumulative usage with zeros, even when our own ledger retained that usage.
+func PublicChatStreamResponse(raw []byte, translate func(string) string) ([]byte, bool, error) {
+	clean, _, err := PublicChatResponse(raw, translate)
+	if err != nil {
+		return nil, false, err
+	}
+	var original, public map[string]any
+	if err = common.Unmarshal(raw, &original); err != nil {
+		return nil, false, err
+	}
+	if err = common.Unmarshal(clean, &public); err != nil {
+		return nil, false, err
+	}
+	hasFinance := false
+	for _, field := range privateChatResponseFields {
+		_, present := original[field]
+		hasFinance = hasFinance || present
+	}
+	if usage, ok := original["usage"].(map[string]any); ok {
+		for _, field := range privateChatUsageFields {
+			_, present := usage[field]
+			hasFinance = hasFinance || present
+		}
+	}
+	if !hasFinance || public["usage"] != nil || public["error"] != nil {
+		return clean, false, nil
+	}
+	if choices, present := public["choices"]; present {
+		items, ok := choices.([]any)
+		if !ok || len(items) != 0 {
+			return clean, false, nil
+		}
+	}
+	for field := range public {
+		switch field {
+		case "id", "object", "model", "created", "system_fingerprint", "choices":
+		default:
+			return clean, false, nil
+		}
+	}
+	return nil, true, nil
 }

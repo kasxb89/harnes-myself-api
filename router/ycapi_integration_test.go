@@ -301,7 +301,7 @@ func TestYcapiTextToolRoundtripImageControlsAndPrivateUsage(t *testing.T) {
 		}
 		// Real supplier compatibility: this separate last usage frame is private
 		// procurement accounting, not a zero-token usage or a customer charge.
-		_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[],\"usage\":{\"cost_rmb\":9123,\"balance_rmb\":19876,\"cost_currency\":\"CNY\"}}\n\ndata: [DONE]\n\n")
+		_, _ = io.WriteString(w, "data: {\"id\":\"local-tool\",\"choices\":[],\"usage\":{\"cost_rmb\":9123,\"balance_rmb\":19876,\"cost_currency\":\"CNY\"}}\n\ndata: {\"omf_billing\":{\"actual_cost_credits\":9123,\"channel_id\":\"private-supplier-route\"}}\n\ndata: [DONE]\n\n")
 	}))
 	t.Cleanup(provider.Close)
 	base, err := url.Parse(provider.URL)
@@ -327,6 +327,25 @@ func TestYcapiTextToolRoundtripImageControlsAndPrivateUsage(t *testing.T) {
 		assert.NotContains(t, response.Body.String(), "cost_rmb")
 		assert.NotContains(t, response.Body.String(), "balance_rmb")
 		assert.NotContains(t, response.Body.String(), "19876")
+		assert.NotContains(t, response.Body.String(), "omf_billing")
+		assert.NotContains(t, response.Body.String(), "private-supplier-route")
+		assert.NotContains(t, response.Body.String(), `"usage":{}`)
+		usageFrames := 0
+		for _, line := range strings.Split(response.Body.String(), "\n") {
+			if !strings.HasPrefix(line, "data: ") || strings.TrimSpace(line) == "data: [DONE]" {
+				continue
+			}
+			var frame map[string]any
+			require.NoError(t, common.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &frame))
+			if usage, present := frame["usage"]; present {
+				values := usage.(map[string]any)
+				assert.EqualValues(t, 17, values["prompt_tokens"])
+				assert.EqualValues(t, 23, values["completion_tokens"])
+				assert.EqualValues(t, 40, values["total_tokens"])
+				usageFrames++
+			}
+		}
+		assert.Positive(t, usageFrames, "ordinary SDKs must receive the actual token usage")
 	}
 	assert.Equal(t, 2, posts)
 	var logs []model.Log
