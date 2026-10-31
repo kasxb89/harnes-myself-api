@@ -26,6 +26,7 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -192,7 +193,14 @@ export function CostRulesDialog() {
                   {rule.kind === 'image_resolution' && (
                     <div>{`1K: ${formatProfitCny(rule.resolution_costs_cny?.['1k'], locale)} · 2K: ${formatProfitCny(rule.resolution_costs_cny?.['2k'], locale)} · 4K: ${formatProfitCny(rule.resolution_costs_cny?.['4k'], locale)} / ${t('Per image')}`}</div>
                   )}
+                  {rule.kind === 'h3_video' && (
+                    <>
+                      <div>{`768P: ${formatProfitCny(rule.resolution_costs_cny?.['768P'], locale)} · 2K: ${formatProfitCny(rule.resolution_costs_cny?.['2K'], locale)} / ${t('Per second')}`}</div>
+                      <div>{`${t('Free input images')}: ${formatNumber(rule.free_input_images)} · ${t('Extra input image cost (CNY per image)')}: ${formatProfitCny(rule.extra_image_cost_cny, locale)}`}</div>
+                    </>
+                  )}
                   {rule.kind !== 'token' &&
+                    rule.kind !== 'h3_video' &&
                     rule.kind !== 'image_resolution' && (
                       <div>{`${formatProfitCny(rule.unit_cost_cny, locale)} / ${t({ request: 'Per request', second: 'Per second', image: 'Per image' }[rule.kind])}`}</div>
                     )}

@@ -8556,6 +8556,12 @@
     "Calculation notes": "計算方法",
     "View accounting details": "会計明細を表示",
     "Funding records are unavailable. Actual profit remains pending confirmation.": "資金源の記録がないため、実際の利益は未確認です。",
-    "Observed value exceeds protection threshold": "測定値が保護しきい値を超過"
+    "Observed value exceeds protection threshold": "測定値が保護しきい値を超過",
+    "H3 video and reference materials": "H3 動画と参照素材",
+    "768P video cost (CNY per second)": "768P 動画コスト（人民元/秒）",
+    "2K video cost (CNY per second)": "2K 動画コスト（人民元/秒）",
+    "Extra input image cost (CNY per image)": "追加参照画像コスト（人民元/枚）",
+    "Free input images": "無料の参照画像数",
+    "Enter a whole image allowance from 0 to 128": "無料画像数を 0～128 の整数で入力してください"
   }
 }

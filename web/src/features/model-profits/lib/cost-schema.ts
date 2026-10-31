@@ -27,11 +27,22 @@ export const costRuleSchema = z
     model_name: z.string().trim().min(1, 'Enter an exact model name').max(200),
     effective_from: z.string().min(1, 'Enter an effective time'),
     effective_until: z.string().optional(),
-    kind: z.enum(['request', 'second', 'image', 'image_resolution', 'token']),
+    kind: z.enum([
+      'request',
+      'second',
+      'image',
+      'image_resolution',
+      'h3_video',
+      'token',
+    ]),
     unit_cost_cny: z.string(),
     resolution_1k_cost_cny: z.string(),
     resolution_2k_cost_cny: z.string(),
     resolution_4k_cost_cny: z.string(),
+    resolution_768p_cost_cny: z.string(),
+    h3_2k_cost_cny: z.string(),
+    extra_image_cost_cny: z.string(),
+    free_input_images: z.string(),
     input_cost_per_million_cny: z.string(),
     cache_cost_per_million_cny: z.string(),
     output_cost_per_million_cny: z.string(),
@@ -83,11 +94,30 @@ export const costRuleSchema = z
       | 'resolution_1k_cost_cny'
       | 'resolution_2k_cost_cny'
       | 'resolution_4k_cost_cny'
+      | 'resolution_768p_cost_cny'
+      | 'h3_2k_cost_cny'
+      | 'extra_image_cost_cny'
       | 'input_cost_per_million_cny'
       | 'cache_cost_per_million_cny'
       | 'output_cost_per_million_cny'
     > = ['unit_cost_cny']
-    if (value.kind === 'token') {
+    if (value.kind === 'h3_video') {
+      rateFields = [
+        'resolution_768p_cost_cny',
+        'h3_2k_cost_cny',
+        'extra_image_cost_cny',
+      ]
+      if (
+        !/^(0|[1-9]\d*)$/.test(value.free_input_images) ||
+        Number(value.free_input_images) > 128
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['free_input_images'],
+          message: 'Enter a whole image allowance from 0 to 128',
+        })
+      }
+    } else if (value.kind === 'token') {
       rateFields = [
         'input_cost_per_million_cny',
         'cache_cost_per_million_cny',
@@ -143,7 +173,14 @@ export function toCostRule(value: CostRuleFormValues): CostRule {
     rule.effective_until =
       Date.parse(`${value.effective_until}:00+08:00`) / 1000
   }
-  if (value.kind === 'token') {
+  if (value.kind === 'h3_video') {
+    rule.resolution_costs_cny = {
+      '768P': Number(value.resolution_768p_cost_cny),
+      '2K': Number(value.h3_2k_cost_cny),
+    }
+    rule.extra_image_cost_cny = Number(value.extra_image_cost_cny)
+    rule.free_input_images = Number(value.free_input_images)
+  } else if (value.kind === 'token') {
     rule.input_cost_per_million_cny = Number(value.input_cost_per_million_cny)
     rule.cache_cost_per_million_cny = Number(value.cache_cost_per_million_cny)
     rule.output_cost_per_million_cny = Number(value.output_cost_per_million_cny)

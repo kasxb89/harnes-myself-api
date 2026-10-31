@@ -8556,6 +8556,12 @@
     "Calculation notes": "Пояснения к расчёту",
     "View accounting details": "Показать детали учёта",
     "Funding records are unavailable. Actual profit remains pending confirmation.": "Данные об источниках средств отсутствуют. Фактическая прибыль ещё не подтверждена.",
-    "Observed value exceeds protection threshold": "Замер превышает порог защиты"
+    "Observed value exceeds protection threshold": "Замер превышает порог защиты",
+    "H3 video and reference materials": "Видео H3 и референсные материалы",
+    "768P video cost (CNY per second)": "Стоимость видео 768P (CNY за секунду)",
+    "2K video cost (CNY per second)": "Стоимость видео 2K (CNY за секунду)",
+    "Extra input image cost (CNY per image)": "Стоимость дополнительных референсных изображений (CNY за изображение)",
+    "Free input images": "Бесплатные референсные изображения",
+    "Enter a whole image allowance from 0 to 128": "Введите целое количество бесплатных изображений от 0 до 128"
   }
 }

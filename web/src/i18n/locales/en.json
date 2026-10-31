@@ -8556,6 +8556,12 @@
     "Calculation notes": "Calculation notes",
     "View accounting details": "View accounting details",
     "Funding records are unavailable. Actual profit remains pending confirmation.": "Funding records are unavailable. Actual profit remains pending confirmation.",
-    "Observed value exceeds protection threshold": "Observed value exceeds protection threshold"
+    "Observed value exceeds protection threshold": "Observed value exceeds protection threshold",
+    "H3 video and reference materials": "H3 video and reference materials",
+    "768P video cost (CNY per second)": "768P video cost (CNY per second)",
+    "2K video cost (CNY per second)": "2K video cost (CNY per second)",
+    "Extra input image cost (CNY per image)": "Extra input image cost (CNY per image)",
+    "Free input images": "Free input images",
+    "Enter a whole image allowance from 0 to 128": "Enter a whole image allowance from 0 to 128"
   }
 }

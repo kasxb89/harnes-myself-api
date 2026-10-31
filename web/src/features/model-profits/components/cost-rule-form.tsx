@@ -63,6 +63,10 @@ export function CostRuleForm(props: {
       resolution_1k_cost_cny: '',
       resolution_2k_cost_cny: '',
       resolution_4k_cost_cny: '',
+      resolution_768p_cost_cny: '',
+      h3_2k_cost_cny: '',
+      extra_image_cost_cny: '',
+      free_input_images: '',
       input_cost_per_million_cny: '',
       cache_cost_per_million_cny: '',
       output_cost_per_million_cny: '',
@@ -86,7 +90,30 @@ export function CostRuleForm(props: {
       type: 'datetime-local',
     },
   ]
-  if (kind === 'token') {
+  if (kind === 'h3_video') {
+    fields.push(
+      {
+        name: 'resolution_768p_cost_cny',
+        label: t('768P video cost (CNY per second)'),
+        type: 'number',
+      },
+      {
+        name: 'h3_2k_cost_cny',
+        label: t('2K video cost (CNY per second)'),
+        type: 'number',
+      },
+      {
+        name: 'extra_image_cost_cny',
+        label: t('Extra input image cost (CNY per image)'),
+        type: 'number',
+      },
+      {
+        name: 'free_input_images',
+        label: t('Free input images'),
+        type: 'number',
+      }
+    )
+  } else if (kind === 'token') {
     fields.push(
       {
         name: 'input_cost_per_million_cny',
@@ -165,6 +192,10 @@ export function CostRuleForm(props: {
                     {
                       value: 'image_resolution',
                       label: t('Per image resolution'),
+                    },
+                    {
+                      value: 'h3_video',
+                      label: t('H3 video and reference materials'),
                     },
                     { value: 'token', label: t('Per million tokens') },
                   ]}

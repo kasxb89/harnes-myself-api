@@ -225,6 +225,78 @@ it('shows translated image resolution costs after switching to Chinese', async (
   expect(screen.getByLabelText('4K 图片成本（元/张）')).toBeVisible()
 })
 
+it('saves H3 video and reference material tariffs while retaining previous cost versions', async () => {
+  const { put } = setup()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Configure upstream costs' })
+  )
+  await screen.findByLabelText('Channel ID')
+  await fillVersion()
+  fireEvent.change(screen.getByLabelText('Exact model name'), {
+    target: { value: 'MiniMax-H3' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+  fireEvent.click(
+    await screen.findByRole('option', {
+      name: 'H3 video and reference materials',
+    })
+  )
+  expect(
+    screen.queryByLabelText('Upstream unit cost (CNY)')
+  ).not.toBeInTheDocument()
+  for (const [name, value] of [
+    ['768P video cost (CNY per second)', '0.0897396'],
+    ['2K video cost (CNY per second)', '0.149566'],
+    ['Extra input image cost (CNY per image)', '0.0501486'],
+    ['Free input images', '5'],
+  ]) {
+    fireEvent.change(screen.getByLabelText(name), { target: { value } })
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Add cost version' }))
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith('/api/model-profit/cost-rules', {
+      schema_version: 1,
+      revision: 7,
+      rules: [
+        initial.rules[0],
+        {
+          channel_id: 19,
+          model_name: 'MiniMax-H3',
+          effective_from: Date.parse('2026-10-22T12:00:00+08:00') / 1000,
+          kind: 'h3_video',
+          resolution_costs_cny: { '768P': 0.0897396, '2K': 0.149566 },
+          extra_image_cost_cny: 0.0501486,
+          free_input_images: 5,
+          source: 'Supplier published price list',
+          failure_refunded: false,
+        },
+      ],
+    })
+  )
+  expect(await screen.findByText('#19 · MiniMax-H3')).toBeVisible()
+  expect(screen.getByText('#19 · previous-model')).toBeVisible()
+  expect(screen.getByText(/Free input images: 5/)).toBeVisible()
+})
+
+it('shows translated H3 material cost inputs without changing their price units', async () => {
+  setup()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Configure upstream costs' })
+  )
+  await screen.findByLabelText('Channel ID')
+  await act(async () => {
+    await i18n.changeLanguage('zhCN')
+  })
+  fireEvent.click(screen.getByRole('button', { name: zh.translation.Open }))
+  fireEvent.click(
+    await screen.findByRole('option', { name: 'H3 视频与参考素材' })
+  )
+  expect(screen.getByLabelText('768P 视频成本（元/秒）')).toBeVisible()
+  expect(screen.getByLabelText('2K 视频成本（元/秒）')).toBeVisible()
+  expect(screen.getByLabelText('超额参考图成本（元/张）')).toBeVisible()
+  expect(screen.getByLabelText('免费参考图数量')).toBeVisible()
+})
+
 it('keeps invalid cost input visible without submitting it', async () => {
   const { put } = setup()
   fireEvent.click(

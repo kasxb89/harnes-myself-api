@@ -33,6 +33,10 @@ const base: CostRuleFormValues = {
   resolution_1k_cost_cny: '',
   resolution_2k_cost_cny: '',
   resolution_4k_cost_cny: '',
+  resolution_768p_cost_cny: '',
+  h3_2k_cost_cny: '',
+  extra_image_cost_cny: '',
+  free_input_images: '',
   input_cost_per_million_cny: '',
   cache_cost_per_million_cny: '',
   output_cost_per_million_cny: '',
@@ -42,6 +46,34 @@ const base: CostRuleFormValues = {
 }
 
 describe('supplier cost version input', () => {
+  it('requires both H3 video rates and preserves free-image allowance with an explicit zero image rate', () => {
+    const value = costRuleSchema.parse({
+      ...base,
+      kind: 'h3_video',
+      resolution_768p_cost_cny: '0.0897396',
+      h3_2k_cost_cny: '0.149566',
+      extra_image_cost_cny: '0',
+      free_input_images: '5',
+    })
+    const rule = toCostRule(value)
+    expect(rule.resolution_costs_cny).toEqual({
+      '768P': 0.0897396,
+      '2K': 0.149566,
+    })
+    expect(rule).toMatchObject({
+      kind: 'h3_video',
+      extra_image_cost_cny: 0,
+      free_input_images: 5,
+    })
+    expect(rule).not.toHaveProperty('unit_cost_cny')
+    expect(
+      costRuleSchema.safeParse({ ...value, free_input_images: '1.5' }).success
+    ).toBe(false)
+    expect(
+      costRuleSchema.safeParse({ ...value, h3_2k_cost_cny: '' }).success
+    ).toBe(false)
+  })
+
   it('requires each resolution price and keeps explicitly free image tiers', () => {
     expect(
       costRuleSchema.safeParse({ ...base, kind: 'image_resolution' }).success

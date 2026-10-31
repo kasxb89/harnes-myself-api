@@ -8556,6 +8556,12 @@
     "Calculation notes": "Giải thích cách tính",
     "View accounting details": "Xem chi tiết hạch toán",
     "Funding records are unavailable. Actual profit remains pending confirmation.": "Thiếu bản ghi nguồn tiền. Lợi nhuận thực tế vẫn chờ xác nhận.",
-    "Observed value exceeds protection threshold": "Giá trị quan sát vượt ngưỡng bảo vệ"
+    "Observed value exceeds protection threshold": "Giá trị quan sát vượt ngưỡng bảo vệ",
+    "H3 video and reference materials": "Video H3 và tư liệu tham chiếu",
+    "768P video cost (CNY per second)": "Chi phí video 768P (CNY/giây)",
+    "2K video cost (CNY per second)": "Chi phí video 2K (CNY/giây)",
+    "Extra input image cost (CNY per image)": "Chi phí ảnh tham chiếu vượt mức (CNY/ảnh)",
+    "Free input images": "Số ảnh tham chiếu miễn phí",
+    "Enter a whole image allowance from 0 to 128": "Nhập số ảnh miễn phí nguyên từ 0 đến 128"
   }
 }

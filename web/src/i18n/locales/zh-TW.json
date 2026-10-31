@@ -8556,6 +8556,12 @@
     "Calculation notes": "計算說明",
     "View accounting details": "查看核算明細",
     "Funding records are unavailable. Actual profit remains pending confirmation.": "缺少資金來源記錄，實際利潤待確認。",
-    "Observed value exceeds protection threshold": "觀測值超過保護門檻"
+    "Observed value exceeds protection threshold": "觀測值超過保護門檻",
+    "H3 video and reference materials": "H3 影片與參考素材",
+    "768P video cost (CNY per second)": "768P 影片成本（人民幣/秒）",
+    "2K video cost (CNY per second)": "2K 影片成本（人民幣/秒）",
+    "Extra input image cost (CNY per image)": "超額參考圖成本（人民幣/張）",
+    "Free input images": "免費參考圖數量",
+    "Enter a whole image allowance from 0 to 128": "請輸入 0 到 128 的整數圖片免費數量"
   }
 }

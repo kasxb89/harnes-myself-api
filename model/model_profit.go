@@ -500,6 +500,18 @@ func modelProfitCost(rule ModelProfitCostRule, log Log, facts profitLogFacts) (f
 			return 0, false
 		}
 		cost = quantity * *rule.UnitCostCNY
+	case "h3_video":
+		resolution, hasResolution := facts.UsageFacts["resolution"].(string)
+		seconds, hasSeconds := facts.UsageFacts["seconds"].(float64)
+		inputSeconds, hasInput := facts.UsageFacts["input_video_seconds"].(float64)
+		images, hasImages := facts.UsageFacts["input_images"].(float64)
+		price, hasPrice := rule.ResolutionCostsCNY[resolution]
+		if !hasResolution || !hasPrice || !hasSeconds || !hasInput || !hasImages || !validQuantity(seconds, 15) || seconds < 4 || !validQuantity(inputSeconds, 15) || !validQuantity(images, 9) || math.Trunc(images) != images || rule.ExtraImageCostCNY == nil || rule.FreeInputImages == nil {
+			return 0, false
+		}
+		// Use the original billed usage facts, including explicit zero material
+		// counts. Missing facts cannot establish zero procurement cost.
+		cost = (seconds+inputSeconds)*price + max(images-float64(*rule.FreeInputImages), 0)**rule.ExtraImageCostCNY
 	case "image", "image_resolution":
 		quantity, exists := facts.UsageFacts["image_count"].(float64)
 		if !exists && facts.ImageCount != nil {

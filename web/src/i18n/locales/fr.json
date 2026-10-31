@@ -8556,6 +8556,12 @@
     "Calculation notes": "Notes de calcul",
     "View accounting details": "Voir le détail comptable",
     "Funding records are unavailable. Actual profit remains pending confirmation.": "Les sources de financement ne sont pas documentées. Le bénéfice réel reste à confirmer.",
-    "Observed value exceeds protection threshold": "Valeur observée supérieure au seuil de protection"
+    "Observed value exceeds protection threshold": "Valeur observée supérieure au seuil de protection",
+    "H3 video and reference materials": "Vidéo H3 et médias de référence",
+    "768P video cost (CNY per second)": "Coût vidéo 768P (CNY par seconde)",
+    "2K video cost (CNY per second)": "Coût vidéo 2K (CNY par seconde)",
+    "Extra input image cost (CNY per image)": "Coût des images de référence supplémentaires (CNY par image)",
+    "Free input images": "Images de référence gratuites",
+    "Enter a whole image allowance from 0 to 128": "Saisissez un nombre entier d’images gratuites de 0 à 128"
   }
 }
