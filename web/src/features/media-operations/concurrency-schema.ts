@@ -37,7 +37,7 @@ export const mediaConcurrencySchema = z.object({
       z.object({
         pool_id: poolId,
         label: z.string().min(1).max(512),
-        media_kind: z.enum(['video', 'image']),
+        media_kind: z.enum(['video', 'image', 'audio']),
         channel_ids: z.array(z.number().int().positive()).max(10000),
         configured_limit: z.number().int().positive().max(64),
         known_upstream_limit: z.number().int().positive().max(64).nullable(),
@@ -73,7 +73,7 @@ export const mediaConcurrencyFormSchema = z
       .array(
         z.object({
           pool_id: poolId,
-          media_kind: z.enum(['video', 'image']),
+          media_kind: z.enum(['video', 'image', 'audio']),
           limit: z.string(),
         })
       )

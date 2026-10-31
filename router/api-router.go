@@ -55,6 +55,10 @@ func SetApiRouter(router *gin.Engine) {
 			clientModelRoute.GET("/presentation", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelPresentation)
 			clientModelRoute.PUT("/presentation", middleware.RequirePermission(authz.ClientModelConfigWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientModelPresentation)
 		}
+		ycapiPreview := apiRouter.Group("/ycapi", middleware.DisableCache(), middleware.RootAuth())
+		ycapiPreview.GET("/catalog", controller.GetYcapiCatalog)
+		ycapiPreview.GET("/configuration", controller.GetYcapiConfiguration)
+		ycapiPreview.POST("/quote-preview", middleware.SessionCookieOriginGuard(), controller.PreviewYcapiQuote)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)

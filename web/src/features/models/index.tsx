@@ -43,6 +43,7 @@ import {
   MODELS_DEFAULT_SECTION,
   MODELS_SECTION_IDS,
 } from './section-registry'
+import { YcapiCatalog } from './ycapi-catalog'
 
 const route = getRouteApi('/_authenticated/models/$section')
 
@@ -50,6 +51,7 @@ const SECTION_META: Record<
   ModelsSectionId,
   { titleKey: string; tabKey: string }
 > = {
+  pricebook: { titleKey: 'Model price list', tabKey: 'Model price list' },
   metadata: {
     titleKey: 'Model management',
     tabKey: 'Models',
@@ -94,7 +96,12 @@ function ModelsContent() {
 
   let actions = <ModelsPrimaryButtons />
   let content = <ModelsTable />
-  if (activeSection === 'vendors') {
+  if (activeSection === 'pricebook') {
+    actions = (
+      <span className='text-muted-foreground text-sm'>{t('Read only')}</span>
+    )
+    content = <YcapiCatalog />
+  } else if (activeSection === 'vendors') {
     actions = (
       <Button
         size='sm'

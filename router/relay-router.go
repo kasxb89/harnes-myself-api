@@ -81,6 +81,13 @@ func SetRelayRouter(router *gin.Engine) {
 		relayV1Router.POST("/uploads/images", middleware.PrepareReferenceImageUpload(), middleware.Distribute(), controller.UploadReferenceImage)
 	}
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	relayV1Router.POST("/audio/speech", middleware.PrepareYcapiSpeech(), middleware.Distribute(), func(c *gin.Context) {
+		if c.GetString("expected_task_plugin_key") == "ycapi" {
+			controller.RelayTask(c)
+			return
+		}
+		controller.Relay(c, types.RelayFormatOpenAIAudio)
+	})
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
@@ -136,9 +143,6 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.Relay(c, types.RelayFormatOpenAIAudio)
 		})
 		httpRouter.POST("/audio/translations", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAIAudio)
-		})
-		httpRouter.POST("/audio/speech", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIAudio)
 		})
 

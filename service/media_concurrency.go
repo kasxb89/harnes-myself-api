@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -120,6 +121,12 @@ func TaskMediaKind(c *gin.Context, info *relaycommon.RelayInfo) string {
 	value, _ := c.Get(jsplugin.ContextKeyPinnedPlugin)
 	pinned, _ := value.(jsplugin.PinnedPlugin)
 	if pinned.Plugin == nil {
+		return ""
+	}
+	if pinned.Plugin.Meta.Key == "ycapi" {
+		if m, ok := ycapi.Lookup(info.OriginModelName); ok && m.Kind != "text" {
+			return m.Kind
+		}
 		return ""
 	}
 	schema, _ := pinned.Plugin.Meta.UsageForModels(info.UpstreamModelName, info.OriginModelName)

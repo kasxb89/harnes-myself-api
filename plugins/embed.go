@@ -7,6 +7,7 @@ import (
 	"io/fs"
 
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 )
 
 //go:embed tasks
@@ -42,6 +43,13 @@ func Source(key string) (string, error) {
 	source, err := taskPlugins.ReadFile("tasks/" + key + "/plugin.js")
 	if err != nil {
 		return "", err
+	}
+	if key == "ycapi" {
+		catalog, err := ycapi.PluginCatalog()
+		if err != nil {
+			return "", err
+		}
+		return "globalThis.ycapiApprovedCatalog = " + string(catalog) + ";\n" + string(source), nil
 	}
 	return string(source), nil
 }

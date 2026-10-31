@@ -378,7 +378,7 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 				}
 			}
 		}
-		if plugin == nil || plugin.Meta.Key != "hailuo" && plugin.Meta.Key != "blackrxai-video" {
+		if plugin == nil || plugin.Meta.Key != "hailuo" && plugin.Meta.Key != "blackrxai-video" && plugin.Meta.Key != "ycapi" {
 			return pricing, fmt.Errorf("unsupported native video pricing")
 		}
 		if !slices.Contains(plugin.Meta.Models, mapped) || !plugin.Engine.HasExport("extractUsage") {

@@ -72,7 +72,7 @@ export function MediaConcurrencyForm(props: {
     }
     props.onSave(request)
   }
-  const totals = { video: 0, image: 0 }
+  const totals = { video: 0, image: 0, audio: 0 }
   props.snapshot.pools.forEach((pool) => {
     if (pool.enabled && pool.reconciled) {
       totals[pool.media_kind] += pool.effective_limit
@@ -85,6 +85,13 @@ export function MediaConcurrencyForm(props: {
         onSubmit={form.handleSubmit(submit)}
         className='min-w-0 space-y-4'
       >
+        {props.snapshot.pools.some((pool) => pool.media_kind === 'audio') && (
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'Audio defaults to one request per key; change its pool override to adjust it.'
+            )}
+          </p>
+        )}
         {!props.canEdit && (
           <Alert>
             <AlertDescription>

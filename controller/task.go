@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relay"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -48,6 +49,25 @@ func GetTask(c *gin.Context) {
 	if !exists {
 		videoProxyError(c, http.StatusNotFound, "invalid_request_error", "Task not found")
 		return
+	}
+	if task.Platform == "ycapi" {
+		if approved, ok := ycapi.Lookup(task.Properties.OriginModelName); ok && approved.Kind == "audio" {
+			if task.Status == model.TaskStatusSuccess {
+				c.Params = append(c.Params, gin.Param{Key: "artifact_key", Value: "audio"})
+				TaskArtifactContent(c)
+				return
+			}
+			status := "pending"
+			if task.Status == model.TaskStatusFailure {
+				status = "failed"
+			}
+			if task.Status == model.TaskStatusUnknown {
+				status = "unknown"
+			}
+			c.Header("Cache-Control", "private, no-store")
+			c.JSON(http.StatusOK, gin.H{"task_id": task.TaskID, "model": task.Properties.OriginModelName, "status": status})
+			return
+		}
 	}
 	c.Header("Cache-Control", "private, no-store")
 	receipt, providerTerminal, receiptErr := service.ProjectH3TaskSubmission(c.Request.Context(), task)
@@ -94,6 +114,27 @@ func GetTask(c *gin.Context) {
 	if c.GetInt("id") > 0 && task.UserId == c.GetInt("id") {
 		if images := persistedToapisImageResult(task); len(images) > 0 {
 			response["result"] = gin.H{"data": images}
+		}
+		if task.Platform == "ycapi" && task.Status == model.TaskStatusSuccess {
+			if approved, ok := ycapi.Lookup(task.Properties.OriginModelName); ok && approved.Kind == "image" {
+				artifacts, projectionErr := projectTaskArtifacts(task)
+				if projectionErr != nil {
+					videoProxyError(c, http.StatusServiceUnavailable, "server_error", "Failed to project task results")
+					return
+				}
+				for _, artifact := range artifacts {
+					if artifact.Key != "image" || artifact.Type != "image" {
+						continue
+					}
+					contentURL, buildErr := service.BuildTaskArtifactContentURL(task.TaskID, artifact.Key)
+					if buildErr != nil {
+						videoProxyError(c, http.StatusServiceUnavailable, "server_error", "Failed to project task results")
+						return
+					}
+					response["result"] = gin.H{"data": []map[string]string{{"url": contentURL}}}
+					break
+				}
+			}
 		}
 	}
 	c.JSON(http.StatusOK, response)

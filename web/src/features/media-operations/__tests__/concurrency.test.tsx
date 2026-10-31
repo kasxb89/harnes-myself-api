@@ -123,6 +123,43 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('an audio pool stays readable alongside existing image and video pools', async () => {
+  vi.mocked(api.get).mockResolvedValue(
+    envelope({
+      ...snapshot,
+      pools: [
+        ...snapshot.pools,
+        {
+          pool_id: 'opaque-audio',
+          label: 'Speech account',
+          media_kind: 'audio',
+          channel_ids: [42],
+          configured_limit: 1,
+          known_upstream_limit: null,
+          effective_limit: 1,
+          occupied: 0,
+          unknown: 0,
+          enabled: true,
+          reconciled: true,
+          available_slots: 1,
+        },
+      ],
+    })
+  )
+  renderPanel()
+  const table = await screen.findByRole('table', {
+    name: 'Upstream account admission pools',
+  })
+  const row = within(table).getByRole('row', { name: /Speech account/ })
+  expect(within(row).getByText('Audio')).toBeVisible()
+  expect(within(table).getByRole('row', { name: /H3 account 1/ })).toBeVisible()
+  expect(
+    screen.getByText(
+      'Audio defaults to one request per key; change its pool override to adjust it.'
+    )
+  ).toBeVisible()
+})
+
 it('remounting a removed concurrency panel starts a fresh request before its cancelled request settles', async () => {
   vi.mocked(api.get).mockRestore()
   const aborted = vi.fn()

@@ -11,6 +11,7 @@ func SetVideoRouter(router *gin.Engine) {
 	videoQuoteRouter := router.Group("/v1")
 	videoQuoteRouter.Use(middleware.RouteTag("relay"), middleware.VideoQuoteIPRateLimit(), middleware.VideoQuoteAuth(), middleware.VideoQuoteRateLimit())
 	videoQuoteRouter.POST("/video/quote", controller.QuoteVideo)
+	videoQuoteRouter.POST("/audio/quote", controller.QuoteYcapiSpeech)
 
 	videoSharedRouter := router.Group("/v1")
 	videoSharedRouter.Use(middleware.RouteTag("relay"))

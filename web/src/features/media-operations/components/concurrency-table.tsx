@@ -73,7 +73,11 @@ export function MediaConcurrencyTable(props: {
         <div className='space-y-1'>
           <p className='font-medium'>{pool.label}</p>
           <Badge variant='secondary'>
-            {pool.media_kind === 'video' ? t('Video') : t('Image')}
+            {
+              { video: t('Video'), image: t('Image'), audio: t('Audio') }[
+                pool.media_kind
+              ]
+            }
           </Badge>
         </div>
       ),

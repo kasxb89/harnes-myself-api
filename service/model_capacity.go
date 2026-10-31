@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -74,6 +76,56 @@ func capacityError(c *gin.Context, code, message string) *types.NewAPIError {
 
 // Clamp before quota reservation. Unknown metadata leaves the old path alone.
 func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if approved, ok := ycapi.Lookup(info.OriginModelName); ok {
+		request, isText := info.Request.(*dto.GeneralOpenAIRequest)
+		if approved.Kind != "text" || !isText {
+			return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		meta := request.GetTokenCountMeta()
+		estimate := tokenkit.Count(approved.UpstreamID, meta.CombineText) + meta.MessagesCount*3 + meta.NameCount*3 + meta.ToolsCount*8 + 3
+		var body map[string]any
+		if common.UnmarshalBodyReusable(c, &body) != nil {
+			return types.NewErrorWithStatusCode(errors.New("Invalid text request"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		for _, key := range []string{"tools", "functions", "tool_choice", "function_call", "lane_id", "pinned_lane_id", "reasoning", "reasoning_effort"} {
+			value, present := body[key]
+			if !present || value == nil {
+				continue
+			}
+			if key == "tools" || key == "functions" {
+				if entries, ok := value.([]any); ok && len(entries) == 0 {
+					continue
+				}
+			}
+			if (key == "tool_choice" || key == "function_call" || key == "reasoning_effort") && value == "none" {
+				continue
+			}
+			if present {
+				return types.NewErrorWithStatusCode(errors.New("This approved text offer does not support tools, media or route overrides"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+		}
+		messages, _ := body["messages"].([]any)
+		for _, value := range messages {
+			message, ok := value.(map[string]any)
+			if !ok {
+				return types.NewErrorWithStatusCode(errors.New("Text messages are required"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			if message["role"] == "tool" || message["role"] == "function" || message["tool_calls"] != nil || message["function_call"] != nil {
+				return types.NewErrorWithStatusCode(errors.New("This approved text offer does not support tool messages"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			if content, ok := message["content"].([]any); ok {
+				for _, part := range content {
+					item, ok := part.(map[string]any)
+					if !ok || item["type"] != "text" {
+						return types.NewErrorWithStatusCode(errors.New("This approved offer supports text input only"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+					}
+				}
+			}
+		}
+		if len(meta.Files) > 0 || meta.ToolsCount > 0 || estimate > 32000 {
+			return types.NewErrorWithStatusCode(errors.New("This approved text offer accepts at most 32000 input tokens and text only"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+	}
 	caps, err := capacityForRequest(c, info.OriginModelName)
 	if err != nil {
 		return capacityError(c, "model_capacity_unavailable", i18n.MsgCapacityConfigUnavailable)

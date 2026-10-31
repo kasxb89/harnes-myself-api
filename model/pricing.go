@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -25,6 +26,8 @@ type PricingPluginVariant struct {
 }
 
 type Pricing struct {
+	Kind                   string                               `json:"kind,omitempty"`
+	RetailPriceRows        []map[string]any                     `json:"retail_price_rows,omitempty"`
 	BillingPluginVariants  []PricingPluginVariant               `json:"billing_plugin_variants,omitempty"`
 	ModelName              string                               `json:"model_name"`
 	DisplayName            string                               `json:"display_name,omitempty"`
@@ -387,6 +390,12 @@ func updatePricing() {
 			}
 		}
 		usageModel := model
+		if approved, ok := ycapi.Lookup(model); ok {
+			pricing.Kind = approved.Kind
+			pricing.DisplayName = approved.Name
+			pricing.Parameters = ycapi.ClientParameters(model)
+			pricing.RetailPriceRows = ycapi.ClientPrices(model)
+		}
 		plugin, ok := pluginGeneration.GetByModel(model)
 		if !ok {
 			if target, resolved := ResolveTaskModelAlias(pluginGeneration, model); resolved {
@@ -541,6 +550,11 @@ func taskPluginClientParameters(key, version, model string) map[string]any {
 
 func taskPluginParameterSchema(key, version, model string) map[string]any {
 	switch key {
+	case "ycapi":
+		if version != "1.0.0" {
+			return nil
+		}
+		return ycapi.ClientParameters(model)
 	case "blackrxai-video":
 		return blackrxVideoClientParameters(model)
 	case "toapis-image":

@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
@@ -321,9 +322,27 @@ func ListModels(c *gin.Context, modelType int) {
 			"nextPageToken": nil,
 		})
 	default:
+		publicModels := make([]any, 0, len(userOpenAiModels))
+		for _, entry := range userOpenAiModels {
+			if approved, ok := ycapi.Lookup(entry.Id); ok {
+				data, _ := common.Marshal(entry)
+				var value map[string]any
+				if common.Unmarshal(data, &value) != nil {
+					c.AbortWithStatus(http.StatusServiceUnavailable)
+					return
+				}
+				value["kind"] = approved.Kind
+				value["display_name"] = approved.Name
+				value["parameters"] = ycapi.ClientParameters(entry.Id)
+				value["retail_price_rows"] = ycapi.ClientPrices(entry.Id)
+				publicModels = append(publicModels, value)
+			} else {
+				publicModels = append(publicModels, entry)
+			}
+		}
 		c.JSON(200, gin.H{
 			"success": true,
-			"data":    userOpenAiModels,
+			"data":    publicModels,
 			"object":  "list",
 		})
 	}

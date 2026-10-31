@@ -22,6 +22,7 @@ import (
 const MediaConcurrencyOption = "MediaConcurrencyPolicy"
 const MediaVideo = "video"
 const MediaImage = "image"
+const MediaAudio = "audio"
 const MediaReserved = "reserved"
 const MediaSending = "sending"
 const MediaActive = "active"
@@ -242,7 +243,7 @@ func SaveMediaConcurrencyPolicy(ctx context.Context, expectedRevision string, po
 				}
 				kind = pool.MediaKind
 			}
-			if (kind == MediaVideo && override.Limit > 16) || (kind != MediaVideo && kind != MediaImage) {
+			if (kind == MediaVideo && override.Limit > 16) || (kind != MediaVideo && kind != MediaImage && kind != MediaAudio) {
 				return ErrInvalidMediaConcurrencyPolicy
 			}
 		}
@@ -311,6 +312,9 @@ func mediaEffectiveLimit(policy MediaConcurrencyPolicy, poolID, kind string, kno
 	limit := policy.Defaults.Video
 	if kind == MediaImage {
 		limit = policy.Defaults.Image
+	}
+	if kind == MediaAudio {
+		limit = 1
 	}
 	for _, override := range policy.PoolOverrides {
 		if override.PoolID == poolID {
@@ -382,7 +386,7 @@ func TaskMediaKind(task *Task) string {
 	if task == nil {
 		return ""
 	}
-	if task.PrivateData.MediaKind == MediaImage || task.PrivateData.MediaKind == MediaVideo {
+	if task.PrivateData.MediaKind == MediaImage || task.PrivateData.MediaKind == MediaVideo || task.PrivateData.MediaKind == MediaAudio {
 		return task.PrivateData.MediaKind
 	}
 	plugin, ok := mediaTaskPlugin(task.Platform)
@@ -390,6 +394,11 @@ func TaskMediaKind(task *Task) string {
 		return ""
 	}
 	schema, _ := plugin.Meta.UsageForModels(task.Properties.UpstreamModelName, task.Properties.OriginModelName)
+	if plugin.Meta.Key == "ycapi" {
+		if _, ok := schema["output_tokens"]; ok {
+			return MediaAudio
+		}
+	}
 	_, image := schema["image_count"]
 	_, seconds := schema["seconds"]
 	if image && !seconds {
@@ -425,7 +434,7 @@ func TaskRequiresMediaRouteBinding(task *Task) bool {
 		keys = append(keys, execution.TaskPlugin.Key)
 	}
 	for _, key := range keys {
-		if key == "blackrxai-video" || key == "toapis-image" || key == "hailuo" || key == "35" {
+		if key == "blackrxai-video" || key == "toapis-image" || key == "hailuo" || key == "35" || key == "ycapi" {
 			return true
 		}
 	}
@@ -433,7 +442,7 @@ func TaskRequiresMediaRouteBinding(task *Task) bool {
 }
 
 func ensureMediaPool(tx *gorm.DB, key, kind string) (*MediaPool, error) {
-	if strings.TrimSpace(key) == "" || (kind != MediaVideo && kind != MediaImage) {
+	if strings.TrimSpace(key) == "" || (kind != MediaVideo && kind != MediaImage && kind != MediaAudio) {
 		return nil, ErrMediaAdmissionUnavailable
 	}
 	if err := guardMediaLegacyIdentity(tx, kind); err != nil {
@@ -828,7 +837,7 @@ func MediaConfirmedFailureState(ctx context.Context, task *Task) (string, bool, 
 	if err != nil {
 		return "", false, err
 	}
-	if snapshot.PrivateData.MediaAdmissionID != snapshot.AdmissionID || snapshot.AdmissionTask != snapshot.ID || snapshot.AdmissionChannel != snapshot.ChannelId || snapshot.AdmissionState != MediaReleased || (snapshot.Status != TaskStatusFailure && snapshot.Status != TaskStatusSuccess) || snapshot.PrivateData.MediaKind != snapshot.AdmissionKind || (snapshot.AdmissionKind != MediaImage && snapshot.AdmissionKind != MediaVideo) {
+	if snapshot.PrivateData.MediaAdmissionID != snapshot.AdmissionID || snapshot.AdmissionTask != snapshot.ID || snapshot.AdmissionChannel != snapshot.ChannelId || snapshot.AdmissionState != MediaReleased || (snapshot.Status != TaskStatusFailure && snapshot.Status != TaskStatusSuccess) || snapshot.PrivateData.MediaKind != snapshot.AdmissionKind || (snapshot.AdmissionKind != MediaImage && snapshot.AdmissionKind != MediaVideo && snapshot.AdmissionKind != MediaAudio) {
 		return "", false, nil
 	}
 	if snapshot.SendingAt > 0 && snapshot.ProviderTerminal {

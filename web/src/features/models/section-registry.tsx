@@ -22,6 +22,7 @@ import { createSectionRegistry } from '@/features/system-settings/utils/section-
  * Models page section definitions
  */
 const MODELS_SECTIONS = [
+  { id: 'pricebook', titleKey: 'Model price list', build: () => null },
   {
     id: 'metadata',
     titleKey: 'Models',
