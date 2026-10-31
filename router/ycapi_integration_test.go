@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	apitypes "github.com/QuantumNous/new-api/types"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -461,4 +462,58 @@ func TestYcapiSpeechLeavesExistingProvidersOnLegacyRoute(t *testing.T) {
 	var admissions int64
 	require.NoError(t, f.db.Model(&model.MediaAdmission{}).Count(&admissions).Error)
 	assert.Zero(t, admissions, "legacy speech must not enter the YCAPI task lifecycle")
+}
+
+func TestYcapiAll44VideoQuotesUseExactApprovedQualityAndCNY(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	settings := operation_setting.GetGeneralSetting()
+	previous := settings.QuotaDisplayType
+	settings.QuotaDisplayType = operation_setting.QuotaDisplayTypeCNY
+	t.Cleanup(func() { settings.QuotaDisplayType = previous })
+	models, err := ycapi.Models()
+	require.NoError(t, err)
+	rows := 0
+	for _, m := range models {
+		if m.Kind != "video" {
+			continue
+		}
+		for index, offer := range m.Offers {
+			t.Run(m.ID+"/"+offer.ID, func(t *testing.T) {
+				parameters := map[string]any{"seconds": decimal.RequireFromString(fmt.Sprint(offer.Params["duration"])).IntPart()}
+				for _, key := range []string{"quality", "resolution", "aspect_ratio"} {
+					if value, present := offer.Params[key]; present {
+						parameters[key] = value
+					}
+				}
+				request := apitypes.VideoQuoteRequest{Model: m.ID, WorksCount: 1, Segments: []apitypes.VideoQuoteSegmentRequest{{ID: "clip-1", Parameters: parameters}}}
+				encoded, err := common.Marshal(request)
+				require.NoError(t, err)
+				response := f.request(t, http.MethodPost, "/v1/video/quote", string(encoded), "h3routermember")
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				var quote apitypes.VideoQuoteResponse
+				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &quote))
+				assert.Equal(t, "CNY", quote.Currency)
+				assert.False(t, quote.Charged)
+				assert.False(t, quote.Reserved)
+				assert.False(t, quote.Submitted)
+				actual := decimal.RequireFromString(quote.EstimatedTotal)
+				tolerance := decimal.NewFromFloat(2 * quote.USDExchangeRate / quote.QuotaPerUSD)
+				assert.True(t, actual.Sub(m.Prices[index].RetailTotal).Abs().LessThanOrEqual(tolerance), "%s differs from the exact approved total %s", actual, m.Prices[index].RetailTotal)
+			})
+			rows++
+		}
+	}
+	assert.Equal(t, 44, rows)
+	for _, request := range []string{
+		`{"model":"MiniMax-H3","works_count":1,"segments":[{"id":"clip-1","parameters":{"seconds":5,"quality":"标准"}}]}`,
+		`{"model":"ycapi-seedance-2-0-official","works_count":1,"segments":[{"id":"clip-1","parameters":{"seconds":5,"resolution":"1080p","quality":{},"ratio":"16:9"}}]}`,
+		`{"model":"ycapi-seedance-2-0-official","works_count":1,"segments":[{"id":"clip-1","parameters":{"seconds":5,"resolution":"1080p","quality":"unknown","ratio":"16:9"}}]}`,
+	} {
+		response := f.request(t, http.MethodPost, "/v1/video/quote", request, "h3routermember")
+		assert.GreaterOrEqual(t, response.Code, http.StatusBadRequest, response.Body.String())
+	}
+	var tasks int64
+	require.NoError(t, f.db.Model(&model.Task{}).Count(&tasks).Error)
+	assert.Zero(t, tasks)
+	assert.Zero(t, f.posts)
 }

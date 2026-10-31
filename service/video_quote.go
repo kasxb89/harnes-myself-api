@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
@@ -60,6 +61,8 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 		return nil, invalid
 	}
 	seen := make(map[string]bool, len(request.Segments))
+	approved, isApproved := ycapi.Lookup(request.Model)
+	allowApprovedQuality := isApproved && approved.Kind == "video"
 	for _, segment := range request.Segments {
 		if segment.ID == "" || len(segment.ID) > 128 || strings.TrimSpace(segment.ID) != segment.ID || seen[segment.ID] || segment.Parameters == nil {
 			return nil, invalid
@@ -72,7 +75,7 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 		if err := validateVideoQuoteParameters(segment.Parameters, 0); err != nil {
 			return nil, invalid
 		}
-		if err := validateVideoQuoteWireParameters(segment.Parameters); err != nil {
+		if err := validateVideoQuoteWireParameters(segment.Parameters, allowApprovedQuality); err != nil {
 			return nil, invalid
 		}
 	}
@@ -490,9 +493,17 @@ func videoQuoteMappedModel(original, mapping string) (string, error) {
 // Quotes accept native JSON scalars and public URLs only. Uploaded files and
 // local/base64 material need a separate owned-material contract; treating them
 // as an empty reference set would silently underquote the eventual request.
-func validateVideoQuoteWireParameters(parameters map[string]any) error {
+func validateVideoQuoteWireParameters(parameters map[string]any, allowApprovedQuality bool) error {
 	allowed := []string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "aspect_ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference", "image_url", "image_urls", "videos", "video_urls", "audios", "audio_urls", "gen_type", "n"}
 	for key := range parameters {
+		if key == "quality" && allowApprovedQuality {
+			quality, ok := parameters[key].(string)
+			if !ok || quality == "" || len(quality) > 128 || strings.TrimSpace(quality) != quality {
+				return fmt.Errorf("invalid video quality")
+			}
+			// The pinned plugin still requires an exact approved specification.
+			continue
+		}
 		if !slices.Contains(allowed, key) {
 			return fmt.Errorf("unsupported video quote field")
 		}
