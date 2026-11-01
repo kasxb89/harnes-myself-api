@@ -57,9 +57,15 @@ const models: ClientModelOption[] = [
     id: 'yunshu-internal-gpt-image-2',
     display_name: 'Image model',
     chat_eligible: false,
+    image_eligible: true,
   },
 ]
 const clients: QueryClient[] = []
+let mediaSaved = {
+  schema_version: 1 as const,
+  default_image_model: '',
+  default_video_model: '',
+}
 let saved: ClientModelConfig
 
 beforeEach(() => {
@@ -67,7 +73,15 @@ beforeEach(() => {
     .getState()
     .auth.setUser({ id: 1, username: 'root', role: ROLE.SUPER_ADMIN })
   saved = structuredClone(initial)
+  mediaSaved = {
+    schema_version: 1,
+    default_image_model: '',
+    default_video_model: '',
+  }
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/client-model-config/media-defaults') {
+      return { data: { success: true, data: mediaSaved } }
+    }
     if (url === '/api/client-model-config') {
       return { data: { success: true, data: saved } }
     }
@@ -82,6 +96,10 @@ beforeEach(() => {
     throw new Error(`Unexpected API request: ${url}`)
   })
   vi.spyOn(api, 'put').mockImplementation(async (_url, body) => {
+    if (_url === '/api/client-model-config/media-defaults') {
+      mediaSaved = body as typeof mediaSaved
+      return { data: { success: true, data: mediaSaved } }
+    }
     saved = body as ClientModelConfig
     return { data: { success: true, data: saved } }
   })
@@ -613,6 +631,15 @@ test('read-only model configuration disables fields and exposes no save or descr
   expect(
     screen.queryByRole('button', { name: 'Save client model configuration' })
   ).not.toBeInTheDocument()
+  await user.click(
+    screen.getByRole('tab', { name: 'Image and video defaults' })
+  )
+  expect(
+    await screen.findByRole('combobox', { name: 'Default image model' })
+  ).toBeDisabled()
+  expect(
+    screen.getByRole('combobox', { name: 'Default video model' })
+  ).toBeDisabled()
   await user.click(screen.getByRole('tab', { name: 'Descriptions and badges' }))
   expect(
     await screen.findByRole('searchbox', { name: 'Search model IDs' })
@@ -640,4 +667,74 @@ test('revoking model configuration access removes existing cached forms immediat
   expect(
     screen.queryByRole('combobox', { name: 'Default chat model' })
   ).not.toBeInTheDocument()
+})
+
+test('media defaults only list declared modalities and save separately from chat preferences', async () => {
+  const priorGet = vi.mocked(api.get).getMockImplementation()
+  if (!priorGet) throw new Error('API fixture missing')
+  vi.mocked(api.get).mockImplementation(async (url, config) =>
+    url === '/api/client-model-config/models'
+      ? {
+          data: {
+            success: true,
+            data: {
+              models: [
+                ...models,
+                {
+                  id: 'MiniMax-H3',
+                  display_name: 'H3 video',
+                  chat_eligible: false,
+                  video_eligible: true,
+                },
+              ],
+            },
+          },
+        }
+      : priorGet(url, config)
+  )
+  await setup()
+  const user = userEvent.setup()
+  await user.click(
+    screen.getByRole('tab', { name: 'Image and video defaults' })
+  )
+  await screen.findByRole('combobox', { name: 'Default image model' })
+  await selectOption('Default image model', /Image model/)
+  await selectOption('Default video model', /H3 video/)
+  const buttons = screen.getAllByRole('button', { name: /Save/ })
+  const saveButton = buttons.find((b) => !b.hasAttribute('disabled'))
+  expect(saveButton).toBeDefined()
+  if (!saveButton) throw new Error('save unavailable')
+  await user.click(saveButton)
+  await waitFor(() =>
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/client-model-config/media-defaults',
+      {
+        schema_version: 1,
+        default_image_model: 'yunshu-internal-gpt-image-2',
+        default_video_model: 'MiniMax-H3',
+      }
+    )
+  )
+  expect(saved).toEqual(initial)
+})
+
+test('a failed media preference save retains the selected draft for retry', async () => {
+  await setup()
+  const user = userEvent.setup()
+  await user.click(
+    screen.getByRole('tab', { name: 'Image and video defaults' })
+  )
+  await screen.findByRole('combobox', { name: 'Default image model' })
+  await selectOption('Default image model', /Image model/)
+  vi.mocked(api.put).mockRejectedValueOnce(new Error('fixture save failure'))
+  const saveButton = screen
+    .getAllByRole('button', { name: /Save/ })
+    .find((b) => !b.hasAttribute('disabled'))
+  if (!saveButton) throw new Error('save unavailable')
+  await user.click(saveButton)
+  await waitFor(() => expect(saveButton).toBeEnabled())
+  expect(
+    screen.getByRole('combobox', { name: 'Default image model' })
+  ).toHaveValue('Image model')
+  expect(mediaSaved.default_image_model).toBe('')
 })

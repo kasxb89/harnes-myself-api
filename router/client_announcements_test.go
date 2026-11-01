@@ -494,4 +494,35 @@ func TestClientAnnouncementsContractAndPersistence(t *testing.T) {
 			}
 		}
 	})
+	t.Run("independent top banner is off by default and permission protected", func(t *testing.T) {
+		setLegacy(t, encodeRows(t, []map[string]any{newRow(1, "已发布公告"), newRow(2, "第二条公告")}), "true")
+		path := "/api/announcements/top-banner"
+		assert.False(t, getFeed(t).TopBannerEnabled)
+		for _, identity := range []string{"", "member"} {
+			credential := credentials[identity]
+			assert.Contains(t, []int{401, 403}, request(t, "PUT", path, credential, `{"schema_version":1,"enabled":true}`).Code)
+		}
+		enabled := request(t, "PUT", path, credentials["root"], `{"schema_version":1,"enabled":true}`)
+		require.Equal(t, 200, enabled.Code, enabled.Body.String())
+		feed := getFeed(t)
+		assert.True(t, feed.TopBannerEnabled)
+		assert.Len(t, feed.Announcements, 2)
+		for _, body := range []string{`{"schema_version":1,"enabled":null}`, `{"schema_version":1,"enabled":true,"enabled":false}`, `{"schema_version":1,"enabled":true,"unrelated":"no"}`} {
+			assert.Equal(t, 400, request(t, "PUT", path, credentials["root"], body).Code)
+		}
+		assert.True(t, getFeed(t).TopBannerEnabled)
+		rows := encodeRows(t, []map[string]any{newRow(1, "更新公告"), newRow(2, "第二条公告")})
+		require.NoError(t, model.UpdateOption(announcementOption, rows))
+		assert.True(t, getFeed(t).TopBannerEnabled, "existing announcement saves preserve independent banner flag")
+		require.NoError(t, model.UpdateOption(announcementEnabledOption, "false"))
+		assert.Empty(t, getFeed(t).Announcements, "master switch still hides content")
+		require.NoError(t, model.UpdateOption(announcementEnabledOption, "true"))
+		for _, key := range []string{"ClientAnnouncementTopBanner", "clientannouncementtopbanner", "ClientAnnouncementTopBanner "} {
+			assert.Error(t, model.UpdateOption(key, `{}`))
+		}
+		require.Equal(t, 200, request(t, "PUT", path, credentials["root"], `{"schema_version":1,"enabled":false}`).Code)
+		assert.False(t, getFeed(t).TopBannerEnabled)
+		assert.Len(t, getFeed(t).Announcements, 2, "sidebar feed remains populated when only banner is disabled")
+	})
+
 }

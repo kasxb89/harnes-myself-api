@@ -8687,6 +8687,14 @@
     "Saved scenarios can be disabled. Historical answers are retained.": "Có thể tắt mục đã lưu. Câu trả lời cũ được giữ lại.",
     "This questionnaire requires a newer client": "Khảo sát này cần phiên bản ứng dụng mới hơn",
     "You have read-only access to questionnaire options.": "Bạn chỉ có quyền xem các lựa chọn.",
-    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Các thay đổi chưa lưu sẽ bị xóa. Câu trả lời đã lưu không thay đổi."
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Các thay đổi chưa lưu sẽ bị xóa. Câu trả lời đã lưu không thay đổi.",
+    "Default image model": "Mô hình ảnh mặc định",
+    "Default video model": "Mô hình video mặc định",
+    "Image and video defaults": "Mô hình ảnh và video mặc định",
+    "Keep client default": "Giữ mặc định của ứng dụng",
+    "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Áp dụng khi người dùng chưa chọn mô hình. Để trống sẽ giữ mặc định, gồm H3 cho video. Quyền truy cập và thông số vẫn áp dụng; mô hình không khả dụng cần được chọn lại.",
+    "Show announcements at the top of the client": "Hiển thị thông báo ở đầu ứng dụng",
+    "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Luân phiên thông báo đã đăng. Người dùng có thể đóng phiên bản hiện tại; nội dung cập nhật có thể hiện lại. Cần bật cả công tắc thông báo chung.",
+    "Use the dedicated client preference page to change this setting": "Vui lòng dùng trang tùy chọn ứng dụng chuyên dụng"
   }
 }

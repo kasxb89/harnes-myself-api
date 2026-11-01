@@ -31,6 +31,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { getClientModelCatalog, getClientModelConfig } from './api'
 import { ClientModelConfigForm } from './components/config-form'
+import { ClientMediaDefaultsSection } from './components/media-defaults-form'
 import { ClientModelPresentationSection } from './components/presentation-form'
 
 export function ClientModelConfigPage() {
@@ -51,6 +52,7 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('preferences')
   const [configDirty, setConfigDirty] = useState(false)
+  const [mediaDirty, setMediaDirty] = useState(false)
   const [presentationDirty, setPresentationDirty] = useState(false)
   const [actions, setActions] = useState<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<HTMLSpanElement | null>(null)
@@ -87,7 +89,9 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
           />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <FormNavigationGuard when={configDirty || presentationDirty} />
+          <FormNavigationGuard
+            when={configDirty || presentationDirty || mediaDirty}
+          />
           <Tabs
             value={tab}
             onValueChange={(value) => setTab(String(value))}
@@ -102,6 +106,9 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
                 className='h-auto whitespace-normal'
               >
                 {t('Defaults and order')}
+              </TabsTrigger>
+              <TabsTrigger value='media' className='h-auto whitespace-normal'>
+                {t('Image and video defaults')}
               </TabsTrigger>
               <TabsTrigger
                 value='presentation'
@@ -132,6 +139,23 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
                   models={catalog.data}
                   active={tab === 'preferences'}
                   onDirtyChange={setConfigDirty}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value='media' keepMounted>
+              {catalog.data && (
+                <ClientMediaDefaultsSection
+                  models={catalog.data}
+                  readOnly={props.readOnly}
+                  active={tab === 'media'}
+                  onDirtyChange={setMediaDirty}
+                />
+              )}
+              {!catalog.data && catalog.isPending && <LoadingState />}
+              {!catalog.data && !catalog.isPending && (
+                <ErrorState
+                  title={t('Failed to load client model catalog')}
+                  onRetry={() => void catalog.refetch()}
                 />
               )}
             </TabsContent>

@@ -26,6 +26,8 @@ export type ClientModelOption = {
   id: string
   display_name: string
   chat_eligible: boolean
+  image_eligible?: boolean
+  video_eligible?: boolean
 }
 
 export type ClientModelPresentationEntry = {
@@ -36,4 +38,10 @@ export type ClientModelPresentationEntry = {
 export type ClientModelPresentation = {
   schema_version: 1
   models: Record<string, ClientModelPresentationEntry>
+}
+
+export type ClientMediaDefaults = {
+  schema_version: 1
+  default_image_model: string
+  default_video_model: string
 }

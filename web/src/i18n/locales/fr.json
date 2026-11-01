@@ -8687,6 +8687,14 @@
     "Saved scenarios can be disabled. Historical answers are retained.": "Les usages enregistrés peuvent être désactivés. Les réponses historiques sont conservées.",
     "This questionnaire requires a newer client": "Ce questionnaire nécessite un client plus récent",
     "You have read-only access to questionnaire options.": "Vous disposez uniquement d’un accès en lecture aux options.",
-    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Les modifications non enregistrées seront effacées. Les réponses enregistrées resteront intactes."
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Les modifications non enregistrées seront effacées. Les réponses enregistrées resteront intactes.",
+    "Default image model": "Modèle d’image par défaut",
+    "Default video model": "Modèle vidéo par défaut",
+    "Image and video defaults": "Modèles d’image et vidéo par défaut",
+    "Keep client default": "Conserver le choix du client",
+    "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Utilisés si aucun modèle n’est choisi. Un champ vide conserve les valeurs du client, dont H3 pour la vidéo. Les droits et les formats restent applicables. Un modèle indisponible nécessite un autre choix.",
+    "Show announcements at the top of the client": "Afficher les annonces en haut du client",
+    "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Fait défiler les annonces publiées. Les utilisateurs peuvent fermer la version actuelle ; un contenu modifié peut réapparaître. Activez aussi l’interrupteur général.",
+    "Use the dedicated client preference page to change this setting": "Utilisez la page des préférences du client"
   }
 }

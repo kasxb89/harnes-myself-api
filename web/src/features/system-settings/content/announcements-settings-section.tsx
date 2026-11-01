@@ -24,6 +24,7 @@ import { LoadingState } from '@/components/loading-state'
 import { canAccessAdminRoute, hasPermission } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { AnnouncementTopBannerSwitch } from './announcement-top-banner-switch'
 import {
   ANNOUNCEMENTS_QUERY_KEY,
   loadAnnouncements,
@@ -69,21 +70,24 @@ export function AnnouncementsSettingsSection() {
     )
   }
   return (
-    <AnnouncementsSection
-      data={query.data['console_setting.announcements']}
-      enabled={query.data['console_setting.announcements_enabled'] === 'true'}
-      readOnly={!canEdit}
-      saveSettings={async (data, enabled) => {
-        if (!canEdit) throw new Error(t('Access denied'))
-        const saved = await save.mutateAsync({
-          'console_setting.announcements': data,
-          'console_setting.announcements_enabled': enabled ? 'true' : 'false',
-        })
-        return {
-          data: saved['console_setting.announcements'],
-          enabled: saved['console_setting.announcements_enabled'] === 'true',
-        }
-      }}
-    />
+    <>
+      <AnnouncementTopBannerSwitch readOnly={!canEdit} />
+      <AnnouncementsSection
+        data={query.data['console_setting.announcements']}
+        enabled={query.data['console_setting.announcements_enabled'] === 'true'}
+        readOnly={!canEdit}
+        saveSettings={async (data, enabled) => {
+          if (!canEdit) throw new Error(t('Access denied'))
+          const saved = await save.mutateAsync({
+            'console_setting.announcements': data,
+            'console_setting.announcements_enabled': enabled ? 'true' : 'false',
+          })
+          return {
+            data: saved['console_setting.announcements'],
+            enabled: saved['console_setting.announcements_enabled'] === 'true',
+          }
+        }}
+      />
+    </>
   )
 }

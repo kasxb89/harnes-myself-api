@@ -242,6 +242,9 @@ func validateOptionValue(key string, value string) error {
 	if isCustomerServiceOption(key) {
 		return errCustomerServiceDedicatedAPI
 	}
+	if isClientProductPreference(key) {
+		return errClientProductDedicatedAPI
+	}
 	if isClientModelPresentationOption(key) {
 		return errClientModelPresentationDedicatedAPI
 	}
@@ -333,6 +336,9 @@ func UpdateOption(key string, value string) error {
 		if err := validateClientAnnouncementOptionWrite(tx, key, option.Key); err != nil {
 			return err
 		}
+		if err := validateClientProductPreferenceWrite(tx, option.Key); err != nil {
+			return err
+		}
 		if err := validateClientModelPresentationOptionWrite(tx, option.Key); err != nil {
 			return err
 		}
@@ -389,6 +395,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 		if isCustomerServiceOption(key) {
 			return errCustomerServiceDedicatedAPI
+		}
+		if isClientProductPreference(key) {
+			return errClientProductDedicatedAPI
 		}
 		if isClientModelPresentationOption(key) {
 			return errClientModelPresentationDedicatedAPI
@@ -458,6 +467,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 				return ErrModelProfitCostRulesAPI
 			}
 			if err := validateClientAnnouncementOptionWrite(tx, k, option.Key); err != nil {
+				return err
+			}
+			if err := validateClientProductPreferenceWrite(tx, option.Key); err != nil {
 				return err
 			}
 			if err := validateClientModelPresentationOptionWrite(tx, option.Key); err != nil {

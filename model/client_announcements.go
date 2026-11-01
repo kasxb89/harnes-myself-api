@@ -48,6 +48,7 @@ type ClientAnnouncementsFeed struct {
 	SchemaVersion        int                  `json:"schema_version"`
 	ContentFormat        string               `json:"content_format"`
 	AnnouncementsEnabled bool                 `json:"announcements_enabled"`
+	TopBannerEnabled     bool                 `json:"top_banner_enabled"`
 	Announcements        []ClientAnnouncement `json:"announcements"`
 	UpdatedAt            *string              `json:"updated_at"`
 }
@@ -327,7 +328,7 @@ func GetClientAnnouncements(ctx context.Context) (ClientAnnouncementsFeed, error
 		return feed, ErrClientAnnouncementsUnavailable
 	}
 	var options []Option
-	if err := DB.WithContext(ctx).Where(clause.IN{Column: clause.Column{Name: "key"}, Values: []any{clientAnnouncementsOption, clientAnnouncementsEnabledOption, clientAnnouncementsMetadataOption}}).Find(&options).Error; err != nil {
+	if err := DB.WithContext(ctx).Where(clause.IN{Column: clause.Column{Name: "key"}, Values: []any{clientAnnouncementsOption, clientAnnouncementsEnabledOption, clientAnnouncementsMetadataOption, keyClientTopBanner}}).Find(&options).Error; err != nil {
 		return feed, ErrClientAnnouncementsUnavailable
 	}
 	var raw, metadataRaw string
@@ -343,6 +344,10 @@ func GetClientAnnouncements(ctx context.Context) (ClientAnnouncementsFeed, error
 			}
 		case clientAnnouncementsMetadataOption:
 			metadataRaw = option.Value
+		case keyClientTopBanner:
+			if cfg, err := ParseClientTopBannerConfig([]byte(option.Value)); err == nil {
+				feed.TopBannerEnabled = cfg.Enabled
+			}
 		default:
 			return feed, ErrClientAnnouncementsUnavailable
 		}

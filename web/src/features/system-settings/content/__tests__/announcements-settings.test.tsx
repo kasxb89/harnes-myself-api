@@ -41,6 +41,7 @@ import {
 import { AnnouncementsSettingsSection } from '../announcements-settings-section'
 import { ContentSettings } from '../index'
 
+let topEnabled = false
 let stored: AnnouncementsSettings
 function renderSection(content = <AnnouncementsSettingsSection />) {
   const client = new QueryClient({
@@ -69,13 +70,31 @@ beforeEach(() => {
     'console_setting.announcements_enabled': 'true',
   }
   setAdmin()
+  topEnabled = false
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/announcements/top-banner') {
+      return {
+        data: {
+          success: true,
+          data: { schema_version: 1, enabled: topEnabled },
+        },
+      }
+    }
     if (url !== '/api/announcements') {
       throw new Error('unexpected broad settings request')
     }
     return { data: { success: true, data: { ...stored } } }
   })
   vi.spyOn(api, 'put').mockImplementation(async (url, data) => {
+    if (url === '/api/announcements/top-banner') {
+      topEnabled = (data as { enabled: boolean }).enabled
+      return {
+        data: {
+          success: true,
+          data: { schema_version: 1, enabled: topEnabled },
+        },
+      }
+    }
     if (url !== '/api/announcements') {
       throw new Error('unexpected generic settings write')
     }
@@ -113,7 +132,13 @@ test('the content route loads announcements through the narrow API without reque
   ).toBeEnabled()
   expect(api.get).toHaveBeenCalledWith('/api/announcements', expect.anything())
   expect(
-    vi.mocked(api.get).mock.calls.every(([url]) => url === '/api/announcements')
+    vi
+      .mocked(api.get)
+      .mock.calls.every(([url]) =>
+        ['/api/announcements', '/api/announcements/top-banner'].includes(
+          String(url)
+        )
+      )
   ).toBe(true)
 })
 
@@ -123,6 +148,11 @@ test('a read-only announcement operator cannot edit, add, delete, toggle or save
   expect(
     await screen.findByRole('button', { name: 'Add Announcement' })
   ).toBeDisabled()
+  expect(
+    await screen.findByRole('switch', {
+      name: 'Show announcements at the top of the client',
+    })
+  ).toHaveAttribute('aria-disabled', 'true')
   expect(screen.getByRole('button', { name: 'Save Settings' })).toBeDisabled()
   expect(screen.getByRole('switch', { name: 'Enabled' })).toHaveAttribute(
     'aria-disabled',
@@ -232,4 +262,20 @@ test('a root user retains legacy query links to content sections outside delegat
       },
     })
   }
+})
+
+test('top banner switch saves the dedicated flag without rewriting the announcement list', async () => {
+  renderSection()
+  const user = userEvent.setup()
+  const toggle = await screen.findByRole('switch', {
+    name: 'Show announcements at the top of the client',
+  })
+  expect(toggle).not.toBeChecked()
+  await user.click(toggle)
+  await waitFor(() => expect(toggle).toBeChecked())
+  expect(api.put).toHaveBeenCalledWith('/api/announcements/top-banner', {
+    schema_version: 1,
+    enabled: true,
+  })
+  expect(stored['console_setting.announcements']).toBe('[]')
 })

@@ -410,6 +410,8 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 		{http.MethodGet, "/api/client-model-config"},
 		{http.MethodPut, "/api/client-model-config"},
 		{http.MethodGet, "/api/client-model-config/models"},
+		{http.MethodGet, "/api/client-model-config/media-defaults"},
+		{http.MethodPut, "/api/client-model-config/media-defaults"},
 		{http.MethodGet, "/api/client-model-config/presentation"},
 		{http.MethodPut, "/api/client-model-config/presentation"},
 		{http.MethodGet, "/api/media-operations"},
@@ -429,6 +431,9 @@ func TestClientModelConfigRequiresAnActiveAdministratorSession(t *testing.T) {
 		} {
 			t.Run(route.method+route.path+identity.name, func(t *testing.T) {
 				body := `{"schema_version":1,"default_chat_model":"","model_order":[]}`
+				if strings.HasSuffix(route.path, "/media-defaults") {
+					body = `{"schema_version":1,"default_image_model":"","default_video_model":""}`
+				}
 				if strings.HasSuffix(route.path, "/presentation") {
 					body = `{"schema_version":1,"models":{}}`
 				}
@@ -926,6 +931,8 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 	}{
 		{"GET", "/api/customer-service", authz.CustomerServiceRead}, {"PUT", "/api/customer-service", authz.CustomerServiceWrite}, {"POST", "/api/customer-service/assets", authz.CustomerServiceWrite},
 		{"GET", "/api/announcements", authz.AnnouncementsRead}, {"PUT", "/api/announcements", authz.AnnouncementsWrite},
+		{"GET", "/api/announcements/top-banner", authz.AnnouncementsRead}, {"PUT", "/api/announcements/top-banner", authz.AnnouncementsWrite},
+		{"GET", "/api/client-model-config/media-defaults", authz.ClientModelConfigRead}, {"PUT", "/api/client-model-config/media-defaults", authz.ClientModelConfigWrite},
 		{"GET", "/api/client-model-config", authz.ClientModelConfigRead}, {"GET", "/api/client-model-config/models", authz.ClientModelConfigRead}, {"GET", "/api/client-model-config/presentation", authz.ClientModelConfigRead},
 		{"PUT", "/api/client-model-config", authz.ClientModelConfigWrite}, {"PUT", "/api/client-model-config/presentation", authz.ClientModelConfigWrite},
 		{"GET", "/api/creation/admin/content", authz.CreationContentRead}, {"PUT", "/api/creation/admin/content", authz.CreationContentWrite}, {"POST", "/api/creation/admin/assets", authz.CreationContentWrite},

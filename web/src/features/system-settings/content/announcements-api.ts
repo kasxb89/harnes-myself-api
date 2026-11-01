@@ -56,3 +56,24 @@ export async function saveAnnouncements(
     requireServerSuccess(response.data).data
   )
 }
+
+export type AnnouncementTopBanner = { schema_version: 1; enabled: boolean }
+export async function loadAnnouncementTopBanner(): Promise<AnnouncementTopBanner> {
+  const r = await api.get<{ success: boolean; data: AnnouncementTopBanner }>(
+    '/api/announcements/top-banner'
+  )
+  const value = requireServerSuccess(r.data).data
+  if (value?.schema_version !== 1 || typeof value.enabled !== 'boolean') {
+    throw new Error('Invalid client model configuration')
+  }
+  return value
+}
+export async function saveAnnouncementTopBanner(
+  value: AnnouncementTopBanner
+): Promise<AnnouncementTopBanner> {
+  const r = await api.put<{ success: boolean; data: AnnouncementTopBanner }>(
+    '/api/announcements/top-banner',
+    value
+  )
+  return requireServerSuccess(r.data).data
+}

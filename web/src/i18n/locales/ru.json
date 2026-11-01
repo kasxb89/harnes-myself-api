@@ -8687,6 +8687,14 @@
     "Saved scenarios can be disabled. Historical answers are retained.": "Сохранённые сценарии можно отключить. Исторические ответы сохраняются.",
     "This questionnaire requires a newer client": "Для этой анкеты нужен более новый клиент",
     "You have read-only access to questionnaire options.": "У вас есть только право просмотра вариантов.",
-    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Несохранённые изменения будут удалены. Сохранённые ответы останутся без изменений."
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Несохранённые изменения будут удалены. Сохранённые ответы останутся без изменений.",
+    "Default image model": "Модель изображений по умолчанию",
+    "Default video model": "Модель видео по умолчанию",
+    "Image and video defaults": "Модели изображений и видео",
+    "Keep client default": "Сохранить выбор клиента",
+    "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Используются, если пользователь не выбрал модель. Пустое поле сохраняет настройки клиента, включая H3 для видео. Права и поддерживаемые параметры сохраняются. Недоступная модель требует нового выбора.",
+    "Show announcements at the top of the client": "Объявления вверху клиента",
+    "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Прокручивает опубликованные объявления. Пользователь может закрыть текущую версию; обновлённый текст появится снова. Общий переключатель тоже должен быть включён.",
+    "Use the dedicated client preference page to change this setting": "Измените на странице настроек клиента"
   }
 }

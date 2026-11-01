@@ -51,6 +51,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			clientModelRoute.GET("", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelConfig)
 			clientModelRoute.PUT("", middleware.RequirePermission(authz.ClientModelConfigWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientModelConfig)
+			clientModelRoute.GET("/media-defaults", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientMediaDefaults)
+			clientModelRoute.PUT("/media-defaults", middleware.RequirePermission(authz.ClientModelConfigWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientMediaDefaults)
 			clientModelRoute.GET("/models", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelCandidates)
 			clientModelRoute.GET("/presentation", middleware.RequirePermission(authz.ClientModelConfigRead), controller.GetClientModelPresentation)
 			clientModelRoute.PUT("/presentation", middleware.RequirePermission(authz.ClientModelConfigWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientModelPresentation)
@@ -60,6 +62,8 @@ func SetApiRouter(router *gin.Engine) {
 		ycapiPreview.GET("/configuration", controller.GetYcapiConfiguration)
 		ycapiPreview.POST("/quote-preview", middleware.SessionCookieOriginGuard(), controller.PreviewYcapiQuote)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), middleware.RequirePermission(authz.DiagnosticsRead), controller.TestStatus)
+		apiRouter.GET("/announcements/top-banner", middleware.AdminAuth(), middleware.DisableCache(), middleware.RequirePermission(authz.AnnouncementsRead), controller.GetClientAnnouncementTopBanner)
+		apiRouter.PUT("/announcements/top-banner", middleware.AdminAuth(), middleware.RequirePermission(authz.AnnouncementsWrite), middleware.SessionCookieOriginGuard(), controller.SaveClientAnnouncementTopBanner)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)

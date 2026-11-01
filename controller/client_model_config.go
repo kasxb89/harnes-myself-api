@@ -15,6 +15,43 @@ func GetClientModelConfig(c *gin.Context) {
 	common.ApiSuccess(c, model.CurrentClientModelConfig())
 }
 
+func GetClientMediaDefaults(c *gin.Context) {
+	common.ApiSuccess(c, model.CurrentClientMediaDefaults())
+}
+
+func SaveClientMediaDefaults(c *gin.Context) {
+	data, ok := readClientProductPreference(c)
+	if !ok {
+		return
+	}
+	cfg, err := model.ParseClientMediaDefaults(data)
+	if err == nil {
+		err = model.SaveClientMediaDefaults(cfg)
+	}
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, model.ErrClientModelCatalog) || errors.Is(err, model.ErrClientModelSave) {
+			status = http.StatusServiceUnavailable
+		}
+		common.ApiErrorStatus(c, status, common.NewMessage(err.Error()))
+		return
+	}
+	common.ApiSuccess(c, cfg)
+}
+
+func readClientProductPreference(c *gin.Context) ([]byte, bool) {
+	if c.ContentType() != "application/json" {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid client model configuration"))
+		return nil, false
+	}
+	data, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, model.MaxClientProductPreferenceBytes))
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid client model configuration"))
+		return nil, false
+	}
+	return data, true
+}
+
 func GetClientModelCandidates(c *gin.Context) {
 	service.RefreshBlackrxCatalog(c.Request.Context())
 	models, err := model.ListClientModelCandidates()

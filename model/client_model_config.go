@@ -40,9 +40,11 @@ type ClientModelConfig struct {
 }
 
 type ClientModelCandidate struct {
-	ID           string `json:"id"`
-	DisplayName  string `json:"display_name"`
-	ChatEligible bool   `json:"chat_eligible"`
+	ID            string `json:"id"`
+	DisplayName   string `json:"display_name"`
+	ChatEligible  bool   `json:"chat_eligible"`
+	ImageEligible bool   `json:"image_eligible"`
+	VideoEligible bool   `json:"video_eligible"`
 }
 
 // modelDisplayName changes presentation only; routing and stored identities
@@ -243,6 +245,9 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 		candidate.ID = ability.Model
 		candidate.DisplayName = modelDisplayName(ability.Model)
 		candidate.ChatEligible = candidate.ChatEligible || clientModelSupportsChat(channel, ability.Model, metadataByModel[ability.Model], taskModels)
+		image, video := clientModelMediaEligibility(channel, ability.Model)
+		candidate.ImageEligible = candidate.ImageEligible || image
+		candidate.VideoEligible = candidate.VideoEligible || video
 		byID[ability.Model] = candidate
 	}
 	names = names[:0]

@@ -8687,6 +8687,14 @@
     "Saved scenarios can be disabled. Historical answers are retained.": "已保存的场景可以停用，历史答案会保留。",
     "This questionnaire requires a newer client": "本问卷需要更新客户端",
     "You have read-only access to questionnaire options.": "您只有问卷选项的查看权限。",
-    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "未保存的修改将被清除，已保存的答案不受影响。"
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "未保存的修改将被清除，已保存的答案不受影响。",
+    "Default image model": "默认图片模型",
+    "Default video model": "默认视频模型",
+    "Image and video defaults": "图片与视频默认模型",
+    "Keep client default": "沿用客户端默认",
+    "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "仅在用户未指定模型时使用。留空沿用客户端默认（视频为H3）；仍须符合用户可用权限和模型规格。已设置的模型不可用时，客户端会提示重新选择。",
+    "Show announcements at the top of the client": "在客户端顶部轮播公告",
+    "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "轮播已发布公告；用户可关闭当前版本，内容更新后可再次显示。需同时开启公告总开关。",
+    "Use the dedicated client preference page to change this setting": "请在专用客户端配置页面修改此设置"
   }
 }

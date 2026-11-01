@@ -8687,6 +8687,14 @@
     "Saved scenarios can be disabled. Historical answers are retained.": "保存済みの利用目的は無効化できます。過去の回答は保持されます。",
     "This questionnaire requires a newer client": "このアンケートには新しいクライアントが必要です",
     "You have read-only access to questionnaire options.": "選択肢に対する閲覧権限のみがあります。",
-    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "未保存の変更は消去されます。保存済みの回答は変更されません。"
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "未保存の変更は消去されます。保存済みの回答は変更されません。",
+    "Default image model": "既定の画像モデル",
+    "Default video model": "既定の動画モデル",
+    "Image and video defaults": "画像と動画の既定モデル",
+    "Keep client default": "クライアントの既定値を使用",
+    "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "ユーザーがモデルを指定していない場合に適用します。空欄では動画H3などの既定値を使用します。権限と対応仕様は引き続き適用され、設定モデルが利用不可なら再選択が必要です。",
+    "Show announcements at the top of the client": "クライアント上部にお知らせを表示",
+    "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "公開済みのお知らせを順番に表示します。現在の版を閉じることができ、内容更新後に再表示できます。お知らせの全体設定も有効にしてください。",
+    "Use the dedicated client preference page to change this setting": "専用のクライアント設定ページで変更してください"
   }
 }

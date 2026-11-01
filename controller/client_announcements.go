@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"io"
 	"net/http"
 
@@ -8,6 +9,29 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
+
+func GetClientAnnouncementTopBanner(c *gin.Context) {
+	common.ApiSuccess(c, model.CurrentClientTopBannerConfig())
+}
+func SaveClientAnnouncementTopBanner(c *gin.Context) {
+	data, ok := readClientProductPreference(c)
+	if !ok {
+		return
+	}
+	cfg, err := model.ParseClientTopBannerConfig(data)
+	if err == nil {
+		err = model.SaveClientTopBannerConfig(cfg)
+	}
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, model.ErrClientModelSave) {
+			status = http.StatusServiceUnavailable
+		}
+		common.ApiErrorStatus(c, status, common.NewMessage(err.Error()))
+		return
+	}
+	common.ApiSuccess(c, cfg)
+}
 
 func GetClientAnnouncements(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")

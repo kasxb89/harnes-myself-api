@@ -77,6 +77,7 @@ func GetStatus(c *gin.Context) {
 		},
 		"desktop_update":            system_setting.GetDesktopUpdateStatus(),
 		"client_model_config":       clientModelConfig,
+		"client_media_defaults":     model.CurrentClientMediaDefaults(),
 		"client_model_presentation": clientModelPresentation,
 		"client_activity_workload": gin.H{
 			"schema_version":             1,

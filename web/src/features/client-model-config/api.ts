@@ -24,6 +24,7 @@ import { createServerError } from '@/lib/server-error-message'
 
 import { clientModelPresentationSchema } from './lib/presentation'
 import type {
+  ClientMediaDefaults,
   ClientModelConfig,
   ClientModelOption,
   ClientModelPresentation,
@@ -100,4 +101,39 @@ export async function saveClientModelPresentation(
     )
   }
   return parsed.data
+}
+
+export async function getClientMediaDefaults(): Promise<ClientMediaDefaults> {
+  const response = await api.get<ApiResponse<ClientMediaDefaults>>(
+    '/api/client-model-config/media-defaults'
+  )
+  const value = response.data.data
+  if (
+    !response.data.success ||
+    !value ||
+    value.schema_version !== 1 ||
+    typeof value.default_image_model !== 'string' ||
+    typeof value.default_video_model !== 'string'
+  ) {
+    throw createServerError(
+      response.data,
+      t('Failed to load client model configuration')
+    )
+  }
+  return value
+}
+export async function saveClientMediaDefaults(
+  value: ClientMediaDefaults
+): Promise<ClientMediaDefaults> {
+  const response = await api.put<ApiResponse<ClientMediaDefaults>>(
+    '/api/client-model-config/media-defaults',
+    value
+  )
+  if (!response.data.success || !response.data.data) {
+    throw createServerError(
+      response.data,
+      t('Failed to save client model configuration')
+    )
+  }
+  return response.data.data
 }

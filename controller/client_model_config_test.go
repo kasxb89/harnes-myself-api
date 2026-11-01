@@ -14,6 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
+	"github.com/QuantumNous/new-api/plugins"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -187,7 +190,7 @@ func TestClientModelConfigDatabase(t *testing.T) {
 			{ID: "array-chat", DisplayName: "array-chat", ChatEligible: true},
 			{ID: "array-media", DisplayName: "array-media"},
 			{ID: "compact-only", DisplayName: "compact-only"},
-			{ID: "gpt-image-qa", DisplayName: "gpt-image-qa"},
+			{ID: "gpt-image-qa", DisplayName: "gpt-image-qa", ImageEligible: true},
 			{ID: "opaque-task", DisplayName: "opaque-task"},
 			{ID: "qa-chat", DisplayName: "qa-chat", ChatEligible: true},
 			{ID: "qa-second-chat", DisplayName: "qa-second-chat", ChatEligible: true},
@@ -555,4 +558,145 @@ func TestClientModelPresentationDatabase(t *testing.T) {
 		require.NoError(t, os.WriteFile(output, data, 0600))
 	}
 	assert.Zero(t, providerCalls, "neither reads nor presentation writes may contact a provider or fetch text URLs")
+}
+
+func TestClientMediaDefaultsAndBannerContract(t *testing.T) {
+	for _, body := range []string{`{}`, `{"schema_version":1,"default_image_model":null,"default_video_model":""}`, `{"schema_version":1,"default_image_model":"","default_video_model":"","x":1}`, `{"schema_version":1,"default_image_model":"","default_image_model":"bad","default_video_model":""}`, `{"schema_version":2,"default_image_model":"","default_video_model":""}`} {
+		_, err := model.ParseClientMediaDefaults([]byte(body))
+		require.Error(t, err)
+	}
+	for _, body := range []string{`{}`, `{"schema_version":1,"enabled":null}`, `{"schema_version":1,"enabled":"false"}`, `{"schema_version":1,"enabled":true,"enabled":false}`, `{"schema_version":1,"enabled":true,"x":1}`} {
+		_, err := model.ParseClientTopBannerConfig([]byte(body))
+		require.Error(t, err)
+	}
+	cfg, err := model.ParseClientMediaDefaults([]byte(`{"schema_version":1,"default_image_model":"","default_video_model":""}`))
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.SchemaVersion)
+}
+
+func TestClientMediaDefaultsDatabase(t *testing.T) {
+	db, dialect := openTaskDialectDatabase(t, &model.Option{}, &model.Channel{}, &model.Ability{}, &model.Model{})
+	beforeDB := model.DB
+	beforeType := common.MainDatabaseType()
+	beforeRegistry := jsplugin.DefaultRegistry
+	common.OptionMapRWMutex.Lock()
+	beforeOptions := common.OptionMap
+	common.OptionMap = map[string]string{}
+	common.OptionMapRWMutex.Unlock()
+	model.DB = db
+	common.SetMainDatabaseType(dialect)
+	jsplugin.DefaultRegistry = jsplugin.NewRegistry()
+	jsplugin.DefaultRegistry.SetEnabled(true)
+	t.Cleanup(func() {
+		model.DB = beforeDB
+		common.SetMainDatabaseType(beforeType)
+		jsplugin.DefaultRegistry = beforeRegistry
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = beforeOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+	for _, key := range []string{"hailuo", "ycapi"} {
+		source, err := plugins.Source(key)
+		require.NoError(t, err)
+		_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+		require.NoError(t, err)
+	}
+	source, err := os.ReadFile("../deploy/instance/toapis-image-plugin.js")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(string(source), jsplugin.Options{})
+	require.NoError(t, err)
+	bindings := []struct {
+		key    string
+		kind   int
+		models []string
+	}{{"hailuo", constant.ChannelTypeMiniMax, []string{"MiniMax-H3"}}, {"toapis-image", constant.ChannelTypeTaskPlugin, []string{"yunshu-internal-gpt-image-2"}}, {"ycapi", constant.ChannelTypeTaskPlugin, nil}}
+	approved, err := ycapi.Models()
+	require.NoError(t, err)
+	for _, m := range approved {
+		bindings[2].models = append(bindings[2].models, m.ID)
+	}
+	for _, b := range bindings {
+		setting := `{"task_plugin_key":"` + b.key + `"}`
+		channel := model.Channel{Type: b.kind, Name: b.key, Status: common.ChannelStatusEnabled, Key: "fixture-not-a-key", Setting: &setting}
+		require.NoError(t, db.Create(&channel).Error)
+		for _, id := range b.models {
+			require.NoError(t, db.Create(&model.Ability{Group: "default", Model: id, ChannelId: channel.Id, Enabled: true}).Error)
+		}
+	}
+	candidates, err := model.ListClientModelCandidates()
+	require.NoError(t, err)
+	byID := map[string]model.ClientModelCandidate{}
+	for _, c := range candidates {
+		byID[c.ID] = c
+	}
+	assert.True(t, byID["MiniMax-H3"].VideoEligible)
+	assert.True(t, byID["yunshu-internal-gpt-image-2"].ImageEligible)
+	for _, m := range approved {
+		assert.Equal(t, m.Kind == "image", byID[m.ID].ImageEligible, m.ID)
+		assert.Equal(t, m.Kind == "video", byID[m.ID].VideoEligible, m.ID)
+	}
+	cfg := model.ClientMediaDefaults{SchemaVersion: 1, DefaultImageModel: "yunshu-internal-gpt-image-2", DefaultVideoModel: "MiniMax-H3"}
+	require.NoError(t, model.SaveClientMediaDefaults(cfg))
+	assert.Equal(t, cfg, model.CurrentClientMediaDefaults())
+	require.NoError(t, model.SaveClientModelConfig(model.ClientModelConfig{SchemaVersion: 1, ModelOrder: []string{}}))
+	assert.Equal(t, cfg, model.CurrentClientMediaDefaults(), "old three-field writes preserve media preferences")
+	require.NoError(t, model.SaveClientTopBannerConfig(model.ClientTopBannerConfig{SchemaVersion: 1, Enabled: true}))
+	assert.True(t, model.CurrentClientTopBannerConfig().Enabled)
+	feed, err := model.GetClientAnnouncements(t.Context())
+	require.NoError(t, err)
+	assert.True(t, feed.TopBannerEnabled)
+	for _, id := range []string{"MiniMax-H3", "does-not-exist"} {
+		assert.ErrorIs(t, model.SaveClientMediaDefaults(model.ClientMediaDefaults{SchemaVersion: 1, DefaultImageModel: id}), model.ErrUnavailableClientModel)
+	}
+	jsplugin.DefaultRegistry.SetEnabled(false)
+	assert.ErrorIs(t, model.SaveClientMediaDefaults(cfg), model.ErrUnavailableClientModel)
+	jsplugin.DefaultRegistry.SetEnabled(true)
+	for _, key := range []string{"ClientMediaDefaults", "clientmediadefaults", "ClientMediaDefaults ", "ClientAnnouncementTopBanner", "clientannouncementtopbanner"} {
+		assert.Error(t, model.UpdateOption(key, `{}`))
+		assert.Error(t, model.UpdateOptionsBulk(map[string]string{key: `{}`, "SystemName": "must-not-write"}))
+	}
+	var count int64
+	require.NoError(t, db.Model(&model.Option{}).Where(&model.Option{Key: "SystemName"}).Count(&count).Error)
+	assert.Zero(t, count)
+	// A failed durable save must not publish a different memory configuration.
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("product:fail", func(tx *gorm.DB) {
+		if tx.Statement.Table == db.NamingStrategy.TableName("options") {
+			tx.AddError(fmt.Errorf("fixture persistence failure"))
+		}
+	}))
+	assert.ErrorIs(t, model.SaveClientTopBannerConfig(model.ClientTopBannerConfig{SchemaVersion: 1}), model.ErrClientModelSave)
+	assert.True(t, model.CurrentClientTopBannerConfig().Enabled)
+	require.NoError(t, db.Callback().Create().Remove("product:fail"))
+	for range 2 {
+		require.NoError(t, db.AutoMigrate(&model.Option{}))
+		model.InitOptionMap()
+		assert.Equal(t, cfg, model.CurrentClientMediaDefaults())
+		assert.True(t, model.CurrentClientTopBannerConfig().Enabled)
+	}
+	// Status serialization keeps the original config at exactly three fields.
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	ctx.Request = httptest.NewRequest("GET", "/api/status", nil)
+	GetStatus(ctx)
+	require.Equal(t, 200, response.Code)
+	var public struct {
+		Data map[string]common.RawMessage `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &public))
+	var legacy map[string]any
+	require.NoError(t, common.Unmarshal(public.Data["client_model_config"], &legacy))
+	assert.Len(t, legacy, 3)
+	var defaults model.ClientMediaDefaults
+	require.NoError(t, common.Unmarshal(public.Data["client_media_defaults"], &defaults))
+	assert.Equal(t, cfg, defaults)
+	if out := os.Getenv("CLIENT_PREFERENCES_FIXTURE_DIR"); out != "" {
+		require.True(t, filepath.IsAbs(out))
+		require.NoError(t, os.MkdirAll(out, 0700))
+		require.NoError(t, os.WriteFile(filepath.Join(out, "status.json"), response.Body.Bytes(), 0600))
+		f := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(f)
+		c.Request = httptest.NewRequest("GET", "/api/client-announcements", nil)
+		GetClientAnnouncements(c)
+		require.NoError(t, os.WriteFile(filepath.Join(out, "top-enabled-empty.json"), f.Body.Bytes(), 0600))
+	}
 }

@@ -51,6 +51,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// Customer support configuration requires an interactive administrator session.
 	"GET /api/announcements":            accessTokenSessionRule,
 	"PUT /api/announcements":            accessTokenSessionRule,
+	"GET /api/announcements/top-banner": accessTokenSessionRule,
+	"PUT /api/announcements/top-banner": accessTokenSessionRule,
 	"POST /api/customer-service/assets": accessTokenSessionRule,
 	"GET /api/customer-service":         accessTokenSessionRule,
 	"PUT /api/customer-service":         accessTokenSessionRule,
@@ -70,11 +72,13 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"PUT /api/creation/admin/content": accessTokenSessionRule,
 	"POST /api/creation/admin/assets": accessTokenSessionRule,
 	// Client model display preferences are changed through an administrator login.
-	"GET /api/client-model-config":              accessTokenSessionRule,
-	"PUT /api/client-model-config":              accessTokenSessionRule,
-	"GET /api/client-model-config/models":       accessTokenSessionRule,
-	"GET /api/client-model-config/presentation": accessTokenSessionRule,
-	"PUT /api/client-model-config/presentation": accessTokenSessionRule,
+	"GET /api/client-model-config":                accessTokenSessionRule,
+	"PUT /api/client-model-config":                accessTokenSessionRule,
+	"GET /api/client-model-config/models":         accessTokenSessionRule,
+	"GET /api/client-model-config/media-defaults": accessTokenSessionRule,
+	"PUT /api/client-model-config/media-defaults": accessTokenSessionRule,
+	"GET /api/client-model-config/presentation":   accessTokenSessionRule,
+	"PUT /api/client-model-config/presentation":   accessTokenSessionRule,
 	// Operational finance is managed interactively. Existing AdminAuth/RootAuth
 	// still decides the role; neither legacy nor scoped tokens grant this access.
 	"GET /api/balance-ledger/":         accessTokenSessionRule,

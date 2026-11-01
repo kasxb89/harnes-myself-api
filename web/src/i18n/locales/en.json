@@ -8687,6 +8687,14 @@
     "Saved scenarios can be disabled. Historical answers are retained.": "Saved scenarios can be disabled. Historical answers are retained.",
     "This questionnaire requires a newer client": "This questionnaire requires a newer client",
     "You have read-only access to questionnaire options.": "You have read-only access to questionnaire options.",
-    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Your unsaved changes will be cleared. Saved answers will remain unchanged."
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Your unsaved changes will be cleared. Saved answers will remain unchanged.",
+    "Default image model": "Default image model",
+    "Default video model": "Default video model",
+    "Image and video defaults": "Image and video defaults",
+    "Keep client default": "Keep client default",
+    "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply. An unavailable configured model requires another selection.",
+    "Show announcements at the top of the client": "Show announcements at the top of the client",
+    "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.",
+    "Use the dedicated client preference page to change this setting": "Use the dedicated client preference page to change this setting"
   }
 }
