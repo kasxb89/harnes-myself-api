@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { DatePicker } from '@/components/date-picker'
+import { ModelFilterSelect } from '@/components/model-filter-select'
 import { Button } from '@/components/ui/button'
-import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 
@@ -136,22 +136,13 @@ export function ProfitFilters(props: {
           </Field>
           <Field>
             <FieldLabel htmlFor='model-profit-model'>{t('Model')}</FieldLabel>
-            <ComboboxInput
-              allowCustomValue
+            <ModelFilterSelect
               id='model-profit-model'
               value={props.value.model}
-              options={[
-                { value: '', label: t('All models') },
-                ...props.models.map((model) => ({
-                  value: model,
-                  label: model,
-                })),
-              ]}
-              placeholder={t('All models')}
-              emptyText={t('No matching models')}
+              models={props.models}
               aria-label={t('Model')}
               onValueChange={(model) =>
-                props.onChange({ ...props.value, model: model ?? '' })
+                props.onChange({ ...props.value, model })
               }
             />
           </Field>

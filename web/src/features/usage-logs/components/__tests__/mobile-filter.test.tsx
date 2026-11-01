@@ -40,6 +40,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import zhTW from '@/i18n/locales/zh-TW.json'
 import zh from '@/i18n/locales/zh.json'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { CommonLogsFilterBar } from '../common-logs-filter-bar'
 import { CompactDateTimeRangePicker } from '../compact-date-time-range-picker'
@@ -71,17 +72,18 @@ function Fixture() {
   )
 }
 async function renderMobileFilter() {
+  useAuthStore.getState().auth.setUser({ id: 7, username: 'reader', role: 1 })
   const original = window.matchMedia
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
     ...original(query),
     matches: query === '(max-width: 640px)',
   }))
-  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: {
-      success: true,
-      data: url === '/api/user/self/groups' ? {} : { quota: 0, rpm: 0, tpm: 0 },
-    },
-  }))
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    let data: unknown = { quota: 0, rpm: 0, tpm: 0 }
+    if (url === '/api/user/models') data = ['gemini-3.7-flash']
+    if (url === '/api/user/self/groups') data = {}
+    return { data: { success: true, data } }
+  })
   const root = createRootRoute()
   const auth = createRoute({ getParentRoute: () => root, id: '_authenticated' })
   const logs = createRoute({
@@ -119,6 +121,7 @@ afterEach(async () => {
     )
   } else Reflect.deleteProperty(HTMLElement.prototype, 'setPointerCapture')
   cleanup()
+  useAuthStore.getState().auth.reset()
   vi.restoreAllMocks()
   vi.useRealTimers()
   await i18next.changeLanguage('en')
@@ -170,8 +173,11 @@ it('applies mobile drawer filters only when Search is pressed', async () => {
   await user.click(screen.getByRole('button', { name: 'Filter' }))
   const dialog = await screen.findByRole('dialog', { name: 'Filter' })
   await user.type(
-    within(dialog).getByPlaceholderText('Model Name'),
+    within(dialog).getByRole('combobox', { name: 'Model Name' }),
     'gemini-3.7-flash'
+  )
+  await user.click(
+    await screen.findByRole('option', { name: 'gemini-3.7-flash' })
   )
   expect(router.state.location.search).not.toHaveProperty('model')
   await user.click(within(dialog).getByRole('button', { name: 'Search' }))

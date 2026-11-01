@@ -23,6 +23,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ModelFilterSelect } from '@/components/model-filter-select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
@@ -340,13 +341,26 @@ export function CommonLogsFilterBar<TData>(
       />
     </LogsFilterField>
   )
+  const reportedModels = props.table.getCoreRowModel().rows.flatMap((row) => {
+    const record = row.original
+    if (
+      record &&
+      typeof record === 'object' &&
+      'model_name' in record &&
+      typeof record.model_name === 'string'
+    ) {
+      return [record.model_name]
+    }
+    return []
+  })
   const modelFilter = (
     <LogsFilterField>
-      <LogsFilterInput
-        placeholder={t('Model Name')}
+      <ModelFilterSelect
+        aria-label={t('Model Name')}
         value={filters.model || ''}
-        onChange={(e) => handleChange('model', e.target.value)}
-        onKeyDown={handleKeyDown}
+        models={reportedModels}
+        className='h-8 min-w-0 text-sm leading-5'
+        onValueChange={(value) => handleChange('model', value)}
       />
     </LogsFilterField>
   )

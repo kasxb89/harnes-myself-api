@@ -140,6 +140,15 @@ beforeEach(() => {
   })
   api.defaults.adapter = async (config) => {
     expect(config.method).toBe('get')
+    if (config.url === '/api/user/models') {
+      return {
+        data: { success: true, data: ['deepseek-flash'] },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      }
+    }
     expect(config.disableDuplicate).toBe(true)
     expect(config.signal).toBeDefined()
     calls.push(config.url ?? '')
@@ -288,13 +297,15 @@ it('falls back from an unauthorized initial tab and cancels and clears the sampl
   expect(
     view.client
       .getQueryCache()
-      .getAll()
+      .findAll({ queryKey: ['operations-screen'] })
       .every((query) => String(query.queryKey[1]).includes('diagnostics'))
   ).toBe(true)
   act(() => setPermissions({}))
   await screen.findByText('Access denied')
   await waitFor(() =>
-    expect(view.client.getQueryCache().getAll()).toHaveLength(0)
+    expect(
+      view.client.getQueryCache().findAll({ queryKey: ['operations-screen'] })
+    ).toHaveLength(0)
   )
 })
 it('marks the retained sample stale and stops its animation after a failed refresh', async () => {
@@ -565,7 +576,7 @@ it('lets an operator paste a model and type or choose times, and applies them on
     config: import('axios').InternalAxiosRequestConfig
   ) => Promise<import('axios').AxiosResponse>
   api.defaults.adapter = async (config) => {
-    requests.push(config.params)
+    if (config.url !== '/api/user/models') requests.push(config.params)
     return adapter(config)
   }
   await setup('errors')
@@ -575,6 +586,9 @@ it('lets an operator paste a model and type or choose times, and applies them on
   const model = screen.getByRole('combobox', { name: 'Model' })
   await userEvent.click(model)
   await userEvent.paste('deepseek-flash')
+  await userEvent.click(
+    await screen.findByRole('option', { name: 'deepseek-flash' })
+  )
   expect(requests).toHaveLength(1)
   await userEvent.click(screen.getByRole('button', { name: /\d{4}-\d{2}-.*~/ }))
   const start = screen.getByRole('textbox', { name: 'Start date' })

@@ -175,7 +175,7 @@ async function renderErrors(empty = false, mobile = false, entry = record) {
   if (mobile) {
     await screen.findByRole('button', { name: 'Filter' })
   } else {
-    await screen.findByPlaceholderText('Model Name')
+    await screen.findByRole('combobox', { name: 'Model Name' })
   }
   return { router, get }
 }
@@ -373,8 +373,11 @@ it('searches and resets user and model filters without leaving the error page', 
   const { router } = await renderErrors()
   await userEvent.type(screen.getByPlaceholderText('Username'), 'alice')
   await userEvent.type(
-    screen.getByPlaceholderText('Model Name'),
+    screen.getByRole('combobox', { name: 'Model Name' }),
     'deepseek-flash'
+  )
+  await userEvent.click(
+    await screen.findByRole('option', { name: 'deepseek-flash' })
   )
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
   await waitFor(() =>

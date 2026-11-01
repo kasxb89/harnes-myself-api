@@ -152,7 +152,12 @@ function setup(
     role: options.role ?? ROLE.ADMIN,
     permissions: { admin_permissions: { model_profits: { read: true } } },
   })
-  const get = vi.spyOn(api, 'get').mockImplementation(() => {
+  const get = vi.spyOn(api, 'get').mockImplementation((url) => {
+    if (url === '/api/user/models') {
+      return Promise.resolve({
+        data: { success: true, data: ['current-catalog-model'] },
+      })
+    }
     if (options.pending) return new Promise(() => {})
     if (options.failure) {
       return Promise.resolve({
@@ -261,7 +266,9 @@ it('requests an exact model and Shanghai inclusive date range only after Apply',
     'exact-model'
   )
   await user.click(screen.getByRole('option', { name: 'exact-model' }))
-  expect(get).toHaveBeenCalledTimes(1)
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/model-profit/')
+  ).toHaveLength(1)
   fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
     expect(get).toHaveBeenLastCalledWith('/api/model-profit/', {
@@ -290,7 +297,9 @@ it('blocks reversed date submission and preserves the last applied result', asyn
     'aria-invalid',
     'true'
   )
-  expect(get).toHaveBeenCalledTimes(1)
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/model-profit/')
+  ).toHaveLength(1)
   expect(screen.getByText('partial-model')).toBeVisible()
 })
 
@@ -337,9 +346,10 @@ it('shows request failure with Retry and does not expose stale profit figures', 
 
 it('announces loading and disables reloading actions while the request is pending', () => {
   setup({ pending: true })
-  expect(screen.getByRole('status')).toHaveTextContent(
-    'Loading model profits...'
-  )
+  expect(screen.getByText('Loading model profits...')).toBeVisible()
+  expect(
+    screen.getByText('Loading model profits...').closest('[role="status"]')
+  ).not.toBeNull()
   expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Apply filters' })).toBeDisabled()
 })
@@ -366,20 +376,25 @@ it('updates amounts and labels immediately when the language switches', async ()
   expect(within(screen.getByRole('table')).getByText('¥10.00')).toBeVisible()
 })
 
-it('accepts an exact pasted model outside the current dropdown and clears it explicitly', async () => {
+it('selects a current catalog model outside the report window and clears it explicitly', async () => {
   const get = setup()
   await screen.findByText('partial-model')
   const user = userEvent.setup()
   const model = screen.getByRole('combobox', { name: 'Model' })
   await user.click(model)
-  await user.paste('not-in-window-model')
+  await user.paste('current-catalog-model')
+  await user.click(
+    await screen.findByRole('option', { name: 'current-catalog-model' })
+  )
   await user.tab()
-  expect(model).toHaveValue('not-in-window-model')
-  expect(get).toHaveBeenCalledOnce()
+  expect(model).toHaveValue('current-catalog-model')
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/model-profit/')
+  ).toHaveLength(1)
   await user.click(screen.getByRole('button', { name: 'Apply filters' }))
   await waitFor(() =>
     expect(get.mock.lastCall?.[1]).toMatchObject({
-      params: { model_name: 'not-in-window-model' },
+      params: { model_name: 'current-catalog-model' },
     })
   )
   await user.click(model)
@@ -407,7 +422,9 @@ it('accepts pasted calendar dates and exposes a separate date dropdown without s
     screen.getByRole('button', { name: /Monday, October 19th, 2026/ })
   )
   expect(start).toHaveValue('2026-10-19')
-  expect(get).toHaveBeenCalledOnce()
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/model-profit/')
+  ).toHaveLength(1)
   await user.keyboard('{Escape}')
   fireEvent.change(start, { target: { value: '2026-02-30' } })
   expect(screen.getByRole('button', { name: 'Apply filters' })).toBeDisabled()
@@ -432,7 +449,9 @@ it('switches to the dashboard using the same applied data and shows actual daily
   expect(daily).toHaveTextContent('CN¥20.00')
   expect(daily).toHaveTextContent('CN¥9.00')
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
-  expect(get).toHaveBeenCalledTimes(1)
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/model-profit/')
+  ).toHaveLength(1)
   fireEvent.click(screen.getByRole('tab', { name: 'Profit details' }))
   expect(screen.getByRole('table', { name: 'Profit by model' })).toBeVisible()
 })
@@ -626,6 +645,16 @@ it.each(['read permission', 'account', 'session'] as const)(
     }[] = []
     const adapter: AxiosAdapter = (config) =>
       new Promise((resolve) => {
+        if (config.url === '/api/user/models') {
+          resolve({
+            config,
+            data: { success: true, data: [] },
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+          })
+          return
+        }
         requests.push({
           signal: config.signal,
           complete: (data) =>

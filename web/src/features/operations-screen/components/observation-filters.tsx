@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ModelFilterSelect } from '@/components/model-filter-select'
 import { Button } from '@/components/ui/button'
-import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 
@@ -92,7 +92,6 @@ export function OperationsObservationFilters(props: {
   } else if (snapshot?.tab === 'usage' || snapshot?.tab === 'errors') {
     modelOptions = snapshot.logs.items.map((row) => row.model_name)
   }
-  const models = [...new Set(modelOptions.filter(Boolean))].sort()
   return (
     <form
       className='ops-filter-console space-y-2'
@@ -125,17 +124,13 @@ export function OperationsObservationFilters(props: {
         </Field>
         <Field>
           <FieldLabel htmlFor='ops-screen-model'>{t('Model')}</FieldLabel>
-          <ComboboxInput
+          <ModelFilterSelect
             id='ops-screen-model'
-            allowCustomValue
+            aria-label={t('Model')}
             disabled={!modelEnabled}
             value={modelEnabled ? modelDraft : ''}
             onValueChange={setModelDraft}
-            options={[
-              { value: '', label: t('All models') },
-              ...models.map((model) => ({ value: model, label: model })),
-            ]}
-            placeholder={t('All models')}
+            models={modelOptions}
             popupClassName='ops-screen-popover'
             aria-invalid={
               modelEnabled && !validOperationsModelName(selectedModel)
