@@ -54,7 +54,7 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	require.NoError(t, err)
 	plugin, err := pluginruntime.DefaultRegistry.RegisterFactory(source, pluginruntime.Options{})
 	require.NoError(t, err)
-	const modelID = "codebloom-gpt-image-2k"
+	const modelID = "ys-gpt-image-2k"
 	const taskID = "task_codebloom_http_fixture"
 	const savedImage = "https://127.0.0.1/local-synthetic-image.png"
 	for _, user := range []model.User{
@@ -232,6 +232,18 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 		call(surface.name, http.MethodGet, surface.path, "", "other", http.StatusNotFound)
 	}
 	assert.Equal(t, 1, cdnRequests, "another owner's ordinary API key must not fetch content")
+	// A sale namespace change must not gate recovery of an already saved task.
+	retired := saved
+	retired.ID, retired.TaskID = 0, taskID+"_retired"
+	retired.Properties.OriginModelName = "codebloom-gpt-image-2k"
+	require.NoError(t, db.Create(&retired).Error)
+	retiredPath := "/v1/tasks/" + retired.TaskID
+	retiredStatus := call("retired_model_owner_task_status", http.MethodGet, retiredPath, "", "owner", http.StatusOK)
+	assert.Contains(t, retiredStatus.Body.String(), "codebloom-gpt-image-2k")
+	call("retired_model_owner_artifact_manifest", http.MethodGet, retiredPath+"/artifacts", "", "owner", http.StatusOK)
+	retiredContent := call("retired_model_owner_artifact_content", http.MethodGet, retiredPath+"/artifacts/image-1/content", "", "owner", http.StatusOK)
+	assert.Equal(t, imageBytes, retiredContent.Body.Bytes())
+	assert.Equal(t, 2, cdnRequests)
 	require.False(t, t.Failed(), "failed observations must not publish verified samples")
 	sources := map[string]string{}
 	for _, path := range []string{"controller/codebloom_retained_http_test.go", "controller/codebloom_protocol_test.go", "controller/relay_task_plugin_test.go", "controller/plugin_protocol_test.go", "controller/plugin_protocol_image.go", "controller/relay.go", "controller/task.go", "controller/video_proxy.go", "middleware/auth.go", "pkg/jsplugin/routing.go", "pkg/jsplugin/registry.go", "plugins/tasks/codebloom-image/plugin.js", "service/task_artifact_access.go", "service/task_artifact_store.go", "deploy/instance/toapis-image-plugin.js"} {

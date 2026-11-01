@@ -82,6 +82,9 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 	if !codebloom.PubliclyAvailable(info.OriginModelName) {
 		return capacityError(c, "model_not_available", "The selected model is not available")
 	}
+	if candidate, ok := codebloom.Lookup(info.OriginModelName); ok && candidate.Kind != "text" {
+		return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
 	approved, catalogued := ycapi.Lookup(info.OriginModelName)
 	if ycapi.IsExcludedChatModel(info.OriginModelName) {
 		return capacityError(c, "model_not_available", "The selected model is not included in the current catalog")

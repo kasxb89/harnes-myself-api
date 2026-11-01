@@ -862,12 +862,14 @@ func TestYcapiEffectiveCapacityDirectoryAndWireDatabase(t *testing.T) {
 	require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", channel.Id).Update("group", "default,vip").Error)
 	require.NoError(t, f.db.Create(&model.Ability{Group: "vip", Model: modelID, ChannelId: channel.Id, Enabled: true}).Error)
 	legacyBase := "https://legacy.fixture"
-	require.NoError(t, (&model.Channel{Id: 8890, Type: constant.ChannelTypeOpenAI, Key: "synthetic-legacy", Name: "legacy without capacity", Models: "capacity-legacy", Group: "default,vip", Status: common.ChannelStatusEnabled, BaseURL: &legacyBase}).Insert())
+	require.NoError(t, (&model.Channel{Id: 8890, Type: constant.ChannelTypeOpenAI, Key: "synthetic-legacy", Name: "legacy without capacity", Models: "capacity-legacy,ys-1.0", Group: "default,vip", Status: common.ChannelStatusEnabled, BaseURL: &legacyBase}).Insert())
 	candidates, err := codebloom.Models()
 	require.NoError(t, err)
 	var candidateIDs []string
 	for _, candidate := range candidates {
-		candidateIDs = append(candidateIDs, candidate.ID)
+		if !candidate.ActivationReady {
+			candidateIDs = append(candidateIDs, candidate.ID)
+		}
 	}
 	require.NoError(t, (&model.Channel{Id: 8891, Type: constant.ChannelTypeOpenAI, Key: "synthetic-inactive-candidates", Name: "stale CodeBloom activation", Models: strings.Join(candidateIDs, ","), Group: "default", Status: common.ChannelStatusEnabled}).Insert())
 	policy, err := model.ReadModelCapacityConfig()
@@ -926,13 +928,17 @@ func TestYcapiEffectiveCapacityDirectoryAndWireDatabase(t *testing.T) {
 					Data []map[string]any `json:"data"`
 				}
 				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
-				found := false
+				found, foundLegacyYs := false, false
 				for _, entry := range result.Data {
 					id, _ := entry["id"].(string)
 					if path == "/api/pricing" {
 						id, _ = entry["model_name"].(string)
 					}
-					assert.False(t, strings.HasPrefix(id, "codebloom-"), "unavailable candidates must not leak into either public directory")
+					_, candidate := codebloom.Lookup(id)
+					assert.False(t, candidate, "unavailable candidates must not leak into either public directory")
+					if id == "ys-1.0" {
+						foundLegacyYs = true
+					}
 					if id == "capacity-legacy" {
 						assert.NotContains(t, entry, "context_window")
 						assert.NotContains(t, entry, "max_output_tokens")
@@ -965,6 +971,7 @@ func TestYcapiEffectiveCapacityDirectoryAndWireDatabase(t *testing.T) {
 					assert.Nil(t, text["native_max_input_tokens"])
 				}
 				assert.True(t, found, path+" "+group)
+				assert.True(t, foundLegacyYs, "the existing ys-1.0 model must remain discoverable: "+path+" "+group)
 			}
 		}
 		for _, price := range model.GetPricing() {

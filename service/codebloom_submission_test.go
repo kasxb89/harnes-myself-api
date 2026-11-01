@@ -24,7 +24,11 @@ func TestCodeBloomUnverifiedRequestFence(t *testing.T) {
 			apiErr := ClampModelCapacityRequest(c, &relaycommon.RelayInfo{OriginModelName: m.ID})
 			require.NotNil(t, apiErr)
 			assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
-			assert.Equal(t, "model_not_available", string(apiErr.GetErrorCode()))
+			if m.ActivationReady {
+				assert.Contains(t, apiErr.Error(), "declared generation endpoint")
+			} else {
+				assert.Equal(t, "model_not_available", string(apiErr.GetErrorCode()))
+			}
 		})
 	}
 }

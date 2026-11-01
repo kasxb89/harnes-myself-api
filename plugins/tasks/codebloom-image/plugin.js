@@ -12,7 +12,7 @@ const IMAGE_TRANSPORTS = {
   "nano-banana-pro": "chat_completions",
   "gemini-3-pro-image-preview": "chat_completions",
 };
-const MODELS = Object.keys(IMAGE_TRANSPORTS).map((id) => "codebloom-" + id);
+const MODELS = Object.keys(IMAGE_TRANSPORTS).map((id) => "ys-" + id);
 
 export const meta = {
   apiVersion: 1,
@@ -38,7 +38,7 @@ function object(value) {
 function modelFor(ctx) {
   const id = ctx.model;
   if (typeof id !== "string" || !MODELS.includes(id)) throw new Error("Image model is not in the CodeBloom catalog");
-  const upstream = id.slice("codebloom-".length);
+  const upstream = id.slice("ys-".length);
   if (ctx.upstreamModel !== undefined && ctx.upstreamModel !== id && ctx.upstreamModel !== upstream)
     throw new Error("The image model mapping differs from the declared route");
   return { id, upstream, transport: IMAGE_TRANSPORTS[upstream] };

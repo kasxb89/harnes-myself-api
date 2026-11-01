@@ -94,7 +94,7 @@ func loadCatalog(data []byte) (catalog, error) {
 	kinds := map[string]int{}
 	credentials := map[string]int{}
 	for _, m := range c.Models {
-		if m.ID != "codebloom-"+m.UpstreamID || strings.TrimSpace(m.UpstreamID) != m.UpstreamID || m.UpstreamID == "" || seen[m.ID] || !slices.Contains([]string{"text", "image"}, m.Kind) {
+		if m.ID != "ys-"+m.UpstreamID || m.Name != m.ID || strings.TrimSpace(m.UpstreamID) != m.UpstreamID || m.UpstreamID == "" || seen[m.ID] || !slices.Contains([]string{"text", "image"}, m.Kind) {
 			return c, fmt.Errorf("invalid CodeBloom candidate identity")
 		}
 		seen[m.ID] = true
@@ -174,7 +174,7 @@ func loadCatalog(data []byte) (catalog, error) {
 	}
 	excludedIDs := map[string]bool{}
 	for _, m := range c.Excluded {
-		if m.ID == "" || m.Status == "" || m.Reason == "" || seen["codebloom-"+m.ID] || excludedIDs[m.ID] {
+		if m.ID == "" || m.Status == "" || m.Reason == "" || seen["ys-"+m.ID] || excludedIDs[m.ID] {
 			return c, fmt.Errorf("excluded CodeBloom candidate cannot be restored")
 		}
 		excludedIDs[m.ID] = true
@@ -188,9 +188,15 @@ func Models() ([]Model, error) {
 	if catalogError != nil {
 		return nil, catalogError
 	}
+	if imageQualificationError != nil {
+		return nil, imageQualificationError
+	}
 	var c catalog
 	if err := common.Unmarshal(catalogData, &c); err != nil {
 		return nil, err
+	}
+	for i := range c.Models {
+		c.Models[i] = withImageQualification(c.Models[i])
 	}
 	return c.Models, nil
 }
@@ -198,7 +204,7 @@ func Models() ([]Model, error) {
 // Lookup requires the isolated public ID; raw supplier IDs never alias existing
 // providers. Returned nested maps and slices cannot mutate the shared snapshot.
 func Lookup(id string) (Model, bool) {
-	if catalogError != nil {
+	if catalogError != nil || imageQualificationError != nil {
 		return Model{}, false
 	}
 	for _, m := range approved.Models {
@@ -213,7 +219,7 @@ func Lookup(id string) (Model, bool) {
 		if err := common.Unmarshal(data, &copy); err != nil {
 			return Model{}, false
 		}
-		return copy, true
+		return withImageQualification(copy), true
 	}
 	return Model{}, false
 }

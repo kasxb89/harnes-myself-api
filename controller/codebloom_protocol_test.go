@@ -63,6 +63,13 @@ func TestCodeBloomPendingCatalogFenceDatabase(t *testing.T) {
 	require.NoError(t, db.Create(&channel).Error)
 	candidates, err := codebloom.Models()
 	require.NoError(t, err)
+	pending := candidates[:0]
+	for _, candidate := range candidates {
+		if !candidate.ActivationReady {
+			pending = append(pending, candidate)
+		}
+	}
+	candidates = pending
 	abilities := []model.Ability{{Group: "default", Model: "preserved-chat", ChannelId: channel.Id, Enabled: true}}
 	for _, candidate := range candidates {
 		abilities = append(abilities, model.Ability{Group: "default", Model: candidate.ID, ChannelId: channel.Id, Enabled: true})
@@ -394,7 +401,7 @@ func TestCodeBloomMappedAliasRefundsExistingReservationDatabase(t *testing.T) {
 	require.NoError(t, db.Create(&user).Error)
 	token := model.Token{UserId: user.Id, Key: "synthetic-alias-token", Name: "offline", RemainQuota: initial}
 	require.NoError(t, db.Create(&token).Error)
-	channel := model.Channel{Name: "offline alias fixture", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Key: "synthetic-provider-secret", BaseURL: common.GetPointer("https://offline.invalid"), ModelMapping: common.GetPointer(`{"ordinary-alias":"codebloom-gpt-6.1-sol","codebloom-gpt-6.1-sol":"gpt-6.1-sol"}`)}
+	channel := model.Channel{Name: "offline alias fixture", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Key: "synthetic-provider-secret", BaseURL: common.GetPointer("https://offline.invalid"), ModelMapping: common.GetPointer(`{"ordinary-alias":"ys-gpt-6.1-sol","ys-gpt-6.1-sol":"gpt-6.1-sol"}`)}
 	require.NoError(t, db.Create(&channel).Error)
 	c := taskSubmissionTestContext()
 	require.Nil(t, middleware.SetupContextForSelectedChannel(c, &channel, "ordinary-alias"))
@@ -450,7 +457,7 @@ export function parseTaskResult(){return {status:"UNKNOWN"};}
 `, pluginruntime.Options{})
 	require.NoError(t, err)
 	c := taskSubmissionTestContext()
-	c.Set("model_mapping", `{"ordinary-alias":"codebloom-gpt-image-2k","codebloom-gpt-image-2k":"gpt-image-2k"}`)
+	c.Set("model_mapping", `{"ordinary-alias":"ys-gpt-image-2k","ys-gpt-image-2k":"gpt-image-2k"}`)
 	c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{Plugin: plugin})
 	info := taskSubmissionRelayInfo(nil)
 	info.OriginModelName = "ordinary-alias"

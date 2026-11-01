@@ -11,6 +11,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +20,7 @@ import (
 
 func TestCodeBloomUnavailableBillingDoesNotStartOrReprice(t *testing.T) {
 	require.NoError(t, i18n.Init())
-	for _, name := range []string{"codebloom-gpt-6.1-sol", "codebloom-unknown"} {
+	for _, name := range []string{"ys-gpt-6.1-sol", "codebloom-gpt-6.1-sol", "codebloom-unknown"} {
 		t.Run(name, func(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 			ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"messages":[{"role":"user","content":"hello"}],"max_tokens":16}`))
@@ -42,4 +44,29 @@ func TestCodeBloomUnavailableBillingDoesNotStartOrReprice(t *testing.T) {
 			assert.Nil(t, info.Billing)
 		})
 	}
+}
+
+func TestCodeBloomBillingFencePreservesLegacyYsModel(t *testing.T) {
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	previousCount := constant.CountToken
+	quotaSetting := operation_setting.GetQuotaSetting()
+	previousPreConsume := quotaSetting.EnableFreeModelPreConsume
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(previousPrices))
+		constant.CountToken = previousCount
+		quotaSetting.EnableFreeModelPreConsume = previousPreConsume
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"ys-1.0":0}`))
+	constant.CountToken = false
+	quotaSetting.EnableFreeModelPreConsume = false
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set(string(constant.ContextKeyUsingGroup), "default")
+	info := &relaycommon.RelayInfo{OriginModelName: "ys-1.0", UsingGroup: "default", UserGroup: "default", ChannelMeta: &relaycommon.ChannelMeta{ChannelType: 1, UpstreamModelName: "ys-1.0"}, Request: &dto.GeneralOpenAIRequest{Model: "ys-1.0"}}
+	require.Nil(t, PrepareRequestBilling(ctx, info))
+	assert.True(t, info.PriceData.FreeModel)
+	assert.Nil(t, info.Billing)
+	require.Nil(t, ReprepareFallbackBilling(ctx, info, "ys-1.0"))
+	assert.Equal(t, "ys-1.0", info.OriginModelName)
+	assert.True(t, info.PriceData.FreeModel)
+	assert.Nil(t, info.Billing)
 }

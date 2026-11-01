@@ -20,16 +20,26 @@ func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {
 	for _, m := range models {
 		actual = append(actual, m.UpstreamID)
 		components += len(m.CostComponents)
-		assert.Equal(t, "codebloom-"+m.UpstreamID, m.ID)
-		assert.False(t, m.ActivationReady)
+		assert.Equal(t, "ys-"+m.UpstreamID, m.ID)
+		assert.Equal(t, m.ID, m.Name)
+		_, imageQualified := liveImages[m.ID]
+		assert.Equal(t, imageQualified, m.ActivationReady)
 		assert.Nil(t, m.CashCostCNY)
 		assert.Nil(t, m.ContextWindow)
 		assert.Nil(t, m.MaxOutputTokens)
-		assert.GreaterOrEqual(t, len(m.PendingReasons), 3)
+		if !m.ActivationReady {
+			assert.GreaterOrEqual(t, len(m.PendingReasons), 3)
+		} else {
+			assert.Equal(t, "image", m.Kind)
+			assert.Equal(t, []string{"cash_procurement_conversion_unknown"}, m.PendingReasons)
+		}
 		assert.Equal(t, "unverified", m.CapabilityStatus["vision_input"])
 		assert.Equal(t, "unverified", m.CapabilityStatus["tools"])
 		_, rawExists := Lookup(m.UpstreamID)
 		assert.False(t, rawExists, "raw supplier IDs must not alias old providers")
+		_, retiredExists := Lookup("codebloom-" + m.UpstreamID)
+		assert.False(t, retiredExists, "retired candidate IDs must not alias the public model")
+		assert.False(t, PubliclyAvailable("codebloom-"+m.UpstreamID))
 		assert.Equal(t, "account_credit_snapshot", m.CostBasis)
 		assert.Equal(t, "CNY_ACCOUNT_CREDIT", m.Currency)
 		if m.Kind == "text" {
@@ -45,14 +55,14 @@ func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {
 	assert.Len(t, models, 37)
 	assert.Equal(t, 141, components)
 	for _, excluded := range strings.Fields(`MiniMax-M3 MiniMax-M2.7 MiniMax-M2.7-highspeed mimo-v2.5 hy4 qwen3.8-max-0902 glm-5.2 glm-5.3 hy4-preview`) {
-		_, ok := Lookup("codebloom-" + excluded)
+		_, ok := Lookup("ys-" + excluded)
 		assert.False(t, ok, "excluded candidate: %s", excluded)
 	}
 }
 
 func candidateCostComponent(t *testing.T, id, direction, tier string) CostComponent {
 	t.Helper()
-	m, ok := Lookup("codebloom-" + id)
+	m, ok := Lookup("ys-" + id)
 	require.True(t, ok, "model missing: %s", id)
 	index := slices.IndexFunc(m.CostComponents, func(cost CostComponent) bool {
 		return cost.Direction == direction && cost.Params["pricing_tier"] == tier
@@ -93,7 +103,7 @@ func TestAccountAndApprovedRetailMultipliersPreserveEveryConditionalCategory(t *
 		require.NotNil(t, cost.RetailCNY)
 		assert.InDelta(t, c.retail, *cost.RetailCNY, 1e-12, "%s/%s/%s retail", c.id, c.direction, c.tier)
 	}
-	m, ok := Lookup("codebloom-gpt-6.1-terra")
+	m, ok := Lookup("ys-gpt-6.1-terra")
 	require.True(t, ok)
 	condition, ok := m.CostConditions["context_pricing"].(map[string]any)
 	require.True(t, ok)
@@ -101,7 +111,7 @@ func TestAccountAndApprovedRetailMultipliersPreserveEveryConditionalCategory(t *
 	assert.Equal(t, false, condition["is_capacity_limit"])
 	assert.Contains(t, m.BaseBillingExpression, "len < 272000")
 	assert.Nil(t, m.ContextWindow)
-	sol, ok := Lookup("codebloom-gpt-6.1-sol")
+	sol, ok := Lookup("ys-gpt-6.1-sol")
 	require.True(t, ok)
 	assert.False(t, slices.ContainsFunc(sol.CostComponents, func(cost CostComponent) bool {
 		return cost.Direction == "cache_write_12h" && cost.Params["pricing_tier"] == "long"
@@ -110,7 +120,7 @@ func TestAccountAndApprovedRetailMultipliersPreserveEveryConditionalCategory(t *
 
 func TestDeepSeekPeakKeepsOriginalTimezoneWindowsAndBothPriceVectors(t *testing.T) {
 	for _, raw := range []string{"deepseek-v4-flash", "deepseek-v4-flash-0731"} {
-		m, ok := Lookup("codebloom-" + raw)
+		m, ok := Lookup("ys-" + raw)
 		require.True(t, ok)
 		condition, ok := m.CostConditions["shanghai_weekday_peak"].(map[string]any)
 		require.True(t, ok)
@@ -131,20 +141,20 @@ func TestDeepSeekPeakKeepsOriginalTimezoneWindowsAndBothPriceVectors(t *testing.
 		assert.Contains(t, m.BaseBillingExpression, `hour("Asia/Shanghai") >= 9`)
 		assert.Contains(t, m.BaseBillingExpression, `hour("Asia/Shanghai") < 18`)
 	}
-	ordinary, ok := Lookup("codebloom-deepseek-v4.1-flash")
+	ordinary, ok := Lookup("ys-deepseek-v4.1-flash")
 	require.True(t, ok)
 	assert.Empty(t, ordinary.CostConditions, "other variants must not inherit an unconfigured peak price")
 }
 
 func TestImageEvidenceNeverExpandsNameIntoParameters(t *testing.T) {
-	m, ok := Lookup("codebloom-gpt-image-2k")
+	m, ok := Lookup("ys-gpt-image-2k")
 	require.True(t, ok)
 	require.NotNil(t, m.ObservedOutput)
 	assert.Equal(t, 1024, m.ObservedOutput.Width)
 	assert.Equal(t, 1024, m.ObservedOutput.Height)
 	assert.Equal(t, "1024x1024", m.VerifiedRequestOptions["size"])
 	assert.Equal(t, float64(1), m.VerifiedRequestOptions["n"])
-	chat, ok := Lookup("codebloom-grok-imagine-image")
+	chat, ok := Lookup("ys-grok-imagine-image")
 	require.True(t, ok)
 	require.NotNil(t, chat.ObservedOutput)
 	assert.Equal(t, "chat_completions", chat.Transport)
@@ -175,7 +185,7 @@ func TestSnapshotCopiesCannotMutateLaterRequests(t *testing.T) {
 	assert.NotContains(t, next[0].CostComponents[0].Params, "injected")
 	require.NotNil(t, next[0].CostComponents[0].RetailCNY)
 	assert.NotEqual(t, 1000., *next[0].CostComponents[0].RetailCNY)
-	m, ok := Lookup("codebloom-gpt-image-2k")
+	m, ok := Lookup("ys-gpt-image-2k")
 	require.True(t, ok)
 	m.ObservedOutput.Width = 2048
 	m.CapabilityStatus["image_edit"] = "verified"
@@ -190,6 +200,7 @@ func TestInvalidCatalogFailsClosed(t *testing.T) {
 		"text_flat_retail":   func(c *catalog) { price := 1.; c.Models[0].RetailCNY = &price },
 		"activation":         func(c *catalog) { c.Models[0].ActivationReady = true },
 		"prefix":             func(c *catalog) { c.Models[0].ID = c.Models[0].UpstreamID },
+		"display_name":       func(c *catalog) { c.Models[0].Name = c.Models[0].UpstreamID },
 		"duplicate":          func(c *catalog) { c.Models[1] = c.Models[0] },
 		"vision":             func(c *catalog) { c.Models[0].CapabilityStatus["vision_input"] = "verified" },
 		"cash":               func(c *catalog) { cost := .1; c.Models[0].CashCostCNY = &cost },

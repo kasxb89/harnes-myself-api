@@ -373,7 +373,11 @@ func ListModels(c *gin.Context, modelType int) {
 					return
 				}
 				value["kind"], value["display_name"] = candidate.Kind, candidate.Name
-				value["parameters"] = codebloom.ClientParameters(entry.Id)
+				parameters := codebloom.ClientParameters(entry.Id)
+				if candidate.Kind == "image" {
+					parameters = model.WithMediaClientConcurrencyHint(parameters, "codebloom-image", entry.Id, candidate.Kind)
+				}
+				value["parameters"] = parameters
 				value["retail_price_rows"] = codebloom.ClientPrices(entry.Id)
 				publicModels = append(publicModels, value)
 			} else if entry.Id == "MiniMax-H3" && h3Parameters != nil {

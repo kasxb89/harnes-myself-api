@@ -39,7 +39,8 @@ class CodeBloomPlanTests(unittest.TestCase):
             mapping = json.loads(channel["model_mapping"])
             self.assertEqual(set(mapping), set(channel["models"].split(",")))
             for public, raw in mapping.items():
-                self.assertEqual(public, "codebloom-" + raw)
+                self.assertEqual(public, "ys-" + raw)
+        self.assertTrue(all(model["id"] == model["name"] == "ys-" + model["upstream_id"] for model in self.catalog["models"]))
         self.assertEqual(json.loads(plan["channels"][2]["setting"]), {"task_plugin_key": "codebloom-image"})
         self.assertEqual(len(plan["abilities"]), 37)
         self.assertTrue(all(ability["enabled"] is False for ability in plan["abilities"]))
@@ -128,14 +129,14 @@ class CodeBloomPlanTests(unittest.TestCase):
 
     def test_raw_long_context_peak_and_cache_conditions_are_preserved(self):
         models = {model["model"]: model for model in PLAN.build_plan()["cost_review"]}
-        terra = models["codebloom-gpt-6.1-terra"]
+        terra = models["ys-gpt-6.1-terra"]
         self.assertIn("len < 272000", terra["base_billing_expression"])
         self.assertIn("cc12h", terra["base_billing_expression"])
         context = terra["cost_conditions"]["context_pricing"]
         self.assertEqual(context["threshold"], 272000)
         self.assertFalse(context["is_capacity_limit"])
         for name in ("deepseek-v4-flash", "deepseek-v4-flash-0731"):
-            model = models["codebloom-" + name]
+            model = models["ys-" + name]
             peak = model["cost_conditions"]["shanghai_weekday_peak"]
             self.assertEqual(peak["timezone"], "Asia/Shanghai")
             self.assertEqual(peak["hour_windows"], [{"start_inclusive": 9, "end_exclusive": 12}, {"start_inclusive": 14, "end_exclusive": 18}])
@@ -146,7 +147,7 @@ class CodeBloomPlanTests(unittest.TestCase):
                 self.assertEqual(rows["peak"], rows["off_peak"] * 2)
                 retail = {row["params"]["pricing_tier"]: row["retail_cny"] for row in model["cost_components"] if row["direction"] == direction}
                 self.assertAlmostEqual(retail["peak"], retail["off_peak"] * 2, places=12)
-        self.assertEqual(models["codebloom-deepseek-v4.1-flash"]["cost_conditions"], {})
+        self.assertEqual(models["ys-deepseek-v4.1-flash"]["cost_conditions"], {})
         for model in models.values():
             if model["retail_account_multiplier"] is None:
                 continue
@@ -194,6 +195,7 @@ class CodeBloomPlanTests(unittest.TestCase):
             "cash": lambda model: model.update(cash_cost_cny=.1),
             "capacity": lambda model: model.update(context_window=272000),
             "model_id": lambda model: model.update(id=model["upstream_id"]),
+            "display_name": lambda model: model.update(name=model["upstream_id"]),
             "multiplier": lambda model: model.update(account_multiplier=.3),
             "retail_multiplier": lambda model: model.update(retail_account_multiplier=.6),
             "missing_retail": lambda model: model["cost_components"][0].update(retail_cny=None),

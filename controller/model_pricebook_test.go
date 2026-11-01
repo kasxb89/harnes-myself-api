@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -110,13 +111,14 @@ func TestConfiguredModelPricebookDatabase(t *testing.T) {
 			if entry.ModelName == "ycapi-removed-model" {
 				assert.Equal(t, "excluded", entry.State)
 			}
-			if strings.HasPrefix(entry.ModelName, "codebloom-") {
+			if candidate, ok := codebloom.Lookup(entry.ModelName); ok {
 				codebloomCandidates++
 				assert.Equal(t, "not_configured", entry.State)
 				assert.Equal(t, "codebloom.club", entry.UpstreamHost)
 				assert.Nil(t, entry.Pricing, "unapproved retail must not use runtime fallback prices")
 				assert.Nil(t, entry.CostRule, "account-credit quote is not an active cash-cost rule")
 				require.NotNil(t, entry.ApprovedQuote)
+				assert.Equal(t, candidate.Name, entry.ApprovedQuote.Name)
 				assert.Equal(t, "account_credit_snapshot", entry.ApprovedQuote.Basis)
 				assert.Equal(t, "CNY_ACCOUNT_CREDIT", entry.ApprovedQuote.Currency)
 				require.NotEmpty(t, entry.ApprovedQuote.Prices)

@@ -45,7 +45,8 @@ func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.
 			if exists && mappedModel != "" {
 				// A reserved pending ID cannot be hidden between an ordinary
 				// alias and a final raw supplier ID in a chained mapping.
-				if !codebloom.PubliclyAvailable(mappedModel) {
+				_, reviewedDestination := codebloom.Lookup(mappedModel)
+				if !codebloom.PubliclyAvailable(mappedModel) || reviewedDestination && mappedModel != info.OriginModelName {
 					return types.NewErrorWithStatusCode(errors.New("The selected model is not available"), "model_not_available", http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 				}
 				// 模型重定向循环检测，避免无限循环

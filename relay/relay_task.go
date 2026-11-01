@@ -262,6 +262,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 	if platform == "" {
 		platform = GetTaskPlatform(c)
 	}
+	if candidate, ok := codebloom.Lookup(info.OriginModelName); ok && (candidate.Kind != "image" || platform != "codebloom-image") {
+		rejected := service.TaskErrorWrapperLocal(errors.New("This model requires its declared generation endpoint"), "model_endpoint_unavailable", http.StatusBadRequest)
+		rejected.NoRetry = true
+		return nil, rejected
+	}
 	platform, adaptor := getTaskAdaptorForRequest(c, platform)
 	if adaptor == nil {
 		code, message := TaskPlatformUnavailableError(platform)

@@ -13,8 +13,8 @@
   "source_capability_sha256": "2df2e885ccca65e5662abfba79e7041b2e68092af2504b8be34ad8e110d8eeff",
   "models": [
     {
-      "id": "codebloom-deepseek-v4.1-flash",
-      "name": "deepseek-v4.1-flash",
+      "id": "ys-deepseek-v4.1-flash",
+      "name": "ys-deepseek-v4.1-flash",
       "upstream_id": "deepseek-v4.1-flash",
       "kind": "text",
       "transport": "chat_completions",
@@ -90,8 +90,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-deepseek-v4.1-flash-1017",
-      "name": "deepseek-v4.1-flash-1017",
+      "id": "ys-deepseek-v4.1-flash-1017",
+      "name": "ys-deepseek-v4.1-flash-1017",
       "upstream_id": "deepseek-v4.1-flash-1017",
       "kind": "text",
       "transport": "chat_completions",
@@ -167,8 +167,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-gpt-5.6-terra",
-      "name": "gpt-5.6-terra",
+      "id": "ys-gpt-5.6-terra",
+      "name": "ys-gpt-5.6-terra",
       "upstream_id": "gpt-5.6-terra",
       "kind": "text",
       "transport": "chat_completions",
@@ -319,8 +319,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-gpt-5.6-sol",
-      "name": "gpt-5.6-sol",
+      "id": "ys-gpt-5.6-sol",
+      "name": "ys-gpt-5.6-sol",
       "upstream_id": "gpt-5.6-sol",
       "kind": "text",
       "transport": "chat_completions",
@@ -471,8 +471,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-gpt-6.1-terra",
-      "name": "gpt-6.1-terra",
+      "id": "ys-gpt-6.1-terra",
+      "name": "ys-gpt-6.1-terra",
       "upstream_id": "gpt-6.1-terra",
       "kind": "text",
       "transport": "chat_completions",
@@ -645,8 +645,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-gpt-6-sol",
-      "name": "gpt-6-sol",
+      "id": "ys-gpt-6-sol",
+      "name": "ys-gpt-6-sol",
       "upstream_id": "gpt-6-sol",
       "kind": "text",
       "transport": "chat_completions",
@@ -797,8 +797,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-minimax-m3.1-flash",
-      "name": "minimax-m3.1-flash",
+      "id": "ys-minimax-m3.1-flash",
+      "name": "ys-minimax-m3.1-flash",
       "upstream_id": "minimax-m3.1-flash",
       "kind": "text",
       "transport": "chat_completions",
@@ -874,8 +874,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-step-5-preview",
-      "name": "step-5-preview",
+      "id": "ys-step-5-preview",
+      "name": "ys-step-5-preview",
       "upstream_id": "step-5-preview",
       "kind": "text",
       "transport": "chat_completions",
@@ -951,8 +951,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-mimo-v2.6-pro",
-      "name": "mimo-v2.6-pro",
+      "id": "ys-mimo-v2.6-pro",
+      "name": "ys-mimo-v2.6-pro",
       "upstream_id": "mimo-v2.6-pro",
       "kind": "text",
       "transport": "chat_completions",
@@ -1028,8 +1028,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-glm-5.3-flash",
-      "name": "glm-5.3-flash",
+      "id": "ys-glm-5.3-flash",
+      "name": "ys-glm-5.3-flash",
       "upstream_id": "glm-5.3-flash",
       "kind": "text",
       "transport": "chat_completions",
@@ -1105,8 +1105,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-deepseek-v4-pro",
-      "name": "deepseek-v4-pro",
+      "id": "ys-deepseek-v4-pro",
+      "name": "ys-deepseek-v4-pro",
       "upstream_id": "deepseek-v4-pro",
       "kind": "text",
       "transport": "chat_completions",
@@ -1182,8 +1182,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-gpt-6-astra",
-      "name": "gpt-6-astra",
+      "id": "ys-gpt-6-astra",
+      "name": "ys-gpt-6-astra",
       "upstream_id": "gpt-6-astra",
       "kind": "text",
       "transport": "chat_completions",
@@ -1334,8 +1334,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-glm-5.3-flashx",
-      "name": "glm-5.3-flashx",
+      "id": "ys-glm-5.3-flashx",
+      "name": "ys-glm-5.3-flashx",
       "upstream_id": "glm-5.3-flashx",
       "kind": "text",
       "transport": "chat_completions",
@@ -1411,8 +1411,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-kimi-k2.7-code",
-      "name": "kimi-k2.7-code",
+      "id": "ys-kimi-k2.7-code",
+      "name": "ys-kimi-k2.7-code",
       "upstream_id": "kimi-k2.7-code",
       "kind": "text",
       "transport": "chat_completions",
@@ -1495,8 +1495,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-gpt-6.1-sol",
-      "name": "gpt-6.1-sol",
+      "id": "ys-gpt-6.1-sol",
+      "name": "ys-gpt-6.1-sol",
       "upstream_id": "gpt-6.1-sol",
       "kind": "text",
       "transport": "chat_completions",
@@ -1658,8 +1658,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-hy3",
-      "name": "hy3",
+      "id": "ys-hy3",
+      "name": "ys-hy3",
       "upstream_id": "hy3",
       "kind": "text",
       "transport": "chat_completions",
@@ -1735,8 +1735,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-qwen3.8-max",
-      "name": "qwen3.8-max",
+      "id": "ys-qwen3.8-max",
+      "name": "ys-qwen3.8-max",
       "upstream_id": "qwen3.8-max",
       "kind": "text",
       "transport": "chat_completions",
@@ -1819,8 +1819,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-deepseek-v4-flash-0731",
-      "name": "deepseek-v4-flash-0731",
+      "id": "ys-deepseek-v4-flash-0731",
+      "name": "ys-deepseek-v4-flash-0731",
       "upstream_id": "deepseek-v4-flash-0731",
       "kind": "text",
       "transport": "chat_completions",
@@ -1960,8 +1960,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-deepseek-v4-pro-0813",
-      "name": "deepseek-v4-pro-0813",
+      "id": "ys-deepseek-v4-pro-0813",
+      "name": "ys-deepseek-v4-pro-0813",
       "upstream_id": "deepseek-v4-pro-0813",
       "kind": "text",
       "transport": "chat_completions",
@@ -2037,8 +2037,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-kimi-k3.1-pro",
-      "name": "kimi-k3.1-pro",
+      "id": "ys-kimi-k3.1-pro",
+      "name": "ys-kimi-k3.1-pro",
       "upstream_id": "kimi-k3.1-pro",
       "kind": "text",
       "transport": "chat_completions",
@@ -2128,8 +2128,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-kimi-k2.6",
-      "name": "kimi-k2.6",
+      "id": "ys-kimi-k2.6",
+      "name": "ys-kimi-k2.6",
       "upstream_id": "kimi-k2.6",
       "kind": "text",
       "transport": "chat_completions",
@@ -2212,8 +2212,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-deepseek-v4-flash",
-      "name": "deepseek-v4-flash",
+      "id": "ys-deepseek-v4-flash",
+      "name": "ys-deepseek-v4-flash",
       "upstream_id": "deepseek-v4-flash",
       "kind": "text",
       "transport": "chat_completions",
@@ -2353,8 +2353,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-kimi-k3",
-      "name": "kimi-k3",
+      "id": "ys-kimi-k3",
+      "name": "ys-kimi-k3",
       "upstream_id": "kimi-k3",
       "kind": "text",
       "transport": "chat_completions",
@@ -2444,8 +2444,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-qwen3.7-max",
-      "name": "qwen3.7-max",
+      "id": "ys-qwen3.7-max",
+      "name": "ys-qwen3.7-max",
       "upstream_id": "qwen3.7-max",
       "kind": "text",
       "transport": "chat_completions",
@@ -2528,8 +2528,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-kimi-k2.7",
-      "name": "kimi-k2.7",
+      "id": "ys-kimi-k2.7",
+      "name": "ys-kimi-k2.7",
       "upstream_id": "kimi-k2.7",
       "kind": "text",
       "transport": "chat_completions",
@@ -2612,8 +2612,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-glm-5.1",
-      "name": "glm-5.1",
+      "id": "ys-glm-5.1",
+      "name": "ys-glm-5.1",
       "upstream_id": "glm-5.1",
       "kind": "text",
       "transport": "chat_completions",
@@ -2696,8 +2696,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-qwen3.8-flash",
-      "name": "qwen3.8-flash",
+      "id": "ys-qwen3.8-flash",
+      "name": "ys-qwen3.8-flash",
       "upstream_id": "qwen3.8-flash",
       "kind": "text",
       "transport": "chat_completions",
@@ -2780,8 +2780,8 @@
       "retail_markup_cny": null
     },
     {
-      "id": "codebloom-grok-imagine-image-2.0",
-      "name": "grok-imagine-image-2.0",
+      "id": "ys-grok-imagine-image-2.0",
+      "name": "ys-grok-imagine-image-2.0",
       "upstream_id": "grok-imagine-image-2.0",
       "kind": "image",
       "transport": "chat_completions",
@@ -2852,8 +2852,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-grok-imagine-image",
-      "name": "grok-imagine-image",
+      "id": "ys-grok-imagine-image",
+      "name": "ys-grok-imagine-image",
       "upstream_id": "grok-imagine-image",
       "kind": "image",
       "transport": "chat_completions",
@@ -2924,8 +2924,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-gemini-3.1-flash-image-preview",
-      "name": "gemini-3.1-flash-image-preview",
+      "id": "ys-gemini-3.1-flash-image-preview",
+      "name": "ys-gemini-3.1-flash-image-preview",
       "upstream_id": "gemini-3.1-flash-image-preview",
       "kind": "image",
       "transport": "chat_completions",
@@ -2996,8 +2996,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-nano-banana-2",
-      "name": "nano-banana-2",
+      "id": "ys-nano-banana-2",
+      "name": "ys-nano-banana-2",
       "upstream_id": "nano-banana-2",
       "kind": "image",
       "transport": "chat_completions",
@@ -3068,8 +3068,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-gpt-image-2.5-sunburst",
-      "name": "gpt-image-2.5-sunburst",
+      "id": "ys-gpt-image-2.5-sunburst",
+      "name": "ys-gpt-image-2.5-sunburst",
       "upstream_id": "gpt-image-2.5-sunburst",
       "kind": "image",
       "transport": "images_generations",
@@ -3142,8 +3142,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-gemini-nano-banana-2.1",
-      "name": "gemini-nano-banana-2.1",
+      "id": "ys-gemini-nano-banana-2.1",
+      "name": "ys-gemini-nano-banana-2.1",
       "upstream_id": "gemini-nano-banana-2.1",
       "kind": "image",
       "transport": "chat_completions",
@@ -3214,8 +3214,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-gpt-image-2.5-flare",
-      "name": "gpt-image-2.5-flare",
+      "id": "ys-gpt-image-2.5-flare",
+      "name": "ys-gpt-image-2.5-flare",
       "upstream_id": "gpt-image-2.5-flare",
       "kind": "image",
       "transport": "images_generations",
@@ -3288,8 +3288,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-gpt-image-2k",
-      "name": "gpt-image-2k",
+      "id": "ys-gpt-image-2k",
+      "name": "ys-gpt-image-2k",
       "upstream_id": "gpt-image-2k",
       "kind": "image",
       "transport": "images_generations",
@@ -3362,8 +3362,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-nano-banana-pro",
-      "name": "nano-banana-pro",
+      "id": "ys-nano-banana-pro",
+      "name": "ys-nano-banana-pro",
       "upstream_id": "nano-banana-pro",
       "kind": "image",
       "transport": "chat_completions",
@@ -3434,8 +3434,8 @@
       "retail_markup_cny": 0.1
     },
     {
-      "id": "codebloom-gemini-3-pro-image-preview",
-      "name": "gemini-3-pro-image-preview",
+      "id": "ys-gemini-3-pro-image-preview",
+      "name": "ys-gemini-3-pro-image-preview",
       "upstream_id": "gemini-3-pro-image-preview",
       "kind": "image",
       "transport": "chat_completions",

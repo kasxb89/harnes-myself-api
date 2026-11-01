@@ -5,15 +5,18 @@ import (
 	"strings"
 )
 
-// PubliclyAvailable is the sale fence for the reserved CodeBloom namespace.
+// PubliclyAvailable is the sale fence for exact reviewed candidates and the
+// retired CodeBloom namespace. The ys prefix is shared with existing models.
 // Approved user prices do not imply verified credentials or capabilities.
 // Existing providers retain their ordinary availability rules.
 func PubliclyAvailable(id string) bool {
-	if !strings.HasPrefix(id, "codebloom-") {
-		return true
+	for _, candidate := range approved.Models {
+		if candidate.ID == id {
+			m, ok := Lookup(id)
+			return ok && m.ActivationReady
+		}
 	}
-	m, ok := Lookup(id)
-	return ok && m.ActivationReady
+	return !strings.HasPrefix(id, "codebloom-")
 }
 
 // ClientParameters describes reviewed request controls for offline candidate

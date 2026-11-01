@@ -40,7 +40,7 @@ def validate_catalog(catalog):
     for model in models:
         public_id = model.get("id")
         raw_id = model.get("upstream_id")
-        if not raw_id or public_id != "codebloom-" + raw_id or public_id in ids:
+        if not raw_id or public_id != "ys-" + raw_id or model.get("name") != public_id or public_id in ids:
             raise ValueError("Invalid CodeBloom candidate identity")
         ids.add(public_id)
         env = model.get("credential_env")
@@ -104,7 +104,7 @@ def validate_catalog(catalog):
                 raise ValueError("Approved retail component is missing or changed")
     if any(counts[env] != count for env, _, _, _, count, _ in GROUPS):
         raise ValueError("CodeBloom candidate groups changed")
-    if any("codebloom-" + item["id"] in ids for item in catalog["excluded"]):
+    if any("ys-" + item["id"] in ids for item in catalog["excluded"]):
         raise ValueError("Excluded candidate cannot be restored")
 
 

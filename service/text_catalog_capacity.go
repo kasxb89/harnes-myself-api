@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 )
 
@@ -69,6 +70,8 @@ func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string) ([]
 			} else {
 				item.Parameters = model.WithMediaClientConcurrencyHint(item.Parameters, "ycapi", item.ModelName, approved.Kind)
 			}
+		} else if candidate, ok := codebloom.Lookup(item.ModelName); ok && candidate.Kind == "image" {
+			item.Parameters = model.WithMediaClientConcurrencyHint(item.Parameters, "codebloom-image", item.ModelName, candidate.Kind)
 		}
 		result = append(result, item)
 	}

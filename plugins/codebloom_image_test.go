@@ -34,7 +34,7 @@ func newCodeBloomImagePlugin(t *testing.T) (*jsplugin.Registry, *jsplugin.Loaded
 	return registry, plugin
 }
 func codebloomImageContext(raw string, body map[string]any) map[string]any {
-	return map[string]any{"model": "codebloom-" + raw, "upstreamModel": raw, "baseUrl": "https://codebloom.example", "apiKey": "synthetic-provider-secret", "publicTaskId": "task_gateway_image", "requestBody": body}
+	return map[string]any{"model": "ys-" + raw, "upstreamModel": raw, "baseUrl": "https://codebloom.example", "apiKey": "synthetic-provider-secret", "publicTaskId": "task_gateway_image", "requestBody": body}
 }
 func codebloomObject(t *testing.T, v any) map[string]any {
 	t.Helper()
@@ -59,12 +59,16 @@ func TestCodeBloomImageRequestTransports(t *testing.T) {
 	assert.True(t, *plugin.Meta.Protocols[0].RetainResult)
 	for raw, transport := range codebloomImages {
 		t.Run(raw, func(t *testing.T) {
-			public := "codebloom-" + raw
+			public := "ys-" + raw
 			binding, found := registry.Generation().LookupEndpoint("POST", "/v1/images/generations", public)
 			require.True(t, found)
 			assert.Equal(t, "codebloom-image", binding.Plugin.Meta.Key)
+			assert.Equal(t, "1.0.0", binding.Plugin.Meta.Version)
+			assert.Equal(t, 1, binding.Plugin.Meta.APIVersion)
 			_, found = registry.Generation().LookupEndpoint("POST", "/v1/images/generations", "ycapi-"+raw)
 			assert.False(t, found)
+			_, found = registry.Generation().LookupEndpoint("POST", "/v1/images/generations", "codebloom-"+raw)
+			assert.False(t, found, "retired public IDs cannot claim the new route")
 			ctx := codebloomImageContext(raw, map[string]any{"model": public, "prompt": "a cat", "n": 1})
 			out := codebloomHook(t, plugin, "buildSubmitRequest", ctx)
 			assert.Equal(t, "POST", out["method"])
@@ -112,7 +116,7 @@ func TestCodeBloomImageRejectsUnverifiedParameters(t *testing.T) {
 	ctx["upstreamModel"] = "gpt-image-2.5-flare"
 	_, err = p.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
 	require.Error(t, err)
-	_, err = p.Engine.CallPath(t.Context(), "protocols", []string{"openai_image", "decodeRequest"}, map[string]any{"model": "codebloom-gpt-image-2k", "operation": "edit", "body": map[string]any{"kind": "json", "value": map[string]any{"prompt": "cat"}}})
+	_, err = p.Engine.CallPath(t.Context(), "protocols", []string{"openai_image", "decodeRequest"}, map[string]any{"model": "ys-gpt-image-2k", "operation": "edit", "body": map[string]any{"kind": "json", "value": map[string]any{"prompt": "cat"}}})
 	require.Error(t, err)
 }
 
@@ -199,7 +203,7 @@ func TestCodeBloomImageHostAdaptorUsesExactWireRequest(t *testing.T) {
 	_, plugin := newCodeBloomImagePlugin(t)
 	for raw, transport := range codebloomImages {
 		t.Run(raw, func(t *testing.T) {
-			id := "codebloom-" + raw
+			id := "ys-" + raw
 			info := &relaycommon.RelayInfo{OriginModelName: id, ChannelMeta: &relaycommon.ChannelMeta{ChannelType: 61, ChannelBaseUrl: "https://codebloom.example", UpstreamModelName: raw, ApiKey: "synthetic-provider-secret"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_host_image"}}
 			adaptor := taskplugin.New(plugin)
 			adaptor.Init(info)

@@ -16,7 +16,7 @@ func TestCodeBloomClientCandidateParameters(t *testing.T) {
 	previews := make([]map[string]any, 0, len(models))
 	for _, m := range models {
 		t.Run(m.ID, func(t *testing.T) {
-			assert.False(t, PubliclyAvailable(m.ID), "approved user prices do not grant unverified capability/credential readiness")
+			assert.Equal(t, m.ActivationReady, PubliclyAvailable(m.ID), "availability requires the exact live qualification")
 			params := ClientParameters(m.ID)
 			require.NotNil(t, params)
 			props := params["properties"].(map[string]any)
@@ -56,9 +56,11 @@ func TestCodeBloomClientCandidateParameters(t *testing.T) {
 		})
 		previews = append(previews, map[string]any{"id": m.ID, "kind": m.Kind, "available": false, "availability": "unavailable", "offline_checkpoint": true, "transport": m.Transport, "retail_price_rows": ClientPrices(m.ID), "parameters": ClientParameters(m.ID)})
 	}
-	for _, name := range []string{"ycapi-gpt-6.1-sol", "MiniMax-H3", "yunshu-internal-gpt-image-2", "preserved-chat"} {
+	for _, name := range []string{"ycapi-gpt-6.1-sol", "MiniMax-H3", "yunshu-internal-gpt-image-2", "preserved-chat", "ys-1.0"} {
 		assert.True(t, PubliclyAvailable(name))
 	}
+	assert.Nil(t, ClientParameters("ys-1.0"))
+	assert.Nil(t, ClientPrices("ys-1.0"))
 	assert.False(t, PubliclyAvailable("codebloom-unknown"))
 	assert.Nil(t, ClientParameters("codebloom-unknown"))
 	assert.Nil(t, ClientPrices("codebloom-unknown"))

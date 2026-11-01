@@ -20,12 +20,14 @@ func TestCodeBloomModelMappingRejectsPendingAtEveryNode(t *testing.T) {
 		name, origin string
 		mapping      map[string]string
 	}{
-		{"pending origin", "codebloom-gpt-6.1-sol", nil},
+		{"pending origin", "ys-gpt-6.1-sol", nil},
 		{"unknown origin", "codebloom-unknown", nil},
-		{"mapped destination", "alias", map[string]string{"alias": "codebloom-gpt-6.1-sol"}},
-		{"hidden intermediate", "alias", map[string]string{"alias": "codebloom-gpt-6.1-sol", "codebloom-gpt-6.1-sol": "gpt-6.1-sol"}},
+		{"retired candidate origin", "codebloom-gpt-6.1-sol", nil},
+		{"mapped destination", "alias", map[string]string{"alias": "ys-gpt-6.1-sol"}},
+		{"hidden intermediate", "alias", map[string]string{"alias": "ys-gpt-6.1-sol", "ys-gpt-6.1-sol": "gpt-6.1-sol"}},
 		{"hidden unknown intermediate", "alias", map[string]string{"alias": "middle", "middle": "codebloom-unknown", "codebloom-unknown": "gpt-6.1-sol"}},
-		{"same reserved node", "codebloom-gpt-6.1-sol", map[string]string{"codebloom-gpt-6.1-sol": "codebloom-gpt-6.1-sol"}},
+		{"retired candidate intermediate", "alias", map[string]string{"alias": "codebloom-gpt-6.1-sol", "codebloom-gpt-6.1-sol": "gpt-6.1-sol"}},
+		{"same reserved node", "ys-gpt-6.1-sol", map[string]string{"ys-gpt-6.1-sol": "ys-gpt-6.1-sol"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -53,13 +55,16 @@ func TestCodeBloomModelMappingRejectsPendingAtEveryNode(t *testing.T) {
 func TestCodeBloomMappingFencePreservesExistingMappings(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
+		origin  string
 		mapping map[string]string
 		want    string
 	}{
-		{"ordinary chained", map[string]string{"alias": "middle", "middle": "gpt-6.1-sol"}, "gpt-6.1-sol"},
-		{"ordinary direct", map[string]string{"alias": "ycapi-gpt-6.1-sol"}, "ycapi-gpt-6.1-sol"},
-		{"no mapping", nil, "alias"},
-		{"ordinary self", map[string]string{"alias": "alias"}, "alias"},
+		{"ordinary chained", "alias", map[string]string{"alias": "middle", "middle": "gpt-6.1-sol"}, "gpt-6.1-sol"},
+		{"ordinary direct", "alias", map[string]string{"alias": "ycapi-gpt-6.1-sol"}, "ycapi-gpt-6.1-sol"},
+		{"legacy ys destination", "alias", map[string]string{"alias": "ys-1.0"}, "ys-1.0"},
+		{"legacy ys origin", "ys-1.0", nil, "ys-1.0"},
+		{"no mapping", "alias", nil, "alias"},
+		{"ordinary self", "alias", map[string]string{"alias": "alias"}, "alias"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -68,8 +73,8 @@ func TestCodeBloomMappingFencePreservesExistingMappings(t *testing.T) {
 				require.NoError(t, err)
 				c.Set("model_mapping", string(raw))
 			}
-			info := &relaycommon.RelayInfo{OriginModelName: "alias", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "alias"}}
-			request := &dto.GeneralOpenAIRequest{Model: "alias"}
+			info := &relaycommon.RelayInfo{OriginModelName: tc.origin, ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tc.origin}}
+			request := &dto.GeneralOpenAIRequest{Model: tc.origin}
 			require.NoError(t, ModelMappedHelper(c, info, request))
 			assert.Equal(t, tc.want, info.UpstreamModelName)
 			assert.Equal(t, tc.want, request.Model)
