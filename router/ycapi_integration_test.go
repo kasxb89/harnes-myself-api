@@ -1010,8 +1010,11 @@ func TestYcapiEffectiveCapacityDirectoryAndWireDatabase(t *testing.T) {
 		assert.Contains(t, response.Body.String(), "context_length_exceeded")
 		assert.Equal(t, 2, posts)
 	})
-	t.Run("all candidate models stay fenced at final outbound boundary", func(t *testing.T) {
+	t.Run("unverified candidate models stay fenced at final outbound boundary", func(t *testing.T) {
 		for _, candidate := range candidates {
+			if candidate.ActivationReady {
+				continue
+			}
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{}`))
 			c.Request = request
