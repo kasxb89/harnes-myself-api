@@ -23,14 +23,22 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { useYcapiCatalog } from './api'
 import { CatalogTable } from './catalog-table'
+import { ConfiguredModelPricebook } from './configured-pricebook'
+import { useConfiguredPricebook, pricebookStatesByModel } from './pricebook-api'
 import { PricebookTable } from './pricebook-table'
 
-export function YcapiCatalog() {
+function ApprovedYcapiCatalog() {
   const { t } = useTranslation()
   const query = useYcapiCatalog()
+  const configured = useConfiguredPricebook()
+  const states = configured.data
+    ? pricebookStatesByModel(configured.data.rows)
+    : undefined
   if (!query.allowed) return <ErrorState title={t('Access denied')} />
   if (query.isPending) {
     return <LoadingState message={t('Loading YCAPI models')} />
@@ -45,7 +53,7 @@ export function YcapiCatalog() {
   }
   if (!query.data) return <EmptyState title={t('No models found')} />
   return (
-    <div className='h-full min-h-0 space-y-4 overflow-y-auto pr-1 pb-4'>
+    <div className='space-y-4'>
       <div className='flex flex-wrap gap-2'>
         <Badge variant='secondary'>
           {t('43 models · 22 text · 8 image · 10 video · 3 audio')}
@@ -64,7 +72,7 @@ export function YcapiCatalog() {
       <p className='text-muted-foreground text-xs'>
         {t('Price snapshot')}: {query.data.checkedAt} · {query.data.version}
       </p>
-      <PricebookTable models={query.data.models} />
+      <PricebookTable models={query.data.models} states={states} />
       <p className='text-muted-foreground text-xs'>
         {t('Official comparison exchange rate')}: 1 USD ={' '}
         {query.data.officialUsdCny} CNY
@@ -73,7 +81,29 @@ export function YcapiCatalog() {
         {t('Models not included')}:{' '}
         {query.data.exclusions.map((model) => model.upstreamModelId).join(', ')}
       </p>
-      <CatalogTable models={query.data.models} />
+      <CatalogTable models={query.data.models} states={states} />
+    </div>
+  )
+}
+
+export function YcapiCatalog() {
+  const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  if (!user || user.role < ROLE.SUPER_ADMIN) {
+    return <ErrorState title={t('Access denied')} />
+  }
+  return (
+    <div className='h-full min-h-0 space-y-6 overflow-y-auto pr-1 pb-4'>
+      <ConfiguredModelPricebook />
+      <section
+        aria-label={t('New YCAPI candidate prices')}
+        className='space-y-3'
+      >
+        <h2 className='text-lg font-semibold'>
+          {t('New YCAPI candidate prices')}
+        </h2>
+        <ApprovedYcapiCatalog />
+      </section>
     </div>
   )
 }

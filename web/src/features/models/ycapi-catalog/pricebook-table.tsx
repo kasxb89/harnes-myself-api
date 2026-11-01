@@ -27,15 +27,23 @@ import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
 import { formatCatalogCny } from './price-format'
+import {
+  PricebookStateBadge,
+  type ModelPricebookState,
+} from './pricebook-state'
 import type { YcapiModel } from './types'
 
 type Row = NonNullable<YcapiModel['priceRows']>[number] & {
   id: string
   name: string
+  catalogId: string
   kind: YcapiModel['kind']
 }
 
-export function PricebookTable(props: { models: YcapiModel[] }) {
+export function PricebookTable(props: {
+  models: YcapiModel[]
+  states?: Record<string, ModelPricebookState>
+}) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [search, setSearch] = useState('')
@@ -49,6 +57,7 @@ export function PricebookTable(props: { models: YcapiModel[] }) {
             ...row,
             id: `${model.id}:${index}`,
             name: model.name,
+            catalogId: model.id,
             kind: model.kind,
           }))
         )
@@ -76,6 +85,13 @@ export function PricebookTable(props: { models: YcapiModel[] }) {
         <span className='block max-w-64 truncate' title={row.original.name}>
           {row.original.name}
         </span>
+      ),
+    },
+    {
+      id: 'activation',
+      header: t('Status'),
+      cell: ({ row }) => (
+        <PricebookStateBadge state={props.states?.[row.original.catalogId]} />
       ),
     },
     {

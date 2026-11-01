@@ -29,9 +29,16 @@ import { toIntlLocale } from '@/i18n/languages'
 
 import { YcapiModelDetails } from './model-details'
 import { formatCatalogCny } from './price-format'
+import {
+  PricebookStateBadge,
+  type ModelPricebookState,
+} from './pricebook-state'
 import type { YcapiModel } from './types'
 
-export function CatalogTable(props: { models: YcapiModel[] }) {
+export function CatalogTable(props: {
+  models: YcapiModel[]
+  states?: Record<string, ModelPricebookState>
+}) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const kindLabels = {
@@ -96,6 +103,13 @@ export function CatalogTable(props: { models: YcapiModel[] }) {
         <span className='block max-w-64 truncate' title={row.original.name}>
           {row.original.name}
         </span>
+      ),
+    },
+    {
+      id: 'activation',
+      header: t('Status'),
+      cell: ({ row }) => (
+        <PricebookStateBadge state={props.states?.[row.original.id]} />
       ),
     },
     {

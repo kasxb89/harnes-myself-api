@@ -1,0 +1,2255 @@
+{
+  "source_commit": "dda7ab17c474bb09be8a32f1eec45a8f62a0cfa1",
+  "quotes": [
+    {
+      "model_name": "ycapi-claude-fable-5",
+      "name": "Claude Fable 5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.5559999999999996,
+          "retail_cny": 33.3055,
+          "lane_id": "claude-fable-5@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 17.779999999999998,
+          "retail_cny": 166.5275,
+          "lane_id": "claude-fable-5@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-fable-5-1",
+      "name": "Claude Fable 5.1",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.5559999999999996,
+          "retail_cny": 33.3055,
+          "lane_id": "claude-fable-5-1@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 17.779999999999998,
+          "retail_cny": 166.5275,
+          "lane_id": "claude-fable-5-1@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-haiku-4-5",
+      "name": "Claude Haiku 4.5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.6222999999999999,
+          "retail_cny": 3.3306,
+          "lane_id": "claude-haiku-4-5@952:claude-kiro(满缓存)"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.1115,
+          "retail_cny": 16.6528,
+          "lane_id": "claude-haiku-4-5@952:claude-kiro(满缓存)"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-opus-4-6",
+      "name": "Claude Opus 4.6",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.7779999999999998,
+          "retail_cny": 16.6528,
+          "lane_id": "claude-opus-4-6@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 8.889999999999999,
+          "retail_cny": 83.2638,
+          "lane_id": "claude-opus-4-6@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-opus-4-7",
+      "name": "Claude Opus 4.7",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.73355,
+          "retail_cny": 16.6528,
+          "lane_id": "claude-opus-4-7@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 8.66775,
+          "retail_cny": 83.2638,
+          "lane_id": "claude-opus-4-7@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-opus-4-8",
+      "name": "Claude Opus 4.8",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.7779999999999998,
+          "retail_cny": 16.6528,
+          "lane_id": "claude-opus-4-8@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 8.889999999999999,
+          "retail_cny": 83.2638,
+          "lane_id": "claude-opus-4-8@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-opus-5",
+      "name": "Claude Opus 5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 16.6528,
+          "lane_id": "claude-opus-5@MEG:erzhe-w"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.8447999999999998,
+          "retail_cny": 83.2638,
+          "lane_id": "claude-opus-5@MEG:erzhe-w"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-opus-5-5",
+      "name": "Claude Opus 5.5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.4223999999999999,
+          "retail_cny": 13.3222,
+          "lane_id": "claude-opus-5-5@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 7.111999999999999,
+          "retail_cny": 66.611,
+          "lane_id": "claude-opus-5-5@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-sonnet-4-6",
+      "name": "Claude Sonnet 4.6",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.8668999999999993,
+          "retail_cny": 9.9917,
+          "lane_id": "claude-sonnet-4-6@952:kiro"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 9.3345,
+          "retail_cny": 49.9583,
+          "lane_id": "claude-sonnet-4-6@952:kiro"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "claude-sonnet-5@MEG:erzhe-w"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.8447999999999998,
+          "retail_cny": 33.3055,
+          "lane_id": "claude-sonnet-5@MEG:erzhe-w"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-claude-sonnet-5-5",
+      "name": "Claude Sonnet 5.5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "claude-sonnet-5-5@TIA:claude-krio高缓存"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.5559999999999996,
+          "retail_cny": 33.3055,
+          "lane_id": "claude-sonnet-5-5@TIA:claude-krio高缓存"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-doubao-seedream-5-0-pro",
+      "name": "豆包 Seedream 5.0 Pro",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "count": 1,
+            "mode": "text-to-image",
+            "resolution": "1k",
+            "size": "1:1"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.09911999999999997,
+          "retail_cny": 0.19912,
+          "lane_id": "doubao-seedream-5-0-pro@MTK:default"
+        },
+        {
+          "params": {
+            "count": 1,
+            "mode": "text-to-image",
+            "resolution": "2k",
+            "size": "1:1"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.09911999999999997,
+          "retail_cny": 0.19912,
+          "lane_id": "doubao-seedream-5-0-pro@MTK:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-flux-kontext",
+      "name": "FLUX Kontext 编辑",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "count": 1,
+            "mode": "text-to-image",
+            "quality": "max",
+            "size": "1:1"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.09911999999999997,
+          "retail_cny": 0.19912,
+          "lane_id": "flux-kontext@VEC:default"
+        },
+        {
+          "params": {
+            "count": 1,
+            "mode": "text-to-image",
+            "quality": "pro",
+            "size": "1:1"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.04543,
+          "retail_cny": 0.14543,
+          "lane_id": "flux-kontext@VEC:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-2.5-pro-tts",
+      "name": "Gemini-2.5 Pro TTS",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "count": 1,
+            "response_format": "wav",
+            "voice": "Zephyr"
+          },
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 5.0568404544,
+          "retail_cny": 5.859,
+          "lane_id": "gemini-2.5-pro-tts@OLX:aistudio-gemini-3"
+        },
+        {
+          "params": {
+            "count": 1,
+            "response_format": "wav",
+            "voice": "Zephyr"
+          },
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 101.136809088,
+          "retail_cny": 117.1795,
+          "lane_id": "gemini-2.5-pro-tts@OLX:aistudio-gemini-3"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3-pro-image",
+      "name": "Gemini-3 Pro Image",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "1K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.09911999999999997,
+          "retail_cny": 0.19912,
+          "lane_id": "gemini-3-pro-image@OAO:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "2K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.105728,
+          "retail_cny": 0.205728,
+          "lane_id": "gemini-3-pro-image@TIA:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "4K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.13215999999999997,
+          "retail_cny": 0.23216,
+          "lane_id": "gemini-3-pro-image@OAO:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.1-flash-image",
+      "name": "Gemini-3.1 Flash Image",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "0.5K",
+            "thinking_level": "minimal"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.091181630447208,
+          "retail_cny": 0.191182,
+          "lane_id": "gemini-3.1-flash-image@OLX:discounted-banana-1"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "1K",
+            "thinking_level": "minimal"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.06608,
+          "retail_cny": 0.16608,
+          "lane_id": "gemini-3.1-flash-image@TY2:image"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "2K",
+            "thinking_level": "minimal"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.06608,
+          "retail_cny": 0.16608,
+          "lane_id": "gemini-3.1-flash-image@TIA:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "4K",
+            "thinking_level": "minimal"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.09911999999999997,
+          "retail_cny": 0.19912,
+          "lane_id": "gemini-3.1-flash-image@MTK:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.1-flash-lite",
+      "name": "Gemini-3.1 Flash Lite",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.22225177799999998,
+          "retail_cny": 0.8327,
+          "lane_id": "gemini-3.1-flash-lite@OLX:anti-gemini-1"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.3335106680000002,
+          "retail_cny": 4.9959,
+          "lane_id": "gemini-3.1-flash-lite@OLX:anti-gemini-1"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.1-flash-lite-image",
+      "name": "Gemini-3.1 Flash Lite Image",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "1K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.049559999999999986,
+          "retail_cny": 0.14956,
+          "lane_id": "gemini-3.1-flash-lite-image@MTK:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.1-flash-tts",
+      "name": "Gemini 3.1 Flash TTS Preview",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "count": 1,
+            "response_format": "wav",
+            "voice": "Zephyr"
+          },
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.0340800000000003,
+          "retail_cny": 3.3306,
+          "lane_id": "gemini-3.1-flash-tts@VEC:gemini-relay"
+        },
+        {
+          "params": {
+            "count": 1,
+            "response_format": "wav",
+            "voice": "Zephyr"
+          },
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 60.681599999999996,
+          "retail_cny": 66.611,
+          "lane_id": "gemini-3.1-flash-tts@VEC:gemini-relay"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.5-flash",
+      "name": "Gemini-3.5 Flash",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.3335106680000002,
+          "retail_cny": 4.9959,
+          "lane_id": "gemini-3.5-flash@OLX:anti-gemini-1"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 8.001064008,
+          "retail_cny": 29.975,
+          "lane_id": "gemini-3.5-flash@OLX:anti-gemini-1"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.5-flash-lite",
+      "name": "Gemini-3.5 Flash Lite",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.2667021336,
+          "retail_cny": 0.9992,
+          "lane_id": "gemini-3.5-flash-lite@OLX:anti-gemini-1"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.2225177799999996,
+          "retail_cny": 8.3264,
+          "lane_id": "gemini-3.5-flash-lite@OLX:anti-gemini-1"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.6-flash",
+      "name": "Gemini-3.6 Flash",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.6667553340000001,
+          "retail_cny": 2.498,
+          "lane_id": "gemini-3.6-flash@OLX:Cli-Gemini-1"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.3337766699999993,
+          "retail_cny": 12.4896,
+          "lane_id": "gemini-3.6-flash@OLX:Cli-Gemini-1"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.7-flash",
+      "name": "Gemini-3.7 Flash",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.66675,
+          "retail_cny": 2.498,
+          "lane_id": "gemini-3.7-flash@952:gemini-anti"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.3337499999999998,
+          "retail_cny": 12.4896,
+          "lane_id": "gemini-3.7-flash@952:gemini-anti"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-3.8-flash",
+      "name": "Gemini-3.8 Flash",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.66675,
+          "retail_cny": 2.498,
+          "lane_id": "gemini-3.8-flash@952:gemini-anti"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.3337499999999998,
+          "retail_cny": 12.4896,
+          "lane_id": "gemini-3.8-flash@952:gemini-anti"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-4-argon",
+      "name": "Gemini-4 Argon",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.8447999999999998,
+          "retail_cny": 6.6611,
+          "lane_id": "gemini-4-argon@CBY:default"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 14.223999999999998,
+          "retail_cny": 33.3055,
+          "lane_id": "gemini-4-argon@CBY:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gemini-nano-banana-2.1-image",
+      "name": "GM NB 2.1 Image",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "1K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.07929599999999999,
+          "retail_cny": 0.179296,
+          "lane_id": "gemini-nano-banana-2.1-image@OTA:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "2K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.07929599999999999,
+          "retail_cny": 0.179296,
+          "lane_id": "gemini-nano-banana-2.1-image@OTA:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "4K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.07929599999999999,
+          "retail_cny": 0.179296,
+          "lane_id": "gemini-nano-banana-2.1-image@OTA:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-glm-5.2",
+      "name": "GLM-5.2",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 5.2712444232,
+          "retail_cny": 6.6357,
+          "lane_id": "glm-5.2@DTE:de-vip-pro"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 18.44936444232,
+          "retail_cny": 23.2247,
+          "lane_id": "glm-5.2@DTE:de-vip-pro"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-glm-5.3",
+      "name": "GLM-5.3",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 6.258559999999999,
+          "retail_cny": 7.1293,
+          "lane_id": "glm-5.3@VST:hxy-glm-zn"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 21.90496,
+          "retail_cny": 24.9525,
+          "lane_id": "glm-5.3@VST:hxy-glm-zn"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-glm-5.3-flash",
+      "name": "GLM-5.3 Flash",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.08001,
+          "retail_cny": 0.4,
+          "lane_id": "glm-5.3-flash@VIR:mix-0.3"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.26667333,
+          "retail_cny": 1.4,
+          "lane_id": "glm-5.3-flash@VIR:mix-0.3"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-4o-mini-tts",
+      "name": "GPT-4o Mini TTS",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "count": 1,
+            "response_format": "mp3",
+            "speed": "1.0",
+            "voice": "alloy"
+          },
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.831807999999999,
+          "retail_cny": 3.4143,
+          "lane_id": "gpt-4o-mini-tts@APM:default"
+        },
+        {
+          "params": {
+            "count": 1,
+            "response_format": "mp3",
+            "speed": "1.0",
+            "voice": "alloy"
+          },
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 11.327231999999997,
+          "retail_cny": 39.9666,
+          "lane_id": "gpt-4o-mini-tts@APM:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.3-codex",
+      "name": "GPT-5.3 Codex",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.1115,
+          "retail_cny": 5.8285,
+          "lane_id": "gpt-5.3-codex@MXH:svip"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 24.892,
+          "retail_cny": 46.6277,
+          "lane_id": "gpt-5.3-codex@MXH:svip"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.4",
+      "name": "GPT-5.4",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 4.444999999999999,
+          "retail_cny": 8.3264,
+          "lane_id": "gpt-5.4@MXH:default"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 26.669999999999998,
+          "retail_cny": 49.9583,
+          "lane_id": "gpt-5.4@MXH:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.4-mini",
+      "name": "GPT-5.4 Mini",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.3335,
+          "retail_cny": 2.498,
+          "lane_id": "gpt-5.4-mini@MXH:default"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 8.001,
+          "retail_cny": 14.9875,
+          "lane_id": "gpt-5.4-mini@MXH:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.4-nano",
+      "name": "GPT-5.4 Nano",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.35559999999999997,
+          "retail_cny": 0.6662,
+          "lane_id": "gpt-5.4-nano@MXH:default"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.2224999999999997,
+          "retail_cny": 4.1632,
+          "lane_id": "gpt-5.4-nano@MXH:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.5",
+      "name": "GPT-5.5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.2228200399999998,
+          "retail_cny": 16.6528,
+          "lane_id": "gpt-5.5@OLX:codex-gpt-1"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 13.336920240000001,
+          "retail_cny": 99.9165,
+          "lane_id": "gpt-5.5@OLX:codex-gpt-1"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.64008,
+          "retail_cny": 0.6662,
+          "lane_id": "gpt-5.6-luna@ROU:copilot"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.8404800000000003,
+          "retail_cny": 3.9967,
+          "lane_id": "gpt-5.6-luna@ROU:copilot"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.6-sol",
+      "name": "GPT-5.6 Sol",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.7779999999999998,
+          "retail_cny": 13.3222,
+          "lane_id": "gpt-5.6-sol@TIA:gpt-特价"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 10.668,
+          "retail_cny": 66.611,
+          "lane_id": "gpt-5.6-sol@TIA:gpt-特价"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-5.6-terra",
+      "name": "GPT-5.6 Terra",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "gpt-5.6-terra@TIA:gpt-特价"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 4.267200000000001,
+          "retail_cny": 39.9666,
+          "lane_id": "gpt-5.6-terra@TIA:gpt-特价"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 6.756399999999999,
+          "retail_cny": 33.3055,
+          "lane_id": "gpt-6-astra@952:codex"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 33.782,
+          "retail_cny": 166.5275,
+          "lane_id": "gpt-6-astra@952:codex"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "gpt-6-sol@TMC:codex-team"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 3.5559999999999996,
+          "retail_cny": 33.3055,
+          "lane_id": "gpt-6-sol@TMC:codex-team"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.0668,
+          "retail_cny": 6.6611,
+          "lane_id": "gpt-6.1-sol@952:codex"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 5.334,
+          "retail_cny": 33.3055,
+          "lane_id": "gpt-6.1-sol@952:codex"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-4.5",
+      "name": "Grok-4.5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.8889999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "grok-4.5@952:grok"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.667,
+          "retail_cny": 19.9833,
+          "lane_id": "grok-4.5@952:grok"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-4.6",
+      "name": "Grok-4.6",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "grok-4.6@TMC:grok"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.1336000000000004,
+          "retail_cny": 19.9833,
+          "lane_id": "grok-4.6@TMC:grok"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-4.7",
+      "name": "Grok-4.7",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.7111999999999999,
+          "retail_cny": 6.6611,
+          "lane_id": "grok-4.7@TMC:grok"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 2.1336000000000004,
+          "retail_cny": 19.9833,
+          "lane_id": "grok-4.7@TMC:grok"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-imagine-1.5",
+      "name": "Grok Imagine 1.5",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.1638,
+          "retail_cny": 0.2638,
+          "lane_id": "grok-imagine-1.5@STO:guan"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.0728,
+          "retail_cny": 0.1728,
+          "lane_id": "grok-imagine-1.5@ROU:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.0819,
+          "retail_cny": 0.1546,
+          "lane_id": "grok-imagine-1.5@OTAF:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-imagine-image",
+      "name": "Grok Imagine 1.0 图像",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "1:1"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.014868000000000001,
+          "retail_cny": 0.114868,
+          "lane_id": "grok-imagine-image@ROU:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-imagine-video",
+      "name": "Grok Imagine 1.0",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.045500000000000006,
+          "retail_cny": 0.1455,
+          "lane_id": "grok-imagine-video@ROU:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.045500000000000006,
+          "retail_cny": 0.1455,
+          "lane_id": "grok-imagine-video@ROU:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.0637,
+          "retail_cny": 0.1637,
+          "lane_id": "grok-imagine-video@ROU:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.0637,
+          "retail_cny": 0.1637,
+          "lane_id": "grok-imagine-video@ROU:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-grok-imagine-video-special",
+      "name": "Grok-1.0 多图 · 特价",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.09099999999999998,
+          "retail_cny": 0.191,
+          "lane_id": "grok-imagine-video-special@ORB:grok"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-kling-image-o3",
+      "name": "Kling Image 3.0 Omni (O3)",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "1K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.08259999999999999,
+          "retail_cny": 0.1826,
+          "lane_id": "kling-image-o3@MTK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "2K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.08259999999999999,
+          "retail_cny": 0.1826,
+          "lane_id": "kling-image-o3@MTK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "1:1",
+            "count": 1,
+            "mode": "text-to-image",
+            "size": "4K"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.08259999999999999,
+          "retail_cny": 0.1826,
+          "lane_id": "kling-image-o3@MTK:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-kling-v4",
+      "name": "可灵 4.0",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 1.0556,
+          "retail_cny": 1.1556,
+          "lane_id": "kling-v4@AII:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 1.0556,
+          "retail_cny": 1.1556,
+          "lane_id": "kling-v4@AII:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.728,
+          "retail_cny": 0.828,
+          "lane_id": "kling-v4@AII:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.7279999999999999,
+          "retail_cny": 0.828,
+          "lane_id": "kling-v4@AII:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-minimax-h3",
+      "name": "MiniMax H3",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "2k"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.34522648159999997,
+          "retail_cny": 0.4452264,
+          "lane_id": "minimax-h3@MTS:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "2k"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.3087183008,
+          "retail_cny": 0.4087183,
+          "lane_id": "minimax-h3@MTS:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "768p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.0819,
+          "retail_cny": 0.1819,
+          "lane_id": "minimax-h3@OTA:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "768p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.0819,
+          "retail_cny": 0.1819,
+          "lane_id": "minimax-h3@OTA:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-minimax-m3",
+      "name": "MiniMax-M3",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.81356,
+          "retail_cny": 1.9568,
+          "lane_id": "minimax-m3@OLX:self-deployed-2"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 7.25424,
+          "retail_cny": 7.8272,
+          "lane_id": "minimax-m3@OLX:self-deployed-2"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-omni-flash-1-1",
+      "name": "Omni Flash 1.1",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.10374,
+          "retail_cny": 0.20374,
+          "lane_id": "omni-flash-1-1@OTA:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.09282,
+          "retail_cny": 0.19282,
+          "lane_id": "omni-flash-1-1@OTA:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-qwen3.6-plus",
+      "name": "通义千问 3.6 Plus",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.7779999999999998,
+          "retail_cny": 1.889,
+          "lane_id": "qwen3.6-plus@VST:zq-qwen"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 10.668,
+          "retail_cny": 11.334,
+          "lane_id": "qwen3.6-plus@VST:zq-qwen"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-qwen3.7-max",
+      "name": "通义千问 3.7 Max",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 10.668,
+          "retail_cny": 11.334,
+          "lane_id": "qwen3.7-max@VST:zq-qwen"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 32.004,
+          "retail_cny": 34.002,
+          "lane_id": "qwen3.7-max@VST:zq-qwen"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-qwen3.8-flash",
+      "name": "通义千问 3.8 Flash",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 0.5334,
+          "retail_cny": 0.6667,
+          "lane_id": "qwen3.8-flash@BB6:default"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 1.6001999999999998,
+          "retail_cny": 2.1501,
+          "lane_id": "qwen3.8-flash@BB6:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-qwen3.8-max",
+      "name": "通义千问 3.8-Max",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {},
+          "direction": "input",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 7.681024007999998,
+          "retail_cny": 9.8406,
+          "lane_id": "qwen3.8-max@DTE:de-vip-pro"
+        },
+        {
+          "params": {},
+          "direction": "output",
+          "unit": "CNY / million tokens",
+          "procurement_cny": 23.043072024,
+          "retail_cny": 29.5216,
+          "lane_id": "qwen3.8-max@DTE:de-vip-pro"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-seedance-2-0-official",
+      "name": "Seedance 2.0 · 官方直连",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 2.066130864,
+          "retail_cny": 2.1661308,
+          "lane_id": "seedance-2-0-official@NT45:official45"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 2.066130864,
+          "retail_cny": 2.1661309,
+          "lane_id": "seedance-2-0-official@NT45:official45"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "mini",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.128106384,
+          "retail_cny": 0.2281064,
+          "lane_id": "seedance-2-0-official@TPR:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "mini",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.128106384,
+          "retail_cny": 0.2281064,
+          "lane_id": "seedance-2-0-official@TPR:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "fast",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.6272000000000001,
+          "retail_cny": 0.7272,
+          "lane_id": "seedance-2-0-official@AII:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "fast",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.6272000000000001,
+          "retail_cny": 0.7272,
+          "lane_id": "seedance-2-0-official@AII:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "mini",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.2754976,
+          "retail_cny": 0.3754976,
+          "lane_id": "seedance-2-0-official@TPR:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "mini",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.2754976,
+          "retail_cny": 0.3754976,
+          "lane_id": "seedance-2-0-official@TPR:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.8623999999999998,
+          "retail_cny": 0.9624,
+          "lane_id": "seedance-2-0-official@AII:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.8623999999999999,
+          "retail_cny": 0.9624,
+          "lane_id": "seedance-2-0-official@AII:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-seedance-2-0-promo",
+      "name": "Seedance 2.0 · 特价按秒",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 1.6379999999999997,
+          "retail_cny": 1.738,
+          "lane_id": "seedance-2-0-promo@SSK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 1.365,
+          "retail_cny": 1.465,
+          "lane_id": "seedance-2-0-promo@P195:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.3458,
+          "retail_cny": 0.4458,
+          "lane_id": "seedance-2-0-promo@ZHK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "480p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.3458,
+          "retail_cny": 0.4458,
+          "lane_id": "seedance-2-0-promo@ZHK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "4k"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 2.912,
+          "retail_cny": 3.012,
+          "lane_id": "seedance-2-0-promo@SSK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "4k"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 2.912,
+          "retail_cny": 3.012,
+          "lane_id": "seedance-2-0-promo@SSK:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "mini",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.319774,
+          "retail_cny": 0.419774,
+          "lane_id": "seedance-2-0-promo@TPR:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "mini",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.2912,
+          "retail_cny": 0.3912,
+          "lane_id": "seedance-2-0-promo@HC97:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.36399999999999993,
+          "retail_cny": 0.464,
+          "lane_id": "seedance-2-0-promo@HT20:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "quality": "标准",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 0.18199999999999997,
+          "retail_cny": 0.282,
+          "lane_id": "seedance-2-0-promo@HT20:default"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-seedance-2-5",
+      "name": "Seedance 2.5 · 官方直连",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 2.184,
+          "retail_cny": 2.284,
+          "lane_id": "seedance-2-5@PID:seedance"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 2.184,
+          "retail_cny": 2.284,
+          "lane_id": "seedance-2-5@PID:seedance"
+        }
+      ]
+    },
+    {
+      "model_name": "ycapi-seedance-2-5-promo",
+      "name": "Seedance 2.5 · 特价按秒",
+      "provider": "YCAPI",
+      "basis": "approved_snapshot",
+      "checked_at": "2026-10-31",
+      "source": "Approved procurement and retail price table 2026-10-31",
+      "prices": [
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 3.136710528,
+          "retail_cny": 3.2367106,
+          "lane_id": "seedance-2-5-promo@ZQI:noface"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "1080p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 3.136710528,
+          "retail_cny": 3.2367105,
+          "lane_id": "seedance-2-5-promo@ZQI:noface"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "5",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 1.232,
+          "retail_cny": 1.332,
+          "lane_id": "seedance-2-5-promo@HV72:default"
+        },
+        {
+          "params": {
+            "aspect_ratio": "16:9",
+            "count": 1,
+            "duration": "10",
+            "mode": "text-to-video",
+            "resolution": "720p"
+          },
+          "direction": "",
+          "unit": "CNY / generated output second, averaged over native clip",
+          "procurement_cny": 1.232,
+          "retail_cny": 1.332,
+          "lane_id": "seedance-2-5-promo@HV72:default"
+        }
+      ]
+    },
+    {
+      "model_name": "MiniMax-H3",
+      "name": "MiniMax-H3",
+      "provider": "Metaso",
+      "basis": "public_reference_estimate",
+      "checked_at": "2026-10-31",
+      "source": "https://metaso.cn/minimax-h3 ; standard <=15s reference points10.2/17 per second,5.7 per extra image;4399CNY/500000points; checked2026-10-31; estimate, not account invoice",
+      "prices": [
+        {
+          "params": {
+            "resolution": "768P",
+            "component": "output_and_reference_video"
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.0897396,
+          "retail_cny": 0.30000007
+        },
+        {
+          "params": {
+            "resolution": "2K",
+            "component": "output_and_reference_video"
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.149566,
+          "retail_cny": 0.30000007
+        },
+        {
+          "params": {
+            "component": "extra_reference_image",
+            "free_images": 5
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.0501486,
+          "retail_cny": 0.05
+        }
+      ]
+    }
+  ]
+}
