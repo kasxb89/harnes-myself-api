@@ -16,31 +16,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDownIcon } from 'lucide-react'
-import * as React from 'react'
-import { enUS, fr, ja, ru, vi, zhCN, zhTW } from 'react-day-picker/locale'
+import { CalendarDays, ChevronDown, Clock3 } from 'lucide-react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  browserTimeZone,
+  calendarLocale,
+  dateInputValue,
+  parseDateTime,
+  timeInputValue,
+} from '@/components/date-time-utils'
+import { TimeInput } from '@/components/time-input'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
+  PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import dayjs from '@/lib/dayjs'
 import { cn } from '@/lib/utils'
-
-const calendarLocales = {
-  en: enUS,
-  zhCN,
-  zhTW,
-  fr,
-  ru,
-  ja,
-  vi,
-} as const
 
 interface DateTimePickerProps {
   value?: Date
@@ -49,122 +46,178 @@ interface DateTimePickerProps {
   className?: string
 }
 
-export function DateTimePicker({
-  value,
-  onChange,
-  placeholder,
-  className,
-}: DateTimePickerProps) {
+export function DateTimePicker(props: DateTimePickerProps) {
   const { t, i18n } = useTranslation()
-  const placeholderText = placeholder ?? t('Select date')
-  const calendarLocale =
-    calendarLocales[i18n.language as keyof typeof calendarLocales] ?? enUS
+  const dateId = useId()
+  const errorId = useId()
+  const [open, setOpen] = useState(false)
+  const [date, setDate] = useState(dateInputValue(props.value))
+  const [time, setTime] = useState(timeInputValue(props.value))
+  const [month, setMonth] = useState(props.value ?? new Date())
+  const parsed = parseDateTime(date, time)
+  const invalid = Boolean(date && !parsed)
+  const selected = parseDateTime(date)
   const currentYear = new Date().getFullYear()
-  const [open, setOpen] = React.useState(false)
-  const [date, setDate] = React.useState<Date | undefined>(value)
-  const [month, setMonth] = React.useState<Date | undefined>(value)
-  const [time, setTime] = React.useState<string>('00:00:00')
-
-  React.useEffect(() => {
-    setDate(value)
-    setMonth(value)
-    if (value) {
-      setTime(dayjs(value).format('HH:mm:ss'))
+  const displayDate = dateInputValue(props.value)
+  const onOpenChange = (next: boolean) => {
+    if (next) {
+      setDate(dateInputValue(props.value))
+      setTime(timeInputValue(props.value))
+      setMonth(props.value && displayDate ? props.value : new Date())
     }
-  }, [value])
-
-  const handleDateSelect = (selectedDate: Date | undefined) => {
-    if (selectedDate) {
-      const [hours, minutes, seconds = 0] = time.split(':').map(Number)
-      const newDate = new Date(selectedDate)
-      newDate.setHours(hours, minutes, seconds, 0)
-      setDate(newDate)
-      setMonth(newDate)
-      onChange?.(newDate)
-      setOpen(false)
-    } else {
-      setDate(undefined)
-      setMonth(undefined)
-      onChange?.(undefined)
-    }
+    setOpen(next)
   }
-
-  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newTime = e.target.value
-    // The browser reports an emptied or half-cleared field as ''. Keep the
-    // current time: the field shows it again and no invalid date goes out.
-    if (!newTime) return
-    setTime(newTime)
-
-    if (date) {
-      // A browser may omit :00 seconds from the value.
-      const [hours, minutes, seconds = 0] = newTime.split(':').map(Number)
-      const newDate = new Date(date)
-      newDate.setHours(hours, minutes, seconds, 0)
-      setDate(newDate)
-      onChange?.(newDate)
-    }
-  }
-
-  const handleClear = () => {
-    setDate(undefined)
-    setMonth(undefined)
-    setTime('00:00:00')
-    onChange?.(undefined)
-  }
-
   return (
-    <div className={cn('flex gap-2', className)}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              variant='outline'
-              className={cn(
-                'flex-1 justify-between font-normal',
-                !date && 'text-muted-foreground'
-              )}
-            />
-          }
-        >
-          {date ? dayjs(date).format('YYYY-MM-DD') : placeholderText}
-          <ChevronDownIcon className='h-4 w-4 opacity-50' />
-        </PopoverTrigger>
-        <PopoverContent className='w-auto overflow-hidden p-0' align='start'>
-          <Calendar
-            mode='single'
-            selected={date}
-            month={month}
-            onMonthChange={setMonth}
-            captionLayout='dropdown'
-            onSelect={handleDateSelect}
-            locale={calendarLocale}
-            startMonth={new Date(currentYear - 100, 0)}
-            endMonth={new Date(currentYear + 100, 11)}
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger
+        render={
+          <Button
+            type='button'
+            variant='outline'
+            className={cn(
+              'h-10 w-full min-w-0 justify-start gap-2 rounded-lg font-normal',
+              !displayDate && 'text-muted-foreground',
+              props.className
+            )}
           />
-        </PopoverContent>
-      </Popover>
-      <Input
-        type='time'
-        step={1}
-        value={time}
-        aria-label={t('Time')}
-        onChange={handleTimeChange}
-        className='w-32 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none'
-        disabled={!date}
-      />
-      {date && (
-        <Button
-          type='button'
-          variant='outline'
-          size='icon'
-          onClick={handleClear}
-          className='shrink-0'
-          aria-label='Clear'
-        >
-          <span aria-hidden='true'>✕</span>
-        </Button>
-      )}
-    </div>
+        }
+      >
+        <CalendarDays
+          aria-hidden='true'
+          className='text-muted-foreground size-4 shrink-0'
+        />
+        <span className='min-w-0 flex-1 truncate text-start font-mono text-sm tabular-nums'>
+          {displayDate
+            ? `${displayDate} ${timeInputValue(props.value)}`
+            : (props.placeholder ?? t('Select date'))}
+        </span>
+        <ChevronDown
+          aria-hidden='true'
+          className='text-muted-foreground size-3.5 shrink-0'
+        />
+      </PopoverTrigger>
+      <PopoverContent
+        align='start'
+        collisionPadding={12}
+        className='max-h-[min(720px,var(--available-height,calc(100dvh-1.5rem)))] w-[min(340px,calc(100vw-1.5rem))] gap-0 overflow-hidden rounded-xl p-0'
+      >
+        <div className='shrink-0 border-b px-4 py-3'>
+          <PopoverTitle>{t('Date and time')}</PopoverTitle>
+          <p className='text-muted-foreground mt-1 text-xs'>
+            {t('Browser time zone: {{zone}}', { zone: browserTimeZone() })}
+          </p>
+        </div>
+        <div className='min-h-0 overflow-y-auto'>
+          <div className='flex justify-center px-2 pt-2'>
+            <Calendar
+              mode='single'
+              required
+              selected={selected}
+              month={month}
+              onMonthChange={setMonth}
+              captionLayout='dropdown'
+              onSelect={(value) => {
+                setDate(dateInputValue(value))
+                setMonth(value)
+              }}
+              locale={calendarLocale(i18n.language)}
+              startMonth={new Date(currentYear - 100, 0)}
+              endMonth={new Date(currentYear + 100, 11)}
+              className='[--cell-size:--spacing(9)]'
+            />
+          </div>
+          <div className='space-y-3 px-4 pt-3 pb-4'>
+            <div className='space-y-1.5'>
+              <label
+                htmlFor={dateId}
+                className='text-muted-foreground text-xs font-medium'
+              >
+                {t('Date')}
+              </label>
+              <Input
+                id={dateId}
+                value={date}
+                placeholder='YYYY-MM-DD'
+                autoComplete='off'
+                aria-invalid={Boolean(date && !selected)}
+                aria-describedby={invalid ? errorId : undefined}
+                className='h-10 font-mono tabular-nums'
+                onChange={(event) => {
+                  setDate(event.target.value)
+                  const next = parseDateTime(event.target.value)
+                  if (next) setMonth(next)
+                }}
+              />
+            </div>
+            <div className='space-y-1.5'>
+              <span className='text-muted-foreground text-xs font-medium'>
+                {t('Time')}
+              </span>
+              <TimeInput
+                label={t('Time')}
+                value={time}
+                onChange={setTime}
+                invalid={invalid && Boolean(selected)}
+              />
+            </div>
+            {invalid && (
+              <p id={errorId} role='alert' className='text-destructive text-xs'>
+                {t('Enter a valid date and 24-hour time.')}
+              </p>
+            )}
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              className='w-full'
+              onClick={() => {
+                const now = new Date()
+                setDate(dateInputValue(now))
+                setTime(timeInputValue(now))
+                setMonth(now)
+              }}
+            >
+              <Clock3 aria-hidden='true' className='size-3.5' />
+              {t('Use current date and time')}
+            </Button>
+          </div>
+        </div>
+        <div className='bg-muted/20 flex shrink-0 items-center justify-between gap-2 border-t p-3'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            onClick={() => {
+              props.onChange?.(undefined)
+              setOpen(false)
+            }}
+          >
+            {t('Clear')}
+          </Button>
+          <div className='flex gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => setOpen(false)}
+            >
+              {t('Cancel')}
+            </Button>
+            <Button
+              type='button'
+              size='sm'
+              disabled={!parsed}
+              onClick={() => {
+                if (!parsed) return
+                props.onChange?.(parsed)
+                setOpen(false)
+              }}
+            >
+              {t('Confirm')}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

@@ -434,11 +434,29 @@ it('invalid dates block applying and a today preset is capped to the current tim
   const user = userEvent.setup()
   const period = screen.getByRole('group', { name: 'History period' })
   await user.click(within(period).getByRole('button'))
-  fireEvent.change(screen.getByLabelText('Start Time'), {
-    target: { value: '2026-01-01T00:00' },
+  fireEvent.change(screen.getByLabelText('Start date'), {
+    target: { value: '2026-01-01' },
   })
-  fireEvent.change(screen.getByLabelText('End Time'), {
-    target: { value: '2026-03-01T00:00' },
+  fireEvent.change(screen.getByLabelText('Start Time · Hours'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Seconds'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End date'), {
+    target: { value: '2026-03-01' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Hours'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Seconds'), {
+    target: { value: '00' },
   })
   await user.click(screen.getByRole('button', { name: 'Confirm' }))
   expect(screen.getByRole('button', { name: 'Apply filters' })).toBeDisabled()

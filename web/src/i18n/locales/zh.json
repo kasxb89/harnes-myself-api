@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "当天有消费或 API 错误日志的去重账号",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "按北京时间（UTC+8）当天零点起统计，每项按账号去重；日活不随历史筛选变化。",
     "Today starts at 00:00 Beijing time (UTC+8)": "按北京时间（UTC+8）当天零点起统计",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "按当前时间和全部筛选条件统计有消费或 API 错误日志的去重账号，覆盖全部分页"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "按当前时间和全部筛选条件统计有消费或 API 错误日志的去重账号，覆盖全部分页",
+    "Hours": "时",
+    "Minutes": "分",
+    "Seconds": "秒",
+    "Date": "日期",
+    "End date": "结束日期",
+    "Date and time": "日期和时间",
+    "Browser time zone: {{zone}}": "当前时区：{{zone}}",
+    "Enter a valid date and 24-hour time.": "请输入有效日期和 24 小时时间。",
+    "Use current date and time": "设为当前时间",
+    "Choose date and time range": "选择日期和时间范围",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "在日历中选择范围，再微调时、分、秒。",
+    "Quick select": "快捷选择",
+    "Start time must not be later than end time.": "开始时间不能晚于结束时间。",
+    "Choose an end date to complete the range.": "请选择结束日期，完成范围选择。"
   }
 }

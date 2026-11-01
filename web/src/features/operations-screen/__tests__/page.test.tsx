@@ -26,6 +26,7 @@ import {
 } from '@tanstack/react-router'
 import {
   act,
+  fireEvent,
   cleanup,
   render,
   screen,
@@ -483,7 +484,7 @@ it('keeps the selected profit route across fullscreen entry and exit after start
       screen.getByRole('button', { name: /\d{4}-\d{2}-.*~/ })
     )
     expect(document.fullscreenElement).toContainElement(
-      screen.getByRole('textbox', { name: 'Start Time' })
+      screen.getByRole('textbox', { name: 'Start date' })
     )
     await userEvent.keyboard('{Escape}')
     await userEvent.click(
@@ -576,20 +577,28 @@ it('lets an operator paste a model and type or choose times, and applies them on
   await userEvent.paste('deepseek-flash')
   expect(requests).toHaveLength(1)
   await userEvent.click(screen.getByRole('button', { name: /\d{4}-\d{2}-.*~/ }))
-  const start = screen.getByRole('textbox', { name: 'Start Time' })
-  const end = screen.getByRole('textbox', { name: 'End Time' })
+  const start = screen.getByRole('textbox', { name: 'Start date' })
+  const end = screen.getByRole('textbox', { name: 'End date' })
   await userEvent.clear(start)
-  await userEvent.type(start, '2026-02-30 00:00:00')
+  await userEvent.type(start, '2026-02-30')
   expect(start).toHaveAttribute('aria-invalid', 'true')
   expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   expect(requests).toHaveLength(1)
   await userEvent.clear(start)
-  await userEvent.type(start, '2026-10-20 00:00:00')
+  await userEvent.type(start, '2026-10-20')
   await userEvent.clear(end)
-  await userEvent.type(end, '2026-10-20 01:00:00')
-  expect(
-    screen.getByRole('button', { name: 'Choose start date' })
-  ).toBeVisible()
+  await userEvent.type(end, '2026-10-20')
+  for (const [label, value] of [
+    ['Start Time · Hours', '00'],
+    ['Start Time · Minutes', '00'],
+    ['Start Time · Seconds', '00'],
+    ['End Time · Hours', '01'],
+    ['End Time · Minutes', '00'],
+    ['End Time · Seconds', '00'],
+  ] as const) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } })
+  }
+  expect(screen.getByRole('group', { name: 'Start Time' })).toBeVisible()
   await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
   expect(requests).toHaveLength(1)
   await userEvent.click(screen.getByRole('button', { name: 'Apply filters' }))

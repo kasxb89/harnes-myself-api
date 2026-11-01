@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "Tài khoản duy nhất có nhật ký tiêu thụ hoặc lỗi API hôm nay",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "Tính từ 00:00 giờ Bắc Kinh (UTC+8), mỗi tài khoản một lần cho mỗi chỉ số. Bộ lọc lịch sử không đổi tổng ngày.",
     "Today starts at 00:00 Beijing time (UTC+8)": "Tính từ 00:00 giờ Bắc Kinh (UTC+8)",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Tài khoản duy nhất có nhật ký tiêu thụ hoặc lỗi API khớp thời gian và mọi bộ lọc, trên tất cả các trang"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Tài khoản duy nhất có nhật ký tiêu thụ hoặc lỗi API khớp thời gian và mọi bộ lọc, trên tất cả các trang",
+    "Hours": "Giờ",
+    "Minutes": "Phút",
+    "Seconds": "Giây",
+    "Date": "Ngày",
+    "End date": "Ngày kết thúc",
+    "Date and time": "Ngày và giờ",
+    "Browser time zone: {{zone}}": "Múi giờ trình duyệt: {{zone}}",
+    "Enter a valid date and 24-hour time.": "Nhập ngày và giờ hợp lệ theo định dạng 24 giờ.",
+    "Use current date and time": "Dùng ngày giờ hiện tại",
+    "Choose date and time range": "Chọn khoảng ngày giờ",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "Chọn ngày trên lịch, rồi chỉnh giờ, phút và giây.",
+    "Quick select": "Chọn nhanh",
+    "Start time must not be later than end time.": "Thời gian bắt đầu không được sau thời gian kết thúc.",
+    "Choose an end date to complete the range.": "Chọn ngày kết thúc để hoàn thành khoảng thời gian."
   }
 }

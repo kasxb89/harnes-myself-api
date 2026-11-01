@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "Comptes distincts avec des journaux de consommation ou d’erreur API aujourd’hui",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "Depuis minuit à Pékin (UTC+8), un compte par indicateur. Les filtres historiques ne modifient pas ces totaux.",
     "Today starts at 00:00 Beijing time (UTC+8)": "Depuis minuit à Pékin (UTC+8)",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Comptes distincts avec des journaux de consommation ou d’erreur API selon la période et tous les filtres, sur toutes les pages"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Comptes distincts avec des journaux de consommation ou d’erreur API selon la période et tous les filtres, sur toutes les pages",
+    "Hours": "Heures",
+    "Minutes": "Minutes",
+    "Seconds": "Secondes",
+    "Date": "Date",
+    "End date": "Date de fin",
+    "Date and time": "Date et heure",
+    "Browser time zone: {{zone}}": "Fuseau horaire du navigateur : {{zone}}",
+    "Enter a valid date and 24-hour time.": "Saisissez une date et une heure valides au format 24 heures.",
+    "Use current date and time": "Utiliser la date et l’heure actuelles",
+    "Choose date and time range": "Choisir une plage de dates et d’heures",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "Sélectionnez les dates, puis ajustez les heures, minutes et secondes.",
+    "Quick select": "Sélection rapide",
+    "Start time must not be later than end time.": "Le début ne peut pas être postérieur à la fin.",
+    "Choose an end date to complete the range.": "Choisissez une date de fin pour compléter la plage."
   }
 }

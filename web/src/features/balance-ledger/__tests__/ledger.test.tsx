@@ -460,22 +460,41 @@ it('does not request ledger data for ordinary users and redirects them at the ro
     Route.options.beforeLoad?.({} as never)
   ).rejects.toMatchObject({ options: { to: '/403' } })
 })
-it('does not request an invalid date range and hides the preceding data', async () => {
+it('blocks an invalid draft before applying and keeps the preceding ledger data', async () => {
   const get = setup()
   await screen.findByText('bob')
   await userEvent.click(screen.getByRole('button', { name: 'Date Range' }))
-  fireEvent.change(screen.getByLabelText('Start Time'), {
-    target: { value: '2026-10-20T12:00:00' },
+  fireEvent.change(screen.getByLabelText('Start date'), {
+    target: { value: '2026-10-20' },
   })
-  fireEvent.change(screen.getByLabelText('End Time'), {
-    target: { value: '2026-10-19T12:00:00' },
+  fireEvent.change(screen.getByLabelText('Start Time · Hours'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Seconds'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End date'), {
+    target: { value: '2026-10-19' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Hours'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Seconds'), {
+    target: { value: '00' },
   })
   const count = get.mock.calls.length
-  await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   expect(
-    await screen.findByText('End time must be after start time')
+    screen.getByText('Start time must not be later than end time.')
   ).toBeVisible()
-  expect(screen.queryByText('bob')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.getByText('bob')).toBeVisible()
   expect(get).toHaveBeenCalledTimes(count)
 })
 

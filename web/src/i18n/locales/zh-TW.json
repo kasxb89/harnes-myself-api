@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "當天有消費或 API 錯誤日誌的不重複帳號",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "依北京時間（UTC+8）當天零點起統計，每項依帳號去重；日活不隨歷史篩選變化。",
     "Today starts at 00:00 Beijing time (UTC+8)": "依北京時間（UTC+8）當天零點起統計",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "依目前時間及所有篩選條件統計有消費或 API 錯誤日誌的不重複帳號，涵蓋所有分頁"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "依目前時間及所有篩選條件統計有消費或 API 錯誤日誌的不重複帳號，涵蓋所有分頁",
+    "Hours": "時",
+    "Minutes": "分",
+    "Seconds": "秒",
+    "Date": "日期",
+    "End date": "結束日期",
+    "Date and time": "日期與時間",
+    "Browser time zone: {{zone}}": "目前時區：{{zone}}",
+    "Enter a valid date and 24-hour time.": "請輸入有效日期及 24 小時時間。",
+    "Use current date and time": "設為目前時間",
+    "Choose date and time range": "選擇日期與時間範圍",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "在月曆選擇範圍，再微調時、分、秒。",
+    "Quick select": "快速選擇",
+    "Start time must not be later than end time.": "開始時間不能晚於結束時間。",
+    "Choose an end date to complete the range.": "請選擇結束日期，完成範圍選擇。"
   }
 }

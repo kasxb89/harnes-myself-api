@@ -168,7 +168,10 @@ it.each([
         <AuditLogViewer scope='self' />
       </QueryClientProvider>
     )
-    const cell = await screen.findByRole('cell', { name: new RegExp(headline) })
+    // Wait for the actual row content before computing accessible cell names.
+    // Polling the whole role tree can starve React Query on a busy runner.
+    await screen.findByText(headline, { exact: true })
+    const cell = screen.getByRole('cell', { name: new RegExp(headline) })
     expect(cell).toHaveTextContent(headline)
     if ('id' in params || 'target_user_id' in params) {
       expect(cell).toHaveTextContent('(ID: 11)')
@@ -383,7 +386,8 @@ it.each([
         </QueryClientProvider>
       </I18nextProvider>
     )
-    expect(await screen.findByRole('cell', { name: single })).toBeVisible()
+    await screen.findAllByText('alice', { exact: true })
+    expect(screen.getByRole('cell', { name: single })).toBeVisible()
     expect(screen.getByRole('cell', { name: batch })).toBeVisible()
     expect(
       screen.queryByRole('cell', { name: 'channel.status_update' })
@@ -446,8 +450,17 @@ it('filters own access history by result, generation and time and resets paginat
     await screen.findByRole('option', { name: 'Historical tokens' })
   )
   await user.click(screen.getByRole('button', { name: 'Date Range' }))
-  fireEvent.change(screen.getByLabelText('Start Time'), {
-    target: { value: '2026-09-01T12:00' },
+  fireEvent.change(screen.getByLabelText('Start date'), {
+    target: { value: '2026-09-01' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Hours'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Seconds'), {
+    target: { value: '00' },
   })
   await user.click(screen.getByRole('button', { name: 'Confirm' }))
   await waitFor(() =>

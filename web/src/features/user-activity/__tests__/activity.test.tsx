@@ -319,7 +319,7 @@ it('shows readable client states and accessible details on mobile cards', async 
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
 })
 
-it('does not send an invalid date range and hides the previous sessions', async () => {
+it('blocks an invalid draft locally and preserves the last applied sessions', async () => {
   const get = setup()
   await screen.findByText('alice')
   await userEvent.click(
@@ -328,20 +328,39 @@ it('does not send an invalid date range and hides the previous sessions', async 
   await userEvent.click(
     screen.getByRole('button', { name: /^\d{4}-\d{2}-\d{2}/ })
   )
-  fireEvent.change(screen.getByLabelText('Start Time'), {
-    target: { value: '2026-10-20T12:00:00' },
+  fireEvent.change(screen.getByLabelText('Start date'), {
+    target: { value: '2026-10-20' },
   })
-  fireEvent.change(screen.getByLabelText('End Time'), {
-    target: { value: '2026-10-19T12:00:00' },
+  fireEvent.change(screen.getByLabelText('Start Time · Hours'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Seconds'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End date'), {
+    target: { value: '2026-10-19' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Hours'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Minutes'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Seconds'), {
+    target: { value: '00' },
   })
   const requests = get.mock.calls.length
-  await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
   expect(
-    await screen.findByText('End time must be after start time')
+    screen.getByText('Start time must not be later than end time.')
   ).toBeVisible()
-  expect(screen.queryByText('alice')).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.getByText('alice')).toBeVisible()
   expect(get).toHaveBeenCalledTimes(requests)
-  expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
 })
 it('requests only background sessions when the resident status is chosen', async () => {
   const get = setup()

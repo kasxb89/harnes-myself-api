@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "Уникальные аккаунты с журналами расхода или ошибок API сегодня",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "С 00:00 по Пекину (UTC+8). Аккаунт учитывается один раз в каждой метрике. Исторические фильтры не меняют итоги дня.",
     "Today starts at 00:00 Beijing time (UTC+8)": "С 00:00 по Пекину (UTC+8)",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Уникальные аккаунты с расходом или ошибками API за выбранное время по всем фильтрам, на всех страницах"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Уникальные аккаунты с расходом или ошибками API за выбранное время по всем фильтрам, на всех страницах",
+    "Hours": "Часы",
+    "Minutes": "Минуты",
+    "Seconds": "Секунды",
+    "Date": "Дата",
+    "End date": "Дата окончания",
+    "Date and time": "Дата и время",
+    "Browser time zone: {{zone}}": "Часовой пояс браузера: {{zone}}",
+    "Enter a valid date and 24-hour time.": "Введите корректную дату и время в 24-часовом формате.",
+    "Use current date and time": "Установить текущую дату и время",
+    "Choose date and time range": "Выберите диапазон дат и времени",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "Выберите даты в календаре и уточните часы, минуты и секунды.",
+    "Quick select": "Быстрый выбор",
+    "Start time must not be later than end time.": "Время начала не может быть позже времени окончания.",
+    "Choose an end date to complete the range.": "Выберите дату окончания диапазона."
   }
 }

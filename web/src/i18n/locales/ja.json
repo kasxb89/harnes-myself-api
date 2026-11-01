@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "今日の消費または API エラーログにある重複のないアカウント",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "北京時間（UTC+8）の当日0時から集計。指標ごとに各アカウントを1回計上し、履歴フィルターは適用しません。",
     "Today starts at 00:00 Beijing time (UTC+8)": "北京時間（UTC+8）の当日0時から集計",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "選択した期間と全フィルターに一致する消費または API エラーログのアカウント数。全ページで重複を除外"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "選択した期間と全フィルターに一致する消費または API エラーログのアカウント数。全ページで重複を除外",
+    "Hours": "時",
+    "Minutes": "分",
+    "Seconds": "秒",
+    "Date": "日付",
+    "End date": "終了日",
+    "Date and time": "日付と時刻",
+    "Browser time zone: {{zone}}": "ブラウザーのタイムゾーン：{{zone}}",
+    "Enter a valid date and 24-hour time.": "有効な日付と24時間形式の時刻を入力してください。",
+    "Use current date and time": "現在の日時を設定",
+    "Choose date and time range": "日付と時刻の範囲を選択",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "カレンダーで日付を選び、時・分・秒を調整します。",
+    "Quick select": "クイック選択",
+    "Start time must not be later than end time.": "開始日時は終了日時以前にしてください。",
+    "Choose an end date to complete the range.": "終了日を選んで範囲を確定してください。"
   }
 }

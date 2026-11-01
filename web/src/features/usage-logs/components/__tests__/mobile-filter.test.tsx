@@ -128,11 +128,29 @@ it('applies the selected mobile date range directly and resets pagination while 
   const router = await renderMobileFilter()
   const user = userEvent.setup()
   await user.click(screen.getByRole('button', { name: /^\d{4}-\d{2}/ }))
-  fireEvent.change(screen.getByLabelText('Start Time'), {
-    target: { value: '2026-09-07T09:30' },
+  fireEvent.change(screen.getByLabelText('Start date'), {
+    target: { value: '2026-09-07' },
   })
-  fireEvent.change(screen.getByLabelText('End Time'), {
-    target: { value: '2026-09-08T17:45' },
+  fireEvent.change(screen.getByLabelText('Start Time · Hours'), {
+    target: { value: '09' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Minutes'), {
+    target: { value: '30' },
+  })
+  fireEvent.change(screen.getByLabelText('Start Time · Seconds'), {
+    target: { value: '00' },
+  })
+  fireEvent.change(screen.getByLabelText('End date'), {
+    target: { value: '2026-09-08' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Hours'), {
+    target: { value: '17' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Minutes'), {
+    target: { value: '45' },
+  })
+  fireEvent.change(screen.getByLabelText('End Time · Seconds'), {
+    target: { value: '00' },
   })
   await user.click(screen.getByRole('button', { name: 'Confirm' }))
   await waitFor(() =>
@@ -344,4 +362,20 @@ it('shows the seconds of the selected range on the trigger', () => {
       name: '2026-09-07 09:30:15 ~ 2026-09-08 17:45:59',
     })
   ).toBeVisible()
+})
+
+it('blocks a reversed custom range instead of submitting it', async () => {
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  render(
+    <CompactDateTimeRangePicker
+      start={new Date(2026, 8, 9, 12)}
+      end={new Date(2026, 8, 8, 12)}
+      onChange={onChange}
+    />
+  )
+  await user.click(screen.getByRole('button', { name: /^2026/ }))
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toBeVisible()
+  expect(onChange).not.toHaveBeenCalled()
 })

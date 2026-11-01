@@ -72,3 +72,32 @@ test('keeps French on the French calendar locale', async () => {
   render(<DatePicker selected={selected} onSelect={() => undefined} />)
   expect(await openCalendar()).toHaveTextContent('fr')
 })
+
+test.each([
+  ['en', 'en-US'],
+  ['zhCN', 'zh-CN'],
+  ['zhTW', 'zh-TW'],
+  ['fr', 'fr'],
+  ['ru', 'ru'],
+  ['ja', 'ja'],
+  ['vi', 'vi'],
+  ['unknown-locale', 'en-US'],
+])(
+  'uses the correct locale for %s in the redesigned selectors',
+  async (language, code) => {
+    await setInterfaceLanguage(language)
+    const picker = render(
+      <DateTimePicker value={selected} onChange={() => undefined} />
+    )
+    expect(await openCalendar()).toHaveTextContent(code)
+    picker.unmount()
+  }
+)
+
+test('switching language while the calendar is open updates the calendar locale', async () => {
+  await setInterfaceLanguage('en')
+  render(<DatePicker selected={selected} onSelect={() => undefined} />)
+  expect(await openCalendar()).toHaveTextContent('en-US')
+  await setInterfaceLanguage('zhTW')
+  expect(screen.getByTestId('calendar-locale')).toHaveTextContent('zh-TW')
+})

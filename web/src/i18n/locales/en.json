@@ -8704,6 +8704,20 @@
     "Unique accounts with consumption or API error logs today": "Unique accounts with consumption or API error logs today",
     "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.",
     "Today starts at 00:00 Beijing time (UTC+8)": "Today starts at 00:00 Beijing time (UTC+8)",
-    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages"
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages",
+    "Hours": "Hours",
+    "Minutes": "Minutes",
+    "Seconds": "Seconds",
+    "Date": "Date",
+    "End date": "End date",
+    "Date and time": "Date and time",
+    "Browser time zone: {{zone}}": "Browser time zone: {{zone}}",
+    "Enter a valid date and 24-hour time.": "Enter a valid date and 24-hour time.",
+    "Use current date and time": "Use current date and time",
+    "Choose date and time range": "Choose date and time range",
+    "Select dates on the calendar, then fine-tune hours, minutes and seconds.": "Select dates on the calendar, then fine-tune hours, minutes and seconds.",
+    "Quick select": "Quick select",
+    "Start time must not be later than end time.": "Start time must not be later than end time.",
+    "Choose an end date to complete the range.": "Choose an end date to complete the range."
   }
 }
