@@ -343,6 +343,7 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&UserOnboardingSurvey{},
 		&WalletFundingLot{},
 		&WalletFundingRequest{},
 		&WalletFundingAllocation{},

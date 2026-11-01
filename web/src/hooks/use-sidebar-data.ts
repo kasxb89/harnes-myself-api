@@ -136,6 +136,12 @@ export function useSidebarData(): SidebarData {
                 requiredRole: ROLE.ADMIN,
               },
               {
+                title: t('User questionnaires'),
+                url: '/user-surveys',
+                icon: ClipboardList,
+                requiredRole: ROLE.ADMIN,
+              },
+              {
                 title: t('User Activity'),
                 url: '/user-activity',
                 icon: Activity,

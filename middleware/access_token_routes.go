@@ -41,6 +41,11 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // Casbin-guarded routes declare themselves through
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
+	// Preview configuration and questionnaire registrations remain interactive-only.
+	"GET /api/ycapi/catalog":           accessTokenSessionRule,
+	"GET /api/ycapi/configuration":     accessTokenSessionRule,
+	"POST /api/ycapi/quote-preview":    accessTokenSessionRule,
+	"GET /api/user/onboarding-surveys": accessTokenSessionRule,
 	// Customer support configuration requires an interactive administrator session.
 	"GET /api/announcements":            accessTokenSessionRule,
 	"PUT /api/announcements":            accessTokenSessionRule,
@@ -100,6 +105,9 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/verify":                    accessTokenAnyRule,
 
 	// router/api-router.go: /api/user (self)
+	"GET /api/user/onboarding-survey":              accessTokenSessionRule,
+	"POST /api/user/onboarding-survey":             accessTokenSessionRule,
+	"POST /api/user/onboarding-survey/defer":       accessTokenSessionRule,
 	"GET /api/user/sessions":                       accessTokenSessionRule,
 	"DELETE /api/user/sessions/:sid":               accessTokenSessionRule,
 	"POST /api/user/sessions/revoke-others":        accessTokenSessionRule,

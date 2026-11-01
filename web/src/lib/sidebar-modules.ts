@@ -126,6 +126,12 @@ export const SIDEBAR_MODULE_SECTIONS: SidebarModuleSection[] = [
         descriptionKey: 'Administer user accounts and roles.',
       },
       {
+        key: 'user_surveys',
+        titleKey: 'User questionnaires',
+        descriptionKey:
+          'Review new phone registrations and product use questionnaires.',
+      },
+      {
         key: 'user_activity',
         titleKey: 'User Activity',
         descriptionKey: 'Review account activity and usage.',
@@ -373,6 +379,7 @@ export const SIDEBAR_URL_MODULES: Record<
   '/upstream-topups': { section: 'finance', module: 'upstream_topups' },
   '/users': { section: 'users', module: 'user' },
   '/user-activity': { section: 'users', module: 'user_activity' },
+  '/user-surveys': { section: 'users', module: 'user_surveys' },
   '/redemption-codes': { section: 'users', module: 'redemption' },
   '/subscriptions': { section: 'users', module: 'subscription' },
   '/channels': { section: 'models', module: 'channel' },

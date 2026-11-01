@@ -47,7 +47,7 @@ type phoneAuthTestResponse struct {
 
 func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 	t.Helper()
-	models := append([]any{&model.User{}, &model.AuthFlow{}, &model.Token{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.Log{}, &model.AuditLog{}}, model.WalletFundingModels()...)
+	models := append([]any{&model.User{}, &model.UserOnboardingSurvey{}, &model.AuthFlow{}, &model.Token{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.Log{}, &model.AuditLog{}}, model.WalletFundingModels()...)
 	var db *gorm.DB
 	dialect := common.DatabaseType(os.Getenv("TEST_TASK_DB_DIALECT"))
 	if dialect == "" || dialect == common.DatabaseTypeSQLite {
@@ -87,8 +87,8 @@ func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 		common.QuotaForNewUser, common.PhoneRegistrationBonusYuan = previousGlobal, previousBonus
 		common.UserSessionActiveLimit, common.UserSessionIssuanceLimit = previousLimit, previousIssuance
 	})
-	// No schema was added. Repeated startup migration must preserve existing
-	// flow rows, users and their unique phone identity on every real engine.
+	// Repeated startup migration must preserve existing flow rows, users and
+	// their unique phone identity while adding the separate questionnaire table.
 	legacy := model.AuthFlow{TokenHash: strings.Repeat("a", 64), Purpose: model.AuthFlowPurposeOAuth, Provider: "existing-provider", Payload: "existing-state", ExpiresAt: time.Now().Add(time.Hour)}
 	require.NoError(t, db.Create(&legacy).Error)
 	require.NoError(t, db.AutoMigrate(models...))
@@ -200,7 +200,7 @@ func TestPhoneChallengeResponseKeepsLegacyClientLoginCompatible(t *testing.T) {
 				assert.Empty(t, replay.Data.RelayKey)
 				assert.Empty(t, second.Header().Values("Set-Cookie"))
 			}
-			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}} {
+			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}, &model.UserOnboardingSurvey{}} {
 				var count int64
 				require.NoError(t, db.Model(record).Count(&count).Error)
 				assert.EqualValues(t, 1, count)
@@ -266,7 +266,7 @@ func TestPhoneChallengeDeliveryAndRecovery(t *testing.T) {
 }
 
 func TestPhoneLoginDownstreamFailureAndResponseLoss(t *testing.T) {
-	for _, failureStage := range []string{"user", "grant", "relay", "session", "seal", "receipt"} {
+	for _, failureStage := range []string{"user", "grant", "survey", "relay", "session", "seal", "receipt"} {
 		t.Run(failureStage, func(t *testing.T) {
 			db, _ := setupPhoneAuthRecovery(t)
 			phone := "+8613800138010"
@@ -282,7 +282,7 @@ func TestPhoneLoginDownstreamFailureAndResponseLoss(t *testing.T) {
 					}
 				}))
 			} else {
-				target := map[string]reflect.Type{"user": reflect.TypeFor[model.User](), "relay": reflect.TypeFor[model.Token](), "session": reflect.TypeFor[model.UserSession]()}[failureStage]
+				target := map[string]reflect.Type{"user": reflect.TypeFor[model.User](), "survey": reflect.TypeFor[model.UserOnboardingSurvey](), "relay": reflect.TypeFor[model.Token](), "session": reflect.TypeFor[model.UserSession]()}[failureStage]
 				require.NoError(t, db.Callback().Create().Before("gorm:create").Register("phone:test:fail", func(tx *gorm.DB) {
 					if tx.Statement.Schema != nil && tx.Statement.Schema.ModelType == target {
 						tx.AddError(forced)
@@ -308,7 +308,7 @@ func TestPhoneLoginDownstreamFailureAndResponseLoss(t *testing.T) {
 				_, conflict := phoneAuthRequest(t, PhoneLogin, changed)
 				assert.Equal(t, "PHONE_IDEMPOTENCY_CONFLICT", conflict.Code, "rollback must preserve immutable key binding")
 			}
-			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}} {
+			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}, &model.UserOnboardingSurvey{}} {
 				var count int64
 				require.NoError(t, db.Model(record).Count(&count).Error)
 				assert.Zero(t, count, "downstream failure must roll back identity, grant, relay and session")
@@ -332,7 +332,7 @@ func TestPhoneLoginDownstreamFailureAndResponseLoss(t *testing.T) {
 			var saved model.User
 			require.NoError(t, db.First(&saved, success.Data.User.ID).Error)
 			assert.Equal(t, 77+quotaFromYuan(10), saved.Quota)
-			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}} {
+			for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}, &model.UserOnboardingSurvey{}} {
 				var count int64
 				require.NoError(t, db.Model(record).Count(&count).Error)
 				assert.EqualValues(t, 1, count)
@@ -728,7 +728,7 @@ func TestPhoneLoginConcurrentExchangeCommitsOneIdentity(t *testing.T) {
 	require.True(t, responses[1].Success)
 	assert.Equal(t, responses[0].Data.AccessToken, responses[1].Data.AccessToken)
 	assert.Equal(t, responses[0].Data.Session.SID, responses[1].Data.Session.SID)
-	for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}} {
+	for _, record := range []any{&model.User{}, &model.Token{}, &model.UserSession{}, &model.UserOnboardingSurvey{}} {
 		var count int64
 		require.NoError(t, db.Model(record).Count(&count).Error)
 		assert.EqualValues(t, 1, count)

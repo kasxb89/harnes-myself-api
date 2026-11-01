@@ -844,7 +844,7 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 	model.LOG_DB = db
 	common.SetDatabaseTypes(common.MainDatabaseType(), common.MainDatabaseType())
 	require.False(t, db.Migrator().HasTable(&model.User{}), "refuse a shared or previously used database")
-	models := []any{&model.User{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
+	models := []any{&model.User{}, &model.UserOnboardingSurvey{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
 	require.NoError(t, db.AutoMigrate(models...))
 	require.NoError(t, db.AutoMigrate(models...))
 	var version string
@@ -930,6 +930,7 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 		{"GET", "/api/creation/admin/content", authz.CreationContentRead}, {"PUT", "/api/creation/admin/content", authz.CreationContentWrite}, {"POST", "/api/creation/admin/assets", authz.CreationContentWrite},
 		{"GET", "/api/balance-ledger/", authz.BalanceLedgerRead}, {"GET", "/api/model-profit/", authz.ModelProfitsRead}, {"GET", "/api/model-profit/cost-rules", authz.ModelProfitsRead},
 		{"GET", "/api/upstream-topup/", authz.UpstreamTopupsRead}, {"POST", "/api/upstream-topup/", authz.UpstreamTopupsWrite}, {"PUT", "/api/upstream-topup/1", authz.UpstreamTopupsWrite}, {"DELETE", "/api/upstream-topup/1", authz.UpstreamTopupsWrite},
+		{"GET", "/api/user/onboarding-surveys", authz.UserSurveysRead},
 		{"GET", "/api/client-activity/summary", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions/1", authz.UserActivityRead},
 		{"GET", "/api/media-operations", authz.MediaOperationsRead}, {"GET", "/api/media-concurrency", authz.MediaOperationsRead}, {"GET", "/api/video-usage", authz.VideoUsageRead},
 		{"GET", "/api/operations/overview", authz.OperationsRead}, {"GET", "/api/data/", authz.OperationsRead}, {"GET", "/api/data/users", authz.OperationsRead}, {"GET", "/api/data/flow", authz.OperationsRead},
@@ -953,6 +954,25 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 			require.NoError(t, authz.ClearUserPermissions(users["admin"]))
 		})
 	}
+	t.Run("questionnaire endpoints require current interactive identity", func(t *testing.T) {
+		for _, route := range []struct{ method, path string }{
+			{"GET", "/api/user/onboarding-survey"}, {"POST", "/api/user/onboarding-survey"}, {"POST", "/api/user/onboarding-survey/defer"}, {"GET", "/api/user/onboarding-surveys"},
+		} {
+			for _, credential := range []string{legacy, pat} {
+				response := request(route.method, route.path, credential, `{}`, "http://example.com")
+				assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+				assert.Contains(t, response.Body.String(), "AUTH_SESSION_REQUIRED")
+			}
+			assert.Equal(t, http.StatusUnauthorized, request(route.method, route.path, "", `{}`, "http://example.com").Code)
+		}
+		response := request("GET", "/api/user/onboarding-survey", credentials["member"], "", "")
+		assert.Equal(t, http.StatusOK, response.Code)
+		assert.Contains(t, response.Body.String(), `"status":"not_eligible"`)
+		assert.Equal(t, http.StatusForbidden, request("GET", "/api/user/onboarding-surveys", credentials["member"], "", "").Code)
+		response = request("GET", "/api/user/onboarding-surveys", credentials["root"], "", "")
+		assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		assert.Contains(t, response.Body.String(), `"items":[]`)
+	})
 	t.Run("server load is an authenticated read-only diagnostic", func(t *testing.T) {
 		path := "/api/operations/server-load"
 		assert.Equal(t, http.StatusUnauthorized, request("GET", path, "", "", "http://example.com").Code)

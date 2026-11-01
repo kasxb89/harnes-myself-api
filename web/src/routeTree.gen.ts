@@ -64,6 +64,7 @@ import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_authenticated/usage-logs/$section'
 import { Route as AuthenticatedUsageLogsAuditRouteImport } from './routes/_authenticated/usage-logs/audit'
 import { Route as AuthenticatedUserActivityIndexRouteImport } from './routes/_authenticated/user-activity/index'
+import { Route as AuthenticatedUserSurveysIndexRouteImport } from './routes/_authenticated/user-surveys/index'
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedVideoManagementIndexRouteImport } from './routes/_authenticated/video-management/index'
 import { Route as AuthenticatedVideoUsageIndexRouteImport } from './routes/_authenticated/video-usage/index'
@@ -388,6 +389,12 @@ const AuthenticatedUserActivityIndexRoute =
     path: '/user-activity/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedUserSurveysIndexRoute =
+  AuthenticatedUserSurveysIndexRouteImport.update({
+    id: '/user-surveys/',
+    path: '/user-surveys/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedUsersIndexRoute = AuthenticatedUsersIndexRouteImport.update({
   id: '/users/',
   path: '/users/',
@@ -567,6 +574,7 @@ export interface FileRoutesByFullPath {
   '/upstream-topups/': typeof AuthenticatedUpstreamTopupsIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/user-activity/': typeof AuthenticatedUserActivityIndexRoute
+  '/user-surveys/': typeof AuthenticatedUserSurveysIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/video-management/': typeof AuthenticatedVideoManagementIndexRoute
   '/video-usage/': typeof AuthenticatedVideoUsageIndexRoute
@@ -642,6 +650,7 @@ export interface FileRoutesByTo {
   '/upstream-topups': typeof AuthenticatedUpstreamTopupsIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/user-activity': typeof AuthenticatedUserActivityIndexRoute
+  '/user-surveys': typeof AuthenticatedUserSurveysIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
   '/video-management': typeof AuthenticatedVideoManagementIndexRoute
   '/video-usage': typeof AuthenticatedVideoUsageIndexRoute
@@ -721,6 +730,7 @@ export interface FileRoutesById {
   '/_authenticated/upstream-topups/': typeof AuthenticatedUpstreamTopupsIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/user-activity/': typeof AuthenticatedUserActivityIndexRoute
+  '/_authenticated/user-surveys/': typeof AuthenticatedUserSurveysIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/video-management/': typeof AuthenticatedVideoManagementIndexRoute
   '/_authenticated/video-usage/': typeof AuthenticatedVideoUsageIndexRoute
@@ -799,6 +809,7 @@ export interface FileRouteTypes {
     | '/upstream-topups/'
     | '/usage-logs/'
     | '/user-activity/'
+    | '/user-surveys/'
     | '/users/'
     | '/video-management/'
     | '/video-usage/'
@@ -874,6 +885,7 @@ export interface FileRouteTypes {
     | '/upstream-topups'
     | '/usage-logs'
     | '/user-activity'
+    | '/user-surveys'
     | '/users'
     | '/video-management'
     | '/video-usage'
@@ -952,6 +964,7 @@ export interface FileRouteTypes {
     | '/_authenticated/upstream-topups/'
     | '/_authenticated/usage-logs/'
     | '/_authenticated/user-activity/'
+    | '/_authenticated/user-surveys/'
     | '/_authenticated/users/'
     | '/_authenticated/video-management/'
     | '/_authenticated/video-usage/'
@@ -1381,6 +1394,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUserActivityIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/user-surveys/': {
+      id: '/_authenticated/user-surveys/'
+      path: '/user-surveys'
+      fullPath: '/user-surveys/'
+      preLoaderRoute: typeof AuthenticatedUserSurveysIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/users/': {
       id: '/_authenticated/users/'
       path: '/users'
@@ -1652,6 +1672,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUpstreamTopupsIndexRoute: typeof AuthenticatedUpstreamTopupsIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUserActivityIndexRoute: typeof AuthenticatedUserActivityIndexRoute
+  AuthenticatedUserSurveysIndexRoute: typeof AuthenticatedUserSurveysIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedVideoManagementIndexRoute: typeof AuthenticatedVideoManagementIndexRoute
   AuthenticatedVideoUsageIndexRoute: typeof AuthenticatedVideoUsageIndexRoute
@@ -1698,6 +1719,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUpstreamTopupsIndexRoute: AuthenticatedUpstreamTopupsIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUserActivityIndexRoute: AuthenticatedUserActivityIndexRoute,
+  AuthenticatedUserSurveysIndexRoute: AuthenticatedUserSurveysIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedVideoManagementIndexRoute:
     AuthenticatedVideoManagementIndexRoute,

@@ -384,6 +384,9 @@ func findOrCreatePhoneUserWithTx(tx *gorm.DB, phoneE164 string) (*model.User, bo
 			return nil, false, err
 		}
 	}
+	if err := model.EnrollPhoneOnboardingSurveyWithTx(tx, &created); err != nil {
+		return nil, false, err
+	}
 	return &created, true, nil
 }
 

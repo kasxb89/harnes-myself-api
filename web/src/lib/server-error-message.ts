@@ -23,6 +23,11 @@ import i18next from 'i18next'
 export const safeServerErrorMessage = Symbol('safeServerErrorMessage')
 
 const serverErrorMessageKeys = {
+  SURVEY_UNAVAILABLE: 'Questionnaire is temporarily unavailable',
+  SURVEY_INVALID_REQUEST: 'Invalid questionnaire request',
+  SURVEY_NOT_ELIGIBLE: 'This account is not eligible for the questionnaire',
+  SURVEY_ALREADY_SUBMITTED: 'Questionnaire has already been submitted',
+
   TELEGRAM_OAUTH_NOT_CONFIGURED:
     'Telegram OAuth is not configured or enabled. Please contact your administrator.',
   TELEGRAM_OAUTH_CONFLICT:
