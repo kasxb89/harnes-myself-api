@@ -1,9 +1,13 @@
 package controller
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,8 +114,16 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	authenticated.GET("/v1/tasks/:key", GetTask)
 	authenticated.GET("/v1/tasks/:key/artifacts", GetTaskArtifacts)
 	authenticated.GET("/v1/tasks/:key/artifacts/:artifact_key/content", TaskArtifactContent)
-	imageBytes, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN1kAAAAASUVORK5CYII=")
+	pixel := color.NRGBA{R: 54, G: 132, B: 196, A: 255}
+	fixtureImage := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+	fixtureImage.SetNRGBA(0, 0, pixel)
+	var encodedImage bytes.Buffer
+	require.NoError(t, png.Encode(&encodedImage, fixtureImage))
+	imageBytes := encodedImage.Bytes()
+	decodedImage, err := png.Decode(bytes.NewReader(imageBytes))
 	require.NoError(t, err)
+	require.Equal(t, image.Rect(0, 0, 1, 1), decodedImage.Bounds())
+	require.Equal(t, pixel, color.NRGBAModel.Convert(decodedImage.At(0, 0)))
 	cdnRequests := 0
 	protected := service.GetSSRFProtectedHTTPClient()
 	oldTransport := protected.Transport
@@ -122,7 +134,7 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 		assert.Empty(t, request.Header.Get("Authorization"))
 		assert.Empty(t, request.Header.Get("X-Api-Key"))
 		assert.Empty(t, request.Header.Get("Cookie"))
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/png"}, "Content-Length": []string{fmt.Sprint(len(imageBytes))}}, Body: io.NopCloser(strings.NewReader(string(imageBytes))), ContentLength: int64(len(imageBytes)), Request: request}, nil
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"image/png"}, "Content-Length": []string{fmt.Sprint(len(imageBytes))}}, Body: io.NopCloser(bytes.NewReader(imageBytes)), ContentLength: int64(len(imageBytes)), Request: request}, nil
 	})
 	sanitizeURL := func(value string) string {
 		parsed, err := url.Parse(value)
@@ -207,6 +219,10 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	call("owner_artifact_manifest", http.MethodGet, taskPath+"/artifacts", "", "owner", http.StatusOK)
 	content := call("owner_artifact_content", http.MethodGet, taskPath+"/artifacts/image-1/content", "", "owner", http.StatusOK)
 	assert.Equal(t, imageBytes, content.Body.Bytes())
+	decodedContent, err := png.Decode(bytes.NewReader(content.Body.Bytes()))
+	require.NoError(t, err)
+	require.Equal(t, image.Rect(0, 0, 1, 1), decodedContent.Bounds())
+	require.Equal(t, pixel, color.NRGBAModel.Convert(decodedContent.At(0, 0)))
 	assert.Equal(t, 1, cdnRequests)
 	for _, surface := range []struct{ name, path string }{
 		{"other_owner_task_not_found", taskPath},
@@ -225,6 +241,7 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	}
 	artifact := map[string]any{
 		"status": "LOCAL_REAL_HANDLER_HTTP_FIXTURES_VERIFIED", "verification_date": "2026-11-02", "database": string(common.MainDatabaseType()), "cases": cases, "source_files_sha256": sources,
+		"image_fixture":      map[string]any{"encoder": "Go image/png.Encode", "png_decode": "PASS", "http_content_png_decode": "PASS", "width": 1, "height": 1, "bytes": len(imageBytes), "sha256": fmt.Sprintf("%x", sha256.Sum256(imageBytes))},
 		"retention_contract": map[string]any{"plugin_key": "codebloom-image", "protocol": "openai_image", "retainResult": true, "requires_explicit_protocol_opt_in": true, "retainResult_scope": "server plugin protocol claim only; not a general ClientParameters marker", "client_metadata_has_generic_retention_marker": false, "client_opt_in": map[string]any{"x-task-plugin": map[string]any{"key": "codebloom-image", "version": "1.0.0", "api_version": 1}, "requires_response_task_id_header": true, "do_not_generalize_task_id_header": true}, "task_id_header": "X-New-Api-Task-Id", "task_body_contains_image_result": false, "recovery": "GET task status, then GET artifact manifest/content", "retained_payload": "normalized result URL/artifact metadata", "artifact_bytes_locally_persisted": service.GetTaskArtifactStore().Enabled(), "client_should_save_image_locally": true},
 		"scope":              map[string]any{"supplier_completed_result": "synthetic response injected at the existing test submit dependency; actual CodeBloom parser, host persistence, renderer, TokenAuth and GET handlers executed", "production_activation_gate_bypassed_only_in_test_dependency": true, "candidate_models_remain_unavailable": true, "production_access": 0, "paid_generations": 0, "external_network_requests": 0, "artifact_content_transport": "intercepted in memory; no Authorization/X-Api-Key/Cookie forwarded", "ownership_scope": "404 samples use ordinary relay credentials without a valid artifact capability. Existing signed capability URLs retain their separate possession-based access semantics.", "legacy_toapis": "Existing Toapis async route and client local save/cache/recovery remain unchanged; do not apply CodeBloom opt-in handling to it."},
 		"redactions":         []string{"Authorization replaced by role placeholders", "artifact access query value replaced by REDACTED_CAPABILITY"},
