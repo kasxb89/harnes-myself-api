@@ -65,6 +65,9 @@ export function CostRuleForm(props: {
       resolution_4k_cost_cny: '',
       resolution_768p_cost_cny: '',
       h3_2k_cost_cny: '',
+      resolution_480p_cost_cny: '',
+      resolution_1080p_cost_cny: '',
+      long_video_multiplier: '',
       extra_image_cost_cny: '',
       free_input_images: '',
       input_cost_per_million_cny: '',
@@ -76,6 +79,7 @@ export function CostRuleForm(props: {
     },
   })
   const kind = form.watch('kind')
+  const longVideoCosts = form.watch('long_video_multiplier') === '2'
   const fields: { name: CostInputName; label: string; type?: string }[] = [
     { name: 'channel_id', label: t('Channel ID'), type: 'number' },
     { name: 'model_name', label: t('Exact model name') },
@@ -113,6 +117,20 @@ export function CostRuleForm(props: {
         type: 'number',
       }
     )
+    if (longVideoCosts) {
+      fields.push(
+        {
+          name: 'resolution_480p_cost_cny',
+          label: t('480P video cost (CNY per second, optional)'),
+          type: 'number',
+        },
+        {
+          name: 'resolution_1080p_cost_cny',
+          label: t('1080P video cost (CNY per second, optional)'),
+          type: 'number',
+        }
+      )
+    }
   } else if (kind === 'token') {
     fields.push(
       {
@@ -205,6 +223,44 @@ export function CostRuleForm(props: {
             </FormItem>
           )}
         />
+        {kind === 'h3_video' && (
+          <FormField
+            control={form.control}
+            name='long_video_multiplier'
+            render={({ field }) => (
+              <FormItem className='flex items-start gap-2'>
+                <FormControl>
+                  <Checkbox
+                    checked={field.value === '2'}
+                    onCheckedChange={(checked) => {
+                      field.onChange(checked === true ? '2' : '')
+                      if (checked !== true) {
+                        form.setValue('resolution_480p_cost_cny', '', {
+                          shouldDirty: true,
+                        })
+                        form.setValue('resolution_1080p_cost_cny', '', {
+                          shouldDirty: true,
+                        })
+                      }
+                    }}
+                    disabled={props.saving}
+                  />
+                </FormControl>
+                <div className='space-y-1'>
+                  <FormLabel>
+                    {t('Apply double costs to 16–30 second Metaso videos')}
+                  </FormLabel>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      '16–30 second output and reference material costs are doubled; 2K remains limited to 15 seconds.'
+                    )}
+                  </p>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         <div className='grid gap-4 sm:grid-cols-2'>
           {fields.map((config) => (
             <FormField

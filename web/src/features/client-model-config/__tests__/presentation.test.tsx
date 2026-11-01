@@ -54,6 +54,11 @@ const initialConfig: ClientModelConfig = {
   default_chat_model: '',
   model_order: [],
 }
+const initialMediaDefaults = {
+  schema_version: 1,
+  default_image_model: '',
+  default_video_model: '',
+}
 const catalog = [
   { id: 'deepseek-chat', display_name: 'DeepSeek Chat', chat_eligible: true },
   { id: 'image-model', display_name: 'Image', chat_eligible: false },
@@ -73,6 +78,9 @@ beforeEach(() => {
     if (url === '/api/client-model-config') {
       return { data: { success: true, data: config } }
     }
+    if (url === '/api/client-model-config/media-defaults') {
+      return { data: { success: true, data: initialMediaDefaults } }
+    }
     return { data: { success: true, data: { models: catalog } } }
   })
   vi.spyOn(api, 'put').mockImplementation(async (url, body) => {
@@ -88,71 +96,126 @@ afterEach(() => {
   clients.splice(0).forEach((client) => client.clear())
 })
 
-async function setup() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+function presentationActions(signal: AbortSignal) {
+  // A timed-out async test can keep running. Keep its UI actions bound to its
+  // own signal so it cannot edit the next test's page through global queries.
+  const user = new Proxy(userEvent, {
+    get(target, key) {
+      const action = Reflect.get(target, key)
+      if (typeof action !== 'function') return action
+      return async (...args: unknown[]) => {
+        signal.throwIfAborted()
+        const result = await Reflect.apply(action, target, args)
+        signal.throwIfAborted()
+        return result
+      }
+    },
   })
-  clients.push(client)
-  const route = createRootRoute({ component: Outlet })
-  const page = createRoute({
-    getParentRoute: () => route,
-    path: '/',
-    component: ClientModelConfigPage,
-  })
-  const other = createRoute({
-    getParentRoute: () => route,
-    path: '/about',
-    component: () => <p>Other page</p>,
-  })
-  const router = createRouter({
-    routeTree: route.addChildren([page, other]),
-    history: createMemoryHistory({ initialEntries: ['/'] }),
-  })
-  await router.load()
-  render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  )
-  await screen.findByRole('combobox', { name: 'Default chat model' })
-  await userEvent.click(
-    screen.getByRole('tab', { name: 'Descriptions and badges' })
-  )
-  await screen.findByRole('table', { name: 'Model descriptions and badges' })
-  return { client, router }
+  let dialog: HTMLElement | undefined
+  function getDialog() {
+    signal.throwIfAborted()
+    if (!dialog) throw new Error('Open a presentation dialog before editing')
+    return dialog
+  }
+
+  async function setup() {
+    signal.throwIfAborted()
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    clients.push(client)
+    const route = createRootRoute({ component: Outlet })
+    const page = createRoute({
+      getParentRoute: () => route,
+      path: '/',
+      component: ClientModelConfigPage,
+    })
+    const other = createRoute({
+      getParentRoute: () => route,
+      path: '/about',
+      component: () => <p>Other page</p>,
+    })
+    const router = createRouter({
+      routeTree: route.addChildren([page, other]),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    })
+    await router.load()
+    signal.throwIfAborted()
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    )
+    await screen.findByRole('combobox', { name: 'Default chat model' })
+    signal.throwIfAborted()
+    await user.click(
+      screen.getByRole('tab', { name: 'Descriptions and badges' })
+    )
+    await screen.findByRole('table', { name: 'Model descriptions and badges' })
+    signal.throwIfAborted()
+    return { client, router }
+  }
+
+  async function edit(id = 'deepseek-chat') {
+    signal.throwIfAborted()
+    await user.click(
+      screen.getByRole('button', { name: `Edit presentation for ${id}` })
+    )
+    dialog = await screen.findByRole('dialog', {
+      name: 'Edit model description and badge',
+    })
+    signal.throwIfAborted()
+    return dialog
+  }
+  async function customDescription(text: string) {
+    signal.throwIfAborted()
+    await user.selectOptions(
+      within(getDialog()).getByRole('combobox', {
+        name: 'Description display',
+      }),
+      'custom'
+    )
+    fireEvent.change(
+      within(getDialog()).getByRole('textbox', { name: 'Custom description' }),
+      { target: { value: text } }
+    )
+  }
+  async function apply() {
+    signal.throwIfAborted()
+    await user.click(
+      within(getDialog()).getByRole('button', { name: 'Apply to draft' })
+    )
+    await waitFor(() => {
+      signal.throwIfAborted()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    signal.throwIfAborted()
+  }
+  async function save() {
+    signal.throwIfAborted()
+    await user.click(
+      screen.getByRole('button', { name: 'Save descriptions and badges' })
+    )
+  }
+  return {
+    setup,
+    edit,
+    customDescription,
+    apply,
+    save,
+    userEvent: user,
+    getDialog,
+  }
 }
 
-async function edit(id = 'deepseek-chat') {
-  await userEvent.click(
-    screen.getByRole('button', { name: `Edit presentation for ${id}` })
-  )
-  return screen.findByRole('dialog', {
-    name: 'Edit model description and badge',
-  })
-}
-async function customDescription(text: string) {
-  await userEvent.selectOptions(
-    screen.getByRole('combobox', { name: 'Description display' }),
-    'custom'
-  )
-  fireEvent.change(
-    screen.getByRole('textbox', { name: 'Custom description' }),
-    { target: { value: text } }
-  )
-}
-async function apply() {
-  await userEvent.click(screen.getByRole('button', { name: 'Apply to draft' }))
-  await waitFor(() =>
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  )
-}
-async function save() {
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Save descriptions and badges' })
-  )
-}
-
-test('independent description override and hidden badge save only the presentation resource and preserve unknown exact IDs', async () => {
+test('independent description override and hidden badge save only the presentation resource and preserve unknown exact IDs', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, save, userEvent, getDialog } =
+    presentationActions(signal)
   saved = JSON.parse(
     '{"schema_version":1,"models":{"__proto__":{"description":"kept"},"retired-model":{"badge":"legacy"}}}'
   )
@@ -160,7 +223,7 @@ test('independent description override and hidden badge save only the presentati
   await edit()
   await customDescription('<b>Plain text</b>\nSecond line')
   await userEvent.selectOptions(
-    screen.getByRole('combobox', { name: 'Badge display' }),
+    within(getDialog()).getByRole('combobox', { name: 'Badge display' }),
     'hidden'
   )
   await apply()
@@ -181,7 +244,11 @@ test('independent description override and hidden badge save only the presentati
   expect(config).toEqual(initialConfig)
 })
 
-test('returning both fields to client defaults removes only that model while retaining other presentation entries', async () => {
+test('returning both fields to client defaults removes only that model while retaining other presentation entries', async ({
+  signal,
+}) => {
+  const { setup, edit, apply, save, userEvent, getDialog } =
+    presentationActions(signal)
   saved.models = {
     'deepseek-chat': { description: '', badge: 'New' },
     'retired-model': { description: 'Keep' },
@@ -189,11 +256,11 @@ test('returning both fields to client defaults removes only that model while ret
   await setup()
   await edit()
   await userEvent.selectOptions(
-    screen.getByRole('combobox', { name: 'Description display' }),
+    within(getDialog()).getByRole('combobox', { name: 'Description display' }),
     'default'
   )
   await userEvent.selectOptions(
-    screen.getByRole('combobox', { name: 'Badge display' }),
+    within(getDialog()).getByRole('combobox', { name: 'Badge display' }),
     'default'
   )
   await apply()
@@ -203,7 +270,11 @@ test('returning both fields to client defaults removes only that model while ret
   )
 })
 
-test('presentation save and discard leave unsaved default and sort drafts intact across tab switches', async () => {
+test('presentation save and discard leave unsaved default and sort drafts intact across tab switches', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, save, userEvent } =
+    presentationActions(signal)
   await setup()
   await userEvent.click(screen.getByRole('tab', { name: 'Defaults and order' }))
   await userEvent.type(
@@ -240,7 +311,11 @@ test('presentation save and discard leave unsaved default and sort drafts intact
   expect(saved.models['deepseek-chat'].description).toBe('Draft')
 })
 
-test('save failure preserves the draft and exposes an enabled retry action until a successful save', async () => {
+test('save failure preserves the draft and exposes an enabled retry action until a successful save', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, save } =
+    presentationActions(signal)
   await setup()
   await edit()
   await customDescription('Retry me')
@@ -270,7 +345,11 @@ test('save failure preserves the draft and exposes an enabled retry action until
   ).toBeDisabled()
 })
 
-test('pristine refetch accepts new metadata while dirty draft survives successful and failed refetches', async () => {
+test('pristine refetch accepts new metadata while dirty draft survives successful and failed refetches', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, userEvent } =
+    presentationActions(signal)
   const { client } = await setup()
   saved = {
     schema_version: 1,
@@ -307,12 +386,19 @@ test('pristine refetch accepts new metadata while dirty draft survives successfu
   expect(screen.getByText('New remote')).toBeVisible()
 })
 
-test('catalog failure preserves editable retired metadata', async () => {
+test('catalog failure preserves editable retired metadata', async ({
+  signal,
+}) => {
+  const { edit, customDescription, apply, save, userEvent } =
+    presentationActions(signal)
   saved.models = { 'retired-model': { badge: '' } }
   vi.mocked(api.get).mockImplementation(async (url) => {
     if (url === presentationUrl) return { data: { success: true, data: saved } }
     if (url === '/api/client-model-config') {
       return { data: { success: true, data: config } }
+    }
+    if (url === '/api/client-model-config/media-defaults') {
+      return { data: { success: true, data: initialMediaDefaults } }
     }
     throw new Error('offline')
   })
@@ -351,7 +437,11 @@ test('catalog failure preserves editable retired metadata', async () => {
   )
 })
 
-test('pending save disables edits, save and discard until its response arrives', async () => {
+test('pending save disables edits, save and discard until its response arrives', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, save } =
+    presentationActions(signal)
   await setup()
   await edit()
   await customDescription('Pending')
@@ -386,7 +476,10 @@ test('pending save disables edits, save and discard until its response arrives',
   })
 })
 
-test('dialog keyboard controls expose independent display modes, focus, field errors and literal text', async () => {
+test('dialog keyboard controls expose independent display modes, focus, field errors and literal text', async ({
+  signal,
+}) => {
+  const { setup, edit, userEvent, getDialog } = presentationActions(signal)
   await setup()
   const dialog = await edit()
   const description = within(dialog).getByRole('combobox', {
@@ -395,20 +488,28 @@ test('dialog keyboard controls expose independent display modes, focus, field er
   description.focus()
   expect(description).toHaveFocus()
   await userEvent.selectOptions(description, 'custom')
-  await userEvent.click(screen.getByRole('button', { name: 'Apply to draft' }))
+  await userEvent.click(
+    within(getDialog()).getByRole('button', { name: 'Apply to draft' })
+  )
   expect(
-    await screen.findByText('Enter custom text or choose another display mode.')
+    await within(getDialog()).findByText(
+      'Enter custom text or choose another display mode.'
+    )
   ).toBeVisible()
   expect(
-    screen.getByRole('textbox', { name: 'Custom description' })
+    within(getDialog()).getByRole('textbox', { name: 'Custom description' })
   ).toHaveAttribute('aria-invalid', 'true')
   fireEvent.change(
-    screen.getByRole('textbox', { name: 'Custom description' }),
+    within(getDialog()).getByRole('textbox', { name: 'Custom description' }),
     { target: { value: 'x'.repeat(501) } }
   )
-  await userEvent.click(screen.getByRole('button', { name: 'Apply to draft' }))
+  await userEvent.click(
+    within(getDialog()).getByRole('button', { name: 'Apply to draft' })
+  )
   expect(
-    await screen.findByText('Description must be 500 characters or fewer.')
+    await within(getDialog()).findByText(
+      'Description must be 500 characters or fewer.'
+    )
   ).toBeVisible()
   await userEvent.keyboard('{Escape}')
   await waitFor(() =>
@@ -471,7 +572,10 @@ test('presentation validation preserves valid control text and exact prototype I
   ).toBe(false)
 })
 
-test('presentation load failure offers retry without exposing an editable empty map', async () => {
+test('presentation load failure offers retry without exposing an editable empty map', async ({
+  signal,
+}) => {
+  const { userEvent } = presentationActions(signal)
   let failed = true
   vi.mocked(api.get).mockImplementation(async (url) => {
     if (url === presentationUrl) {
@@ -480,6 +584,9 @@ test('presentation load failure offers retry without exposing an editable empty 
     }
     if (url === '/api/client-model-config') {
       return { data: { success: true, data: config } }
+    }
+    if (url === '/api/client-model-config/media-defaults') {
+      return { data: { success: true, data: initialMediaDefaults } }
     }
     return { data: { success: true, data: { models: catalog } } }
   })
@@ -514,7 +621,11 @@ test('presentation load failure offers retry without exposing an editable empty 
   ).toBeVisible()
 })
 
-test('search filters visible rows without deleting hidden configuration when another model is saved', async () => {
+test('search filters visible rows without deleting hidden configuration when another model is saved', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, save, userEvent } =
+    presentationActions(signal)
   saved.models = { 'retired-model': { badge: 'Keep' } }
   await setup()
   const search = screen.getByRole('searchbox', { name: 'Search model IDs' })
@@ -540,14 +651,31 @@ test('search filters visible rows without deleting hidden configuration when ano
   ).toHaveClass('table-fixed')
 })
 
-test('adding a 257th presentation blocks saving until a retired entry is reset to client defaults', async () => {
-  saved.models = Object.fromEntries(
-    Array.from({ length: 256 }, (_, index) => [
-      `retired-${index}`,
-      { description: 'Old' },
-    ])
+test('adding a 257th presentation blocks saving until a retired entry is reset to client defaults', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, save, userEvent, getDialog } =
+    presentationActions(signal)
+  const { client } = await setup()
+  const search = screen.getByRole('searchbox', { name: 'Search model IDs' })
+  // Filter before refetching the full 256-entry configuration: inactive tabs
+  // stay mounted, so filtering after setup still renders every retired row.
+  fireEvent.change(search, { target: { value: 'retired-0' } })
+  saved = {
+    schema_version: 1,
+    models: Object.fromEntries(
+      Array.from({ length: 256 }, (_, index) => [
+        `retired-${index}`,
+        { description: 'Old' },
+      ])
+    ),
+  }
+  await act(() =>
+    client.invalidateQueries({ queryKey: ['client-model-presentation'] })
   )
-  await setup()
+  await screen.findByRole('button', { name: 'Edit presentation for retired-0' })
+  signal.throwIfAborted()
+  fireEvent.change(search, { target: { value: 'deepseek-chat' } })
   await edit()
   await customDescription('Extra')
   await apply()
@@ -559,9 +687,10 @@ test('adding a 257th presentation blocks saving until a retired entry is reset t
       'You can configure up to 256 model presentations. Reset a model to client defaults to free a slot.'
     )
   ).toBeVisible()
+  fireEvent.change(search, { target: { value: 'retired-0' } })
   await edit('retired-0')
   await userEvent.selectOptions(
-    screen.getByRole('combobox', { name: 'Description display' }),
+    within(getDialog()).getByRole('combobox', { name: 'Description display' }),
     'default'
   )
   await apply()
@@ -598,7 +727,11 @@ test('presentation exact IDs preserve Go-valid BOM endpoints and reject Unicode 
   }
 })
 
-test('leaving with both resources dirty opens one confirmation and cancellation retains both drafts', async () => {
+test('leaving with both resources dirty opens one confirmation and cancellation retains both drafts', async ({
+  signal,
+}) => {
+  const { setup, edit, customDescription, apply, userEvent } =
+    presentationActions(signal)
   const { router } = await setup()
   await edit()
   await customDescription('Keep metadata')

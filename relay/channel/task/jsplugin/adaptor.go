@@ -28,11 +28,13 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -173,6 +175,18 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if hasRequest && hasUsageProfiles {
 		if err := a.validateResolvedUsageRequest(request, info.UpstreamModelName, info.OriginModelName); err != nil {
 			return service.TaskErrorWrapperLocal(err, "plugin_usage_invalid", http.StatusBadRequest)
+		}
+	}
+	if a.plugin.Meta.Key == "hailuo" && info.UpstreamModelName == "MiniMax-H3" {
+		facts, err := a.ExtractUsageFactsValidated(c, info)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "plugin_usage_invalid", http.StatusBadRequest)
+		}
+		if long, _ := facts["long_video"].(bool); long {
+			expression, exists := billing_setting.ResolveTaskBillingExpr(a.plugin.Meta.Key, info.OriginModelName, info.UpstreamModelName)
+			if !exists || !billingexpr.UsedUsageKeys(expression)["long_video"] {
+				return service.TaskErrorWrapperLocal(fmt.Errorf("Metaso H3 long video pricing is not configured"), "model_price_error", http.StatusBadRequest)
+			}
 		}
 	}
 	return nil

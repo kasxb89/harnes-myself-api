@@ -152,7 +152,7 @@ export function CompactDateTimeRangePicker(
             variant='outline'
             aria-label={label}
             className={cn(
-              'h-auto min-h-10 w-full min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-sm font-normal tabular-nums',
+              'h-8 w-full min-w-0 justify-start gap-2 rounded-lg px-2.5 py-1 text-sm font-normal tabular-nums',
               !props.start && !props.end && 'text-muted-foreground',
               props.className
             )}
@@ -166,7 +166,7 @@ export function CompactDateTimeRangePicker(
         <span className='hidden min-w-0 flex-1 truncate text-start sm:block'>
           {label}
         </span>
-        <span className='min-w-0 flex-1 text-start [overflow-wrap:anywhere] whitespace-normal sm:hidden'>
+        <span className='min-w-0 flex-1 truncate text-start sm:hidden'>
           {mobileLabel}
         </span>
         <ChevronDown

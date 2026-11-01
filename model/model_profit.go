@@ -506,12 +506,26 @@ func modelProfitCost(rule ModelProfitCostRule, log Log, facts profitLogFacts) (f
 		inputSeconds, hasInput := facts.UsageFacts["input_video_seconds"].(float64)
 		images, hasImages := facts.UsageFacts["input_images"].(float64)
 		price, hasPrice := rule.ResolutionCostsCNY[resolution]
-		if !hasResolution || !hasPrice || !hasSeconds || !hasInput || !hasImages || !validQuantity(seconds, 15) || seconds < 4 || !validQuantity(inputSeconds, 15) || !validQuantity(images, 9) || math.Trunc(images) != images || rule.ExtraImageCostCNY == nil || rule.FreeInputImages == nil {
+		long, hasLong := facts.UsageFacts["long_video"].(bool)
+		maxSeconds := float64(15)
+		if rule.LongVideoMultiplier != nil && resolution != "2K" {
+			maxSeconds = 30
+		}
+		if seconds > 15 && (!hasLong || !long) || long && (rule.LongVideoMultiplier == nil || resolution == "2K") {
+			return 0, false
+		}
+		if _, present := facts.UsageFacts["long_video"]; present && !hasLong {
+			return 0, false
+		}
+		if !hasResolution || !hasPrice || !hasSeconds || !hasInput || !hasImages || !validQuantity(seconds, maxSeconds) || seconds < 4 || !validQuantity(inputSeconds, 15) || !validQuantity(images, 9) || math.Trunc(images) != images || rule.ExtraImageCostCNY == nil || rule.FreeInputImages == nil {
 			return 0, false
 		}
 		// Use the original billed usage facts, including explicit zero material
 		// counts. Missing facts cannot establish zero procurement cost.
 		cost = (seconds+inputSeconds)*price + max(images-float64(*rule.FreeInputImages), 0)**rule.ExtraImageCostCNY
+		if long {
+			cost *= *rule.LongVideoMultiplier
+		}
 	case "image", "image_resolution":
 		quantity, exists := facts.UsageFacts["image_count"].(float64)
 		if !exists && facts.ImageCount != nil {

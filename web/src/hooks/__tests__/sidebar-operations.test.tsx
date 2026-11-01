@@ -70,7 +70,7 @@ function NavigationProbe() {
           <section key={group.id} aria-label={group.title}>
             <h2>{group.title}</h2>
             {group.items.map((item) => (
-              <div key={item.title}>
+              <section key={item.title} aria-label={item.title}>
                 <h3>{item.title}</h3>
                 {(
                   item.items ??
@@ -82,7 +82,7 @@ function NavigationProbe() {
                     </a>
                   ) : null
                 )}
-              </div>
+              </section>
             ))}
           </section>
         ))}
@@ -93,7 +93,8 @@ function NavigationProbe() {
 async function setup(
   role: number = ROLE.SUPER_ADMIN,
   adminConfig?: object,
-  permissions?: AdminPermissionMatrix
+  permissions?: AdminPermissionMatrix,
+  path = '/'
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -111,7 +112,7 @@ async function setup(
   const root = createRootRoute({ component: NavigationProbe })
   const router = createRouter({
     routeTree: root,
-    history: createMemoryHistory({ initialEntries: ['/'] }),
+    history: createMemoryHistory({ initialEntries: [path] }),
   })
   await router.load()
   render(
@@ -150,7 +151,7 @@ it('groups root navigation with the operations screen first under platform opera
     'Business & finance',
     'Tasks & diagnostics',
     'Models & channels',
-    'Content & clients',
+    'Client configuration',
     'System management',
   ])
   const links = within(screen.getByRole('navigation'))
@@ -334,4 +335,123 @@ it('honors server load platform disablement without hiding diagnostic logs', asy
     screen.queryByRole('link', { name: 'Server load' })
   ).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'API Error Logs' })).toBeVisible()
+})
+
+it('places the model price list in finance and groups existing client controls under client configuration', async () => {
+  await setup()
+  const finance = screen.getByRole('region', { name: 'Business & finance' })
+  expect(
+    within(finance).getByRole('link', { name: 'Model price list' })
+  ).toHaveAttribute('href', '/models/pricebook')
+  expect(
+    within(
+      screen.getByRole('region', { name: 'Models & channels' })
+    ).queryByRole('link', { name: 'Model price list' })
+  ).not.toBeInTheDocument()
+  const clients = screen.getByRole('region', { name: 'Client configuration' })
+  expect(
+    within(clients)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+  ).toEqual([
+    '/client-model-config',
+    '/user-surveys',
+    '/creation-content',
+    '/system-settings/content/announcements',
+    '/system-settings/content/customer-service',
+    '/system-settings/operations/desktop-update',
+  ])
+  expect(
+    screen.getAllByRole('link', { name: 'User questionnaires' })
+  ).toHaveLength(1)
+})
+
+it('keeps the cost-bearing pricebook root-only and respects the finance visibility switch', async () => {
+  await setup(ROLE.ADMIN, undefined, { model_profits: { read: true } })
+  expect(
+    screen.queryByRole('link', { name: 'Model price list' })
+  ).not.toBeInTheDocument()
+  cleanup()
+  await setup(ROLE.SUPER_ADMIN, { finance: { enabled: false } })
+  expect(
+    screen.queryByRole('link', { name: 'Model price list' })
+  ).not.toBeInTheDocument()
+})
+
+it('keeps client configuration visible on the existing customer service URL without exposing other privileged settings', async () => {
+  await setup(
+    ROLE.ADMIN,
+    undefined,
+    { customer_service: { read: true } },
+    '/system-settings/content/customer-service'
+  )
+  const clients = screen.getByRole('region', { name: 'Client configuration' })
+  expect(
+    within(clients).getByRole('link', { name: 'Customer service QR code' })
+  ).toHaveAttribute('href', '/system-settings/content/customer-service')
+  expect(
+    screen.queryByRole('heading', { name: 'System Administration' })
+  ).not.toBeInTheDocument()
+  expect(
+    within(clients).queryByRole('link', { name: 'Client model configuration' })
+  ).not.toBeInTheDocument()
+  expect(
+    within(clients).queryByRole('link', { name: 'Announcements' })
+  ).not.toBeInTheDocument()
+})
+
+it('keeps client updates in client configuration on the existing update URL', async () => {
+  await setup(
+    ROLE.SUPER_ADMIN,
+    undefined,
+    undefined,
+    '/system-settings/operations/desktop-update'
+  )
+  const clients = screen.getByRole('region', { name: 'Client configuration' })
+  expect(
+    within(clients).getByRole('link', { name: 'Client updates' })
+  ).toHaveAttribute('href', '/system-settings/operations/desktop-update')
+  expect(screen.getAllByRole('link', { name: 'Client updates' })).toHaveLength(
+    1
+  )
+  expect(
+    screen.queryByRole('heading', { name: 'System Administration' })
+  ).not.toBeInTheDocument()
+})
+
+it('keeps client updates behind the root role and the historical system settings visibility switch', async () => {
+  await setup(ROLE.SUPER_ADMIN, { system: { enabled: true, setting: false } })
+  expect(
+    screen.getByRole('region', { name: 'Client configuration' })
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('link', { name: 'Client updates' })
+  ).not.toBeInTheDocument()
+  cleanup()
+  await setup(ROLE.ADMIN, undefined, {
+    client_model_config: { read: true },
+    customer_service: { read: true },
+  })
+  expect(
+    screen.getByRole('region', { name: 'Client configuration' })
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('link', { name: 'Client updates' })
+  ).not.toBeInTheDocument()
+})
+
+it('removes the relocated client updates entry from system operations without hiding other operations', async () => {
+  await setup(
+    ROLE.SUPER_ADMIN,
+    undefined,
+    undefined,
+    '/system-settings/operations/behavior'
+  )
+  const operations = screen.getByRole('region', { name: 'Operations' })
+  expect(
+    within(operations).getByRole('link', { name: 'System Behavior' })
+  ).toHaveAttribute('href', '/system-settings/operations/behavior')
+  expect(
+    within(operations).queryByRole('link', { name: 'Client updates' })
+  ).not.toBeInTheDocument()
 })

@@ -135,15 +135,19 @@ function ModelsContent() {
         <SectionPageLayout.Actions>{actions}</SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
-            <Tabs value={activeSection} onValueChange={handleSectionChange}>
-              <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                {MODELS_SECTION_IDS.map((section) => (
-                  <TabsTrigger key={section} value={section}>
-                    {t(SECTION_META[section].tabKey)}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            {activeSection !== 'pricebook' && (
+              <Tabs value={activeSection} onValueChange={handleSectionChange}>
+                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                  {MODELS_SECTION_IDS.filter(
+                    (section) => section !== 'pricebook'
+                  ).map((section) => (
+                    <TabsTrigger key={section} value={section}>
+                      {t(SECTION_META[section].tabKey)}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            )}
             <div className='min-h-0 flex-1'>{content}</div>
           </div>
         </SectionPageLayout.Content>

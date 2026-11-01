@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,6 +64,42 @@ func TestProfitImageResolutionFacts(t *testing.T) {
 			cost, known := modelProfitCost(rule, Log{}, profitLogFacts{UsageFacts: tc.facts})
 			assert.Equal(t, tc.known, known)
 			assert.InDelta(t, tc.cost, cost, 1e-10)
+		})
+	}
+}
+
+func TestProfitH3LongVideoRuleAndFacts(t *testing.T) {
+	body := `{"schema_version":1,"revision":0,"rules":[{"channel_id":16,"model_name":"MiniMax-H3","effective_from":200,"kind":"h3_video","resolution_costs_cny":{"480P":0.06000236,"768P":0.0897396,"1080P":0.13997618,"2K":0.149566},"extra_image_cost_cny":0.0501486,"free_input_images":5,"long_video_multiplier":2,"source":"Metaso public reference estimate"}]}`
+	config, err := ParseModelProfitCostRules([]byte(body))
+	require.NoError(t, err)
+	for _, value := range []string{"null", "1", "3", "-2", `"2"`} {
+		_, err := ParseModelProfitCostRules([]byte(strings.Replace(body, `"long_video_multiplier":2`, `"long_video_multiplier":`+value, 1)))
+		assert.ErrorIs(t, err, ErrModelProfitParameters)
+	}
+	for _, tc := range []struct {
+		name, resolution string
+		seconds          float64
+		long             any
+		cost             float64
+		known            bool
+	}{
+		{"long768", "768P", 30, true, 8.1768612, true},
+		{"long1080", "1080P", 30, true, 12.6981534, true},
+		{"long480", "480P", 30, true, 5.5005096, true},
+		{"measured short keeps requested long band", "768P", 14, true, 5.305194, true},
+		{"2K cannot be long", "2K", 16, true, 0, false},
+		{"missing band is not inferred", "768P", 30, nil, 0, false},
+		{"contradictory band", "768P", 30, false, 0, false},
+		{"unbounded", "768P", 31, true, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			facts := map[string]any{"resolution": tc.resolution, "seconds": tc.seconds, "input_video_seconds": float64(15), "input_images": float64(6)}
+			if tc.long != nil {
+				facts["long_video"] = tc.long
+			}
+			cost, known := modelProfitCost(config.Rules[0], Log{}, profitLogFacts{UsageFacts: facts})
+			assert.Equal(t, tc.known, known)
+			assert.InDelta(t, tc.cost, cost, 1e-8)
 		})
 	}
 }

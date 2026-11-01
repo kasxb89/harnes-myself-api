@@ -55,4 +55,8 @@ const modelsRegistry = createSectionRegistry<
 
 export const MODELS_SECTION_IDS = modelsRegistry.sectionIds
 export const MODELS_DEFAULT_SECTION = modelsRegistry.defaultSection
-export const getModelsSectionNavItems = modelsRegistry.getSectionNavItems
+export const getModelsSectionNavItems: typeof modelsRegistry.getSectionNavItems =
+  (...args) =>
+    modelsRegistry
+      .getSectionNavItems(...args)
+      .filter((item) => item.url !== '/models/pricebook')

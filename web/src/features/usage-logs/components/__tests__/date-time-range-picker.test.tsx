@@ -123,3 +123,13 @@ test('two calendar clicks replace the whole previous range and preserve both end
     end: new Date(2026, 9, 27, 17, 45, 59),
   })
 })
+
+test('range trigger matches adjacent 32px filters and keeps the full range accessible when its label is clipped', () => {
+  render(<CompactDateTimeRangePicker {...range} onChange={() => undefined} />)
+  const trigger = screen.getByRole('button', {
+    name: '2026-10-20 08:30:15 ~ 2026-10-21 17:45:59',
+  })
+  expect(trigger).toHaveClass('h-8')
+  expect(trigger).not.toHaveClass('h-auto', 'min-h-10')
+  expect(trigger.querySelector('[class~="sm:hidden"]')).toHaveClass('truncate')
+})

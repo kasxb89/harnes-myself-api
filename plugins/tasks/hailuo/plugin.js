@@ -8,13 +8,14 @@ const VIDEO_SECONDS_FIELD = {
 
 const RESOLUTION_DESCRIPTION = { en: "Output video resolution", zh: "输出视频分辨率" };
 
-// MiniMax-H3 allows duration 4 to 15 and renders 768P or 2K.
+// Metaso extends H3 to 30s (2K stays 15s). Other H3 suppliers keep their original limits.
 const H3_USAGE_SCHEMA = {
   seconds: VIDEO_SECONDS_FIELD,
   resolution: {
-    enum: ["768P", "2K"],
+    enum: ["480P", "768P", "1080P", "2K"],
     description: RESOLUTION_DESCRIPTION,
   },
+  long_video: { type: "boolean", description: { en: "Whether long video pricing applies", zh: "是否使用长视频计价" } },
   // Input image count (estimated at submit, actual on completion).
   input_images: {
     type: "number",
@@ -62,7 +63,7 @@ export const meta = {
     en: "MiniMax Hailuo video generation (text-to-video, image-to-video, and MiniMax-H3 multimodal reference)",
     zh: "MiniMax 海螺视频生成（文生视频、图生视频、MiniMax-H3 多模态参考生视频）",
   },
-  version: "1.2.3",
+  version: "1.3.0",
   author: { name: "QuantumNous" },
   channelTypes: [35],
   models: [
@@ -82,30 +83,30 @@ export const meta = {
   // union of every family's fields and resolutions.
   usageSchema: Object.assign({}, H3_USAGE_SCHEMA, {
     resolution: {
-      enum: ["512P", "768P", "720P", "1080P", "2K"],
+      enum: ["480P", "512P", "768P", "720P", "1080P", "2K"],
       description: RESOLUTION_DESCRIPTION,
     },
   }),
   usageExamples: [
-    { label: "2.3/02 768P 6s", facts: { seconds: 6, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
-    { label: "2.3/02 768P 10s", facts: { seconds: 10, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
-    { label: "2.3/02 1080P 6s", facts: { seconds: 6, resolution: "1080P", input_images: 0, input_video_seconds: 0 } },
-    { label: "02 512P 6s", facts: { seconds: 6, resolution: "512P", input_images: 0, input_video_seconds: 0 } },
-    { label: "02 512P 10s", facts: { seconds: 10, resolution: "512P", input_images: 0, input_video_seconds: 0 } },
-    { label: "01-series 720P 6s", facts: { seconds: 6, resolution: "720P", input_images: 0, input_video_seconds: 0 } },
-    { label: "H3 768P 5s", facts: { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
-    { label: "H3 2K 5s · 9 images", facts: { seconds: 5, resolution: "2K", input_images: 9, input_video_seconds: 0 } },
-    { label: "H3 2K 5s · input video", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 15 } },
+    { label: "2.3/02 768P 6s", facts: { seconds: 6, resolution: "768P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "2.3/02 768P 10s", facts: { seconds: 10, resolution: "768P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "2.3/02 1080P 6s", facts: { seconds: 6, resolution: "1080P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "02 512P 6s", facts: { seconds: 6, resolution: "512P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "02 512P 10s", facts: { seconds: 10, resolution: "512P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "01-series 720P 6s", facts: { seconds: 6, resolution: "720P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "H3 768P 5s", facts: { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0, long_video: false } },
+    { label: "H3 2K 5s · 9 images", facts: { seconds: 5, resolution: "2K", input_images: 9, input_video_seconds: 0, long_video: false } },
+    { label: "H3 2K 5s · input video", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 15, long_video: false } },
   ],
   usageProfiles: [
     {
       models: ["MiniMax-H3"],
       schema: H3_USAGE_SCHEMA,
       examples: [
-        { label: "H3 768P 5s", facts: { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0 } },
-        { label: "H3 2K 5s", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 0 } },
-        { label: "H3 2K 5s · 9 images", facts: { seconds: 5, resolution: "2K", input_images: 9, input_video_seconds: 0 } },
-        { label: "H3 2K 5s · input video", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 15 } },
+        { label: "H3 768P 5s", facts: { seconds: 5, resolution: "768P", input_images: 0, input_video_seconds: 0, long_video: false } },
+        { label: "H3 2K 5s", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 0, long_video: false } },
+        { label: "H3 2K 5s · 9 images", facts: { seconds: 5, resolution: "2K", input_images: 9, input_video_seconds: 0, long_video: false } },
+        { label: "H3 2K 5s · input video", facts: { seconds: 5, resolution: "2K", input_images: 0, input_video_seconds: 15, long_video: false } },
       ],
     },
     {
@@ -188,7 +189,7 @@ function hasHailuoImage(req, hasInputReferenceFile) {
 
 const H3_MODEL = "MiniMax-H3";
 const H3_MIN_DURATION = 4;
-const H3_MAX_DURATION = 15;
+const H3_MAX_DURATION = 30;
 const H3_DEFAULT_DURATION = 5;
 const H3_MAX_FRAME_IMAGES = 2;
 const H3_MAX_REFERENCE_IMAGES = 9;
@@ -205,15 +206,24 @@ function isH3(model) {
   return model === H3_MODEL;
 }
 
-function h3Duration(req) {
+function isMetasoH3Channel(ctx) {
+  // Exact configured endpoint only: no userinfo, suffix hosts, query or path tricks.
+  const base = String((ctx && ctx.baseUrl) || "");
+  return base === base.trim() && /^https:\/\/metaso\.cn(?::443)?\/api\/minimax\/?$/i.test(base);
+}
+
+function h3Duration(req, ctx) {
+  let maximum = H3_MAX_DURATION;
+  if (ctx && Object.prototype.hasOwnProperty.call(ctx, "baseUrl") && !isMetasoH3Channel(ctx)) maximum = 15;
+  if (h3Resolution(req, ctx) === "2K") maximum = 15;
   if (req.seconds !== undefined && req.duration !== undefined && Number(req.seconds) !== Number(req.duration)) {
     throw new Error(H3_MODEL + " conflicting seconds/duration values");
   }
   const raw = req.seconds === undefined ? req.duration : req.seconds;
   if (raw === undefined || raw === null || raw === "") return H3_DEFAULT_DURATION;
   const seconds = Number(raw);
-  if (!Number.isInteger(seconds) || seconds < H3_MIN_DURATION || seconds > H3_MAX_DURATION) {
-    throw new Error(H3_MODEL + " duration must be an integer between " + H3_MIN_DURATION + " and " + H3_MAX_DURATION + " seconds");
+  if (!Number.isInteger(seconds) || seconds < H3_MIN_DURATION || seconds > maximum) {
+    throw new Error(H3_MODEL + " duration must be an integer between " + H3_MIN_DURATION + " and " + maximum + " seconds");
   }
   return seconds;
 }
@@ -268,7 +278,17 @@ function h3Alias(req, keys, normalize) {
   return selected;
 }
 
-function h3Resolution(req) {
+function h3PaidOptions(req) {
+  const options = {};
+  for (const key of ["context_ir_enabled", "fast_mode"]) {
+    const value = h3Alias(req, [key]);
+    if (value !== undefined && value !== false) throw new Error(H3_MODEL + " " + key + " requires separately configured pricing");
+    options[key] = false;
+  }
+  return options;
+}
+
+function h3Resolution(req, ctx) {
   const explicit = h3Alias(req, ["resolution", "metaso_resolution"], function (raw) {
     return trimmed(raw).toUpperCase();
   });
@@ -277,7 +297,8 @@ function h3Resolution(req) {
   // Official explicit resolution/ratio override a size-derived default.
   const value = explicit || (pixel && pixel.resolution) || size.toUpperCase() || "768P";
   if (value === "768P" || value === "2K") return value;
-  throw new Error(H3_MODEL + " resolution must be 768P or 2K");
+  if ((!ctx || !Object.prototype.hasOwnProperty.call(ctx, "baseUrl") || isMetasoH3Channel(ctx)) && ["480P", "1080P"].includes(value)) return value;
+  throw new Error(H3_MODEL + " resolution must be 768P or 2K on this channel");
 }
 
 function h3MediaURL(value) {
@@ -585,10 +606,15 @@ export function buildSubmitRequest(ctx) {
     const h3Body = {
       model: model,
       content: content,
-      resolution: h3Resolution(req),
-      duration: h3Duration(req),
+      resolution: h3Resolution(req, ctx),
+      duration: h3Duration(req, ctx),
       ratio: h3Ratio(req, content),
     };
+    if (isMetasoH3Channel(ctx)) {
+      if (h3Body.resolution === "480P" || h3Body.resolution === "1080P") h3Body.resolution = h3Body.resolution.toLowerCase();
+      // These optional paid services are not part of the approved video price.
+      Object.assign(h3Body, h3PaidOptions(req));
+    }
     ["callback_url", "aigc_watermark"].forEach(function (key) {
       if (metadata[key] !== undefined && metadata[key] !== null) h3Body[key] = metadata[key];
     });
@@ -643,8 +669,9 @@ export function extractUsage(ctx) {
   if (isH3(model)) {
     const content = h3Content(req, ctx.files);
     return {
-      seconds: h3Duration(req),
-      resolution: h3Resolution(req),
+      seconds: h3Duration(req, ctx),
+      resolution: h3Resolution(req, ctx),
+      long_video: h3Duration(req, ctx) > 15,
       input_images: content.filter(function (item) {
         return item && item.type === "image_url";
       }).length,
@@ -657,7 +684,7 @@ export function extractUsage(ctx) {
         : 0,
     };
   }
-  return { seconds: outboundDuration(req), resolution: outboundResolution(req, model), input_images: 0, input_video_seconds: 0 };
+  return { seconds: outboundDuration(req), resolution: outboundResolution(req, model), input_images: 0, input_video_seconds: 0, long_video: false };
 }
 
 export function buildQueryRequest(ctx) {
@@ -763,15 +790,17 @@ export function buildContentRequest(ctx) {
   return { url: url, method: "GET", credentialless: true };
 }
 
-export function extractUsageOnComplete(_task, _taskResult, body) {
+export function extractUsageOnComplete(ctx, _taskResult, body) {
   const h3Task = h3QueryTask(body);
   if (h3Task) {
     const resolution = trimmed(h3Task.resolution).toUpperCase();
     const facts = {};
-    if (resolution === "2K" || resolution === "768P") facts.resolution = resolution;
+    const metaso = isMetasoH3Channel(ctx);
+    if (["2K", "768P"].includes(resolution) || (metaso && ["480P", "1080P"].includes(resolution))) facts.resolution = resolution;
+    const maximum = metaso && resolution !== "2K" ? H3_MAX_DURATION : 15;
     const usage = h3Task.usage && typeof h3Task.usage === "object" && !Array.isArray(h3Task.usage) ? h3Task.usage : {};
     const fields = [
-      { key: "seconds", value: usage.output_seconds, minimum: H3_MIN_DURATION, maximum: H3_MAX_DURATION, integer: false },
+      { key: "seconds", value: usage.output_seconds, minimum: H3_MIN_DURATION, maximum: maximum, integer: false },
       { key: "input_images", value: usage.input_image_count, minimum: 0, maximum: H3_MAX_REFERENCE_IMAGES, integer: true },
       { key: "input_video_seconds", value: usage.input_seconds, minimum: 0, maximum: H3_MAX_INPUT_VIDEO_SECONDS, integer: false },
     ];
@@ -799,6 +828,7 @@ function h3Intent(ctx, req, files) {
   if (req.images !== undefined && !Array.isArray(req.images)) throw new Error("images must be an array");
   const content = h3Content(req, files);
   const duration = h3Duration(req);
+  h3PaidOptions(req);
   h3Resolution(req);
   h3Ratio(req, content);
   const requestBody = Object.assign({}, req, { model: ctx.model });

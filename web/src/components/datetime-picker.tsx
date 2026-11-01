@@ -75,7 +75,7 @@ export function DateTimePicker(props: DateTimePickerProps) {
             type='button'
             variant='outline'
             className={cn(
-              'h-10 w-full min-w-0 justify-start gap-2 rounded-lg font-normal',
+              'h-8 w-full min-w-0 justify-start gap-2 rounded-lg font-normal',
               !displayDate && 'text-muted-foreground',
               props.className
             )}

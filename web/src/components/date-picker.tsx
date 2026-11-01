@@ -62,8 +62,8 @@ export function DatePicker(props: DatePickerProps) {
             data-empty={!props.selected}
             className={
               props.compact
-                ? 'size-9 shrink-0 rounded-lg px-2'
-                : 'data-[empty=true]:text-muted-foreground h-10 w-[240px] max-w-full justify-start gap-2 rounded-lg text-start font-normal'
+                ? 'size-8 shrink-0 rounded-lg px-2'
+                : 'data-[empty=true]:text-muted-foreground h-8 w-[240px] max-w-full justify-start gap-2 rounded-lg text-start font-normal'
             }
           />
         }

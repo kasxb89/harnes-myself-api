@@ -14,7 +14,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
@@ -749,4 +751,127 @@ func TestVideoQuoteHTTPAuthenticationIsReadOnly(t *testing.T) {
 			assert.Equal(t, before, fixture.snapshot(t), "authentication and quoting must not mutate token state, balances, tasks or admission")
 		})
 	}
+}
+
+func TestVideoQuoteHTTPMetasoLongVideo(t *testing.T) {
+	fixture := newVideoQuoteFixture(t)
+	base := "https://metaso.cn/api/minimax"
+	require.NoError(t, fixture.db.Model(&model.Channel{}).Where("id = ?", 870).Update("base_url", base).Error)
+	request := `{"model":"MiniMax-H3","works_count":1,"segments":[{"id":"long","parameters":{"seconds":30,"resolution":"768P"}}]}`
+	response := fixture.request(t, request, "Bearer sk-quoteonly", "application/json")
+	assert.Equal(t, http.StatusUnprocessableEntity, response.Code, "old flat expressions cannot quote a new long band")
+	fixture.setExpressions(t, map[string]string{"hailuo::MiniMax-H3": `tier("video",u("seconds")*0.0410959)*(u("long_video") ? 2 : 1)`})
+	before := fixture.snapshot(t)
+	response = fixture.request(t, request, "Bearer sk-quoteonly", "application/json")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var quote types.VideoQuoteResponse
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &quote))
+	assert.Equal(t, 1232877, quote.TotalQuota)
+	assert.Equal(t, true, quote.Segments[0].Usage["long_video"])
+	assert.Equal(t, before, fixture.snapshot(t))
+	falseOptions := strings.Replace(request, `"resolution":"768P"`, `"resolution":"768P","context_ir_enabled":false,"fast_mode":false`, 1)
+	response = fixture.request(t, falseOptions, "Bearer sk-quoteonly", "application/json")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	for _, unquoted := range []string{strings.Replace(falseOptions, `"context_ir_enabled":false`, `"context_ir_enabled":true`, 1), strings.Replace(falseOptions, `"fast_mode":false`, `"fast_mode":true`, 1)} {
+		response = fixture.request(t, unquoted, "Bearer sk-quoteonly", "application/json")
+		assert.NotEqual(t, http.StatusOK, response.Code, "an extra paid service cannot receive the plain video quote")
+	}
+	assert.Equal(t, before, fixture.snapshot(t))
+	for _, invalid := range []string{strings.Replace(request, `"768P"`, `"2K"`, 1), strings.Replace(request, `"seconds":30`, `"seconds":31`, 1)} {
+		response = fixture.request(t, invalid, "Bearer sk-quoteonly", "application/json")
+		assert.NotEqual(t, http.StatusOK, response.Code)
+	}
+	require.NoError(t, fixture.db.Model(&model.Channel{}).Where("id = ?", 870).Update("base_url", "https://api.minimax.example").Error)
+	response = fixture.request(t, request, "Bearer sk-quoteonly", "application/json")
+	assert.Equal(t, http.StatusUnprocessableEntity, response.Code, "a same-name other supplier does not inherit Metaso's extension")
+}
+
+func TestVideoQuoteHTTPH3ClientParameters(t *testing.T) {
+	fixture := newVideoQuoteFixture(t)
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
+	setExpression := func(expression string) {
+		fixture.setExpressions(t, map[string]string{"hailuo::MiniMax-H3": expression})
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"billing_setting.billing_mode": `{"MiniMax-H3":"tiered_expr"}`, "billing_setting.billing_expr": `{"MiniMax-H3":"u(\"seconds\") * 0.0410959"}`}))
+	}
+	setExpression(`tier("video",u("seconds")*0.0410959)*(u("long_video") ? 2 : 1)`)
+	require.NoError(t, fixture.db.Model(&model.Channel{}).Where("id = ?", 870).Update("base_url", "https://metaso.cn/api/minimax").Error)
+	fixture.engine.GET("/v1/models", middleware.VideoQuoteAuth(), func(c *gin.Context) { controller.ListModels(c, 0) })
+	fixture.engine.GET("/api/pricing", middleware.VideoQuoteAuth(), controller.GetPricing)
+	model.InvalidatePricingCache()
+	read := func(path string) map[string]any {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer sk-quoteonly")
+		response := httptest.NewRecorder()
+		fixture.engine.ServeHTTP(response, request)
+		require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		assert.NotContains(t, response.Body.String(), "synthetic-unused-")
+		assert.NotContains(t, response.Body.String(), "metaso.cn")
+		var envelope struct {
+			Data []map[string]any `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &envelope))
+		for _, row := range envelope.Data {
+			if row["id"] == "MiniMax-H3" || row["model_name"] == "MiniMax-H3" {
+				parameters, ok := row["parameters"].(map[string]any)
+				require.True(t, ok, response.Body.String())
+				if output := os.Getenv("H3_CLIENT_PARAMETERS_FIXTURE_OUTPUT"); output != "" {
+					require.True(t, filepath.IsAbs(output))
+					require.NoError(t, os.MkdirAll(filepath.Dir(output), 0o700))
+					var cases []map[string]any
+					if prior, err := os.ReadFile(output); err == nil {
+						require.NoError(t, common.Unmarshal(prior, &cases))
+					} else {
+						require.True(t, os.IsNotExist(err))
+					}
+					cases = append(cases, map[string]any{"test": t.Name(), "method": "GET", "path": path, "model": "MiniMax-H3", "parameters": parameters, "fixture": "synthetic isolated database, real controller HTTP response; no supplier calls"})
+					encoded, err := common.Marshal(cases)
+					require.NoError(t, err)
+					require.NoError(t, os.WriteFile(output, encoded, 0o600))
+				}
+				return parameters
+			}
+		}
+		t.Fatal("missing H3 model")
+		return nil
+	}
+	before := fixture.snapshot(t)
+	for _, path := range []string{"/v1/models", "/api/pricing"} {
+		parameters := read(path)
+		branches, ok := parameters["oneOf"].([]any)
+		require.True(t, ok)
+		require.Len(t, branches, 4)
+		for _, branch := range branches {
+			properties := branch.(map[string]any)["properties"].(map[string]any)
+			resolution := properties["resolution"].(map[string]any)["enum"].([]any)[0]
+			seconds := properties["seconds"].(map[string]any)["enum"].([]any)
+			maximum := float64(30)
+			if resolution == "2K" {
+				maximum = 15
+			}
+			assert.Equal(t, maximum, seconds[len(seconds)-1])
+			assert.Equal(t, float64(4), seconds[0])
+		}
+	}
+	assert.Equal(t, before, fixture.snapshot(t))
+	// A read for one caller cannot expand shared cache metadata for another.
+	for _, row := range model.GetPricing() {
+		if row.ModelName == "MiniMax-H3" {
+			assert.Equal(t, 15, row.Parameters["properties"].(map[string]any)["seconds"].(map[string]any)["maximum"])
+		}
+	}
+	other := model.Channel{Id: 872, Type: constant.ChannelTypeMiniMax, Key: "synthetic-unused-other-h3", Name: "Other supplier", Status: common.ChannelStatusEnabled, Models: "MiniMax-H3", Group: "vip"}
+	require.NoError(t, fixture.db.Create(&other).Error)
+	require.NoError(t, other.AddAbilities(fixture.db))
+	assert.Contains(t, read("/v1/models"), "oneOf", "another group's route must not narrow this token's candidates")
+	other.Group = "default"
+	require.NoError(t, fixture.db.Model(&other).Update("group", "default").Error)
+	require.NoError(t, fixture.db.Create(&model.Ability{ChannelId: 872, Model: "MiniMax-H3", Group: "default", Enabled: true}).Error)
+	for _, path := range []string{"/v1/models", "/api/pricing"} {
+		assert.NotContains(t, read(path), "oneOf", "mixed suppliers only promise their common legacy contract")
+	}
+	require.NoError(t, fixture.db.Model(&other).Update("status", common.ChannelStatusManuallyDisabled).Error)
+	assert.Contains(t, read("/v1/models"), "oneOf", "disabled routes do not restrict live candidates")
+	setExpression(`tier("legacy",u("seconds")*0.0410959)`)
+	assert.NotContains(t, read("/v1/models"), "oneOf", "an old flat expression does not publish unpriced long video support")
 }

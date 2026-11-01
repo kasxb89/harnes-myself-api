@@ -578,7 +578,7 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 			"x-resolution-semantics": "tariff_tier_not_exact_pixels",
 		}
 	case "hailuo":
-		if model != "MiniMax-H3" || version != "1.2.3" {
+		if model != "MiniMax-H3" || (version != "1.2.3" && version != "1.3.0") {
 			return nil
 		}
 		parameters := map[string]any{

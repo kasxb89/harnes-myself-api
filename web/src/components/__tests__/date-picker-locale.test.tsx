@@ -101,3 +101,23 @@ test('switching language while the calendar is open updates the calendar locale'
   await setInterfaceLanguage('zhTW')
   expect(screen.getByTestId('calendar-locale')).toHaveTextContent('zh-TW')
 })
+
+test('date and date-time triggers use the standard filter height', () => {
+  const date = render(
+    <DatePicker selected={selected} onSelect={() => undefined} />
+  )
+  expect(screen.getByRole('button', { name: /2026-10-11/ })).toHaveClass('h-8')
+  date.unmount()
+  const compact = render(
+    <DatePicker
+      compact
+      selected={selected}
+      onSelect={() => undefined}
+      aria-label='Calendar'
+    />
+  )
+  expect(screen.getByRole('button', { name: 'Calendar' })).toHaveClass('size-8')
+  compact.unmount()
+  render(<DateTimePicker value={selected} onChange={() => undefined} />)
+  expect(screen.getByRole('button', { name: /2026-10-11/ })).toHaveClass('h-8')
+})

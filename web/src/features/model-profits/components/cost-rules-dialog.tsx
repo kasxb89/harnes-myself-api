@@ -195,8 +195,24 @@ export function CostRulesDialog() {
                   )}
                   {rule.kind === 'h3_video' && (
                     <>
-                      <div>{`768P: ${formatProfitCny(rule.resolution_costs_cny?.['768P'], locale)} · 2K: ${formatProfitCny(rule.resolution_costs_cny?.['2K'], locale)} / ${t('Per second')}`}</div>
-                      <div>{`${t('Free input images')}: ${formatNumber(rule.free_input_images)} · ${t('Extra input image cost (CNY per image)')}: ${formatProfitCny(rule.extra_image_cost_cny, locale)}`}</div>
+                      <div>
+                        {Object.entries(rule.resolution_costs_cny ?? {}).map(
+                          ([resolution, price]) => (
+                            <div key={resolution}>
+                              {resolution}: {formatProfitCny(price, locale)} /{' '}
+                              {t('Per second')}
+                            </div>
+                          )
+                        )}
+                      </div>
+                      <div>{`${t('Free input images')}: ${formatNumber(rule.free_input_images, locale)} · ${t('Extra input image cost (CNY per image)')}: ${formatProfitCny(rule.extra_image_cost_cny, locale)}`}</div>
+                      <div>
+                        {t(
+                          rule.long_video_multiplier === 2
+                            ? '16–30 second output and reference material costs are doubled; 2K remains limited to 15 seconds.'
+                            : '4–15 second cost rule'
+                        )}
+                      </div>
                     </>
                   )}
                   {rule.kind !== 'token' &&

@@ -3,7 +3,9 @@
 
 The caller must select a fresh effective time when applying additions through
 the cost-rules API. Existing cost history and other plugin prices must be kept.
-H3 material cost rules require a host supporting kind=h3_video.
+Long video rules require hailuo 1.3.0 and a host supporting
+kind=h3_video with long_video_multiplier. Apply only to the exact Metaso
+endpoint after loading that plugin; never replace prior cost-history rows.
 """
 
 import argparse
@@ -22,13 +24,15 @@ def build_config(effective_from, channels, usd_rate):
     # Preserve the existing output coefficient exactly. Material surcharges are
     # the supplier's rounded CNY reference prices, converted to gateway USD.
     tiers = []
-    for resolution, input_price in [("2K", "0.15"), ("768P", "0.09")]:
+    for resolution, input_price in [("2K", "0.15"), ("768P", "0.09"), ("480P", "0.06"), ("1080P", "0.14")]:
         tiers.append(
             f'tier("{resolution}", u("seconds") * 0.0410959 + '
             f'u("input_video_seconds") * ({input_price} / {rate}) + '
             f'max(u("input_images") - 5, 0) * (0.05 / {rate}))'
         )
-    expression = 'u("resolution") == "2K" ? ' + tiers[0] + " : " + tiers[1]
+    expression = " : ".join(f'u("resolution") == "{resolution}" ? {tier}'
+                            for resolution, tier in zip(["2K", "768P", "480P"], tiers[:3])) + " : " + tiers[3]
+    expression = '(u("long_video") ? 2 : 1) * (' + expression + ')'
     point_cny = Decimal(4399) / Decimal(500000)
     additions = [
         {
@@ -39,10 +43,13 @@ def build_config(effective_from, channels, usd_rate):
             "resolution_costs_cny": {
                 "768P": float(Decimal("10.2") * point_cny),
                 "2K": float(Decimal("17") * point_cny),
+                "480P": float(Decimal("6.82") * point_cny),
+                "1080P": float(Decimal("15.91") * point_cny),
             },
             "extra_image_cost_cny": float(Decimal("5.7") * point_cny),
             "free_input_images": 5,
-            "source": "https://metaso.cn/minimax-h3 ; standard <=15s reference points10.2/17 per second,5.7 per extra image;4399CNY/500000points; checked2026-10-31; estimate, not account invoice",
+            "long_video_multiplier": 2,
+            "source": "https://metaso.cn/minimax-h3 ; standard 4-15s points6.82/10.2/15.91/17 per second,5.7 per extra image;16-30s all video fees x2;IR/priority disabled;4399CNY/500000points; checked2026-11-02; estimate, not account invoice",
             "failure_refunded": False,
         }
         for channel in channels
@@ -57,9 +64,11 @@ def build_config(effective_from, channels, usd_rate):
         "plugin_billing_expr": {"hailuo::MiniMax-H3": expression},
         "cost_rule_additions": additions,
         "sale_cny": {"output_per_second": float(Decimal("0.0410959") * usd_rate),
-                     "reference_video_per_second": {"768P": 0.09, "2K": 0.15},
-                     "extra_reference_image": 0.05, "free_reference_images": 5},
-        "supported": {"resolutions": ["768P", "2K"], "min_seconds": 4, "max_seconds": 15},
+                     "reference_video_per_second": {"480P": 0.06, "768P": 0.09, "1080P": 0.14, "2K": 0.15},
+                     "extra_reference_image": 0.05, "free_reference_images": 5, "long_video_multiplier": 2},
+        "supported": {"resolutions": ["480P", "768P", "1080P", "2K"], "min_seconds": 4,
+                      "max_seconds_by_resolution": {"480P": 30, "768P": 30, "1080P": 30, "2K": 15},
+                      "supplier_base_url": "https://metaso.cn/api/minimax", "context_ir_enabled": False, "fast_mode": False},
     }
 
 

@@ -93,7 +93,9 @@ function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
         {
           title: t('Operations'),
           icon: Wrench,
-          items: getOperationsSectionNavItems(t),
+          items: getOperationsSectionNavItems(t).filter(
+            (item) => item.url !== '/system-settings/operations/desktop-update'
+          ),
         },
       ],
     },
@@ -126,7 +128,9 @@ function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
  */
 export const SYSTEM_SETTINGS_VIEW: SidebarView = {
   id: 'system-settings',
-  pathPattern: /^\/system-settings(\/|$)/,
+  // These client-facing pages retain the root Client configuration menu.
+  pathPattern:
+    /^\/system-settings(?!\/(?:content\/(?:announcements|customer-service)|operations\/desktop-update)(?:\/|$))(?:\/|$)/,
   parent: {
     to: '/dashboard/overview',
     label: 'Back to Dashboard',

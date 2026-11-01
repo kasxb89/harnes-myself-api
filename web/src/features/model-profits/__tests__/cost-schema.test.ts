@@ -167,3 +167,48 @@ describe('supplier cost version input', () => {
     }
   )
 })
+
+it('preserves Metaso long-video cost versions and rejects partial extended resolution tariffs', () => {
+  const draft = {
+    ...base,
+    kind: 'h3_video',
+    long_video_multiplier: '2',
+    resolution_768p_cost_cny: '0.0897396',
+    h3_2k_cost_cny: '0.149566',
+    resolution_480p_cost_cny: '0.06000236',
+    resolution_1080p_cost_cny: '0.13997618',
+    extra_image_cost_cny: '0.0501486',
+    free_input_images: '5',
+  }
+  expect(toCostRule(costRuleSchema.parse(draft))).toMatchObject({
+    long_video_multiplier: 2,
+    resolution_costs_cny: {
+      '480P': 0.06000236,
+      '768P': 0.0897396,
+      '1080P': 0.13997618,
+      '2K': 0.149566,
+    },
+  })
+  expect(
+    costRuleSchema.safeParse({ ...draft, long_video_multiplier: '3' }).success
+  ).toBe(false)
+  expect(
+    costRuleSchema.safeParse({ ...draft, resolution_480p_cost_cny: '' }).success
+  ).toBe(false)
+  expect(
+    costRuleSchema.safeParse({ ...draft, resolution_1080p_cost_cny: '-1' })
+      .success
+  ).toBe(false)
+  const twoTariffs = toCostRule(
+    costRuleSchema.parse({
+      ...draft,
+      resolution_480p_cost_cny: '',
+      resolution_1080p_cost_cny: '',
+    })
+  )
+  expect(twoTariffs).toMatchObject({
+    long_video_multiplier: 2,
+    resolution_costs_cny: { '768P': 0.0897396, '2K': 0.149566 },
+  })
+  expect(twoTariffs.resolution_costs_cny).not.toHaveProperty('480P')
+})

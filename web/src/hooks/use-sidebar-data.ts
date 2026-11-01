@@ -136,12 +136,6 @@ export function useSidebarData(): SidebarData {
                 requiredRole: ROLE.ADMIN,
               },
               {
-                title: t('User questionnaires'),
-                url: '/user-surveys',
-                icon: ClipboardList,
-                requiredRole: ROLE.ADMIN,
-              },
-              {
                 title: t('User Activity'),
                 url: '/user-activity',
                 icon: Activity,
@@ -166,6 +160,12 @@ export function useSidebarData(): SidebarData {
             icon: PiggyBank,
             requiredRole: ROLE.ADMIN,
             items: [
+              {
+                title: t('Model price list'),
+                url: '/models/pricebook',
+                icon: Receipt,
+                requiredRole: ROLE.SUPER_ADMIN,
+              },
               {
                 title: t('Operations dashboard'),
                 url: '/usage-logs/operations',
@@ -245,7 +245,7 @@ export function useSidebarData(): SidebarData {
             ],
           },
           {
-            title: t('Content & clients'),
+            title: t('Client configuration'),
             icon: Box,
             requiredRole: ROLE.ADMIN,
             items: [
@@ -253,6 +253,12 @@ export function useSidebarData(): SidebarData {
                 title: t('Client model configuration'),
                 url: '/client-model-config',
                 icon: Box,
+                requiredRole: ROLE.ADMIN,
+              },
+              {
+                title: t('User questionnaires'),
+                url: '/user-surveys',
+                icon: ClipboardList,
                 requiredRole: ROLE.ADMIN,
               },
               {
@@ -272,6 +278,13 @@ export function useSidebarData(): SidebarData {
                 url: '/system-settings/content/customer-service',
                 icon: MessageSquare,
                 requiredRole: ROLE.ADMIN,
+              },
+              {
+                title: t('Client updates'),
+                url: '/system-settings/operations/desktop-update',
+                configUrls: ['/system-settings'],
+                icon: ServerCog,
+                requiredRole: ROLE.SUPER_ADMIN,
               },
             ],
           },

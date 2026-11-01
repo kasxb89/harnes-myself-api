@@ -93,7 +93,7 @@ func TestPricingMediaContractTracksInstalledPluginAndKeepsBillingFacts(t *testin
 		channelType              int
 	}{
 		{"toapis-image", "yunshu-internal-gpt-image-2", "../deploy/instance/toapis-image-plugin.js", "1.2.1", constant.ChannelTypeTaskPlugin},
-		{"hailuo", "MiniMax-H3", "../plugins/tasks/hailuo/plugin.js", "1.2.3", constant.ChannelTypeMiniMax},
+		{"hailuo", "MiniMax-H3", "../plugins/tasks/hailuo/plugin.js", "1.3.0", constant.ChannelTypeMiniMax},
 	}
 	for i, fixture := range models {
 		insertPricingEndpointChannel(t, 610+i, fixture.channelType, dto.ChannelOtherSettings{})

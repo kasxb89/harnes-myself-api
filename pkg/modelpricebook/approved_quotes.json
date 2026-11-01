@@ -2216,13 +2216,17 @@
       "name": "MiniMax-H3",
       "provider": "Metaso",
       "basis": "public_reference_estimate",
-      "checked_at": "2026-10-31",
-      "source": "https://metaso.cn/minimax-h3 ; standard <=15s reference points10.2/17 per second,5.7 per extra image;4399CNY/500000points; checked2026-10-31; estimate, not account invoice",
+      "checked_at": "2026-11-02",
+      "source": "https://metaso.cn/minimax-h3 ; standard4-15s points6.82/10.2/15.91/17 per second;16-30s all video fees x2,2K<=15s;IR/priority disabled;4399CNY/500000points; checked2026-11-02; public estimate, not account invoice",
       "prices": [
         {
           "params": {
             "resolution": "768P",
-            "component": "output_and_reference_video"
+            "component": "output_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
           },
           "direction": "",
           "unit": "CNY / second",
@@ -2231,8 +2235,54 @@
         },
         {
           "params": {
+            "resolution": "768P",
+            "component": "reference_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.0897396,
+          "retail_cny": 0.09
+        },
+        {
+          "params": {
+            "resolution": "768P",
+            "component": "output_video",
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.1794792,
+          "retail_cny": 0.60000014
+        },
+        {
+          "params": {
+            "resolution": "768P",
+            "component": "reference_video",
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.1794792,
+          "retail_cny": 0.18
+        },
+        {
+          "params": {
             "resolution": "2K",
-            "component": "output_and_reference_video"
+            "component": "output_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
           },
           "direction": "",
           "unit": "CNY / second",
@@ -2241,13 +2291,195 @@
         },
         {
           "params": {
+            "resolution": "2K",
+            "component": "reference_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.149566,
+          "retail_cny": 0.15
+        },
+        {
+          "params": {
+            "resolution": "480P",
+            "component": "output_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.06000236,
+          "retail_cny": 0.30000007
+        },
+        {
+          "params": {
+            "resolution": "480P",
+            "component": "reference_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.06000236,
+          "retail_cny": 0.06
+        },
+        {
+          "params": {
+            "resolution": "480P",
+            "component": "output_video",
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.12000472,
+          "retail_cny": 0.60000014
+        },
+        {
+          "params": {
+            "resolution": "480P",
+            "component": "reference_video",
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.12000472,
+          "retail_cny": 0.12
+        },
+        {
+          "params": {
+            "resolution": "1080P",
+            "component": "output_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.13997618,
+          "retail_cny": 0.30000007
+        },
+        {
+          "params": {
+            "resolution": "1080P",
+            "component": "reference_video",
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.13997618,
+          "retail_cny": 0.14
+        },
+        {
+          "params": {
+            "resolution": "1080P",
+            "component": "output_video",
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.27995236,
+          "retail_cny": 0.60000014
+        },
+        {
+          "params": {
+            "resolution": "1080P",
+            "component": "reference_video",
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard",
+            "context_ir_enabled": false
+          },
+          "direction": "",
+          "unit": "CNY / second",
+          "procurement_cny": 0.27995236,
+          "retail_cny": 0.28
+        },
+        {
+          "params": {
             "component": "extra_reference_image",
-            "free_images": 5
+            "free_images": 5,
+            "output_min_seconds": 4,
+            "output_max_seconds": 15,
+            "channel": "standard"
           },
           "direction": "",
           "unit": "CNY / image",
           "procurement_cny": 0.0501486,
           "retail_cny": 0.05
+        },
+        {
+          "params": {
+            "component": "extra_reference_image",
+            "free_images": 5,
+            "output_min_seconds": 16,
+            "output_max_seconds": 30,
+            "channel": "standard"
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.1002972,
+          "retail_cny": 0.1
+        }
+      ]
+    },
+    {
+      "model_name": "yunshu-internal-gpt-image-2",
+      "name": "GPT-Image-2",
+      "provider": "ToAPIs",
+      "basis": "user_quote_estimate",
+      "checked_at": "2026-10-21",
+      "source": "deploy/instance/toapis-image-pricing.py ; PRODUCT-INTEGRATION.md ; user-confirmed procurement estimate, not account invoice",
+      "prices": [
+        {
+          "params": {
+            "resolution": "1k",
+            "count": 1
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.1,
+          "retail_cny": 0.2
+        },
+        {
+          "params": {
+            "resolution": "2k",
+            "count": 1
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.15,
+          "retail_cny": 0.3
+        },
+        {
+          "params": {
+            "resolution": "4k",
+            "count": 1
+          },
+          "direction": "",
+          "unit": "CNY / image",
+          "procurement_cny": 0.2,
+          "retail_cny": 0.4
         }
       ]
     }

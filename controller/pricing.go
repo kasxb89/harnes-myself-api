@@ -77,6 +77,7 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 	pricing = service.NarrowBlackrxPricingParameters(filteredPricing, groups)
+	pricing = service.NarrowH3PricingParameters(c.Request.Context(), pricing, groups)
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {

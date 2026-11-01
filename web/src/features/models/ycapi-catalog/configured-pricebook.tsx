@@ -102,6 +102,15 @@ function ConfiguredCost(props: { rule: ConfiguredRow['cost_rule'] }) {
   return (
     <div className='space-y-1 text-xs'>
       <div>{prices}</div>
+      {rule.kind === 'h3_video' && (
+        <div>
+          {t(
+            rule.long_video_multiplier === 2
+              ? '16–30 second output and reference material costs are doubled; 2K remains limited to 15 seconds.'
+              : '4–15 second cost rule'
+          )}
+        </div>
+      )}
       <div className='text-muted-foreground break-words'>{rule.source}</div>
       <div className='text-muted-foreground'>
         {t('Effective from (Shanghai time)')}:{' '}
@@ -115,6 +124,16 @@ function ConfiguredCost(props: { rule: ConfiguredRow['cost_rule'] }) {
       )}
     </div>
   )
+}
+
+function procurementQuoteLabel(basis: ConfirmedQuote['basis']) {
+  if (basis === 'public_reference_estimate') {
+    return 'Verified public reference estimate'
+  }
+  if (basis === 'user_quote_estimate') {
+    return 'Verified user-confirmed procurement estimate'
+  }
+  return 'Confirmed procurement quote'
 }
 
 function ConfirmedQuoteValue(props: {
@@ -137,11 +156,8 @@ function ConfirmedQuoteValue(props: {
     group.values.push(price[props.field])
     groups.set(key, group)
   }
-  let quoteLabel = t('Confirmed procurement quote')
+  let quoteLabel = t(procurementQuoteLabel(props.quote.basis))
   if (props.field === 'retail_cny') quoteLabel = t('Approved retail quote')
-  else if (props.quote.basis === 'public_reference_estimate') {
-    quoteLabel = t('Verified public reference estimate')
-  }
   return (
     <div className='space-y-1 text-xs'>
       {[...groups.entries()].map(([key, group]) => {
@@ -512,12 +528,8 @@ export function ConfiguredModelPricebook() {
               {details.row.approved_quote.source}
             </p>
             <p className='text-muted-foreground text-xs'>
-              {t(
-                details.row.approved_quote.basis === 'public_reference_estimate'
-                  ? 'Verified public reference estimate'
-                  : 'Confirmed procurement quote'
-              )}{' '}
-              · {details.row.approved_quote.checked_at}
+              {t(procurementQuoteLabel(details.row.approved_quote.basis))} ·{' '}
+              {details.row.approved_quote.checked_at}
             </p>
             <StaticDataTable
               data={details.row.approved_quote.prices}

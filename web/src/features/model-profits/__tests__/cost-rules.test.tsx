@@ -382,3 +382,74 @@ it.each(['success', 'failure'] as const)(
     expect(screen.getByLabelText('Exact model name')).toHaveValue('')
   }
 )
+
+it('adds a four-resolution long-video cost version without rewriting historical versions', async () => {
+  const { put } = setup()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Configure upstream costs' })
+  )
+  await screen.findByLabelText('Channel ID')
+  await fillVersion()
+  fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+  fireEvent.click(
+    await screen.findByRole('option', {
+      name: 'H3 video and reference materials',
+    })
+  )
+  expect(
+    screen.queryByLabelText('480P video cost (CNY per second, optional)')
+  ).not.toBeInTheDocument()
+  fireEvent.click(
+    screen.getByRole('checkbox', {
+      name: 'Apply double costs to 16–30 second Metaso videos',
+    })
+  )
+  for (const [name, value] of [
+    ['768P video cost (CNY per second)', '0.0897396'],
+    ['2K video cost (CNY per second)', '0.149566'],
+    ['480P video cost (CNY per second, optional)', '0.06000236'],
+    ['Extra input image cost (CNY per image)', '0.0501486'],
+    ['Free input images', '5'],
+  ]) {
+    fireEvent.change(screen.getByLabelText(name), { target: { value } })
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Add cost version' }))
+  expect(
+    await screen.findAllByText(
+      'Enter both optional 480P and 1080P prices, or leave both blank'
+    )
+  ).not.toHaveLength(0)
+  expect(put).not.toHaveBeenCalled()
+  fireEvent.change(
+    screen.getByLabelText('1080P video cost (CNY per second, optional)'),
+    { target: { value: '0.13997618' } }
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Add cost version' }))
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith(
+      '/api/model-profit/cost-rules',
+      expect.objectContaining({
+        revision: 7,
+        rules: [
+          initial.rules[0],
+          expect.objectContaining({
+            long_video_multiplier: 2,
+            resolution_costs_cny: {
+              '480P': 0.06000236,
+              '768P': 0.0897396,
+              '1080P': 0.13997618,
+              '2K': 0.149566,
+            },
+          }),
+        ],
+      })
+    )
+  )
+  const versions = screen.getByLabelText('Existing cost versions')
+  expect(
+    within(versions).getByText(
+      '16–30 second output and reference material costs are doubled; 2K remains limited to 15 seconds.'
+    )
+  ).toBeVisible()
+  expect(within(versions).getByText('#19 · previous-model')).toBeVisible()
+})

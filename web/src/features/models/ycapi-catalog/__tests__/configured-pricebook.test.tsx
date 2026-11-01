@@ -35,6 +35,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { YcapiCatalog } from '..'
+import { ConfiguredModelPricebook } from '../configured-pricebook'
 
 const catalog = JSON.parse(
   readFileSync(path.resolve(process.cwd(), '../pkg/ycapi/catalog.json'), 'utf8')
@@ -106,8 +107,12 @@ it('includes the original Metaso H3 channel beside the separate YCAPI H3 candida
     })
   )
   const dialog = within(await screen.findByRole('dialog'))
-  expect(dialog.getByText(/0\.0897396$/)).toBeVisible()
-  expect(dialog.getByText(/0\.149566$/)).toBeVisible()
+  dialog
+    .getAllByText(/0\.0897396$/)
+    .forEach((amount) => expect(amount).toBeVisible())
+  dialog
+    .getAllByText(/0\.149566$/)
+    .forEach((amount) => expect(amount).toBeVisible())
   await userEvent.setup().keyboard('{Escape}')
   await userEvent
     .setup()
@@ -335,4 +340,112 @@ it('shows enabled, disabled and unrouted candidates by default and filters witho
     )
   expect(region.getByText('running-original')).toBeVisible()
   expect(region.queryByText('disabled-original')).not.toBeInTheDocument()
+})
+
+it('labels user-confirmed procurement estimates distinctly and retains the effective long-video cost rule', async () => {
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data:
+        url === '/api/model-pricebook'
+          ? {
+              schema_version: 1,
+              generated_at: 1793500000,
+              usd_exchange_rate: 7.3,
+              rows: [
+                {
+                  model_name: 'yunshu-internal-gpt-image-2',
+                  state: 'enabled',
+                  channel_id: 18,
+                  channel_name: 'ToAPIs',
+                  channel_type: 61,
+                  upstream_host: 'toapis.example',
+                  channel_status: 1,
+                  enabled_groups: ['default'],
+                  pricing: null,
+                  approved_quote: {
+                    model_name: 'yunshu-internal-gpt-image-2',
+                    name: 'GPT Image',
+                    provider: 'ToAPIs',
+                    basis: 'user_quote_estimate',
+                    checked_at: '2026-10-21',
+                    source: 'User confirmed estimates, not an invoice',
+                    prices: [
+                      {
+                        params: { resolution: '1k' },
+                        direction: '',
+                        unit: 'CNY / image',
+                        procurement_cny: 0.1,
+                        retail_cny: 0.2,
+                      },
+                    ],
+                  },
+                  cost_rule: null,
+                },
+                {
+                  model_name: 'MiniMax-H3',
+                  state: 'enabled',
+                  channel_id: 16,
+                  channel_name: 'Metaso',
+                  channel_type: 35,
+                  upstream_host: 'metaso.cn',
+                  channel_status: 1,
+                  enabled_groups: ['default'],
+                  pricing: null,
+                  approved_quote: null,
+                  cost_rule: {
+                    channel_id: 16,
+                    model_name: 'MiniMax-H3',
+                    effective_from: 1,
+                    kind: 'h3_video',
+                    source: 'Verified long-video reference',
+                    failure_refunded: false,
+                    resolution_costs_cny: {
+                      '480P': 0.06000236,
+                      '768P': 0.0897396,
+                      '1080P': 0.13997618,
+                      '2K': 0.149566,
+                    },
+                    extra_image_cost_cny: 0.0501486,
+                    free_input_images: 5,
+                    long_video_multiplier: 2,
+                  },
+                },
+              ],
+            }
+          : catalog,
+    },
+  }))
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  render(
+    <QueryClientProvider client={client}>
+      <ConfiguredModelPricebook />
+    </QueryClientProvider>
+  )
+  await waitFor(() =>
+    expect(
+      screen.getByText(/Verified user-confirmed procurement estimate/)
+    ).toBeVisible()
+  )
+  await waitFor(() =>
+    expect(
+      screen.getByText(
+        '16–30 second output and reference material costs are doubled; 2K remains limited to 15 seconds.'
+      )
+    ).toBeVisible()
+  )
+  await userEvent.setup().click(
+    screen.getByRole('button', {
+      name: 'View confirmed specification prices',
+    })
+  )
+  expect(
+    within(await screen.findByRole('dialog')).getByText(
+      /Verified user-confirmed procurement estimate/
+    )
+  ).toBeVisible()
 })

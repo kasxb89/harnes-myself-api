@@ -41,6 +41,9 @@ export const costRuleSchema = z
     resolution_4k_cost_cny: z.string(),
     resolution_768p_cost_cny: z.string(),
     h3_2k_cost_cny: z.string(),
+    resolution_480p_cost_cny: z.string().optional(),
+    resolution_1080p_cost_cny: z.string().optional(),
+    long_video_multiplier: z.string().optional(),
     extra_image_cost_cny: z.string(),
     free_input_images: z.string(),
     input_cost_per_million_cny: z.string(),
@@ -96,6 +99,8 @@ export const costRuleSchema = z
       | 'resolution_4k_cost_cny'
       | 'resolution_768p_cost_cny'
       | 'h3_2k_cost_cny'
+      | 'resolution_480p_cost_cny'
+      | 'resolution_1080p_cost_cny'
       | 'extra_image_cost_cny'
       | 'input_cost_per_million_cny'
       | 'cache_cost_per_million_cny'
@@ -107,6 +112,42 @@ export const costRuleSchema = z
         'h3_2k_cost_cny',
         'extra_image_cost_cny',
       ]
+      const multiplier = value.long_video_multiplier ?? ''
+      if (multiplier !== '' && multiplier !== '2') {
+        context.addIssue({
+          code: 'custom',
+          path: ['long_video_multiplier'],
+          message: 'Use 2 for long-video costs, or leave blank',
+        })
+      }
+      const extended = [
+        value.resolution_480p_cost_cny ?? '',
+        value.resolution_1080p_cost_cny ?? '',
+      ]
+      if (extended.some((price) => price.trim() !== '')) {
+        if (multiplier !== '2') {
+          context.addIssue({
+            code: 'custom',
+            path: ['long_video_multiplier'],
+            message:
+              'Enable long-video costs before adding 480P or 1080P tariffs',
+          })
+        }
+        if (extended.some((price) => price.trim() === '')) {
+          for (const name of [
+            'resolution_480p_cost_cny',
+            'resolution_1080p_cost_cny',
+          ]) {
+            context.addIssue({
+              code: 'custom',
+              path: [name],
+              message:
+                'Enter both optional 480P and 1080P prices, or leave both blank',
+            })
+          }
+        }
+        rateFields.push('resolution_480p_cost_cny', 'resolution_1080p_cost_cny')
+      }
       if (
         !/^(0|[1-9]\d*)$/.test(value.free_input_images) ||
         Number(value.free_input_images) > 128
@@ -133,7 +174,7 @@ export const costRuleSchema = z
     for (const name of rateFields) {
       const rate = Number(value[name])
       if (
-        value[name].trim() === '' ||
+        (value[name] ?? '').trim() === '' ||
         !Number.isFinite(rate) ||
         rate < 0 ||
         rate > 1000000
@@ -177,6 +218,20 @@ export function toCostRule(value: CostRuleFormValues): CostRule {
     rule.resolution_costs_cny = {
       '768P': Number(value.resolution_768p_cost_cny),
       '2K': Number(value.h3_2k_cost_cny),
+    }
+    if (value.long_video_multiplier === '2') {
+      rule.long_video_multiplier = 2
+      if (
+        (value.resolution_480p_cost_cny ?? '').trim() !== '' &&
+        (value.resolution_1080p_cost_cny ?? '').trim() !== ''
+      ) {
+        rule.resolution_costs_cny['480P'] = Number(
+          value.resolution_480p_cost_cny
+        )
+        rule.resolution_costs_cny['1080P'] = Number(
+          value.resolution_1080p_cost_cny
+        )
+      }
     }
     rule.extra_image_cost_cny = Number(value.extra_image_cost_cny)
     rule.free_input_images = Number(value.free_input_images)

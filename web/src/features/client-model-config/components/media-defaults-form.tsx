@@ -34,6 +34,7 @@ import {
   FormItem,
   FormLabel,
   FormControl,
+  FormDescription,
   FormMessage,
 } from '@/components/ui/form'
 import { FormDirtyIndicator } from '@/features/system-settings/components/form-dirty-indicator'
@@ -91,11 +92,15 @@ export function ClientMediaDefaultsSection(props: {
       name: 'default_image_model',
       label: 'Default image model',
       eligible: 'image_eligible',
+      fallback:
+        'No platform image model is set. Use the first model in the account image catalog.',
     },
     {
       name: 'default_video_model',
       label: 'Default video model',
       eligible: 'video_eligible',
+      fallback:
+        'No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.',
     },
   ] as const
   const invalid = fields.some(
@@ -137,7 +142,7 @@ export function ClientMediaDefaultsSection(props: {
         <Alert>
           <AlertDescription>
             {t(
-              'Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.'
+              'The selectors include enabled original channels and YCAPI models with matching media capabilities. Missing or disabled routes cannot be selected as a platform default.'
             )}
           </AlertDescription>
         </Alert>
@@ -150,7 +155,7 @@ export function ClientMediaDefaultsSection(props: {
             </AlertDescription>
           </Alert>
         )}
-        {fields.map(({ name, label, eligible }) => (
+        {fields.map(({ name, label, eligible, fallback }) => (
           <SettingsCard key={name} title={t(label)}>
             <FormField
               control={form.control}
@@ -179,6 +184,9 @@ export function ClientMediaDefaultsSection(props: {
                       disabled={props.readOnly || mutation.isPending}
                     />
                   </FormControl>
+                  {field.value === '' && (
+                    <FormDescription>{t(fallback)}</FormDescription>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

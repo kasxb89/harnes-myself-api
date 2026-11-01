@@ -322,6 +322,18 @@ func ListModels(c *gin.Context, modelType int) {
 			"nextPageToken": nil,
 		})
 	default:
+		var h3Parameters map[string]any
+		for _, entry := range userOpenAiModels {
+			if entry.Id == "MiniMax-H3" {
+				for _, price := range service.NarrowH3PricingParameters(c.Request.Context(), model.GetPricing(), ownerGroups) {
+					if price.ModelName == "MiniMax-H3" {
+						h3Parameters = price.Parameters
+						break
+					}
+				}
+				break
+			}
+		}
 		publicModels := make([]any, 0, len(userOpenAiModels))
 		for _, entry := range userOpenAiModels {
 			if approved, ok := ycapi.Lookup(entry.Id); ok {
@@ -335,6 +347,15 @@ func ListModels(c *gin.Context, modelType int) {
 				value["display_name"] = approved.Name
 				value["parameters"] = ycapi.ClientParameters(entry.Id)
 				value["retail_price_rows"] = ycapi.ClientPrices(entry.Id)
+				publicModels = append(publicModels, value)
+			} else if entry.Id == "MiniMax-H3" && h3Parameters != nil {
+				data, _ := common.Marshal(entry)
+				var value map[string]any
+				if common.Unmarshal(data, &value) != nil {
+					c.AbortWithStatus(http.StatusServiceUnavailable)
+					return
+				}
+				value["kind"], value["parameters"] = "video", h3Parameters
 				publicModels = append(publicModels, value)
 			} else {
 				publicModels = append(publicModels, entry)

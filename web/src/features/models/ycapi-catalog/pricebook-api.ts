@@ -31,7 +31,11 @@ const quoteSchema = z.object({
   model_name: z.string(),
   name: z.string(),
   provider: z.string(),
-  basis: z.enum(['approved_snapshot', 'public_reference_estimate']),
+  basis: z.enum([
+    'approved_snapshot',
+    'public_reference_estimate',
+    'user_quote_estimate',
+  ]),
   checked_at: z.string(),
   source: z.string(),
   prices: z.array(
@@ -70,6 +74,7 @@ const costSchema = z.object({
     .optional(),
   extra_image_cost_cny: z.number().nonnegative().optional(),
   free_input_images: z.number().int().nonnegative().optional(),
+  long_video_multiplier: z.literal(2).optional(),
 })
 const pricingShape = z.object({
   model_name: z.string(),

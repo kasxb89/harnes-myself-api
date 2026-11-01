@@ -38,6 +38,7 @@ type videoQuoteCandidate struct {
 	Expr      string                 `json:"expression"`
 	Ratio     float64                `json:"group_ratio"`
 	Durations []int                  `json:"durations,omitempty"`
+	MetasoH3  bool                   `json:"metaso_h3,omitempty"`
 	Plugin    *jsplugin.LoadedPlugin `json:"-"`
 }
 
@@ -108,7 +109,7 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 		durationUnavailable := false
 		evaluated := make(map[string]bool)
 		for _, candidate := range pricing.Candidates {
-			evaluationKey := candidate.PluginKey + ":" + candidate.Model + ":" + candidate.Expr + ":" + strconv.FormatFloat(candidate.Ratio, 'g', -1, 64) + ":" + fmt.Sprint(candidate.Durations)
+			evaluationKey := candidate.PluginKey + ":" + candidate.Model + ":" + candidate.Expr + ":" + strconv.FormatFloat(candidate.Ratio, 'g', -1, 64) + ":" + fmt.Sprint(candidate.Durations) + ":" + strconv.FormatBool(candidate.MetasoH3)
 			if evaluated[evaluationKey] {
 				continue
 			}
@@ -118,7 +119,7 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 					return nil, unavailable
 				}
 				for key := range segment.Parameters {
-					if !slices.Contains([]string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "n"}, key) {
+					if !slices.Contains([]string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "n", "context_ir_enabled", "fast_mode"}, key) {
 						return nil, invalid
 					}
 				}
@@ -166,8 +167,12 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 			if !bodyOK || validateVideoQuoteParameters(body, 0) != nil {
 				return nil, unavailable
 			}
+			baseURL := ""
+			if candidate.MetasoH3 {
+				baseURL = "https://metaso.cn/api/minimax"
+			}
 			rawFacts, factsErr := candidate.Plugin.Engine.Call(hookContext, "extractUsage", map[string]any{
-				"model": request.Model, "upstreamModel": candidate.Model, "requestBody": body,
+				"baseUrl": baseURL, "model": request.Model, "upstreamModel": candidate.Model, "requestBody": body,
 				"action": intent["action"], "usagePurpose": "facts", "files": files,
 			})
 			returnedFacts, factsOK := rawFacts.(map[string]any)
@@ -177,6 +182,9 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 			}
 			schema, _ := candidate.Plugin.Meta.UsageForModels(candidate.Model, request.Model)
 			if factsErr != nil || !factsOK || validateVideoQuoteFacts(facts, schema) != nil {
+				return nil, unavailable
+			}
+			if long, _ := facts["long_video"].(bool); long && candidate.PluginKey == "hailuo" && !billingexpr.UsedUsageKeys(candidate.Expr)["long_video"] {
 				return nil, unavailable
 			}
 			if candidate.PluginKey == "blackrxai-video" {
@@ -299,7 +307,7 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 	for _, id := range ids {
 		if channel := catalogChannels[id]; channel != nil {
 			channels = append(channels, model.Channel{Id: channel.Id, Type: channel.Type, Status: channel.Status,
-				Models: channel.Models, Group: channel.Group, OtherSettings: channel.OtherSettings,
+				Models: channel.Models, Group: channel.Group, BaseURL: channel.BaseURL, OtherSettings: channel.OtherSettings,
 				Setting: channel.Setting, ModelMapping: channel.ModelMapping, ParamOverride: channel.ParamOverride, HeaderOverride: channel.HeaderOverride})
 		}
 	}
@@ -392,6 +400,10 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 		if !configured || !billing_setting.TaskExprCompatible(expression, schema) {
 			return pricing, fmt.Errorf("video expression is not configured")
 		}
+		metasoH3 := false
+		if plugin.Meta.Key == "hailuo" && mapped == "MiniMax-H3" && channel.BaseURL != nil {
+			metasoH3 = isMetasoH3BaseURL(*channel.BaseURL)
+		}
 		for _, group := range groups {
 			if !eligible[group+":"+strconv.Itoa(channel.Id)] || !model.IsChannelEnabledForGroupModel(group, requestedModel, channel.Id) {
 				continue
@@ -401,7 +413,7 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 				return pricing, fmt.Errorf("invalid group ratio")
 			}
 			pricing.Candidates = append(pricing.Candidates, videoQuoteCandidate{ChannelID: channel.Id, Group: group,
-				Model: mapped, PluginKey: plugin.Meta.Key, Version: plugin.Meta.Version, Expr: expression, Ratio: ratio, Plugin: plugin, Durations: catalogDurations[channel.Id]})
+				Model: mapped, PluginKey: plugin.Meta.Key, Version: plugin.Meta.Version, Expr: expression, Ratio: ratio, Plugin: plugin, Durations: catalogDurations[channel.Id], MetasoH3: metasoH3})
 			if len(pricing.Candidates) > 64 {
 				return pricing, fmt.Errorf("too many quote routes")
 			}
@@ -494,7 +506,7 @@ func videoQuoteMappedModel(original, mapping string) (string, error) {
 // local/base64 material need a separate owned-material contract; treating them
 // as an empty reference set would silently underquote the eventual request.
 func validateVideoQuoteWireParameters(parameters map[string]any, allowApprovedQuality bool) error {
-	allowed := []string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "aspect_ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference", "image_url", "image_urls", "videos", "video_urls", "audios", "audio_urls", "gen_type", "n"}
+	allowed := []string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "aspect_ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference", "image_url", "image_urls", "videos", "video_urls", "audios", "audio_urls", "gen_type", "n", "context_ir_enabled", "fast_mode"}
 	for key := range parameters {
 		if key == "quality" && allowApprovedQuality {
 			quality, ok := parameters[key].(string)
@@ -519,7 +531,7 @@ func validateVideoQuoteWireParameters(parameters map[string]any, allowApprovedQu
 		if !ok {
 			return fmt.Errorf("video metadata must be an object")
 		}
-		allowedMetadata := []string{"resolution", "metaso_resolution", "ratio", "metaso_ratio", "aspect_ratio", "content", "metaso_content", "first_frame_image", "last_frame_image", "reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference", "metaso"}
+		allowedMetadata := []string{"resolution", "metaso_resolution", "ratio", "metaso_ratio", "aspect_ratio", "content", "metaso_content", "first_frame_image", "last_frame_image", "reference_image", "reference_video", "video_reference", "reference_audio", "audio_reference", "metaso", "context_ir_enabled", "fast_mode"}
 		for key := range values {
 			if !slices.Contains(allowedMetadata, key) {
 				return fmt.Errorf("unsupported video quote metadata")

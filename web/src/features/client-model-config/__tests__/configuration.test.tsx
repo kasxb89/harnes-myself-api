@@ -738,3 +738,53 @@ test('a failed media preference save retains the selected draft for retry', asyn
   ).toHaveValue('Image model')
   expect(mediaSaved.default_image_model).toBe('')
 })
+
+test('empty platform defaults explain catalog fallbacks and the H3 resolution without pretending to know personal choices', async () => {
+  await setup()
+  const summary = await screen.findByRole('region', {
+    name: 'Saved platform defaults',
+  })
+  expect(
+    within(summary).getByText(
+      'No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.'
+    )
+  ).toBeVisible()
+  expect(
+    within(summary).getByText(
+      'No platform image model is set. Use the first model in the account image catalog.'
+    )
+  ).toBeVisible()
+  expect(
+    within(summary).getByText(
+      'No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.'
+    )
+  ).toBeVisible()
+  expect(
+    within(summary).getByText(
+      'The initial built-in chat model is deepseek-v4-flash; the account catalog and access still determine availability.'
+    )
+  ).toBeVisible()
+  expect(api.put).not.toHaveBeenCalled()
+})
+
+test('platform defaults summary shows saved values until a draft is successfully saved', async () => {
+  saved.default_chat_model = 'deepseek-chat'
+  mediaSaved.default_image_model = 'yunshu-internal-gpt-image-2'
+  await setup()
+  const summary = await screen.findByRole('region', {
+    name: 'Saved platform defaults',
+  })
+  expect(within(summary).getByText('deepseek-chat')).toBeVisible()
+  expect(within(summary).getByText('yunshu-internal-gpt-image-2')).toBeVisible()
+  await selectOption('Default chat model', /gpt-chat/)
+  expect(within(summary).getByText('deepseek-chat')).toBeVisible()
+  expect(within(summary).queryByText('gpt-chat')).not.toBeInTheDocument()
+  await userEvent
+    .setup()
+    .click(screen.getByRole('tab', { name: 'Image and video defaults' }))
+  expect(
+    screen.queryByText(
+      'No platform image model is set. Use the first model in the account image catalog.'
+    )
+  ).not.toBeInTheDocument()
+})

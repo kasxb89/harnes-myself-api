@@ -37,6 +37,7 @@ type ModelProfitCostRule struct {
 	ResolutionCostsCNY      map[string]float64 `json:"resolution_costs_cny,omitempty"`
 	ExtraImageCostCNY       *float64           `json:"extra_image_cost_cny,omitempty"`
 	FreeInputImages         *int               `json:"free_input_images,omitempty"`
+	LongVideoMultiplier     *float64           `json:"long_video_multiplier,omitempty"`
 	InputCostPerMillionCNY  *float64           `json:"input_cost_per_million_cny,omitempty"`
 	CacheCostPerMillionCNY  *float64           `json:"cache_cost_per_million_cny,omitempty"`
 	OutputCostPerMillionCNY *float64           `json:"output_cost_per_million_cny,omitempty"`
@@ -67,7 +68,7 @@ func ParseModelProfitCostRules(body []byte) (ModelProfitCostRules, error) {
 				return config, ErrModelProfitParameters
 			}
 			switch key {
-			case "channel_id", "model_name", "effective_from", "effective_until", "kind", "unit_cost_cny", "input_cost_per_million_cny", "cache_cost_per_million_cny", "output_cost_per_million_cny", "deepseek_peak_multiplier", "resolution_costs_cny", "extra_image_cost_cny", "free_input_images", "source", "failure_refunded":
+			case "channel_id", "model_name", "effective_from", "effective_until", "kind", "unit_cost_cny", "input_cost_per_million_cny", "cache_cost_per_million_cny", "output_cost_per_million_cny", "deepseek_peak_multiplier", "resolution_costs_cny", "extra_image_cost_cny", "free_input_images", "long_video_multiplier", "source", "failure_refunded":
 			default:
 				return config, ErrModelProfitParameters
 			}
@@ -111,20 +112,32 @@ func ValidateModelProfitCostRules(config ModelProfitCostRules) error {
 				return ErrModelProfitParameters
 			}
 		}
-		if rule.Kind != "h3_video" && (rule.ExtraImageCostCNY != nil || rule.FreeInputImages != nil) {
+		if rule.Kind != "h3_video" && (rule.ExtraImageCostCNY != nil || rule.FreeInputImages != nil || rule.LongVideoMultiplier != nil) {
 			return ErrModelProfitParameters
 		}
-		for _, value := range []*float64{rule.UnitCostCNY, rule.InputCostPerMillionCNY, rule.CacheCostPerMillionCNY, rule.OutputCostPerMillionCNY, rule.DeepSeekPeakMultiplier, rule.ExtraImageCostCNY} {
+		for _, value := range []*float64{rule.UnitCostCNY, rule.InputCostPerMillionCNY, rule.CacheCostPerMillionCNY, rule.OutputCostPerMillionCNY, rule.DeepSeekPeakMultiplier, rule.ExtraImageCostCNY, rule.LongVideoMultiplier} {
 			if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0 || *value > 1000000) {
 				return ErrModelProfitParameters
 			}
 		}
 		switch rule.Kind {
 		case "h3_video":
-			if rule.UnitCostCNY != nil || rule.InputCostPerMillionCNY != nil || rule.CacheCostPerMillionCNY != nil || rule.OutputCostPerMillionCNY != nil || rule.DeepSeekPeakMultiplier != nil || len(rule.ResolutionCostsCNY) != 2 || rule.ExtraImageCostCNY == nil || rule.FreeInputImages == nil || *rule.FreeInputImages < 0 || *rule.FreeInputImages > 128 {
+			if rule.UnitCostCNY != nil || rule.InputCostPerMillionCNY != nil || rule.CacheCostPerMillionCNY != nil || rule.OutputCostPerMillionCNY != nil || rule.DeepSeekPeakMultiplier != nil || rule.ExtraImageCostCNY == nil || rule.FreeInputImages == nil || *rule.FreeInputImages < 0 || *rule.FreeInputImages > 128 {
 				return ErrModelProfitParameters
 			}
-			for _, resolution := range []string{"768P", "2K"} {
+			resolutions := []string{"768P", "2K"}
+			if rule.LongVideoMultiplier != nil {
+				if *rule.LongVideoMultiplier != 2 {
+					return ErrModelProfitParameters
+				}
+				if len(rule.ResolutionCostsCNY) == 4 {
+					resolutions = append(resolutions, "480P", "1080P")
+				}
+			}
+			if len(rule.ResolutionCostsCNY) != len(resolutions) {
+				return ErrModelProfitParameters
+			}
+			for _, resolution := range resolutions {
 				price, exists := rule.ResolutionCostsCNY[resolution]
 				if !exists || math.IsNaN(price) || math.IsInf(price, 0) || price < 0 || price > 1000000 {
 					return ErrModelProfitParameters

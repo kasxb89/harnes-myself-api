@@ -25,6 +25,8 @@ import (
 	taskplugin "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,7 +54,7 @@ func TestHailuoResponsesProtocol(t *testing.T) {
 			"size":     "1920x1080",
 			"metadata": map[string]any{"first_frame_image": "https://cdn.example/frame.png"},
 		},
-		wantUsageKeys:  []string{"input_images", "input_video_seconds", "resolution", "seconds"},
+		wantUsageKeys:  []string{"input_images", "input_video_seconds", "long_video", "resolution", "seconds"},
 		wantVendorName: "hailuo",
 	})
 }
@@ -69,8 +71,8 @@ func TestHailuoUsageProfilesPerModel(t *testing.T) {
 	}{
 		{
 			models:      []string{"MiniMax-H3"},
-			fields:      []string{"input_images", "input_video_seconds", "resolution", "seconds"},
-			resolutions: []string{"768P", "2K"},
+			fields:      []string{"input_images", "input_video_seconds", "long_video", "resolution", "seconds"},
+			resolutions: []string{"480P", "768P", "1080P", "2K"},
 		},
 		{
 			models:      []string{"MiniMax-Hailuo-2.3", "MiniMax-Hailuo-2.3-Fast"},
@@ -117,7 +119,7 @@ func TestHailuoUsageProfilesPerModel(t *testing.T) {
 		facts, err := adaptor.ExtractUsageFactsValidated(c, info)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{
-			"seconds": float64(10), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(0),
+			"seconds": float64(10), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(0), "long_video": false,
 		}, facts)
 	})
 }
@@ -511,21 +513,21 @@ func TestHailuoExtractUsageFacts(t *testing.T) {
 		want    map[string]any
 	}{
 		{"H3 defaults", "MiniMax-H3", map[string]any{"prompt": "p"}, map[string]any{
-			"seconds": float64(5), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(0),
+			"seconds": float64(5), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(0), "long_video": false,
 		}},
 		{"H3 2K", "MiniMax-H3", map[string]any{"prompt": "p", "duration": 12, "size": "2K"}, map[string]any{
-			"seconds": float64(12), "resolution": "2K", "input_images": float64(0), "input_video_seconds": float64(0),
+			"seconds": float64(12), "resolution": "2K", "input_images": float64(0), "input_video_seconds": float64(0), "long_video": false,
 		}},
 		{"H3 reference images", "MiniMax-H3", map[string]any{"prompt": "p", "metadata": map[string]any{"content": nineReferenceImages}}, map[string]any{
-			"seconds": float64(5), "resolution": "768P", "input_images": float64(9), "input_video_seconds": float64(0),
+			"seconds": float64(5), "resolution": "768P", "input_images": float64(9), "input_video_seconds": float64(0), "long_video": false,
 		}},
 		{"H3 reference video reserves total duration limit", "MiniMax-H3", map[string]any{"prompt": "p", "metadata": map[string]any{
 			"reference_video": []any{"one.mp4", "two.mp4", "three.mp4"},
 		}}, map[string]any{
-			"seconds": float64(5), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(15),
+			"seconds": float64(5), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(15), "long_video": false,
 		}},
 		{"legacy model", "MiniMax-Hailuo-2.3", map[string]any{"prompt": "p", "duration": 10}, map[string]any{
-			"seconds": float64(10), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(0),
+			"seconds": float64(10), "resolution": "768P", "input_images": float64(0), "input_video_seconds": float64(0), "long_video": false,
 		}},
 	}
 	for _, testCase := range testCases {
@@ -797,7 +799,7 @@ func TestHailuoH3OfficialCompatibility(t *testing.T) {
 		assert.Equal(t, "3:4", body["ratio"])
 		assert.Equal(t, "2K", body["resolution"])
 		assert.Equal(t, "nested.mp4", body["content"].([]any)[1].(map[string]any)["video_url"].(map[string]any)["url"])
-		assert.Equal(t, map[string]any{"seconds": float64(8), "resolution": "2K", "input_images": float64(0), "input_video_seconds": float64(15)}, callHailuoHook(t, plugin, "extractUsage", ctx))
+		assert.Equal(t, map[string]any{"seconds": float64(8), "resolution": "2K", "input_images": float64(0), "input_video_seconds": float64(15), "long_video": false}, callHailuoHook(t, plugin, "extractUsage", ctx))
 	})
 
 	t.Run("JSON video and audio synonyms retain list order", func(t *testing.T) {
@@ -854,7 +856,7 @@ func TestHailuoH3OfficialRejectsAmbiguousOrUnboundedInputs(t *testing.T) {
 		{"video aliases conflict", map[string]any{"reference_video": "one.mp4", "video_reference": "two.mp4"}, "conflicting reference_video/video_reference"},
 		{"video count", map[string]any{"reference_video": []any{"1.mp4", "2.mp4", "3.mp4", "4.mp4"}}, "at most 3 reference videos"},
 		{"audio count", map[string]any{"audio_reference": []any{"1.mp3", "2.mp3", "3.mp3", "4.mp3"}}, "at most 3 reference audios"},
-		{"declared duration cannot extend output", map[string]any{"seconds": 30}, "between 4 and 15"},
+		{"declared duration cannot exceed maximum", map[string]any{"seconds": 31}, "between 4 and 30"},
 		{"unknown content type", map[string]any{"content": []any{map[string]any{"type": "file", "url": "x"}}}, "unsupported content type"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -998,7 +1000,7 @@ func TestHailuoH3OfficialMultipartValidation(t *testing.T) {
 			assert.Equal(t, files[index].(map[string]any)["ref"], item[typeName].(map[string]any)["url"].(map[string]any)["__fileRef"])
 		}
 		assert.Equal(t, "reference_image", content[1].(map[string]any)["role"])
-		assert.Equal(t, map[string]any{"seconds": float64(5), "resolution": "768P", "input_images": float64(1), "input_video_seconds": float64(15)}, callHailuoHook(t, plugin, "extractUsage", ctx))
+		assert.Equal(t, map[string]any{"seconds": float64(5), "resolution": "768P", "input_images": float64(1), "input_video_seconds": float64(15), "long_video": false}, callHailuoHook(t, plugin, "extractUsage", ctx))
 	})
 }
 
@@ -1159,4 +1161,72 @@ func TestHailuoH3ResponsesReferencePlacement(t *testing.T) {
 		require.Len(t, body["content"], 2)
 		assert.Equal(t, "video_url", body["content"].([]any)[1].(map[string]any)["type"])
 	})
+}
+
+func TestHailuoMetasoLongVideoContract(t *testing.T) {
+	plugin := loadHailuoPlugin(t)
+	for _, tc := range []struct {
+		name, base, resolution string
+		seconds                int
+		valid                  bool
+	}{
+		{"metaso 768P 30", "https://metaso.cn/api/minimax", "768P", 30, true},
+		{"metaso 480P 16", "https://metaso.cn/api/minimax", "480P", 16, true},
+		{"metaso 1080P 30", "https://metaso.cn/api/minimax", "1080P", 30, true},
+		{"2K remains fifteen", "https://metaso.cn/api/minimax", "2K", 16, false},
+		{"maximum remains thirty", "https://metaso.cn/api/minimax", "768P", 31, false},
+		{"other provider stays fifteen", "https://api.minimax.example", "768P", 16, false},
+		{"userinfo is not Metaso", "https://metaso.cn@evil.example/api/minimax", "768P", 30, false},
+		{"suffix is not Metaso", "https://metaso.cn.evil.example/api/minimax", "768P", 30, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := hailuoH3SubmitContext(map[string]any{"prompt": "p", "duration": tc.seconds, "resolution": tc.resolution})
+			ctx["baseUrl"] = tc.base
+			value, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
+			if !tc.valid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			body := alibabaObject(t, value)["body"].(map[string]any)
+			assert.EqualValues(t, tc.seconds, body["duration"])
+			assert.Equal(t, false, body["context_ir_enabled"], "unquoted optional optimization must not be billed implicitly")
+			facts := callHailuoHook(t, plugin, "extractUsage", ctx)
+			assert.Equal(t, true, facts["long_video"])
+			assert.EqualValues(t, tc.seconds, facts["seconds"])
+			result := callHailuoHook(t, plugin, "extractUsageOnComplete", map[string]any{"baseUrl": tc.base}, nil, map[string]any{"task": map[string]any{"resolution": tc.resolution, "usage": map[string]any{"output_seconds": tc.seconds}}})
+			assert.EqualValues(t, tc.seconds, result["seconds"])
+			assert.NotContains(t, result, "long_video", "original request determines the supplier duration band")
+		})
+	}
+	for _, value := range []any{true, "false", 0} {
+		ctx := hailuoH3SubmitContext(map[string]any{"prompt": "p", "duration": 5, "context_ir_enabled": value})
+		ctx["baseUrl"] = "https://metaso.cn/api/minimax"
+		_, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
+		require.Error(t, err, "reject unquoted optimization or malformed switches")
+	}
+}
+
+func TestHailuoMetasoLongVideoRequiresConfiguredBand(t *testing.T) {
+	previous := config.GlobalConfig.ExportAllConfigs()
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(previous)) })
+	plugin := loadHailuoPlugin(t)
+	for _, expression := range []string{`tier("old",u("seconds")*0.0410959)`, `tier("standard",u("seconds")*0.0410959)*(u("long_video") ? 2 : 1)`} {
+		encoded, err := common.Marshal(map[string]string{"hailuo::MiniMax-H3": expression})
+		require.NoError(t, err)
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{billing_setting.PluginBillingExprOption: string(encoded)}))
+		adaptor := taskplugin.New(plugin)
+		info := &relaycommon.RelayInfo{OriginModelName: "MiniMax-H3", ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: "https://metaso.cn/api/minimax", ApiKey: "synthetic", UpstreamModelName: "MiniMax-H3"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "local-long-only"}}
+		adaptor.Init(info)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+		c.Set("task_request", map[string]any{"model": "MiniMax-H3", "prompt": "p", "duration": 30, "resolution": "768P"})
+		failure := adaptor.ValidateRequestAndSetAction(c, info)
+		if strings.Contains(expression, "long_video") {
+			require.Nil(t, failure)
+		} else {
+			require.NotNil(t, failure)
+			assert.Equal(t, "model_price_error", failure.Code)
+		}
+	}
 }

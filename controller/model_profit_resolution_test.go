@@ -173,6 +173,42 @@ func TestModelProfitH3CostRules(t *testing.T) {
 			withoutHistory.Rules = saved.Rules[1:]
 			_, err = model.SaveModelProfitCostRules(context.Background(), withoutHistory)
 			assert.ErrorIs(t, err, model.ErrModelProfitHistory)
+			// Append a new effective rule; old costs and historical unknowns stay unchanged.
+			two := float64(2)
+			longRule := saved.Rules[0]
+			longRule.EffectiveFrom, longRule.LongVideoMultiplier = 400, &two
+			longRule.ResolutionCostsCNY = map[string]float64{"480P": 0.06000236, "768P": 0.0897396, "1080P": 0.13997618, "2K": 0.149566}
+			longRule.Source = "Metaso long video public estimate, not invoice"
+			config = saved
+			config.Rules = append(append([]model.ModelProfitCostRule{}, saved.Rules...), longRule)
+			updated, err := model.SaveModelProfitCostRules(context.Background(), config)
+			require.NoError(t, err)
+			reloaded, err := model.GetModelProfitCostRules(context.Background())
+			require.NoError(t, err)
+			assert.Equal(t, updated, reloaded)
+			for i, item := range []struct {
+				submitted      int64
+				resolution     string
+				seconds, input float64
+			}{
+				{201, "768P", 30, 15}, {401, "768P", 30, 15}, {401, "768P", 14, 0}, {401, "2K", 16, 0},
+			} {
+				id := fmt.Sprintf("h3-long-cost-%d", i)
+				require.NoError(t, db.Create(&model.Task{TaskID: id, UserId: 1, ChannelId: 16, SubmitTime: item.submitted, Status: model.TaskStatusSuccess}).Error)
+				images := 0
+				if i < 2 {
+					images = 6
+				}
+				other, err := common.Marshal(map[string]any{"task_id": id, "is_task": true, "usage_facts": map[string]any{"seconds": item.seconds, "resolution": item.resolution, "input_video_seconds": item.input, "input_images": images, "long_video": true}})
+				require.NoError(t, err)
+				require.NoError(t, logs.Create(&model.Log{CreatedAt: 435, UserId: 1, ChannelId: 16, Type: model.LogTypeConsume, ModelName: "MiniMax-H3", Quota: 100, RequestId: id, Other: string(other)}).Error)
+			}
+			longReport, err := model.GetModelProfits(context.Background(), model.ModelProfitFilter{Start: 430, End: 440, ModelName: "MiniMax-H3"})
+			require.NoError(t, err)
+			assert.EqualValues(t, 2, longReport.Summary.KnownCostRequests)
+			assert.EqualValues(t, 2, longReport.Summary.UnknownCostRequests)
+			require.NotNil(t, longReport.Summary.UpstreamCostCNY)
+			assert.InDelta(t, 10.68957, *longReport.Summary.UpstreamCostCNY, 1e-8)
 		})
 	}
 }

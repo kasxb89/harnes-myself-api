@@ -31,6 +31,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { getClientModelCatalog, getClientModelConfig } from './api'
 import { ClientModelConfigForm } from './components/config-form'
+import { ClientDefaultsSummary } from './components/defaults-summary'
 import { ClientMediaDefaultsSection } from './components/media-defaults-form'
 import { ClientModelPresentationSection } from './components/presentation-form'
 
@@ -97,6 +98,7 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
             onValueChange={(value) => setTab(String(value))}
             className='mx-auto max-w-5xl min-w-0 gap-4'
           >
+            {config.data && <ClientDefaultsSummary config={config.data} />}
             <TabsList
               className='h-auto w-full flex-wrap'
               aria-label={t('Client model settings')}

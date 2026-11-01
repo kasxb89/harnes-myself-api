@@ -94,6 +94,11 @@ export const SIDEBAR_MODULE_SECTIONS: SidebarModuleSection[] = [
     descriptionKey: 'Revenue, model costs and balance changes.',
     modules: [
       {
+        key: 'pricebook',
+        titleKey: 'Model price list',
+        descriptionKey: 'Review approved model prices and procurement costs.',
+      },
+      {
         key: 'operations',
         titleKey: 'Operations dashboard',
         descriptionKey: 'Review platform revenue and recharges.',
@@ -167,7 +172,7 @@ export const SIDEBAR_MODULE_SECTIONS: SidebarModuleSection[] = [
   },
   {
     key: 'content',
-    titleKey: 'Content & clients',
+    titleKey: 'Client configuration',
     descriptionKey: 'Client models, creative content and customer support.',
     modules: [
       {
@@ -374,6 +379,7 @@ export const SIDEBAR_URL_MODULES: Record<
   '/usage-logs/drawing': { section: 'console', module: 'midjourney' },
   '/usage-logs/task': { section: 'console', module: 'task' },
   '/usage-logs/operations': { section: 'finance', module: 'operations' },
+  '/models/pricebook': { section: 'finance', module: 'pricebook' },
   '/model-profits': { section: 'finance', module: 'model_profits' },
   '/balance-ledger': { section: 'finance', module: 'balance_ledger' },
   '/upstream-topups': { section: 'finance', module: 'upstream_topups' },
