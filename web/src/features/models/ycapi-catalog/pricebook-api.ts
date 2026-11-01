@@ -35,8 +35,10 @@ const quoteSchema = z.object({
     'approved_snapshot',
     'public_reference_estimate',
     'user_quote_estimate',
+    'account_credit_snapshot',
   ]),
   checked_at: z.string(),
+  retail_checked_at: z.string().optional(),
   source: z.string(),
   prices: z.array(
     z.object({
@@ -44,7 +46,7 @@ const quoteSchema = z.object({
       direction: z.string(),
       unit: z.string(),
       procurement_cny: z.number().nonnegative(),
-      retail_cny: z.number().nonnegative(),
+      retail_cny: z.number().nonnegative().nullable(),
       lane_id: z.string().optional(),
     })
   ),

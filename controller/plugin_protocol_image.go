@@ -127,7 +127,7 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 		return
 	}
 	rendererContext := protocolRequest.JSValue()
-	if pinned.Plugin.Meta.Key == "ycapi" {
+	if pinned.Plugin.Meta.Key == "ycapi" || pinned.RetainsImageResult() {
 		rendererContext, err = taskPluginProtocolRendererContext(protocolRequest, pinned, task, deps.artifactContentURL)
 		if err != nil {
 			respondPluginProtocolError(c, http.StatusInternalServerError, "task_protocol_error", "Task artifact projection failed")
@@ -178,6 +178,11 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 			}
 			item["b64_json"] = encoded
 		}
+	}
+	// Only an explicitly retained successful result can advertise recovery.
+	// The host task ID is public; a provider's task ID remains private data.
+	if pinned.RetainsImageResult() && task.Status == model.TaskStatusSuccess && task.ResultRetrievable() && strings.TrimSpace(task.TaskID) != "" {
+		c.Header("X-New-Api-Task-Id", task.TaskID)
 	}
 	c.JSON(http.StatusOK, response)
 }

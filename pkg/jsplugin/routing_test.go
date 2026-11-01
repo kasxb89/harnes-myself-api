@@ -464,6 +464,72 @@ func TestRouteRetainResultDecodeAndValidation(t *testing.T) {
 	}
 }
 
+func TestImageProtocolRetainResultDecodeAndSnapshot(t *testing.T) {
+	imageExports := `export const protocols = {openai_image: {
+		decodeRequest: function(ctx) { return {kind: "submit", model: ctx.model}; },
+		render: function() { return {data: []}; }
+	}};`
+	for _, tc := range []struct {
+		name, claim, errContains string
+		want                     *bool
+	}{
+		{name: "legacy string preserves discard", claim: `"openai_image"`},
+		{name: "object default preserves discard", claim: `{name: "openai_image"}`},
+		{name: "explicit false", claim: `{name: "openai_image", retainResult: false}`, want: new(bool)},
+		{name: "explicit true", claim: `{name: "openai_image", retainResult: true}`, want: func() *bool { v := true; return &v }()},
+		{name: "null rejected", claim: `{name: "openai_image", retainResult: null}`, errContains: "retainResult must be a boolean"},
+		{name: "string rejected", claim: `{name: "openai_image", retainResult: "true"}`, errContains: "retainResult must be a boolean"},
+		{name: "number rejected", claim: `{name: "openai_image", retainResult: 1}`, errContains: "retainResult must be a boolean"},
+		{name: "unknown field rejected", claim: `{name: "openai_image", retain_result: true}`, errContains: `unknown field "retain_result"`},
+		{name: "video cannot opt in", claim: `{name: "openai_video", retainResult: true}`, errContains: "must not declare retainResult"},
+		{name: "responses cannot opt out", claim: `{name: "openai_responses", supports: ["sync"], retainResult: false}`, errContains: "must not declare retainResult"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := NewRegistry()
+			plugin, err := registry.Register(routingTestPluginSource("image-retain", 0, `["image"]`, "protocols: ["+tc.claim+"],", imageExports), Options{})
+			if tc.errContains != "" {
+				require.ErrorContains(t, err, tc.errContains)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, plugin.Meta.Protocols, 1)
+			assert.Equal(t, tc.want, plugin.Meta.Protocols[0].RetainResult)
+			pinned := PinnedEndpoint{Plugin: plugin, Protocol: ProtocolOpenAIImage, Model: "image"}
+			assert.Equal(t, tc.want != nil && *tc.want, pinned.RetainsImageResult())
+			snapshot := registry.Snapshot()
+			require.Len(t, snapshot.Override, 1)
+			if tc.want != nil {
+				*snapshot.Override[0].Protocols[0].RetainResult = !*tc.want
+				assert.Equal(t, *tc.want, *plugin.Meta.Protocols[0].RetainResult, "snapshot pointer must not mutate the executing claim")
+				assert.Equal(t, tc.want, registry.Snapshot().Override[0].Protocols[0].RetainResult)
+			}
+		})
+	}
+}
+
+func TestPinnedImageRetentionUsesExecutingClaim(t *testing.T) {
+	retain := true
+	retaining := &LoadedPlugin{Meta: Meta{Models: []string{"public-a", "mapped-b"}, Protocols: []ProtocolClaim{{Name: ProtocolOpenAIImage, Models: []string{"public-a"}, RetainResult: &retain}}}}
+	legacy := &LoadedPlugin{Meta: Meta{Models: []string{"public-a"}, Protocols: []ProtocolClaim{{Name: ProtocolOpenAIImage}}}}
+	for _, tc := range []struct {
+		name   string
+		pinned PinnedEndpoint
+		want   bool
+	}{
+		{"exact model", PinnedEndpoint{Plugin: retaining, Protocol: ProtocolOpenAIImage, Model: "public-a"}, true},
+		{"undeclared raw mapping keeps public claim", PinnedEndpoint{Plugin: retaining, Protocol: ProtocolOpenAIImage, Model: "public-a", MappedModel: "raw-a"}, true},
+		{"declared mapping uses mapped claim", PinnedEndpoint{Plugin: retaining, Protocol: ProtocolOpenAIImage, Model: "public-a", MappedModel: "mapped-b"}, false},
+		{"unclaimed model", PinnedEndpoint{Plugin: retaining, Protocol: ProtocolOpenAIImage, Model: "mapped-b"}, false},
+		{"unknown model", PinnedEndpoint{Plugin: retaining, Protocol: ProtocolOpenAIImage, Model: "unknown"}, false},
+		{"nonimage protocol", PinnedEndpoint{Plugin: retaining, Protocol: "openai_video", Model: "public-a"}, false},
+		{"nil executing plugin", PinnedEndpoint{Protocol: ProtocolOpenAIImage, Model: "public-a", Candidates: []ProtocolBinding{{Plugin: retaining}}}, false},
+		{"candidate cannot grant retention", PinnedEndpoint{Plugin: legacy, Protocol: ProtocolOpenAIImage, Model: "public-a", Candidates: []ProtocolBinding{{Plugin: retaining}}}, false},
+		{"candidate cannot remove retention", PinnedEndpoint{Plugin: retaining, Protocol: ProtocolOpenAIImage, Model: "public-a", Candidates: []ProtocolBinding{{Plugin: legacy}}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) { assert.Equal(t, tc.want, tc.pinned.RetainsImageResult()) })
+	}
+}
+
 func TestRouteRequestContextKeepsFormAndMultipartValuesAcrossDecoderWrites(t *testing.T) {
 	plugin, err := CompilePlugin(routingTestPluginSource("route-request-writes", 0, `["gpt-5.5"]`, "", `
 export function decodeJob(ctx) {

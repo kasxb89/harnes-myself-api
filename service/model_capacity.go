@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -78,12 +79,15 @@ func capacityError(c *gin.Context, code, message string) *types.NewAPIError {
 
 // Clamp before quota reservation. Unknown metadata leaves the old path alone.
 func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if !codebloom.PubliclyAvailable(info.OriginModelName) {
+		return capacityError(c, "model_not_available", "The selected model is not available")
+	}
 	approved, catalogued := ycapi.Lookup(info.OriginModelName)
 	if ycapi.IsExcludedChatModel(info.OriginModelName) {
 		return capacityError(c, "model_not_available", "The selected model is not included in the current catalog")
 	}
 	if catalogued {
-		request, isText := info.Request.(*dto.GeneralOpenAIRequest)
+		_, isText := info.Request.(*dto.GeneralOpenAIRequest)
 		if approved.Kind != "text" || !isText {
 			return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
@@ -159,14 +163,6 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 					}
 				}
 			}
-		}
-		meta := request.GetTokenCountMeta()
-		estimate, err := CountRequestToken(c, meta, info)
-		if err != nil {
-			return capacityError(c, "model_input_size_unavailable", "The input size could not be determined for the selected model")
-		}
-		if estimate > 32000 {
-			return capacityError(c, "model_input_limit_exceeded", "This model route accepts at most 32000 input tokens")
 		}
 	}
 	caps, err := capacityForRequest(c, info.OriginModelName)
@@ -286,9 +282,12 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 }
 
 // Runs at the last HTTP boundary, after model conversion, system prompt,
-// channel overrides and passthrough. Native output hard caps include reasoning.
+// channel overrides and passthrough. Output budgets use the reviewed route policy.
 // Input counts below are tokenizer ESTIMATES, not provider-exact guarantees.
 func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relaycommon.RelayInfo) error {
+	if !codebloom.PubliclyAvailable(info.OriginModelName) {
+		return capacityError(c, "model_not_available", "The selected model is not available")
+	}
 	caps, err := capacityForRequest(c, info.OriginModelName)
 	if err != nil {
 		return capacityError(c, "model_capacity_unavailable", i18n.MsgCapacityConfigUnavailable)

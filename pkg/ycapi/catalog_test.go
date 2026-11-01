@@ -2,6 +2,7 @@ package ycapi
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -88,7 +89,7 @@ func TestPreviewUsesNativeClipTotalAndPinnedLane(t *testing.T) {
 	assert.Equal(t, "grok-imagine-video@ROU:default", p.Body["lane_id"])
 }
 func TestPreviewRejectsUnlistedOrUnsafeInputs(t *testing.T) {
-	neg, huge, zero, allowed := -1, 32001, 0, 8192
+	neg, huge, zero, allowed := -1, common.MaxRelayOutputTokens+1, 0, 8192
 	cases := []PreviewRequest{
 		{ModelID: "ycapi-unknown", SpecID: "tokens", Prompt: "ok"},
 		{ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: ""},
@@ -162,6 +163,77 @@ func TestChatEnvelopePreservesToolsImagesControlsAndSmallerBudgets(t *testing.T)
 			copy[key] = value
 		}
 		_, err := ChatEnvelope("ycapi-gpt-6.1-sol", copy)
+		assert.Error(t, err)
+	}
+}
+
+func TestChatEnvelopeUsesDefaultsOnlyWhenOutputBudgetsAreOmitted(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		fields map[string]any
+		want   int
+	}{
+		{name: "omitted", want: 8192},
+		{name: "null is omitted", fields: map[string]any{"max_tokens": nil}, want: 8192},
+		{name: "max tokens", fields: map[string]any{"max_tokens": 16384}, want: 16384},
+		{name: "completion alias", fields: map[string]any{"max_completion_tokens": 16384}, want: 16384},
+		{name: "output alias", fields: map[string]any{"max_output_tokens": 16384}, want: 16384},
+		{name: "conflicting aliases", fields: map[string]any{"max_tokens": 32768, "max_completion_tokens": 16384, "max_output_tokens": 24576}, want: 16384},
+		{name: "smaller explicit budget", fields: map[string]any{"max_tokens": 512, "max_output_tokens": 16384}, want: 512},
+		{name: "shared safety boundary", fields: map[string]any{"max_tokens": common.MaxRelayOutputTokens}, want: common.MaxRelayOutputTokens},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := map[string]any{"messages": []map[string]string{{"role": "user", "content": "hello"}}}
+			for key, value := range test.fields {
+				request[key] = value
+			}
+			envelope, err := ChatEnvelope("ycapi-gpt-6.1-sol", request)
+			require.NoError(t, err)
+			params := envelope["params"].(map[string]any)
+			assert.EqualValues(t, test.want, params["max_tokens"])
+			assert.NotContains(t, params, "max_completion_tokens")
+			assert.NotContains(t, params, "max_output_tokens")
+		})
+	}
+	for _, invalid := range []any{0, -1, 1.5, "16384", true, math.NaN(), math.Inf(1), common.MaxRelayOutputTokens + 1, uint64(math.MaxInt32) + 1} {
+		_, err := ChatEnvelope("ycapi-gpt-6.1-sol", map[string]any{
+			"messages":   []map[string]string{{"role": "user", "content": "hello"}},
+			"max_tokens": 16384, "max_output_tokens": invalid,
+		})
+		assert.Error(t, err, "invalid alias must not disappear behind a valid budget: %v", invalid)
+	}
+}
+
+func TestTextCapabilitiesDoNotAdvertiseByteGuardsAsInputTokenLimits(t *testing.T) {
+	for _, model := range approved.Models {
+		if model.Kind != "text" {
+			continue
+		}
+		capability := PublicTextCapabilities(model.ID)
+		assert.NotContains(t, capability, "max_input_tokens", model.ID)
+		assert.Positive(t, model.ContextWindow, "verified per-model context must remain available")
+		assert.Equal(t, 8192, model.MaxOutputTokens, "approved product default must remain available")
+	}
+}
+
+func TestTextPreviewSeparatesTokenEstimatesFromBodyByteProtection(t *testing.T) {
+	input, output, maxOutput := 65536, 8192, 16384
+	preview, err := BuildPreview(PreviewRequest{
+		ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: strings.Repeat("字", 10000),
+		InputTokens: &input, OutputTokens: &output, MaxOutputTokens: &maxOutput,
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, maxOutput, preview.Body["params"].(map[string]any)["max_tokens"])
+	assert.True(t, preview.Estimated)
+	assert.False(t, preview.GenerationEnabled)
+	for _, request := range []PreviewRequest{
+		{ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: strings.Repeat("😀", 16000)},
+		{ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: "hello", InputTokens: common.GetPointer(common.MaxRelayOutputTokens + 1)},
+		{ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: "hello", MaxOutputTokens: common.GetPointer(common.MaxRelayOutputTokens + 1)},
+		{ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: "hello", OutputTokens: common.GetPointer(1000001)},
+		{ModelID: "ycapi-gpt-6.1-sol", SpecID: "tokens", Prompt: "hello", OutputTokens: common.GetPointer(1025), MaxOutputTokens: common.GetPointer(1024)},
+	} {
+		_, err := BuildPreview(request)
 		assert.Error(t, err)
 	}
 }

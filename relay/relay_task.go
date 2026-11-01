@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -247,9 +248,14 @@ func taskCatalogPreflightRejection(c *gin.Context, info *relaycommon.RelayInfo, 
 // 估算计费(EstimateBilling) → 计算价格 → 预扣费（仅首次）→
 // 构建/发送/解析上游请求 → 提交后计费调整(AdjustBillingOnSubmit)。
 // 共享控制器编排负责未落库退款、最终额度预留、落库和结算。
-func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitResult, *dto.TaskError) {
+func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmitResult, taskErr *dto.TaskError) {
 	c.Set(taskCatalogRejectionKey, nil)
 	info.InitChannelMeta(c)
+	if !codebloom.PubliclyAvailable(info.OriginModelName) {
+		rejected := service.TaskErrorWrapperLocal(errors.New("The selected model is not available"), "model_not_available", http.StatusBadRequest)
+		rejected.NoRetry = true
+		return nil, rejected
+	}
 
 	// 1. 确定 platform → 创建适配器 → 验证请求
 	platform := constant.TaskPlatform(c.GetString("platform"))
@@ -492,6 +498,11 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		c.Request = original.WithContext(boundedCtx)
 		defer func() { c.Request = original }()
 	}
+	// CodeBloom provides neither an idempotency key nor a retrieval API. Once
+	// sending begins, any uncertain result must stop instead of generating again.
+	if platform == "codebloom-image" {
+		defer func() { taskErr = service.ProtectCodeBloomImageSubmissionFailure(taskErr) }()
+	}
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
@@ -542,7 +553,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 			}
 		}
 		if value, exists := c.Get(jsplugin.ContextKeyPinnedEndpoint); exists {
-			if endpoint, ok := value.(jsplugin.PinnedEndpoint); ok && endpoint.Protocol == jsplugin.ProtocolOpenAIImage {
+			if endpoint, ok := value.(jsplugin.PinnedEndpoint); ok && endpoint.Protocol == jsplugin.ProtocolOpenAIImage && !endpoint.RetainsImageResult() {
 				discardMediaData = true
 			}
 		}

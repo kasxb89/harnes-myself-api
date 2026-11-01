@@ -127,6 +127,9 @@ function ConfiguredCost(props: { rule: ConfiguredRow['cost_rule'] }) {
 }
 
 function procurementQuoteLabel(basis: ConfirmedQuote['basis']) {
+  if (basis === 'account_credit_snapshot') {
+    return 'Supplier account-credit quote'
+  }
   if (basis === 'public_reference_estimate') {
     return 'Verified public reference estimate'
   }
@@ -136,15 +139,48 @@ function procurementQuoteLabel(basis: ConfirmedQuote['basis']) {
   return 'Confirmed procurement quote'
 }
 
+function priceDirectionLabel(direction: string) {
+  const keys: Record<string, string> = {
+    input: 'Input',
+    output: 'Output',
+    cache_read: 'Cache Read',
+    cache_write: 'Cache Write',
+    cache_write_1h: 'Cache Write (1h)',
+    cache_write_12h: 'Cache Write (12h)',
+    image: 'Image',
+    request: 'Request',
+  }
+  return keys[direction] ?? direction
+}
+
+function quoteUnitLabel(unit: string, accountCredit: boolean) {
+  if (accountCredit) {
+    if (unit.includes('token')) return 'Account credit CNY / 1M tokens'
+    if (unit === 'CNY / image') return 'Account credit CNY / image'
+    if (unit === 'CNY / request') return 'Account credit CNY / request'
+  }
+  if (unit.includes('token')) return 'CNY / 1M tokens'
+  return unit
+}
+
 function ConfirmedQuoteValue(props: {
   quote: ConfirmedQuote
   field: 'procurement_cny' | 'retail_cny'
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const accountCredit =
+    props.field === 'procurement_cny' &&
+    props.quote.basis === 'account_credit_snapshot'
+  if (
+    props.field === 'retail_cny' &&
+    props.quote.prices.every((price) => price.retail_cny === null)
+  ) {
+    return <span>{t('Retail price pending')}</span>
+  }
   const groups = new Map<
     string,
-    { unit: string; direction: string; values: number[] }
+    { unit: string; direction: string; values: number[]; pending: boolean }
   >()
   for (const price of props.quote.prices) {
     const key = `${price.unit}:${price.direction}`
@@ -152,8 +188,11 @@ function ConfirmedQuoteValue(props: {
       unit: price.unit,
       direction: price.direction,
       values: [],
+      pending: false,
     }
-    group.values.push(price[props.field])
+    const value = price[props.field]
+    if (value === null) group.pending = true
+    else group.values.push(value)
     groups.set(key, group)
   }
   let quoteLabel = t(procurementQuoteLabel(props.quote.basis))
@@ -163,28 +202,40 @@ function ConfirmedQuoteValue(props: {
       {[...groups.entries()].map(([key, group]) => {
         const min = Math.min(...group.values),
           max = Math.max(...group.values)
-        let unit = t('CNY / 1M tokens')
-        if (group.unit === 'CNY / second') unit = t('CNY / second')
-        else if (group.unit === 'CNY / image') unit = t('CNY / image')
-        else if (!group.unit.includes('token')) unit = group.unit
+        const unit = t(quoteUnitLabel(group.unit, accountCredit))
         return (
           <div key={key}>
             {group.direction && (
-              <span>
-                {t(group.direction === 'input' ? 'Input' : 'Output')}:{' '}
-              </span>
+              <span>{t(priceDirectionLabel(group.direction))}: </span>
             )}
             <strong>
-              {formatProfitCny(min, locale)}
-              {max !== min && <> – {formatProfitCny(max, locale)}</>}
+              {group.values.length
+                ? formatProfitCny(min, locale)
+                : t('Retail price pending')}
+              {group.values.length > 0 && max !== min && (
+                <> – {formatProfitCny(max, locale)}</>
+              )}
             </strong>
             <span> / {unit}</span>
+            {group.pending && group.values.length > 0 && (
+              <div>{t('Some retail prices are pending')}</div>
+            )}
           </div>
         )
       })}
       <div className='text-muted-foreground'>
-        {quoteLabel} · {props.quote.checked_at}
+        {quoteLabel} ·{' '}
+        {props.field === 'retail_cny'
+          ? (props.quote.retail_checked_at ?? props.quote.checked_at)
+          : props.quote.checked_at}
       </div>
+      {accountCredit && (
+        <div className='text-muted-foreground'>
+          {t(
+            'Cash conversion has not been verified; these are supplier account-credit amounts.'
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -288,6 +339,13 @@ export function ConfiguredModelPricebook() {
       id: 'retail',
       header: t('Retail price'),
       cell: ({ row }) => {
+        if (
+          row.original.approved_quote?.prices.every(
+            (price) => price.retail_cny === null
+          )
+        ) {
+          return <span>{t('Retail price pending')}</span>
+        }
         if (row.original.pricing) {
           return (
             <div>
@@ -540,8 +598,7 @@ export function ConfiguredModelPricebook() {
                   header: t('Parameters'),
                   cell: (row) => (
                     <div className='text-xs break-words'>
-                      {row.direction &&
-                        t(row.direction === 'input' ? 'Input' : 'Output')}
+                      {row.direction && t(priceDirectionLabel(row.direction))}
                       {Object.entries(row.params).map(([key, value]) => (
                         <div key={key}>
                           {key}: {String(value)}
@@ -550,16 +607,54 @@ export function ConfiguredModelPricebook() {
                     </div>
                   ),
                 },
-                { id: 'unit', header: t('Unit'), cell: (row) => row.unit },
+                ...(details.row.approved_quote.basis ===
+                'account_credit_snapshot'
+                  ? []
+                  : [
+                      {
+                        id: 'unit',
+                        header: t('Unit'),
+                        cell: (row: ConfirmedQuote['prices'][number]) =>
+                          row.unit,
+                      },
+                    ]),
                 {
                   id: 'cost',
                   header: t('Procurement price'),
-                  cell: (row) => formatProfitCny(row.procurement_cny, locale),
+                  cell: (row) => (
+                    <div className='space-y-1'>
+                      <span>
+                        {formatProfitCny(row.procurement_cny, locale)}
+                      </span>
+                      {details.row.approved_quote?.basis ===
+                        'account_credit_snapshot' && (
+                        <>
+                          <div>{t(quoteUnitLabel(row.unit, true))}</div>
+                          <div className='text-muted-foreground text-xs'>
+                            {t(
+                              'Cash conversion has not been verified; these are supplier account-credit amounts.'
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ),
                 },
                 {
                   id: 'retail',
                   header: t('Retail price'),
-                  cell: (row) => formatProfitCny(row.retail_cny, locale),
+                  cell: (row) =>
+                    row.retail_cny === null ? (
+                      t('Retail price pending')
+                    ) : (
+                      <div className='space-y-1'>
+                        <span>{formatProfitCny(row.retail_cny, locale)}</span>
+                        {details.row.approved_quote?.basis ===
+                          'account_credit_snapshot' && (
+                          <div>{t(quoteUnitLabel(row.unit, false))}</div>
+                        )}
+                      </div>
+                    ),
                 },
               ]}
             />

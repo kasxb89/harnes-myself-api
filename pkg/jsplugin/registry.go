@@ -901,6 +901,10 @@ func cloneMeta(meta Meta) Meta {
 	for index := range meta.Protocols {
 		meta.Protocols[index].Models = append([]string(nil), meta.Protocols[index].Models...)
 		meta.Protocols[index].Supports = append([]string(nil), meta.Protocols[index].Supports...)
+		if retain := meta.Protocols[index].RetainResult; retain != nil {
+			value := *retain
+			meta.Protocols[index].RetainResult = &value
+		}
 	}
 	if meta.Description != nil {
 		meta.Description = maps.Clone(meta.Description)
@@ -1419,6 +1423,9 @@ func normalizeV1Meta(meta *Meta) error {
 		if !known {
 			return fmt.Errorf("plugin meta protocol %q is unknown", claim.Name)
 		}
+		if claim.RetainResult != nil && claim.Name != ProtocolOpenAIImage {
+			return fmt.Errorf("plugin protocol %q must not declare retainResult", claim.Name)
+		}
 		if _, duplicate := protocols[claim.Name]; duplicate {
 			return fmt.Errorf("plugin meta protocols must be unique")
 		}
@@ -1849,7 +1856,7 @@ func decodeRoutes(value any) ([]Route, error) {
 
 // decodeProtocolClaims accepts both protocol entry shapes: a bare protocol
 // name string (binds every meta.models entry) and an object {name, models,
-// supports}. An absent key is empty; a present null or non-array is rejected.
+// supports, retainResult}. An absent key is empty; a present null or non-array is rejected.
 // The supports key is decoded only when present so an absent key stays nil.
 func decodeProtocolClaims(object map[string]any, name string) ([]ProtocolClaim, error) {
 	value, exists := object[name]
@@ -1868,7 +1875,7 @@ func decodeProtocolClaims(object map[string]any, name string) ([]ProtocolClaim, 
 		case map[string]any:
 			for key := range entry {
 				switch key {
-				case "name", "models", "supports":
+				case "name", "models", "supports", "retainResult":
 				default:
 					return nil, fmt.Errorf("plugin meta protocol %d has unknown field %q", index, key)
 				}
@@ -1891,6 +1898,13 @@ func decodeProtocolClaims(object map[string]any, name string) ([]ProtocolClaim, 
 					return nil, err
 				}
 				claim.Supports = orderProtocolSupports(claim.Name, claim.Supports)
+			}
+			if value, exists := entry["retainResult"]; exists {
+				retain, ok := value.(bool)
+				if !ok {
+					return nil, fmt.Errorf("plugin meta protocol %d retainResult must be a boolean", index)
+				}
+				claim.RetainResult = &retain
 			}
 			claims = append(claims, claim)
 		default:

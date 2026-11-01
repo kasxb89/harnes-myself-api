@@ -127,6 +127,10 @@ type Preview struct {
 	Estimated         bool           `json:"estimated"`
 }
 
+// This bounds the offline preview's serialized text request only. It is not a
+// supplier capacity, token estimate, or limit on normal relay requests.
+const maxPreviewRequestBodyBytes = 32000
+
 // BuildPreview compiles only an approved indivisible offer. Returned amounts
 // are CNY examples, never gateway quota, wallet reservations or settlement.
 func BuildPreview(req PreviewRequest) (Preview, error) {
@@ -195,10 +199,10 @@ func BuildPreview(req PreviewRequest) (Preview, error) {
 		if req.MaxOutputTokens != nil {
 			maxOut = *req.MaxOutputTokens
 		}
-		if in < 0 || in > 32000 || out < 0 || out > 1000000 || !slices.Contains([]int{1024, 2048, 4096, 8192}, maxOut) {
+		if in < 0 || in > common.MaxRelayOutputTokens || out < 0 || out > 1000000 || maxOut <= 0 || maxOut > common.MaxRelayOutputTokens {
 			return result, fmt.Errorf("invalid YCAPI preview token budget")
 		}
-		if m.Kind == "text" && (out > maxOut || len([]byte(req.Prompt))+4096 > 32000) {
+		if m.Kind == "text" && out > maxOut {
 			return result, fmt.Errorf("YCAPI preview exceeds the listed text budget")
 		}
 		scale := decimal.NewFromInt(1000000)
@@ -212,6 +216,13 @@ func BuildPreview(req PreviewRequest) (Preview, error) {
 			result.Body, err = ChatEnvelope(m.ID, map[string]any{"model": m.UpstreamID, "messages": []map[string]string{{"role": "user", "content": req.Prompt}}, "max_tokens": maxOut, "stream": true, "stream_options": map[string]bool{"include_usage": true}})
 			if err != nil {
 				return result, err
+			}
+			body, err := common.Marshal(result.Body)
+			if err != nil {
+				return result, err
+			}
+			if len(body) > maxPreviewRequestBodyBytes {
+				return result, fmt.Errorf("YCAPI preview request body exceeds the byte limit")
 			}
 		} else {
 			if utf8.RuneCountInString(req.Prompt) > 2000 {

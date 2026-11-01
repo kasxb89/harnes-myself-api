@@ -74,7 +74,9 @@ func TestMediaConcurrencyPerCredentialBudgetAndDurableUnknown(t *testing.T) {
 	ctx := context.Background()
 	policy, err := model.GetMediaConcurrencyPolicy(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, model.MediaConcurrencyDefaults{Video: 4, Image: 10}, policy.Defaults)
+	assert.Equal(t, 4, policy.Defaults.Video)
+	assert.Equal(t, 10, policy.Defaults.Image)
+	assert.Equal(t, 1, policy.Defaults.Audio)
 	var tasks []*model.Task
 	for index := range 4 {
 		task := mediaConcurrencyTask(f, fmt.Sprintf("task_media_budget_%d", index))
@@ -200,10 +202,31 @@ func TestMediaConcurrencyConfigurationUsesAdministratorSessions(t *testing.T) {
 	conflict := request(http.MethodPut, "/api/media-concurrency", credentials["root"], body)
 	assert.Equal(t, 409, conflict.Code, conflict.Body.String())
 	assert.Contains(t, conflict.Body.String(), "MEDIA_CONCURRENCY_POLICY_CONFLICT")
+	current, err = model.GetMediaConcurrencyPolicy(context.Background())
+	require.NoError(t, err)
+	explicit := fmt.Sprintf(`{"schema_version":1,"expected_revision":%q,"defaults":{"video":64,"image":10,"audio":3},"provider_defaults":{"ycapi":{"video":25,"image":24,"audio":23}},"pool_overrides":[]}`, current.Revision)
+	response := request(http.MethodPut, "/api/media-concurrency", credentials["root"], explicit)
+	require.Equal(t, 200, response.Code, response.Body.String())
+	current, err = model.GetMediaConcurrencyPolicy(context.Background())
+	require.NoError(t, err)
+	legacy := fmt.Sprintf(`{"schema_version":1,"expected_revision":%q,"defaults":{"video":20,"image":12},"pool_overrides":[]}`, current.Revision)
+	response = request(http.MethodPut, "/api/media-concurrency", credentials["root"], legacy)
+	require.Equal(t, 200, response.Code, response.Body.String())
+	current, err = model.GetMediaConcurrencyPolicy(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 3, current.Defaults.Audio, "old PUT must preserve explicit new defaults")
+	assert.Equal(t, 25, current.ProviderDefaults["ycapi"].Video)
+	assert.Equal(t, 24, current.ProviderDefaults["ycapi"].Image)
+	assert.Equal(t, 23, current.ProviderDefaults["ycapi"].Audio)
 	for _, malformed := range []string{
 		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":4,"image":10,"other":1}}`,
 		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":0,"image":10},"pool_overrides":[]}`,
 		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":4,"image":10},"pool_overrides":[{"pool_id":"invented","limit":2,"secret":"not-allowed"}]}`,
+		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":4,"image":10,"audio":0},"pool_overrides":[]}`,
+		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":4,"image":10,"audio":null},"pool_overrides":[]}`,
+		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":4,"image":10},"provider_defaults":null,"pool_overrides":[]}`,
+		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":4,"image":10},"provider_defaults":{"ycapi":{"video":20,"image":0,"audio":20}},"pool_overrides":[]}`,
+		`{"schema_version":1,"expected_revision":"unused","defaults":{"video":65,"image":10},"pool_overrides":[]}`,
 	} {
 		response := request(http.MethodPut, "/api/media-concurrency", credentials["root"], malformed)
 		assert.Equal(t, 400, response.Code, response.Body.String())

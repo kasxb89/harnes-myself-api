@@ -53,6 +53,177 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
   vi.restoreAllMocks()
 })
+it('keeps approved retail CNY separate from supplier account-credit costs in the list and specification details', async () => {
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        schema_version: 1,
+        generated_at: 1793500000,
+        usd_exchange_rate: 7.3,
+        rows: [
+          {
+            model_name: 'codebloom-gpt-6.1-sol',
+            state: 'not_configured',
+            origin: 'quote_history',
+            channel_id: 0,
+            channel_name: '',
+            channel_type: 0,
+            upstream_host: 'codebloom.club',
+            channel_status: 0,
+            enabled_groups: [],
+            pricing: null,
+            cost_rule: null,
+            approved_quote: {
+              model_name: 'codebloom-gpt-6.1-sol',
+              name: 'CodeBloom GPT-6.1 Sol',
+              provider: 'CodeBloom',
+              basis: 'account_credit_snapshot',
+              checked_at: '2026-11-01',
+              retail_checked_at: '2026-11-02',
+              source:
+                'Account-credit procurement and independently approved retail CNY.',
+              prices: [
+                {
+                  params: { condition: 'len < 272000' },
+                  direction: 'input',
+                  unit: 'CNY / million tokens',
+                  procurement_cny: 0.5,
+                  retail_cny: 0.9,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  render(
+    <QueryClientProvider client={client}>
+      <ConfiguredModelPricebook />
+    </QueryClientProvider>
+  )
+  const cost = within(
+    await screen.findByRole('cell', { name: /Supplier account-credit quote/ })
+  )
+  const retail = within(
+    screen.getByRole('cell', { name: /Approved retail quote/ })
+  )
+  expect(cost.getByText(/0\.50$/)).toBeVisible()
+  expect(cost.getByText(/Account credit CNY \/ 1M tokens/)).toBeVisible()
+  expect(cost.getByText(/Cash conversion has not been verified/)).toBeVisible()
+  expect(retail.getByText(/0\.90$/)).toBeVisible()
+  expect(retail.getByText('/ CNY / 1M tokens')).toBeVisible()
+  expect(
+    retail.queryByText(/Account credit|Cash conversion/)
+  ).not.toBeInTheDocument()
+  expect(retail.getByText(/2026-11-02/)).toBeVisible()
+  await userEvent
+    .setup()
+    .click(
+      screen.getByRole('button', {
+        name: 'View confirmed specification prices',
+      })
+    )
+  const dialog = within(await screen.findByRole('dialog'))
+  const detailCost = within(dialog.getByRole('cell', { name: /0\.50/ }))
+  const detailRetail = within(dialog.getByRole('cell', { name: /0\.90/ }))
+  expect(detailCost.getByText('Account credit CNY / 1M tokens')).toBeVisible()
+  expect(
+    detailCost.getByText(/Cash conversion has not been verified/)
+  ).toBeVisible()
+  expect(detailRetail.getByText('CNY / 1M tokens')).toBeVisible()
+  expect(
+    detailRetail.queryByText(/Account credit|Cash conversion/)
+  ).not.toBeInTheDocument()
+})
+it('shows supplier account costs and pending retail without presenting an unpriced CodeBloom candidate as free', async () => {
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        schema_version: 1,
+        generated_at: 1793500000,
+        usd_exchange_rate: 7.3,
+        rows: [
+          {
+            model_name: 'codebloom-gpt-6.1-sol',
+            state: 'not_configured',
+            origin: 'quote_history',
+            channel_id: 0,
+            channel_name: '',
+            channel_type: 0,
+            upstream_host: 'codebloom.club',
+            channel_status: 0,
+            enabled_groups: [],
+            pricing: null,
+            cost_rule: null,
+            approved_quote: {
+              model_name: 'codebloom-gpt-6.1-sol',
+              name: 'CodeBloom GPT-6.1 Sol',
+              provider: 'CodeBloom',
+              basis: 'account_credit_snapshot',
+              checked_at: '2026-11-01',
+              source:
+                'Account group multiplier already applied once; cash conversion is unverified.',
+              prices: [
+                {
+                  params: { condition: 'len < 272000' },
+                  direction: 'input',
+                  unit: 'CNY / million tokens',
+                  procurement_cny: 0.5,
+                  retail_cny: null,
+                },
+                {
+                  params: { condition: 'len < 272000' },
+                  direction: 'cache_read',
+                  unit: 'CNY / million tokens',
+                  procurement_cny: 0.025,
+                  retail_cny: null,
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  render(
+    <QueryClientProvider client={client}>
+      <ConfiguredModelPricebook />
+    </QueryClientProvider>
+  )
+  await waitFor(() =>
+    expect(screen.getByText('CodeBloom GPT-6.1 Sol')).toBeVisible()
+  )
+  expect(screen.getByText('Retail price pending')).toBeVisible()
+  expect(screen.getByText(/Supplier account-credit quote/)).toBeVisible()
+  expect(
+    screen.getByText(/Cash conversion has not been verified/)
+  ).toBeVisible()
+  expect(screen.queryByText(/^¥0(?:\.0+)?$/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('No confirmed quote recorded')
+  ).not.toBeInTheDocument()
+  await userEvent.setup().click(
+    screen.getByRole('button', {
+      name: 'View confirmed specification prices',
+    })
+  )
+  const dialog = within(await screen.findByRole('dialog'))
+  expect(dialog.getByText('Cache Read')).toBeVisible()
+  expect(dialog.getAllByText('Retail price pending')).toHaveLength(2)
+})
 it('includes the original Metaso H3 channel beside the separate YCAPI H3 candidate', async () => {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({

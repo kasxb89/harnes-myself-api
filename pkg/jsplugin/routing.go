@@ -47,10 +47,13 @@ type Route struct {
 // Supports names the request forms a mode-bearing protocol accepts; decode
 // and normalize rewrite it into host-table order.
 type ProtocolClaim struct {
-	Name       string   `json:"name"`
-	Models     []string `json:"models,omitempty"`
-	Supports   []string `json:"supports,omitempty"`
-	objectForm bool
+	Name     string   `json:"name"`
+	Models   []string `json:"models,omitempty"`
+	Supports []string `json:"supports,omitempty"`
+	// RetainResult opts synchronous OpenAI Images results into the existing
+	// authenticated task/artifact retrieval surfaces. Nil preserves discard.
+	RetainResult *bool `json:"retainResult,omitempty"`
+	objectForm   bool
 }
 
 // ProtocolMode is one client request form a host protocol operation accepts
@@ -248,6 +251,31 @@ type PinnedEndpoint struct {
 	Model       string
 	MappedModel string
 	Candidates  []ProtocolBinding
+}
+
+// RetainsImageResult follows the executing plugin's exact model claim, never
+// an earlier candidate selected only to decode the request before distribution.
+// Other protocols and claims without an explicit opt-in preserve their defaults.
+func (p PinnedEndpoint) RetainsImageResult() bool {
+	if p.Protocol != ProtocolOpenAIImage || p.Plugin == nil {
+		return false
+	}
+	name := p.Model
+	if p.MappedModel != "" && slices.Contains(p.Plugin.Meta.Models, p.MappedModel) {
+		name = p.MappedModel
+	}
+	if !slices.Contains(p.Plugin.Meta.Models, name) {
+		return false
+	}
+	for _, claim := range p.Plugin.Meta.Protocols {
+		if claim.Name != p.Protocol || claim.RetainResult == nil || !*claim.RetainResult {
+			continue
+		}
+		if len(claim.Models) == 0 || slices.Contains(claim.Models, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // FileReference returns the opaque ref of the index-th uploaded file in a

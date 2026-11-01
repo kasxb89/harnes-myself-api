@@ -22,14 +22,21 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/plugins"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
+	kittypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/tokenkit"
 	apitypes "github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -816,4 +823,268 @@ func TestYcapiAudioRequiresActualMeteringBeforeFinalSettlement(t *testing.T) {
 	result, err := plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, body)
 	require.NoError(t, err)
 	assert.Equal(t, "SUCCESS", result.(map[string]any)["status"])
+}
+
+// TEST_H3_SQL_DSN and TEST_H3_LOG_SQL_DSN select the existing disposable
+// SQLite/MySQL/PostgreSQL fixture. The provider transport stays in memory.
+func TestYcapiEffectiveCapacityDirectoryAndWireDatabase(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	const modelID = "ycapi-gpt-6.1-sol"
+	approvedModel, found := ycapi.Lookup(modelID)
+	require.True(t, found)
+	previousGroups := ratio_setting.GroupRatio2JSONString()
+	previousUsable := setting.UserUsableGroups2JSONString()
+	previousSelfUse := operation_setting.SelfUseModeEnabled
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
+	operation_setting.SelfUseModeEnabled = true
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroups))
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousUsable))
+		operation_setting.SelfUseModeEnabled = previousSelfUse
+	})
+	// These extra tables are outside the base H3 fixture's reset list. Reset
+	// them explicitly so a repeated external-database run cannot reuse PATs.
+	require.NoError(t, f.db.Migrator().DropTable(&model.UserAccessToken{}))
+	require.NoError(t, f.db.AutoMigrate(&model.UserAccessToken{}))
+	require.NoError(t, f.logDB.Migrator().DropTable(&model.AuditLog{}))
+	require.NoError(t, f.logDB.AutoMigrate(&model.AuditLog{}))
+	require.NoError(t, f.db.Create(&model.User{Id: 793, Username: "capacity-vip", AffCode: "cap-vip", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Quota: 100000000, Group: "vip", AuthVersion: 1}).Error)
+	require.NoError(t, f.db.Create(&model.Token{Id: 793, UserId: 793, Key: "capacityviprelay", Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 100000000}).Error)
+	credentials := map[string]string{"default": model.AccessTokenPrefix + strings.Repeat("d", 43), "vip": model.AccessTokenPrefix + strings.Repeat("v", 43)}
+	for group, id := range map[string]int{"default": 792, "vip": 793} {
+		pat := model.UserAccessToken{UserId: id, Name: "capacity directory fixture", TokenHash: model.AccessTokenFingerprint(credentials[group]), TokenHint: model.AccessTokenHint(credentials[group])}
+		require.NoError(t, pat.SetScopes([]string{}))
+		require.NoError(t, f.db.Create(&pat).Error)
+	}
+	var channel model.Channel
+	require.NoError(t, f.db.Where("models = ?", modelID).First(&channel).Error)
+	require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", channel.Id).Update("group", "default,vip").Error)
+	require.NoError(t, f.db.Create(&model.Ability{Group: "vip", Model: modelID, ChannelId: channel.Id, Enabled: true}).Error)
+	legacyBase := "https://legacy.fixture"
+	require.NoError(t, (&model.Channel{Id: 8890, Type: constant.ChannelTypeOpenAI, Key: "synthetic-legacy", Name: "legacy without capacity", Models: "capacity-legacy", Group: "default,vip", Status: common.ChannelStatusEnabled, BaseURL: &legacyBase}).Insert())
+	candidates, err := codebloom.Models()
+	require.NoError(t, err)
+	var candidateIDs []string
+	for _, candidate := range candidates {
+		candidateIDs = append(candidateIDs, candidate.ID)
+	}
+	require.NoError(t, (&model.Channel{Id: 8891, Type: constant.ChannelTypeOpenAI, Key: "synthetic-inactive-candidates", Name: "stale CodeBloom activation", Models: strings.Join(candidateIDs, ","), Group: "default", Status: common.ChannelStatusEnabled}).Insert())
+	policy, err := model.ReadModelCapacityConfig()
+	require.NoError(t, err)
+	for i := range policy.Routes {
+		if policy.Routes[i].Model == modelID {
+			policy.Routes[i].MaxOutputTokens = common.GetPointer(16384)
+		}
+	}
+	policy.Routes = append(policy.Routes, model.CapacityRoute{Model: modelID, Group: "vip", RouteModel: modelID, ChannelID: channel.Id, ContextWindow: common.GetPointer(65536), MaxOutputTokens: common.GetPointer(4096), BudgetField: "max_tokens", Source: "synthetic group capacity contract", VerifiedAt: "2026-11-02"})
+	require.NoError(t, model.SaveModelCapacityConfig(policy))
+	model.InitChannelCache()
+	model.RefreshPricing()
+	var cachedBefore []byte
+	for _, price := range model.GetPricing() {
+		if price.ModelName == modelID {
+			cachedBefore, err = common.Marshal(price)
+			require.NoError(t, err)
+		}
+	}
+	require.NotEmpty(t, cachedBefore)
+	posts := 0
+	var wire map[string]any
+	service.GetHttpClient().Transport = imageUploadRoundTripper(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Hostname() != "ycapi.fixture" || r.URL.Path != "/api/v1/model-runtime/invoke" {
+			return nil, fmt.Errorf("capacity fixture blocks external requests")
+		}
+		posts++
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		if err := common.Unmarshal(data, &wire); err != nil {
+			return nil, err
+		}
+		body := "data: {\"id\":\"capacity-local\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"local\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":50,\"completion_tokens\":30,\"total_tokens\":80}}\n\ndata: [DONE]\n\n"
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+	})
+	t.Run("effective group directories and immutable pricing cache", func(t *testing.T) {
+		for _, group := range []string{"default", "vip", "default"} {
+			wantWindow, wantOutput, relayKey := approvedModel.ContextWindow, 16384, "h3routermember"
+			if group == "vip" {
+				wantWindow, wantOutput, relayKey = 65536, 4096, "capacityviprelay"
+			}
+			for _, path := range []string{"/v1/models", "/api/pricing"} {
+				credential := "sk-" + relayKey
+				if path == "/api/pricing" {
+					credential = credentials[group]
+				}
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				request.Header.Set("Authorization", "Bearer "+credential)
+				response := httptest.NewRecorder()
+				f.engine.ServeHTTP(response, request)
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				var result struct {
+					Data []map[string]any `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+				found := false
+				for _, entry := range result.Data {
+					id, _ := entry["id"].(string)
+					if path == "/api/pricing" {
+						id, _ = entry["model_name"].(string)
+					}
+					assert.False(t, strings.HasPrefix(id, "codebloom-"), "unavailable candidates must not leak into either public directory")
+					if id == "capacity-legacy" {
+						assert.NotContains(t, entry, "context_window")
+						assert.NotContains(t, entry, "max_output_tokens")
+						if parameters, ok := entry["parameters"].(map[string]any); ok {
+							assert.NotContains(t, parameters, "x-client-concurrency")
+						}
+					}
+					if id != modelID {
+						continue
+					}
+					found = true
+					assert.EqualValues(t, wantWindow, entry["context_window"], path+" "+group)
+					assert.EqualValues(t, wantOutput, entry["max_output_tokens"], path+" "+group)
+					params, ok := entry["parameters"].(map[string]any)
+					require.True(t, ok)
+					text, ok := params["x-text-capabilities"].(map[string]any)
+					require.True(t, ok)
+					assert.EqualValues(t, wantWindow, text["context_window"])
+					assert.EqualValues(t, wantOutput, text["max_output_tokens"])
+					assert.EqualValues(t, wantOutput, text["default_output_tokens"])
+					assert.Equal(t, "gateway_policy", text["default_output_tokens_source"])
+					assert.EqualValues(t, 8192, text["fallback_output_tokens"])
+					assert.Equal(t, "user_approved_product_budget", text["fallback_output_tokens_source"])
+					assert.Equal(t, "gateway_policy", text["output_limit_source"])
+					assert.Contains(t, text, "native_max_output_tokens")
+					assert.Nil(t, text["native_max_output_tokens"])
+					assert.EqualValues(t, wantWindow, text["max_input_tokens"])
+					assert.Equal(t, "context_window_bound", text["input_limit_source"])
+					assert.Contains(t, text, "native_max_input_tokens")
+					assert.Nil(t, text["native_max_input_tokens"])
+				}
+				assert.True(t, found, path+" "+group)
+			}
+		}
+		for _, price := range model.GetPricing() {
+			if price.ModelName == modelID {
+				after, err := common.Marshal(price)
+				require.NoError(t, err)
+				assert.Equal(t, string(cachedBefore), string(after))
+			}
+		}
+		assert.Zero(t, posts, "discovery must not call a supplier")
+	})
+	t.Run("large legitimate input and explicit budgets reach final wire", func(t *testing.T) {
+		prompt := strings.Repeat("word ", 33000)
+		assert.Greater(t, tokenkit.Count("gpt-6.1-sol", prompt), 32000)
+		for _, budget := range []int{16384, 1024} {
+			body, err := common.Marshal(map[string]any{"model": modelID, "messages": []map[string]string{{"role": "user", "content": prompt}}, "max_completion_tokens": budget, "stream": true})
+			require.NoError(t, err)
+			response := f.request(t, http.MethodPost, "/v1/chat/completions", string(body), "h3routermember")
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.EqualValues(t, budget, wire["params"].(map[string]any)["max_tokens"])
+		}
+		assert.Equal(t, 2, posts)
+	})
+	t.Run("small context remains enforced", func(t *testing.T) {
+		for i := range policy.Routes {
+			if policy.Routes[i].Model == modelID && policy.Routes[i].Group == "default" {
+				policy.Routes[i].ContextWindow = common.GetPointer(256)
+				policy.Routes[i].MaxOutputTokens = common.GetPointer(128)
+			}
+		}
+		require.NoError(t, model.SaveModelCapacityConfig(policy))
+		body, err := common.Marshal(map[string]any{"model": modelID, "messages": []map[string]string{{"role": "user", "content": strings.Repeat("word ", 400)}}, "stream": true})
+		require.NoError(t, err)
+		response := f.request(t, http.MethodPost, "/v1/chat/completions", string(body), "h3routermember")
+		assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+		assert.Contains(t, response.Body.String(), "context_length_exceeded")
+		assert.Equal(t, 2, posts)
+	})
+	t.Run("all candidate models stay fenced at final outbound boundary", func(t *testing.T) {
+		for _, candidate := range candidates {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{}`))
+			c.Request = request
+			err := service.EnforceModelCapacityOutbound(c, request, &relaycommon.RelayInfo{OriginModelName: candidate.ID})
+			var apiErr *kittypes.NewAPIError
+			require.ErrorAs(t, err, &apiErr, candidate.ID)
+			assert.Equal(t, "model_not_available", string(apiErr.GetErrorCode()))
+			assert.True(t, kittypes.IsSkipRetryError(apiErr))
+		}
+		assert.Equal(t, 2, posts)
+	})
+	t.Run("missing effective schema2 capacity fails closed", func(t *testing.T) {
+		require.NoError(t, f.db.Model(&model.Option{}).Where(&model.Option{Key: model.ModelCapacityOptionKey}).Update("value", `{"schema":1,"routes":[]}`).Error)
+		for _, path := range []string{"/v1/models", "/api/pricing"} {
+			response := f.request(t, http.MethodGet, path, "", "h3routermember")
+			assert.Equal(t, http.StatusServiceUnavailable, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), "model_capacity_unavailable")
+		}
+		assert.Equal(t, 2, posts)
+	})
+}
+
+func TestYcapiMediaConcurrencyDirectoryDatabase(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	var before int64
+	require.NoError(t, f.db.Model(&model.MediaPool{}).Count(&before).Error)
+	read := func() {
+		for _, path := range []string{"/v1/models", "/api/pricing"} {
+			response := f.request(t, http.MethodGet, path, "", "h3routermember")
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var result struct {
+				Data []map[string]any `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			kinds := map[string]bool{}
+			for _, entry := range result.Data {
+				id, _ := entry["id"].(string)
+				if path == "/api/pricing" {
+					id, _ = entry["model_name"].(string)
+				}
+				if id == "MiniMax-H3" {
+					if parameters, ok := entry["parameters"].(map[string]any); ok {
+						if hint, ok := parameters["x-client-concurrency"].(map[string]any); ok {
+							assert.NotEqualValues(t, 20, hint["max_parallelism"], "the H3 account declaration must not inherit YC defaults")
+						}
+					}
+				}
+				approved, ok := ycapi.Lookup(id)
+				if !ok || approved.Kind == "text" {
+					continue
+				}
+				params, ok := entry["parameters"].(map[string]any)
+				require.True(t, ok)
+				if before == 0 {
+					assert.NotContains(t, params, "x-client-concurrency")
+					continue
+				}
+				kinds[approved.Kind] = true
+				hint, ok := params["x-client-concurrency"].(map[string]any)
+				require.True(t, ok, path+" "+id)
+				assert.EqualValues(t, 20, hint["max_parallelism"])
+				assert.Equal(t, "shared_account_pool", hint["scope"])
+				assert.Equal(t, false, hint["reservation"])
+			}
+			if before > 0 {
+				assert.Len(t, kinds, 3, path)
+			}
+		}
+	}
+	read()
+	var after int64
+	require.NoError(t, f.db.Model(&model.MediaPool{}).Count(&after).Error)
+	assert.Equal(t, before, after, "directory GETs must never create admission pools")
+	require.NoError(t, model.RefreshMediaConcurrencyPools(context.Background()))
+	require.NoError(t, f.db.Model(&model.MediaPool{}).Count(&before).Error)
+	require.Positive(t, before)
+	read()
+	require.NoError(t, f.db.Model(&model.MediaPool{}).Count(&after).Error)
+	assert.Equal(t, before, after)
+	var admissions int64
+	require.NoError(t, f.db.Model(&model.MediaAdmission{}).Count(&admissions).Error)
+	assert.Zero(t, admissions, "discovery never reserves work")
 }

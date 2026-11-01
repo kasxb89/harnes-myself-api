@@ -36,8 +36,37 @@ var ErrInvalidMediaConcurrencyPolicy = errors.New("invalid media concurrency pol
 var ErrMediaLegacyIdentity = errors.New("historical media account identity is unconfirmed")
 
 type MediaConcurrencyDefaults struct {
-	Video int `json:"video"`
-	Image int `json:"image"`
+	Video    int `json:"video"`
+	Image    int `json:"image"`
+	Audio    int `json:"audio,omitempty"`
+	audioSet bool
+}
+
+// Presence matters for schema-1 clients that still send only video and image.
+// Explicit zero/null is invalid; an omitted audio value inherits current policy.
+func (defaults *MediaConcurrencyDefaults) UnmarshalJSON(data []byte) error {
+	type plain MediaConcurrencyDefaults
+	value := plain(*defaults)
+	var fields map[string]common.RawMessage
+	if err := common.Unmarshal(data, &fields); err != nil || fields == nil {
+		return ErrInvalidMediaConcurrencyPolicy
+	}
+	if fields[MediaVideo] == nil || fields[MediaImage] == nil {
+		return ErrInvalidMediaConcurrencyPolicy
+	}
+	for _, name := range []string{MediaVideo, MediaImage, MediaAudio} {
+		if value, exists := fields[name]; exists && strings.TrimSpace(string(value)) == "null" {
+			return ErrInvalidMediaConcurrencyPolicy
+		}
+	}
+	if _, exists := fields[MediaAudio]; exists {
+		value.audioSet = true
+	}
+	if err := common.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*defaults = MediaConcurrencyDefaults(value)
+	return nil
 }
 
 type MediaPoolOverride struct {
@@ -46,10 +75,11 @@ type MediaPoolOverride struct {
 }
 
 type MediaConcurrencyPolicy struct {
-	SchemaVersion int                      `json:"schema_version"`
-	Defaults      MediaConcurrencyDefaults `json:"defaults"`
-	PoolOverrides []MediaPoolOverride      `json:"pool_overrides"`
-	Revision      string                   `json:"revision,omitempty"`
+	SchemaVersion    int                                 `json:"schema_version"`
+	Defaults         MediaConcurrencyDefaults            `json:"defaults"`
+	ProviderDefaults map[string]MediaConcurrencyDefaults `json:"provider_defaults,omitempty"`
+	PoolOverrides    []MediaPoolOverride                 `json:"pool_overrides"`
+	Revision         string                              `json:"revision,omitempty"`
 }
 
 // MediaPool keeps credential equality private. The random ID is safe for the
@@ -103,7 +133,7 @@ type MediaConcurrencySnapshot struct {
 }
 
 func defaultMediaConcurrencyPolicy() MediaConcurrencyPolicy {
-	return MediaConcurrencyPolicy{SchemaVersion: 1, Defaults: MediaConcurrencyDefaults{Video: 4, Image: 10}, PoolOverrides: []MediaPoolOverride{}}
+	return MediaConcurrencyPolicy{SchemaVersion: 1, Defaults: MediaConcurrencyDefaults{Video: 4, Image: 10, Audio: 1}, ProviderDefaults: map[string]MediaConcurrencyDefaults{"ycapi": {Video: 20, Image: 20, Audio: 20}}, PoolOverrides: []MediaPoolOverride{}}
 }
 
 func MigrateMediaAdmission(db *gorm.DB) error {
@@ -122,7 +152,19 @@ func mediaPolicyValue(policy MediaConcurrencyPolicy) (string, error) {
 }
 
 func decodeMediaPolicy(value string) (MediaConcurrencyPolicy, error) {
-	var policy MediaConcurrencyPolicy
+	policy := defaultMediaConcurrencyPolicy()
+	policy.SchemaVersion = 0
+	policy.Defaults.Video, policy.Defaults.Image = 0, 0
+	var fields map[string]common.RawMessage
+	if common.UnmarshalJsonStr(value, &fields) != nil || fields == nil {
+		return policy, ErrMediaAdmissionUnavailable
+	}
+	if providers, exists := fields["provider_defaults"]; exists {
+		var entries map[string]common.RawMessage
+		if common.Unmarshal(providers, &entries) != nil || len(entries) != 1 || entries["ycapi"] == nil {
+			return policy, ErrInvalidMediaConcurrencyPolicy
+		}
+	}
 	if err := common.UnmarshalJsonStr(value, &policy); err != nil {
 		return policy, ErrMediaAdmissionUnavailable
 	}
@@ -135,8 +177,19 @@ func decodeMediaPolicy(value string) (MediaConcurrencyPolicy, error) {
 }
 
 func validateMediaPolicy(policy MediaConcurrencyPolicy) error {
-	if policy.SchemaVersion != 1 || policy.Defaults.Video < 1 || policy.Defaults.Video > 16 || policy.Defaults.Image < 1 || policy.Defaults.Image > 64 || len(policy.PoolOverrides) > 128 {
+	validDefaults := func(defaults MediaConcurrencyDefaults) bool {
+		return defaults.Video >= 1 && defaults.Video <= 64 && defaults.Image >= 1 && defaults.Image <= 64 && defaults.Audio >= 1 && defaults.Audio <= 64
+	}
+	if policy.SchemaVersion != 1 || !validDefaults(policy.Defaults) || len(policy.PoolOverrides) > 128 {
 		return ErrInvalidMediaConcurrencyPolicy
+	}
+	if len(policy.ProviderDefaults) != 1 {
+		return ErrInvalidMediaConcurrencyPolicy
+	}
+	for provider, defaults := range policy.ProviderDefaults {
+		if provider != "ycapi" || !validDefaults(defaults) {
+			return ErrInvalidMediaConcurrencyPolicy
+		}
 	}
 	seen := make(map[string]struct{}, len(policy.PoolOverrides))
 	for _, override := range policy.PoolOverrides {
@@ -203,7 +256,16 @@ func GetMediaConcurrencyPolicy(ctx context.Context) (MediaConcurrencyPolicy, err
 }
 
 func SaveMediaConcurrencyPolicy(ctx context.Context, expectedRevision string, policy MediaConcurrencyPolicy) (MediaConcurrencyPolicy, error) {
-	if err := validateMediaPolicy(policy); err != nil {
+	// Validate supplied values before CAS, but resolve omitted schema-1 additions
+	// from the authoritative current row only after acquiring its lock.
+	candidate := policy
+	if candidate.Defaults.Audio == 0 && !candidate.Defaults.audioSet {
+		candidate.Defaults.Audio = 1
+	}
+	if candidate.ProviderDefaults == nil {
+		candidate.ProviderDefaults = defaultMediaConcurrencyPolicy().ProviderDefaults
+	}
+	if err := validateMediaPolicy(candidate); err != nil {
 		return MediaConcurrencyPolicy{}, err
 	}
 	var saved MediaConcurrencyPolicy
@@ -214,6 +276,15 @@ func SaveMediaConcurrencyPolicy(ctx context.Context, expectedRevision string, po
 		}
 		if expectedRevision == "" || expectedRevision != current.Revision {
 			return ErrMediaPolicyConflict
+		}
+		if policy.Defaults.Audio == 0 && !policy.Defaults.audioSet {
+			policy.Defaults.Audio = current.Defaults.Audio
+		}
+		if policy.ProviderDefaults == nil {
+			policy.ProviderDefaults = current.ProviderDefaults
+		}
+		if err := validateMediaPolicy(policy); err != nil {
+			return err
 		}
 		var channels []Channel
 		var pools []MediaPool
@@ -243,7 +314,7 @@ func SaveMediaConcurrencyPolicy(ctx context.Context, expectedRevision string, po
 				}
 				kind = pool.MediaKind
 			}
-			if (kind == MediaVideo && override.Limit > 16) || (kind != MediaVideo && kind != MediaImage && kind != MediaAudio) {
+			if kind != MediaVideo && kind != MediaImage && kind != MediaAudio {
 				return ErrInvalidMediaConcurrencyPolicy
 			}
 		}
@@ -314,7 +385,7 @@ func mediaEffectiveLimit(policy MediaConcurrencyPolicy, poolID, kind string, kno
 		limit = policy.Defaults.Image
 	}
 	if kind == MediaAudio {
-		limit = 1
+		limit = policy.Defaults.Audio
 	}
 	for _, override := range policy.PoolOverrides {
 		if override.PoolID == poolID {
@@ -324,6 +395,58 @@ func mediaEffectiveLimit(policy MediaConcurrencyPolicy, poolID, kind string, kno
 	}
 	if known > 0 {
 		limit = min(limit, known)
+	}
+	return limit
+}
+
+// The credential/kind identity is unchanged. When the same key is configured
+// for multiple suppliers, their defaults intersect rather than creating pools.
+// An explicit pool override wins, while verified supplier hard limits still cap it.
+func mediaConfiguredPoolLimit(policy MediaConcurrencyPolicy, pool *MediaPool, channels []Channel) int {
+	for _, override := range policy.PoolOverrides {
+		if override.PoolID == pool.ID {
+			return override.Limit
+		}
+	}
+	limit, found := 64, false
+	generation := jsplugin.DefaultRegistry.Generation()
+	for _, channel := range channels {
+		if channel.Status != common.ChannelStatusEnabled {
+			continue
+		}
+		matchingKey := false
+		for _, key := range channel.GetKeys() {
+			if mediaIdentityDigest(key, pool.MediaKind) == pool.IdentityDigest && mediaChannelHasKey(&channel, key, true) {
+				matchingKey = true
+				break
+			}
+		}
+		if !matchingKey {
+			continue
+		}
+		for name := range strings.SplitSeq(channel.Models, ",") {
+			modelName := strings.TrimSpace(name)
+			for _, plugin := range generation.PluginsByModel(modelName) {
+				if !mediaChannelUsesPlugin(&channel, plugin.Meta) || TaskMediaKind(&Task{Platform: constant.TaskPlatform(plugin.Meta.Key), Properties: Properties{OriginModelName: modelName}}) != pool.MediaKind {
+					continue
+				}
+				defaults := policy.Defaults
+				if provider, ok := policy.ProviderDefaults[plugin.Meta.Key]; ok {
+					defaults = provider
+				}
+				candidate := defaults.Video
+				if pool.MediaKind == MediaImage {
+					candidate = defaults.Image
+				}
+				if pool.MediaKind == MediaAudio {
+					candidate = defaults.Audio
+				}
+				limit, found = min(limit, candidate), true
+			}
+		}
+	}
+	if !found {
+		return mediaEffectiveLimit(policy, pool.ID, pool.MediaKind, 0)
 	}
 	return limit
 }
@@ -346,7 +469,14 @@ func mediaLinkedH3Account(tx *gorm.DB, key string) (*H3Account, error) {
 }
 
 func mediaSharedVideoLimit(tx *gorm.DB, policy MediaConcurrencyPolicy, pool *MediaPool, key string) (int, int, error) {
-	limit := mediaEffectiveLimit(policy, pool.ID, pool.MediaKind, pool.KnownLimit)
+	var channels []Channel
+	if err := tx.Where("status = ?", common.ChannelStatusEnabled).Limit(2001).Find(&channels).Error; err != nil || len(channels) > 2000 {
+		return 0, 0, ErrMediaAdmissionUnavailable
+	}
+	limit := mediaConfiguredPoolLimit(policy, pool, channels)
+	if pool.KnownLimit > 0 {
+		limit = min(limit, pool.KnownLimit)
+	}
 	if pool.MediaKind != MediaVideo {
 		return limit, 0, nil
 	}
@@ -1126,8 +1256,11 @@ func GetMediaConcurrencySnapshot(ctx context.Context) (MediaConcurrencySnapshot,
 	linkedRows := make(map[string]MediaPoolSnapshot)
 	for _, pool := range pools {
 		row := MediaPoolSnapshot{PoolID: pool.ID, Label: "Media account " + pool.ID, MediaKind: pool.MediaKind, ChannelIDs: []int{}, Occupied: pool.Occupied, Reconciled: pool.Reconciled}
-		row.ConfiguredLimit = mediaEffectiveLimit(policy, pool.ID, pool.MediaKind, 0)
-		row.EffectiveLimit = mediaEffectiveLimit(policy, pool.ID, pool.MediaKind, pool.KnownLimit)
+		row.ConfiguredLimit = mediaConfiguredPoolLimit(policy, &pool, channels)
+		row.EffectiveLimit = row.ConfiguredLimit
+		if pool.KnownLimit > 0 {
+			row.EffectiveLimit = min(row.EffectiveLimit, pool.KnownLimit)
+		}
 		if pool.KnownLimit > 0 {
 			known := pool.KnownLimit
 			row.KnownUpstreamLimit = &known
@@ -1263,11 +1396,7 @@ func GetMediaClientConcurrencyHint(pluginKey, modelName, mediaKind string) *int 
 	if total == 0 {
 		return nil
 	}
-	limit := 16
-	if mediaKind == MediaImage {
-		limit = 64
-	}
-	total = min(total, limit)
+	total = min(total, 64)
 	return &total
 }
 

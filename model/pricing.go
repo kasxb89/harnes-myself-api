@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -32,6 +33,8 @@ type Pricing struct {
 	ModelName              string                               `json:"model_name"`
 	DisplayName            string                               `json:"display_name,omitempty"`
 	Parameters             map[string]any                       `json:"parameters,omitempty"`
+	ContextWindow          *int                                 `json:"context_window,omitempty"`
+	MaxOutputTokens        *int                                 `json:"max_output_tokens,omitempty"`
 	Description            string                               `json:"description,omitempty"`
 	Icon                   string                               `json:"icon,omitempty"`
 	Tags                   string                               `json:"tags,omitempty"`
@@ -331,6 +334,9 @@ func updatePricing() {
 	pricingMap = make([]Pricing, 0)
 	pluginGeneration := jsplugin.DefaultRegistry.Generation()
 	for model, groups := range modelGroupsMap {
+		if !codebloom.PubliclyAvailable(model) {
+			continue
+		}
 		pricing := Pricing{
 			ModelName:              model,
 			DisplayName:            modelDisplayName(model),
@@ -388,6 +394,11 @@ func updatePricing() {
 					pricing.BillingExpr = expr
 				}
 			}
+		}
+		if candidate, ok := codebloom.Lookup(model); ok {
+			pricing.Kind, pricing.DisplayName = candidate.Kind, candidate.Name
+			pricing.Parameters = codebloom.ClientParameters(model)
+			pricing.RetailPriceRows = codebloom.ClientPrices(model)
 		}
 		usageModel := model
 		if approved, ok := ycapi.Lookup(model); ok {
@@ -550,6 +561,11 @@ func taskPluginClientParameters(key, version, model string) map[string]any {
 
 func taskPluginParameterSchema(key, version, model string) map[string]any {
 	switch key {
+	case "codebloom-image":
+		if version != "1.0.0" {
+			return nil
+		}
+		return codebloom.ClientParameters(model)
 	case "ycapi":
 		if version != "1.0.0" {
 			return nil

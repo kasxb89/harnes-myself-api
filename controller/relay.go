@@ -1026,8 +1026,9 @@ func executeTaskSubmissionWith(
 	// retrievable afterwards. An asynchronous result on such a route keeps its
 	// snapshot because polling and retrieval need it. The OpenAI Images
 	// protocol delivers its images inline in the same HTTP response, so its
-	// immediate results follow the same rule; an asynchronous image task is
-	// expected there and is polled inside the request.
+	// immediate results follow the same rule unless their executing protocol
+	// claim explicitly opts into retaining the normalized result. An asynchronous
+	// image task is expected there and is polled inside the request.
 	var insertOmits []string
 	immediateTerminal := result.Immediate != nil && (result.Immediate.Status == model.TaskStatusSuccess || result.Immediate.Status == model.TaskStatusFailure)
 	if pinnedValue, exists := c.Get(pluginruntime.ContextKeyPinnedRoute); exists {
@@ -1042,7 +1043,7 @@ func executeTaskSubmissionWith(
 		}
 	}
 	if pinnedValue, exists := c.Get(pluginruntime.ContextKeyPinnedEndpoint); exists && immediateTerminal {
-		if pinned, ok := pinnedValue.(pluginruntime.PinnedEndpoint); ok && pinned.Protocol == pluginruntime.ProtocolOpenAIImage {
+		if pinned, ok := pinnedValue.(pluginruntime.PinnedEndpoint); ok && pinned.Protocol == pluginruntime.ProtocolOpenAIImage && !pinned.RetainsImageResult() {
 			task.PrivateData.ResultDiscarded = true
 			insertOmits = append(insertOmits, "data")
 		}

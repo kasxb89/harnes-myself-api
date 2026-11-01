@@ -77,7 +77,7 @@ func TestConfiguredModelPricebookDatabase(t *testing.T) {
 		require.True(t, envelope.Success)
 		assert.Contains(t, response.Body.String(), "registry-only-model")
 		assert.Contains(t, response.Body.String(), "ycapi-minimax-h3")
-		require.Len(t, envelope.Data.Rows, 67)
+		require.Len(t, envelope.Data.Rows, 104)
 		row := envelope.Data.Rows[0]
 		assert.Equal(t, "MiniMax-H3", row.ModelName)
 		assert.Equal(t, "metaso.cn", row.UpstreamHost)
@@ -93,11 +93,13 @@ func TestConfiguredModelPricebookDatabase(t *testing.T) {
 		assert.Equal(t, 0.0897396, row.ApprovedQuote.Prices[0].ProcurementCNY)
 		assert.Len(t, row.ApprovedQuote.Prices, 16)
 		assert.Equal(t, 0.1794792, row.ApprovedQuote.Prices[2].ProcurementCNY)
-		assert.Equal(t, 0.60000014, row.ApprovedQuote.Prices[2].RetailCNY)
+		require.NotNil(t, row.ApprovedQuote.Prices[2].RetailCNY)
+		assert.Equal(t, 0.60000014, *row.ApprovedQuote.Prices[2].RetailCNY)
 		assert.Equal(t, "disabled", envelope.Data.Rows[1].State)
 		require.NotNil(t, envelope.Data.Rows[1].Pricing)
 		assert.Equal(t, 1.0, envelope.Data.Rows[1].Pricing.ModelRatio)
 		approved := 0
+		codebloomCandidates := 0
 		for _, entry := range envelope.Data.Rows {
 			if entry.ApprovedQuote != nil {
 				approved++
@@ -108,8 +110,24 @@ func TestConfiguredModelPricebookDatabase(t *testing.T) {
 			if entry.ModelName == "ycapi-removed-model" {
 				assert.Equal(t, "excluded", entry.State)
 			}
+			if strings.HasPrefix(entry.ModelName, "codebloom-") {
+				codebloomCandidates++
+				assert.Equal(t, "not_configured", entry.State)
+				assert.Equal(t, "codebloom.club", entry.UpstreamHost)
+				assert.Nil(t, entry.Pricing, "unapproved retail must not use runtime fallback prices")
+				assert.Nil(t, entry.CostRule, "account-credit quote is not an active cash-cost rule")
+				require.NotNil(t, entry.ApprovedQuote)
+				assert.Equal(t, "account_credit_snapshot", entry.ApprovedQuote.Basis)
+				assert.Equal(t, "CNY_ACCOUNT_CREDIT", entry.ApprovedQuote.Currency)
+				require.NotEmpty(t, entry.ApprovedQuote.Prices)
+				for _, price := range entry.ApprovedQuote.Prices {
+					require.NotNil(t, price.RetailCNY, "the approved markup must cover every cost tier")
+					assert.Greater(t, *price.RetailCNY, price.ProcurementCNY)
+				}
+			}
 		}
-		assert.Equal(t, 63, approved)
+		assert.Equal(t, 37, codebloomCandidates)
+		assert.Equal(t, 100, approved)
 		for _, secret := range []string{"secret-channel-key", "secret-url-password", "secret-query", "secret-old-key", "secret-new-key"} {
 			assert.NotContains(t, response.Body.String(), secret)
 		}

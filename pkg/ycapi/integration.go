@@ -58,14 +58,24 @@ func ChatEnvelope(id string, request any) (map[string]any, error) {
 	if !ok || len(messages) == 0 {
 		return nil, fmt.Errorf("chat messages are required")
 	}
-	budget := m.MaxOutputTokens
+	budget := 0
 	for _, key := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
 		if value, exists := params[key]; exists && value != nil {
 			n, ok := value.(float64)
-			if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 || n != math.Trunc(n) || n > math.MaxInt32 {
+			if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n <= 0 || n != math.Trunc(n) || n > common.MaxRelayOutputTokens {
 				return nil, fmt.Errorf("invalid chat output budget")
 			}
-			budget = min(budget, int(n))
+			if budget == 0 || int(n) < budget {
+				budget = int(n)
+			}
+		}
+	}
+	// This is the approved product default for omitted budgets, not a
+	// supplier-proven maximum. Effective route capacity is enforced by the host.
+	if budget == 0 {
+		budget = m.MaxOutputTokens
+		if budget <= 0 || budget > common.MaxRelayOutputTokens {
+			return nil, fmt.Errorf("invalid configured chat output budget")
 		}
 	}
 	stream, _ := params["stream"].(bool)

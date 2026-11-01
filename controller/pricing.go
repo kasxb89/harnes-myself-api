@@ -78,6 +78,18 @@ func GetPricing(c *gin.Context) {
 	}
 	pricing = service.NarrowBlackrxPricingParameters(filteredPricing, groups)
 	pricing = service.NarrowH3PricingParameters(c.Request.Context(), pricing, groups)
+	capacityGroups := service.CapacityAccountGroups(c)
+	if len(capacityGroups) == 1 && capacityGroups[0] == "" {
+		// Anonymous pricing has no selected request group. Keep its existing
+		// conservative view across the publicly usable groups.
+		capacityGroups = groups
+	}
+	var err error
+	pricing, err = service.ProjectPricingModelCapacities(pricing, capacityGroups)
+	if err != nil {
+		c.JSON(503, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
+		return
+	}
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {

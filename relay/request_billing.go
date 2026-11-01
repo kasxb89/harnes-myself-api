@@ -8,7 +8,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -67,6 +69,9 @@ func resolveRequestPrice(c *gin.Context, info *relaycommon.RelayInfo) *types.New
 // provide the current request body through BodyStorage or BillingRequestInput;
 // channel retries retain the resulting billing session and pricing snapshot.
 func PrepareRequestBilling(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if apiErr := checkModelBillingAvailability(c, info.OriginModelName); apiErr != nil {
+		return apiErr
+	}
 	if apiErr := resolveRequestPrice(c, info); apiErr != nil {
 		return apiErr
 	}
@@ -90,6 +95,9 @@ func PrepareRequestBilling(c *gin.Context, info *relaycommon.RelayInfo) *types.N
 // @param model - the model this request is switching to.
 // @returns nil when the request may proceed on the new model.
 func ReprepareFallbackBilling(c *gin.Context, info *relaycommon.RelayInfo, model string) *types.NewAPIError {
+	if apiErr := checkModelBillingAvailability(c, model); apiErr != nil {
+		return apiErr
+	}
 	info.OriginModelName = model
 	// The requested model's pricing identity must not survive into this attempt's
 	// price resolution or the consume log.
@@ -105,6 +113,13 @@ func ReprepareFallbackBilling(c *gin.Context, info *relaycommon.RelayInfo, model
 		return types.NewError(err, types.ErrorCodeModelPriceError)
 	}
 	return nil
+}
+
+func checkModelBillingAvailability(c *gin.Context, name string) *types.NewAPIError {
+	if codebloom.PubliclyAvailable(name) {
+		return nil
+	}
+	return types.WithOpenAIError(types.OpenAIError{Message: i18n.T(c, "The selected model is not available"), Type: "invalid_request_error", Code: "model_not_available"}, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 }
 
 // RefundFailedRequestBilling applies the common final-failure policy after all

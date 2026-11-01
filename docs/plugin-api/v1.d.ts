@@ -46,7 +46,7 @@ export type ProtocolClaim =
   | "openai_image"
   | {name: "openai_responses"; supports: readonly ResponsesMode[]; models?: readonly string[]}
   | {name: "openai_video"; models?: readonly string[]}
-  | {name: "openai_image"; models?: readonly string[]};
+  | {name: "openai_image"; models?: readonly string[]; /** Retain normalized immediate results for authenticated task/artifact retrieval; default false. */ retainResult?: boolean};
 /** One entry of the OpenAI ImageResponse `data` array rendered by protocols.openai_image.render. */
 export type ImageResponseEntry = {url?: string; b64_json?: string; revised_prompt?: string};
 export type LocalizedText = string | ({ en: string } & Record<string, string>);

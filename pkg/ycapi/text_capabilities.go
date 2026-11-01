@@ -141,13 +141,15 @@ func PublicTextCapabilities(id string) map[string]any {
 	public := map[string]any{
 		"schema_version": 2, "revision": textCapabilities.Revision, "checked_at": textCapabilities.CheckedAt,
 		"tools": c.Tools, "vision": c.Vision, "reasoning": c.Reasoning, "stream": true,
-		"max_input_tokens": 32000, "verification": c.Verification, "input_modalities": slices.Clone(c.InputModalities),
+		"verification": c.Verification, "input_modalities": slices.Clone(c.InputModalities),
 		"tools_config": maps.Clone(c.ToolsConfig), "vision_config": maps.Clone(c.VisionConfig),
 		"reasoning_mode": c.ReasoningMode, "reasoning_controls": c.ReasoningControls,
 		"reasoning_omit_behavior": c.ReasoningOmitBehavior, "operational_status": c.OperationalStatus,
 		"reasoning_control_mapping": maps.Clone(c.ReasoningControlMapping),
 		"operational_reason":        c.OperationalReason,
 	}
+	// A legacy preview byte guard is not a model input-token limit. The host
+	// projects verified context declarations and effective product output budgets.
 	// The registry is immutable even if a discovery consumer edits a nested
 	// schema or enum while preparing its own response.
 	raw, err := common.Marshal(public)

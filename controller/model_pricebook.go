@@ -192,6 +192,8 @@ func GetConfiguredModelPricebook(c *gin.Context) {
 		host := ""
 		if quote.Provider == "Metaso" {
 			host = "metaso.cn"
+		} else if quote.Provider == "CodeBloom" {
+			host = "codebloom.club"
 		}
 		rows = append(rows, configuredPricebookRow{State: state, Origin: "quote_history", ModelName: quote.ModelName, UpstreamHost: host, EnabledGroups: []string{}, ConfiguredGroups: []string{}})
 	}
@@ -213,7 +215,7 @@ func GetConfiguredModelPricebook(c *gin.Context) {
 		row := &rows[i]
 		entry := entries[row.ModelName]
 		quote := quoteByName[row.ModelName]
-		if quote != nil && (quote.Provider != "Metaso" || row.ChannelID == 0 || row.UpstreamHost == "metaso.cn") {
+		if quote != nil && (quote.Provider != "Metaso" || row.ChannelID == 0 || row.UpstreamHost == "metaso.cn") && (quote.Provider != "CodeBloom" || row.ChannelID == 0 || row.UpstreamHost == "codebloom.club") {
 			row.ApprovedQuote = quote
 		}
 		row.Expressions = make(map[string]string)

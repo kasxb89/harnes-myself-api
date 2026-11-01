@@ -73,6 +73,19 @@ export function MediaConcurrencyForm(props: {
     props.onSave(request)
   }
   const totals = { video: 0, image: 0, audio: 0 }
+  const kinds = props.kind
+    ? [props.kind]
+    : (['video', 'image', 'audio'] as const)
+  const labels = {
+    video: t('Default video concurrency per key'),
+    image: t('Default image concurrency per key'),
+    audio: t('Default audio concurrency per key'),
+  }
+  const providerLabels = {
+    video: t('YCAPI video concurrency per key'),
+    image: t('YCAPI image concurrency per key'),
+    audio: t('YCAPI audio concurrency per key'),
+  }
   props.snapshot.pools.forEach((pool) => {
     if (pool.enabled && pool.reconciled) {
       totals[pool.media_kind] += pool.effective_limit
@@ -85,13 +98,6 @@ export function MediaConcurrencyForm(props: {
         onSubmit={form.handleSubmit(submit)}
         className='min-w-0 space-y-4'
       >
-        {props.snapshot.pools.some((pool) => pool.media_kind === 'audio') && (
-          <p className='text-muted-foreground text-sm'>
-            {t(
-              'Audio defaults to one request per key; change its pool override to adjust it.'
-            )}
-          </p>
-        )}
         {!props.canEdit && (
           <Alert>
             <AlertDescription>
@@ -108,39 +114,65 @@ export function MediaConcurrencyForm(props: {
           )}
         >
           <FieldGroup className='sm:flex-row'>
-            {(props.kind ? [props.kind] : (['video', 'image'] as const)).map(
-              (kind) => (
-                <Field key={kind}>
-                  <FormField
-                    control={form.control}
-                    name={kind}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {kind === 'video'
-                            ? t('Default video concurrency per key')
-                            : t('Default image concurrency per key')}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            inputMode='numeric'
-                            disabled={disabled}
-                            className='max-w-40'
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {kind === 'video'
-                            ? t('Allowed range: 1–16')
-                            : t('Allowed range: 1–64')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </Field>
-              )
-            )}
+            {kinds.map((kind) => (
+              <Field key={kind}>
+                <FormField
+                  control={form.control}
+                  name={kind}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{labels[kind]}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          inputMode='numeric'
+                          disabled={disabled}
+                          className='max-w-40'
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Allowed range: 1–64')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </Field>
+            ))}
+          </FieldGroup>
+        </SettingsCard>
+        <SettingsCard
+          title={t('Supplier defaults')}
+          description={t(
+            'YCAPI uses these defaults by media type. Other suppliers inherit the defaults above. A shared account pool override takes priority; verified upstream limits still apply. These are shared key limits, not independent model limits.'
+          )}
+        >
+          <FieldGroup className='sm:flex-row'>
+            {kinds.map((kind) => (
+              <Field key={kind}>
+                <FormField
+                  control={form.control}
+                  name={`ycapi_${kind}`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{providerLabels[kind]}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          inputMode='numeric'
+                          disabled={disabled}
+                          className='max-w-40'
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Allowed range: 1–64')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </Field>
+            ))}
           </FieldGroup>
         </SettingsCard>
         <SettingsCard
@@ -164,6 +196,13 @@ export function MediaConcurrencyForm(props: {
               <p>
                 {t('Enabled image admission limit: {{count}}', {
                   count: format.count(totals.image),
+                })}
+              </p>
+            )}
+            {!props.kind && (
+              <p>
+                {t('Enabled audio admission limit: {{count}}', {
+                  count: format.count(totals.audio),
                 })}
               </p>
             )}

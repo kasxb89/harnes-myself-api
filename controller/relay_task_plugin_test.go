@@ -27,6 +27,7 @@ import (
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	kittypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -479,6 +480,107 @@ func TestExecuteTaskSubmissionHonorsRouteRetainResult(t *testing.T) {
 			listed := model.TaskGetAllUserTask(1, 0, 10, model.SyncTaskQueryParams{})
 			require.Len(t, listed, 1)
 			assert.Empty(t, listed[0].Data, "task lists never select the snapshot column")
+		})
+	}
+}
+
+// This exercises the persistence barrier and existing authenticated retrieval
+// handlers without a provider request or activating any unavailable model.
+func TestExecuteTaskSubmissionRetainsOptInImageResultsAndOwnerRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		name, claim string
+		retained    bool
+	}{
+		{"legacy protocol discards", `"openai_image"`, false},
+		{"explicit false discards", `{name: "openai_image", retainResult: false}`, false},
+		{"explicit true retains normalized result", `{name: "openai_image", retainResult: true}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, dialect := openTaskDialectDatabase(t, &model.Task{}, &model.User{}, &model.Channel{}, &model.Log{})
+			oldDB, oldLogDB, oldRegistry := model.DB, model.LOG_DB, pluginruntime.DefaultRegistry
+			oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
+			oldRedis, oldConsume := common.RedisEnabled, common.LogConsumeEnabled
+			oldAddress, oldSecret := system_setting.TaskPublicAddress, common.CryptoSecret
+			model.DB, model.LOG_DB = database, database
+			common.SetDatabaseTypes(dialect, dialect)
+			common.RedisEnabled, common.LogConsumeEnabled = false, false
+			system_setting.TaskPublicAddress, common.CryptoSecret = "https://gateway.example/harness", "image-retention-local-test-secret"
+			pluginruntime.DefaultRegistry = pluginruntime.NewRegistry()
+			t.Cleanup(func() {
+				model.DB, model.LOG_DB, pluginruntime.DefaultRegistry = oldDB, oldLogDB, oldRegistry
+				common.SetDatabaseTypes(oldMain, oldLog)
+				common.RedisEnabled, common.LogConsumeEnabled = oldRedis, oldConsume
+				system_setting.TaskPublicAddress, common.CryptoSecret = oldAddress, oldSecret
+			})
+			require.NoError(t, database.Create(&model.User{Id: 1, Username: "image-owner", Status: common.UserStatusEnabled}).Error)
+			plugin, err := pluginruntime.DefaultRegistry.Register(`
+export const meta = {apiVersion: 1, key: "retention-image", name: "Retention image", version: "1.0.0", author: {name: "Test"}, models: ["image-model"], fetchMode: "per_task", protocols: [`+tc.claim+`]};
+export function buildSubmitRequest() { return {}; }
+export function parseSubmitResponse() { return {}; }
+export function buildQueryRequest() { throw new Error("no upstream retrieval"); }
+export function parseTaskResult() { throw new Error("no upstream retrieval"); }
+export function listArtifacts(ctx) { return ctx.status === "SUCCESS" && ctx.data && ctx.data.output_url ? [{key: "image-1", type: "image"}] : []; }
+export function buildContentRequest(ctx) { return {url: ctx.data.output_url, method: "GET", credentialless: true}; }
+export const protocols = {openai_image: {
+  decodeRequest: function(ctx) { return {kind: "submit", model: ctx.model}; },
+  render: function(ctx, task) { return {data: [{url: task.data.output_url}]}; }
+}};`, pluginruntime.Options{})
+			require.NoError(t, err)
+			c := taskSubmissionTestContext()
+			c.Set(pluginruntime.ContextKeyPinnedEndpoint, pluginruntime.PinnedEndpoint{Plugin: plugin, Protocol: pluginruntime.ProtocolOpenAIImage, Model: "image-model"})
+			c.Set(pluginruntime.ContextKeyPinnedPlugin, pluginruntime.PinnedPlugin{Plugin: plugin})
+			events := []string{}
+			info := taskSubmissionRelayInfo(&taskSubmissionTestBilling{events: &events})
+			info.OriginModelName = "image-model"
+			const normalized = `{"output_url":"https://cdn.example/image.png"}`
+			outcome, taskErr := executeTaskSubmissionWith(c, info, func(*gin.Context, *relaycommon.RelayInfo) (*relay.TaskSubmitResult, *dto.TaskError) {
+				return &relay.TaskSubmitResult{
+					UpstreamTaskID: "task_public", Platform: "retention-image", TaskData: []byte(normalized),
+					Immediate: &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, Progress: "100%"},
+				}, nil
+			})
+			require.Nil(t, taskErr)
+			require.NotNil(t, outcome)
+			assert.JSONEq(t, normalized, string(outcome.Task.Data), "the synchronous presenter keeps its normalized result")
+			var saved model.Task
+			require.NoError(t, database.Where("task_id = ?", "task_public").First(&saved).Error)
+			assert.Equal(t, !tc.retained, saved.PrivateData.ResultDiscarded)
+			assert.Equal(t, tc.retained, saved.ResultRetrievable())
+			if tc.retained {
+				assert.JSONEq(t, normalized, string(saved.Data))
+			} else {
+				assert.Empty(t, saved.Data)
+			}
+			for _, owner := range []int{1, 2} {
+				for _, surface := range []struct {
+					path    string
+					handler gin.HandlerFunc
+				}{{"/v1/tasks/task_public", GetTask}, {"/v1/tasks/task_public/artifacts", GetTaskArtifacts}} {
+					recorder := httptest.NewRecorder()
+					query, _ := gin.CreateTestContext(recorder)
+					query.Set("id", owner)
+					query.Set("token_id", 99)
+					query.Set("role", common.RoleRootUser)
+					query.Params = gin.Params{{Key: "key", Value: "task_public"}}
+					query.Request = httptest.NewRequest(http.MethodGet, surface.path, nil)
+					surface.handler(query)
+					if owner != 1 {
+						assert.Equal(t, http.StatusNotFound, recorder.Code, surface.path)
+						assert.NotContains(t, recorder.Body.String(), "cdn.example")
+						continue
+					}
+					assert.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+					assert.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
+					assert.NotContains(t, recorder.Body.String(), "cdn.example", "retrieval advertises only host artifact URLs")
+					if strings.HasSuffix(surface.path, "/artifacts") {
+						if tc.retained {
+							assert.Contains(t, recorder.Body.String(), "/v1/tasks/task_public/artifacts/image-1/content")
+						} else {
+							assert.JSONEq(t, `{"task_id":"task_public","artifacts":[]}`, recorder.Body.String())
+						}
+					}
+				}
+			}
 		})
 	}
 }

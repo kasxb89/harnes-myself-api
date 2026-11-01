@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"gorm.io/gorm"
@@ -238,7 +239,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 	byID := make(map[string]ClientModelCandidate)
 	for _, ability := range abilities {
 		channel, enabled := channels[ability.ChannelId]
-		if !enabled || !validClientModelID(ability.Model) || !BlackrxCatalogAllowsModel(&channel, ability.Model) {
+		if !enabled || !validClientModelID(ability.Model) || !codebloom.PubliclyAvailable(ability.Model) || !BlackrxCatalogAllowsModel(&channel, ability.Model) {
 			continue
 		}
 		candidate := byID[ability.Model]

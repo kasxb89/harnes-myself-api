@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -298,6 +299,13 @@ func RefreshBlackrxCatalog(ctx context.Context) {
 // route in the requested groups is usable, including another provider. It does
 // not filter historical task retrieval or change persisted channel abilities.
 func FilterUnavailableCatalogModels(names []string, groups []string) []string {
+	for i := 0; i < len(names); {
+		if codebloom.PubliclyAvailable(names[i]) {
+			i++
+			continue
+		}
+		names = append(append([]string{}, names[:i]...), names[i+1:]...)
+	}
 	if len(names) == 0 || model.DB == nil {
 		return names
 	}

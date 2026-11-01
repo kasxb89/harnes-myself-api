@@ -1741,6 +1741,82 @@ func TestServeTaskPluginImageProtocolRendersImmediateResultAndInlinesBase64(t *t
 	}
 }
 
+func TestServeTaskPluginImageProtocolRetainedResultAdvertisesRecovery(t *testing.T) {
+	const publicID = "task_image"
+	const artifactURL = "https://gateway.example/v1/tasks/task_image/artifacts/image-1/content?access=host-capability"
+	const upstreamURL = "https://cdn.example/private-image.png?signature=private-upstream-value"
+	for _, tc := range []struct {
+		name, claim    string
+		status         model.TaskStatus
+		discarded      bool
+		projectionErr  error
+		wantStatus     int
+		wantHeader     string
+		wantURL        string
+		wantProjection int
+	}{
+		{name: "legacy protocol response unchanged", claim: `"openai_image"`, status: model.TaskStatusSuccess, wantStatus: http.StatusOK, wantURL: upstreamURL},
+		{name: "explicit false response unchanged", claim: `{name: "openai_image", retainResult: false}`, status: model.TaskStatusSuccess, wantStatus: http.StatusOK, wantURL: upstreamURL},
+		{name: "retained result uses gateway artifact and public ID", claim: `{name: "openai_image", retainResult: true}`, status: model.TaskStatusSuccess, wantStatus: http.StatusOK, wantHeader: publicID, wantURL: artifactURL, wantProjection: 1},
+		{name: "discarded result does not promise recovery", claim: `{name: "openai_image", retainResult: true}`, status: model.TaskStatusSuccess, discarded: true, wantStatus: http.StatusOK, wantURL: artifactURL, wantProjection: 1},
+		{name: "failed generation does not promise recovery", claim: `{name: "openai_image", retainResult: true}`, status: model.TaskStatusFailure, wantStatus: http.StatusBadRequest},
+		{name: "artifact projection failure does not promise recovery", claim: `{name: "openai_image", retainResult: true}`, status: model.TaskStatusSuccess, projectionErr: errors.New("projection failed"), wantStatus: http.StatusInternalServerError, wantProjection: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plugin, err := pluginruntime.CompilePlugin(`
+export const meta = {apiVersion:1,key:"image-bridge",name:"Image Bridge",version:"1.0.0",author:{name:"Test"},models:["image-model"],fetchMode:"per_task",protocols:[`+tc.claim+`]};
+export function buildSubmitRequest(){return {};}
+export function parseSubmitResponse(){return {};}
+export function buildQueryRequest(){throw new Error("no provider query");}
+export function parseTaskResult(){throw new Error("no provider query");}
+export function listArtifacts(task){return task.status === "SUCCESS" && task.data && task.data.output_url ? [{key:"image-1",type:"image"}] : [];}
+export function buildContentRequest(ctx){return {url:ctx.data.output_url,method:"GET",credentialless:true};}
+export const protocols = {openai_image: {
+  decodeRequest: function(ctx){return {kind:"submit",model:ctx.model};},
+  render: function(ctx,task){
+    const image = ctx.artifacts && ctx.artifacts["image-1"];
+    return {data:[{url:image ? image.url : task.data.output_url}]};
+  }
+}};`, pluginruntime.Options{})
+			require.NoError(t, err)
+			pinned := imageProtocolTestEndpoint(t)
+			pinned.Plugin = plugin
+			c, recorder := newImageProtocolTestContext("")
+			deps := pluginProtocolTestDeps()
+			projections := 0
+			deps.artifactContentURL = func(taskID, artifactKey string) (string, error) {
+				projections++
+				assert.Equal(t, publicID, taskID)
+				assert.Equal(t, "image-1", artifactKey)
+				return artifactURL, tc.projectionErr
+			}
+			deps.submit = func(_ *gin.Context, info *relaycommon.RelayInfo) (*taskSubmissionOutcome, *dto.TaskError) {
+				outcome := imageProtocolTestOutcome(info, tc.status)
+				outcome.Task.PrivateData.UpstreamTaskID = "private-provider-task-id"
+				outcome.Task.PrivateData.ResultDiscarded = tc.discarded
+				outcome.Task.SetData(map[string]any{"output_url": upstreamURL})
+				return outcome, nil
+			}
+			serveTaskPluginImageProtocol(c, pinned, deps)
+			assert.Equal(t, tc.wantStatus, recorder.Code, recorder.Body.String())
+			assert.Equal(t, tc.wantHeader, recorder.Header().Get("X-New-Api-Task-Id"))
+			assert.Equal(t, tc.wantProjection, projections)
+			assert.NotContains(t, recorder.Header().Get("X-New-Api-Task-Id"), "private-provider-task-id")
+			assert.NotContains(t, recorder.Body.String(), "private-provider-task-id")
+			assert.NotContains(t, recorder.Body.String(), "test-key")
+			if tc.wantStatus == http.StatusOK {
+				var response map[string]any
+				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+				assert.Equal(t, []any{map[string]any{"url": tc.wantURL}}, response["data"])
+				if tc.wantURL == artifactURL {
+					assert.NotContains(t, recorder.Body.String(), "cdn.example")
+					assert.NotContains(t, recorder.Body.String(), "private-upstream-value")
+				}
+			}
+		})
+	}
+}
+
 // An asynchronous vendor task is polled inside the request until it is
 // terminal; a failure and the protocol timeout become OpenAI error envelopes
 // while the durable task stays with the background poller.

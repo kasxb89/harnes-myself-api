@@ -3,15 +3,21 @@ package helper
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
 	rootcommon "github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	hostreasoning "github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/gin-gonic/gin"
 )
 
 func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.Request) error {
+	if !codebloom.PubliclyAvailable(info.OriginModelName) {
+		return types.NewErrorWithStatusCode(errors.New("The selected model is not available"), "model_not_available", http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
 	if info.ChannelMeta == nil {
 		info.ChannelMeta = &relaycommon.ChannelMeta{}
 	}
@@ -37,6 +43,11 @@ func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.
 				mappedModel, exists = modelMap[baseModel]
 			}
 			if exists && mappedModel != "" {
+				// A reserved pending ID cannot be hidden between an ordinary
+				// alias and a final raw supplier ID in a chained mapping.
+				if !codebloom.PubliclyAvailable(mappedModel) {
+					return types.NewErrorWithStatusCode(errors.New("The selected model is not available"), "model_not_available", http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+				}
 				// 模型重定向循环检测，避免无限循环
 				if visitedModels[mappedModel] {
 					if mappedModel == currentModel {

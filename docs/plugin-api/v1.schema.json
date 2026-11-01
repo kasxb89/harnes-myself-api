@@ -17,7 +17,8 @@
     "protocols": {"type": "array", "uniqueItems": true, "items": {"oneOf": [
       {"enum": ["openai_video", "openai_image"]},
       {"type": "object", "additionalProperties": false, "required": ["name", "supports"], "properties": {"name": {"const": "openai_responses"}, "supports": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["stream", "sync", "background"]}}, "models": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}},
-      {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"enum": ["openai_video", "openai_image"]}, "models": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}}
+      {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"const": "openai_video"}, "models": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}},
+      {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"const": "openai_image"}, "models": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}, "retainResult": {"type": "boolean", "default": false}}}
     ]}},
     "submitResponseTypes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["json", "sse"]}},
     "requiredCapabilities": {"type": "array", "uniqueItems": true, "items": {"enum": ["json-clone@1", "submit-sse-delta@1", "json-order@1", "duration-auto@1"]}},

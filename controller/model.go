@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relay"
@@ -345,8 +346,35 @@ func ListModels(c *gin.Context, modelType int) {
 				}
 				value["kind"] = approved.Kind
 				value["display_name"] = approved.Name
-				value["parameters"] = ycapi.ClientParameters(entry.Id)
+				parameters := ycapi.ClientParameters(entry.Id)
+				if approved.Kind == "text" {
+					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
+					var err error
+					parameters, err = service.WithEffectiveTextCatalogCapacity(entry.Id, parameters, capacity)
+					if err != nil {
+						c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
+						return
+					}
+				} else {
+					parameters = model.WithMediaClientConcurrencyHint(parameters, "ycapi", entry.Id, approved.Kind)
+				}
+				value["parameters"] = parameters
 				value["retail_price_rows"] = ycapi.ClientPrices(entry.Id)
+				publicModels = append(publicModels, value)
+			} else if candidate, ok := codebloom.Lookup(entry.Id); ok {
+				data, err := common.Marshal(entry)
+				if err != nil {
+					c.AbortWithStatus(http.StatusServiceUnavailable)
+					return
+				}
+				var value map[string]any
+				if common.Unmarshal(data, &value) != nil {
+					c.AbortWithStatus(http.StatusServiceUnavailable)
+					return
+				}
+				value["kind"], value["display_name"] = candidate.Kind, candidate.Name
+				value["parameters"] = codebloom.ClientParameters(entry.Id)
+				value["retail_price_rows"] = codebloom.ClientPrices(entry.Id)
 				publicModels = append(publicModels, value)
 			} else if entry.Id == "MiniMax-H3" && h3Parameters != nil {
 				data, _ := common.Marshal(entry)

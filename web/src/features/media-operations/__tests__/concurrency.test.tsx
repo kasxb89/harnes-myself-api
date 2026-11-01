@@ -154,10 +154,11 @@ it('an audio pool stays readable alongside existing image and video pools', asyn
   expect(within(row).getByText('Audio')).toBeVisible()
   expect(within(table).getByRole('row', { name: /H3 account 1/ })).toBeVisible()
   expect(
-    screen.getByText(
-      'Audio defaults to one request per key; change its pool override to adjust it.'
-    )
-  ).toBeVisible()
+    screen.getByLabelText('Default audio concurrency per key')
+  ).toHaveValue('1')
+  expect(screen.getByLabelText('YCAPI audio concurrency per key')).toHaveValue(
+    '20'
+  )
 })
 
 it('remounting a removed concurrency panel starts a fresh request before its cancelled request settles', async () => {
@@ -243,17 +244,50 @@ it('invalid policy values remain visible and block confirmation rather than bein
   const input = await screen.findByLabelText(
     'Default video concurrency per key'
   )
-  fireEvent.change(input, { target: { value: '17' } })
+  fireEvent.change(input, { target: { value: '65' } })
   await userEvent.click(
     screen.getByRole('button', { name: 'Save account concurrency' })
   )
   expect(
     await screen.findByText('Enter a whole number within the allowed range')
   ).toBeVisible()
-  expect(input).toHaveValue('17')
+  expect(input).toHaveValue('65')
   expect(input).toHaveAttribute('aria-invalid', 'true')
   expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   expect(put).not.toHaveBeenCalled()
+})
+
+it('root can set supplier media defaults and a shared pool override through 64', async () => {
+  const put = vi.spyOn(api, 'put').mockResolvedValue(envelope())
+  renderPanel()
+  const video = await screen.findByLabelText('YCAPI video concurrency per key')
+  expect(video).toHaveValue('20')
+  fireEvent.change(video, { target: { value: '64' } })
+  fireEvent.change(screen.getByLabelText('YCAPI audio concurrency per key'), {
+    target: { value: '25' },
+  })
+  fireEvent.change(screen.getByLabelText('Default audio concurrency per key'), {
+    target: { value: '3' },
+  })
+  fireEvent.change(screen.getByLabelText('Override for H3 account 1'), {
+    target: { value: '20' },
+  })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Save account concurrency' })
+  )
+  await userEvent.click(
+    within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Confirm',
+    })
+  )
+  await waitFor(() => expect(put).toHaveBeenCalledOnce())
+  expect(put.mock.calls[0][1]).toMatchObject({
+    defaults: { video: 4, image: 10, audio: 3 },
+    provider_defaults: { ycapi: { video: 64, image: 20, audio: 25 } },
+    pool_overrides: expect.arrayContaining([
+      { pool_id: 'opaque-h3-1', limit: 20 },
+    ]),
+  })
 })
 
 it('root confirms an exact revisioned save, clears a blank override and preserves unlisted historical overrides', async () => {
@@ -296,7 +330,8 @@ it('root confirms an exact revisioned save, clears a blank override and preserve
   expect(put).toHaveBeenCalledExactlyOnceWith('/api/media-concurrency', {
     schema_version: 1,
     expected_revision: 'config-one',
-    defaults: { video: 6, image: 12 },
+    defaults: { video: 6, image: 12, audio: 1 },
+    provider_defaults: { ycapi: { video: 20, image: 20, audio: 20 } },
     pool_overrides: [{ pool_id: 'opaque-historical', limit: 3 }],
   })
   expect(
@@ -632,6 +667,8 @@ it.each([
 it('editing image concurrency preserves hidden video defaults and video pool overrides', async () => {
   const data = {
     ...snapshot,
+    defaults: { video: 6, image: 10, audio: 3 },
+    provider_defaults: { ycapi: { video: 27, image: 28, audio: 29 } },
     pool_overrides: [
       ...snapshot.pool_overrides,
       { pool_id: 'opaque-h3-1', limit: 2 },
@@ -659,7 +696,8 @@ it('editing image concurrency preserves hidden video defaults and video pool ove
   )
   await waitFor(() => expect(put).toHaveBeenCalledOnce())
   expect(put.mock.calls[0][1]).toMatchObject({
-    defaults: { video: 4, image: 12 },
+    defaults: { video: 6, image: 12, audio: 3 },
+    provider_defaults: { ycapi: { video: 27, image: 28, audio: 29 } },
     pool_overrides: expect.arrayContaining(data.pool_overrides),
   })
 })

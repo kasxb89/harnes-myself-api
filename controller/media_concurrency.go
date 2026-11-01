@@ -25,16 +25,17 @@ func SaveMediaConcurrency(c *gin.Context) {
 		return
 	}
 	for key := range fields {
-		if key != "schema_version" && key != "expected_revision" && key != "defaults" && key != "pool_overrides" {
+		if key != "schema_version" && key != "expected_revision" && key != "defaults" && key != "pool_overrides" && key != "provider_defaults" {
 			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 			return
 		}
 	}
 	var request struct {
-		SchemaVersion    int                            `json:"schema_version"`
-		ExpectedRevision string                         `json:"expected_revision"`
-		Defaults         model.MediaConcurrencyDefaults `json:"defaults"`
-		PoolOverrides    []model.MediaPoolOverride      `json:"pool_overrides"`
+		SchemaVersion    int                                       `json:"schema_version"`
+		ExpectedRevision string                                    `json:"expected_revision"`
+		Defaults         model.MediaConcurrencyDefaults            `json:"defaults"`
+		ProviderDefaults map[string]model.MediaConcurrencyDefaults `json:"provider_defaults"`
+		PoolOverrides    []model.MediaPoolOverride                 `json:"pool_overrides"`
 	}
 	encoded, err := common.Marshal(fields)
 	if err != nil || common.Unmarshal(encoded, &request) != nil || request.SchemaVersion != 1 || request.ExpectedRevision == "" || len(request.ExpectedRevision) > 128 {
@@ -42,9 +43,16 @@ func SaveMediaConcurrency(c *gin.Context) {
 		return
 	}
 	var defaults map[string]common.RawMessage
-	if common.Unmarshal(fields["defaults"], &defaults) != nil || len(defaults) != 2 || defaults["video"] == nil || defaults["image"] == nil {
+	if common.Unmarshal(fields["defaults"], &defaults) != nil || (len(defaults) != 2 && len(defaults) != 3) || defaults["video"] == nil || defaults["image"] == nil || (len(defaults) == 3 && defaults["audio"] == nil) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
+	}
+	if value, present := fields["provider_defaults"]; present {
+		var providers map[string]map[string]common.RawMessage
+		if common.Unmarshal(value, &providers) != nil || len(providers) != 1 || len(providers["ycapi"]) != 3 || providers["ycapi"]["video"] == nil || providers["ycapi"]["image"] == nil || providers["ycapi"]["audio"] == nil {
+			common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
+			return
+		}
 	}
 	var overrides []map[string]common.RawMessage
 	if value, present := fields["pool_overrides"]; present {
@@ -59,7 +67,7 @@ func SaveMediaConcurrency(c *gin.Context) {
 			}
 		}
 	}
-	policy := model.MediaConcurrencyPolicy{SchemaVersion: request.SchemaVersion, Defaults: request.Defaults, PoolOverrides: request.PoolOverrides}
+	policy := model.MediaConcurrencyPolicy{SchemaVersion: request.SchemaVersion, Defaults: request.Defaults, ProviderDefaults: request.ProviderDefaults, PoolOverrides: request.PoolOverrides}
 	_, err = model.SaveMediaConcurrencyPolicy(c.Request.Context(), request.ExpectedRevision, policy)
 	if errors.Is(err, model.ErrMediaPolicyConflict) {
 		common.ApiErrorStatus(c, http.StatusConflict, common.NewMessage("Configuration changed; refresh and try again"), gin.H{"code": "MEDIA_CONCURRENCY_POLICY_CONFLICT"})
@@ -121,10 +129,11 @@ func readMediaConcurrencyRequest(c *gin.Context) (map[string]common.RawMessage, 
 func writeMediaConcurrencySnapshot(c *gin.Context, snapshot model.MediaConcurrencySnapshot) {
 	c.Header("Cache-Control", "no-store")
 	common.ApiSuccess(c, gin.H{
-		"schema_version": snapshot.Policy.SchemaVersion,
-		"revision":       snapshot.Policy.Revision,
-		"defaults":       snapshot.Policy.Defaults,
-		"pool_overrides": snapshot.Policy.PoolOverrides,
-		"pools":          snapshot.Pools,
+		"schema_version":    snapshot.Policy.SchemaVersion,
+		"revision":          snapshot.Policy.Revision,
+		"defaults":          snapshot.Policy.Defaults,
+		"provider_defaults": snapshot.Policy.ProviderDefaults,
+		"pool_overrides":    snapshot.Policy.PoolOverrides,
+		"pools":             snapshot.Pools,
 	})
 }
