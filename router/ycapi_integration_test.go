@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -208,6 +210,23 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 		prices, ok := entry["retail_price_rows"].([]any)
 		require.True(t, ok)
 		priceRows += len(prices)
+		for i, value := range prices {
+			price, ok := value.(map[string]any)
+			require.True(t, ok)
+			reference, ok := price["official_reference"].(map[string]any)
+			require.True(t, ok, "every approved row has a same-unit official reference")
+			assert.EqualValues(t, 1, reference["schema_version"])
+			assert.Equal(t, "CNY", reference["currency"])
+			assert.Equal(t, price["unit"], reference["unit"])
+			assert.Equal(t, approved.Prices[i].Official.String(), reference["official_cny"])
+			assert.Equal(t, approved.Prices[i].OfficialModel, reference["model"])
+			assert.Equal(t, approved.Prices[i].OfficialSource, reference["source_url"])
+			assert.Equal(t, "2026-10-31", reference["checked_at"])
+			assert.Equal(t, approved.Prices[i].Retail.String(), price["retail_cny"])
+			if approved.Kind == "video" || approved.Kind == "image" {
+				assert.Equal(t, approved.Prices[i].OfficialTotal.String(), reference["official_total_cny"])
+			}
+		}
 		if approved.Kind == "text" {
 			assert.EqualValues(t, approved.ContextWindow, entry["context_window"])
 			assert.EqualValues(t, 8192, entry["max_output_tokens"])
@@ -223,6 +242,37 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 	assert.Contains(t, pricing.Body.String(), `"retail_price_rows"`)
 	assert.NotContains(t, pricing.Body.String(), `"lane_id"`)
 	assert.NotContains(t, pricing.Body.String(), `"procurementCny"`)
+	assert.Contains(t, pricing.Body.String(), `"official_reference"`)
+	var priced struct {
+		Data []struct {
+			Model string           `json:"model_name"`
+			Rows  []map[string]any `json:"retail_price_rows"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(pricing.Body.Bytes(), &priced))
+	for _, item := range priced.Data {
+		if !strings.HasPrefix(item.Model, "ycapi-") {
+			continue
+		}
+		for _, entry := range catalog.Data {
+			if entry["id"] == item.Model {
+				data, err := common.Marshal(entry["retail_price_rows"])
+				require.NoError(t, err)
+				var expected []map[string]any
+				require.NoError(t, common.Unmarshal(data, &expected))
+				assert.Equal(t, expected, item.Rows, "both public endpoints must expose the same reference")
+			}
+		}
+	}
+	if directory := os.Getenv("TEST_YCAPI_PUBLIC_COMPARE_OUTPUT"); directory != "" {
+		for name, response := range map[string]*httptest.ResponseRecorder{"models": models, "pricing": pricing} {
+			file, err := os.OpenFile(filepath.Join(directory, name+".json"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			require.NoError(t, err)
+			_, err = file.Write(response.Body.Bytes())
+			require.NoError(t, err)
+			require.NoError(t, file.Close())
+		}
+	}
 	protected := f.request(t, http.MethodGet, "/api/ycapi/catalog", "", "h3routermember")
 	assert.NotContains(t, protected.Body.String(), `"procurementCny"`)
 }

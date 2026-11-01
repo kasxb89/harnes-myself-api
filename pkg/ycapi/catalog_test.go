@@ -78,7 +78,7 @@ func TestApprovedCatalogPreviews(t *testing.T) {
 		}
 	}
 	assert.Equal(t, map[string]int{"text": 22, "image": 8, "video": 10, "audio": 3}, counts)
-	assert.Equal(t, 106, specs)
+	assert.Equal(t, 88, specs)
 }
 func TestPreviewUsesNativeClipTotalAndPinnedLane(t *testing.T) {
 	p, err := BuildPreview(PreviewRequest{ModelID: "ycapi-grok-imagine-video", SpecID: "ca70bc25c56f6312", Prompt: "Cup"})

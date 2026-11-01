@@ -21,16 +21,22 @@ import (
 var catalogData []byte
 
 type PriceRow struct {
-	ModelID          string          `json:"modelId"`
-	Direction        string          `json:"direction"`
-	Params           map[string]any  `json:"params"`
-	LaneID           string          `json:"laneId"`
-	Procurement      decimal.Decimal `json:"procurementCny"`
-	Retail           decimal.Decimal `json:"retailCny"`
-	Official         decimal.Decimal `json:"officialCny"`
-	ProcurementTotal decimal.Decimal `json:"procurementTotalCny"`
-	RetailTotal      decimal.Decimal `json:"retailTotalCny"`
-	OfficialTotal    decimal.Decimal `json:"officialTotalCny"`
+	ModelID            string          `json:"modelId"`
+	Direction          string          `json:"direction"`
+	Params             map[string]any  `json:"params"`
+	LaneID             string          `json:"laneId"`
+	Procurement        decimal.Decimal `json:"procurementCny"`
+	Retail             decimal.Decimal `json:"retailCny"`
+	Official           decimal.Decimal `json:"officialCny"`
+	ProcurementTotal   decimal.Decimal `json:"procurementTotalCny"`
+	RetailTotal        decimal.Decimal `json:"retailTotalCny"`
+	OfficialTotal      decimal.Decimal `json:"officialTotalCny"`
+	OfficialModel      string          `json:"officialModel"`
+	OfficialSource     string          `json:"source"`
+	OfficialConditions string          `json:"officialConditions"`
+	OfficialOriginal   struct {
+		Currency string `json:"currency"`
+	} `json:"officialOriginal"`
 }
 type Offer struct {
 	ID     string         `json:"id"`
@@ -54,9 +60,11 @@ type Model struct {
 	Prices []PriceRow `json:"priceRows"`
 }
 type Catalog struct {
-	Version string  `json:"version"`
-	Count   int     `json:"count"`
-	Models  []Model `json:"models"`
+	Version        string          `json:"version"`
+	CheckedAt      string          `json:"checkedAt"`
+	OfficialUSDCNY decimal.Decimal `json:"officialUsdCny"`
+	Count          int             `json:"count"`
+	Models         []Model         `json:"models"`
 }
 
 var approved, catalogError = loadCatalog()

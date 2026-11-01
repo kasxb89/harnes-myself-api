@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -104,6 +105,26 @@ func ClientPrices(id string) []map[string]any {
 		}
 		if m.Kind == "video" || m.Kind == "image" {
 			row["retail_total_cny"] = p.RetailTotal.String()
+		}
+		// Publish only the approved public reference, never the raw price row.
+		// It is a dated reference in the same unit as retail_cny, not a live
+		// official quote or an account-specific charging multiplier.
+		source, sourceErr := url.Parse(p.OfficialSource)
+		if sourceErr == nil && source.Scheme == "https" && source.Host != "" && source.User == nil &&
+			p.Official.IsPositive() && p.OfficialModel != "" && approved.CheckedAt != "" {
+			reference := map[string]any{
+				"schema_version": 1, "official_cny": p.Official.String(), "currency": "CNY",
+				"model": p.OfficialModel, "unit": unit, "source_url": p.OfficialSource,
+				"checked_at": approved.CheckedAt, "conditions": p.OfficialConditions,
+				"source_currency": p.OfficialOriginal.Currency,
+			}
+			if p.OfficialOriginal.Currency == "USD" && approved.OfficialUSDCNY.IsPositive() {
+				reference["usd_cny"] = approved.OfficialUSDCNY.String()
+			}
+			if m.Kind == "video" || m.Kind == "image" {
+				reference["official_total_cny"] = p.OfficialTotal.String()
+			}
+			row["official_reference"] = reference
 		}
 		rows = append(rows, row)
 	}
