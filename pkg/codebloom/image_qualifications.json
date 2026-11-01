@@ -1,4 +1,20 @@
 {
   "schema_version": 1,
-  "models": []
+  "models": [
+    {
+      "id": "ys-grok-imagine-image-2.0",
+      "upstream_id": "grok-imagine-image-2.0",
+      "checked_at": "2026-11-02",
+      "generation": "verified",
+      "billable_usage": "verified",
+      "image_decoded": true,
+      "request_sha256": "b187a53f1f76b343fdace7e7cf0afd3dd9dc7781fbc2de10a8a1d728aee4738b",
+      "response_sha256": "bfb08b2e8b2f0908b52972070b88139bd6196cb9426650e0fddd3a54d240373c",
+      "image_sha256": "4cb457c61a1ee11ddbe620ac01f638a9cb3918dd0faec53c64045eb9803cc0a2",
+      "meter_evidence_sha256": "5a6f1bc9517919e8e8c07d02e0ba0708bd3cd201b20021cbbbf594d4a111caa9",
+      "retained_protocol_sha256": "ee4f4980a363af65b7530b0b6e9cfe0dfe57ca84a2bd9ea0ce308edbb4a18354",
+      "width": 768,
+      "height": 1152
+    }
+  ]
 }

@@ -39,6 +39,15 @@ import (
 // artifact handlers are exercised. Only the supplier's completed result is
 // injected: this test does not bypass readiness in any production entrypoint.
 func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
+	t.Run("images_generations", func(t *testing.T) {
+		codeBloomRetainedImageHTTPFixture(t, "ys-gpt-image-2k", "gpt-image-2k", true)
+	})
+	t.Run("chat_completions", func(t *testing.T) {
+		codeBloomRetainedImageHTTPFixture(t, "ys-grok-imagine-image-2.0", "grok-imagine-image-2.0", false)
+	})
+}
+
+func codeBloomRetainedImageHTTPFixture(t *testing.T, modelID, upstreamID string, imagesEndpoint bool) {
 	db := codeBloomFinancialTestDatabase(t)
 	oldRegistry := pluginruntime.DefaultRegistry
 	pluginruntime.DefaultRegistry = pluginruntime.NewRegistry()
@@ -54,7 +63,6 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	require.NoError(t, err)
 	plugin, err := pluginruntime.DefaultRegistry.RegisterFactory(source, pluginruntime.Options{})
 	require.NoError(t, err)
-	const modelID = "ys-gpt-image-2k"
 	const taskID = "task_codebloom_http_fixture"
 	const savedImage = "https://127.0.0.1/local-synthetic-image.png"
 	for _, user := range []model.User{
@@ -78,7 +86,7 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	deps := pluginProtocolTestDeps()
 	deps.submit = func(c *gin.Context, info *relaycommon.RelayInfo) (*taskSubmissionOutcome, *dto.TaskError) {
 		info.InitChannelMeta(c)
-		info.OriginModelName, info.UpstreamModelName = modelID, "gpt-image-2k"
+		info.OriginModelName, info.UpstreamModelName = modelID, upstreamID
 		info.PublicTaskID = taskID
 		info.LockedChannel = &channel
 		events := []string{}
@@ -89,7 +97,11 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 			if err := adaptor.ValidateRequestAndSetAction(c, info); err != nil {
 				return nil, err
 			}
-			result, taskErr := adaptor.ParseResponse(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"data":[{"url":"` + savedImage + `"}]}`))}, info)
+			response := `{"data":[{"url":"` + savedImage + `"}]}`
+			if !imagesEndpoint {
+				response = `{"model":"` + upstreamID + `","choices":[{"finish_reason":"stop","message":{"content":"![image](` + savedImage + `)","images":[{"image_url":{"url":"` + savedImage + `"}}]}}]}`
+			}
+			result, taskErr := adaptor.ParseResponse(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}, info)
 			if taskErr != nil {
 				return nil, taskErr
 			}
@@ -204,7 +216,11 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 		cases = append(cases, map[string]any{"name": name, "identity": identity, "request": map[string]any{"method": method, "path": sanitizeURL(path), "headers": requestHeaders, "body": requestBody}, "response": response})
 		return recorder
 	}
-	created := call("synchronous_images_success", http.MethodPost, "/v1/images/generations", `{"model":"`+modelID+`","prompt":"a synthetic fixture image","n":1,"size":"1024x1024","response_format":"url"}`, "owner", http.StatusOK)
+	size := ""
+	if imagesEndpoint {
+		size = `,"size":"1024x1024"`
+	}
+	created := call("synchronous_images_success", http.MethodPost, "/v1/images/generations", `{"model":"`+modelID+`","prompt":"a synthetic fixture image","n":1`+size+`,"response_format":"url"}`, "owner", http.StatusOK)
 	assert.Equal(t, taskID, created.Header().Get("X-New-Api-Task-Id"))
 	assert.Contains(t, created.Body.String(), "/v1/tasks/"+taskID+"/artifacts/image-1/content")
 	assert.NotContains(t, created.Body.String(), "127.0.0.1")
@@ -255,7 +271,7 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 		"status": "LOCAL_REAL_HANDLER_HTTP_FIXTURES_VERIFIED", "verification_date": "2026-11-02", "database": string(common.MainDatabaseType()), "cases": cases, "source_files_sha256": sources,
 		"image_fixture":      map[string]any{"encoder": "Go image/png.Encode", "png_decode": "PASS", "http_content_png_decode": "PASS", "width": 1, "height": 1, "bytes": len(imageBytes), "sha256": fmt.Sprintf("%x", sha256.Sum256(imageBytes))},
 		"retention_contract": map[string]any{"plugin_key": "codebloom-image", "protocol": "openai_image", "retainResult": true, "requires_explicit_protocol_opt_in": true, "retainResult_scope": "server plugin protocol claim only; not a general ClientParameters marker", "client_metadata_has_generic_retention_marker": false, "client_opt_in": map[string]any{"x-task-plugin": map[string]any{"key": "codebloom-image", "version": "1.0.0", "api_version": 1}, "requires_response_task_id_header": true, "do_not_generalize_task_id_header": true}, "task_id_header": "X-New-Api-Task-Id", "task_body_contains_image_result": false, "recovery": "GET task status, then GET artifact manifest/content", "retained_payload": "normalized result URL/artifact metadata", "artifact_bytes_locally_persisted": service.GetTaskArtifactStore().Enabled(), "client_should_save_image_locally": true},
-		"scope":              map[string]any{"supplier_completed_result": "synthetic response injected at the existing test submit dependency; actual CodeBloom parser, host persistence, renderer, TokenAuth and GET handlers executed", "production_activation_gate_bypassed_only_in_test_dependency": true, "candidate_models_remain_unavailable": true, "production_access": 0, "paid_generations": 0, "external_network_requests": 0, "artifact_content_transport": "intercepted in memory; no Authorization/X-Api-Key/Cookie forwarded", "ownership_scope": "404 samples use ordinary relay credentials without a valid artifact capability. Existing signed capability URLs retain their separate possession-based access semantics.", "legacy_toapis": "Existing Toapis async route and client local save/cache/recovery remain unchanged; do not apply CodeBloom opt-in handling to it."},
+		"scope":              map[string]any{"supplier_completed_result": "synthetic response injected at the existing test submit dependency; actual CodeBloom parser, host persistence, renderer, TokenAuth and GET handlers executed", "production_activation_gate_bypassed_only_in_test_dependency": true, "candidate_availability_is_separately_gated": true, "production_access": 0, "paid_generations": 0, "external_network_requests": 0, "artifact_content_transport": "intercepted in memory; no Authorization/X-Api-Key/Cookie forwarded", "ownership_scope": "404 samples use ordinary relay credentials without a valid artifact capability. Existing signed capability URLs retain their separate possession-based access semantics.", "legacy_toapis": "Existing Toapis async route and client local save/cache/recovery remain unchanged; do not apply CodeBloom opt-in handling to it."},
 		"redactions":         []string{"Authorization replaced by role placeholders", "artifact access query value replaced by REDACTED_CAPABILITY"},
 	}
 	encoded, err := common.Marshal(artifact)
@@ -265,6 +281,9 @@ func TestCodeBloomRetainedImageHTTPFixturesDatabase(t *testing.T) {
 	}
 	require.False(t, t.Failed(), "unsafe samples cannot be exported")
 	if output := os.Getenv("TEST_RETAINED_IMAGE_HTTP_FIXTURES"); output != "" {
+		if !imagesEndpoint {
+			output += ".grok.json"
+		}
 		require.NoError(t, os.WriteFile(output, encoded, 0o600))
 	}
 }
