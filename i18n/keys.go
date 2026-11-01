@@ -142,3 +142,22 @@ const (
 	MsgCapacityJsonRequired        = "model_capacity.JsonRequired"
 	MsgCapacityNestedBudget        = "model_capacity.NestedBudget"
 )
+
+// Verified model-route capability failures returned to AI clients.
+const (
+	MsgCapabilityConfigUnavailable         = "model_capability.config_unavailable"
+	MsgCapabilityRouteUnavailable          = "model_capability.route_unavailable"
+	MsgCapabilityRouteOverrideForbidden    = "model_capability.route_override_forbidden"
+	MsgCapabilityToolsUnavailable          = "model_capability.tools_unavailable"
+	MsgCapabilityReasoningUnavailable      = "model_capability.reasoning_unavailable"
+	MsgCapabilityModalityUnavailable       = "model_capability.modality_unavailable"
+	MsgCapabilityInputSizeUnknown          = "model_capability.input_size_unknown"
+	MsgCapabilityLegacyInputLimit          = "model_capability.legacy_input_limit"
+	MsgCapabilityOutboundMismatch          = "model_capability.outbound_mismatch"
+	MsgCapabilityUpstreamRejected          = "model_capability.upstream_rejected"
+	MsgCapabilitySelectedRouteUnavailable  = "model_capability.selected_route_unavailable"
+	MsgCapabilityUpstreamInsufficientFunds = "model_capability.upstream_insufficient_funds"
+	MsgCapabilityImageUnsupported          = "model_capability.image_unsupported"
+	MsgCapabilityImageUnavailable          = "model_capability.image_unavailable"
+	MsgCapabilityModelExcluded             = "model_capability.model_excluded"
+)

@@ -100,8 +100,12 @@ func Translate(lang, key string, args ...map[string]any) string {
 	}
 	loc := GetLocalizer(lang)
 
+	messageID := key
+	if canonical, ok := capabilityMessageAliases[key]; ok {
+		messageID = canonical
+	}
 	config := &i18n.LocalizeConfig{
-		MessageID: key,
+		MessageID: messageID,
 	}
 
 	if len(args) > 0 && args[0] != nil {

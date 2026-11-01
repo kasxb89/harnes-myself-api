@@ -91,7 +91,8 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 			actualKeys = append(actualKeys, entry.Name())
 		}
 	}
-	assert.Equal(t, expectedKeys, actualKeys)
+	// The two dedicated image/media transports make no Responses claim.
+	assert.Equal(t, []string{"alibaba", "codebloom-image", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu", "xai", "ycapi"}, actualKeys)
 
 	for _, key := range expectedKeys {
 		t.Run(key, func(t *testing.T) {

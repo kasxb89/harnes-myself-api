@@ -84,6 +84,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/balance-ledger/":         accessTokenSessionRule,
 	"GET /api/model-profit/":           accessTokenSessionRule,
 	"GET /api/model-profit/cost-rules": accessTokenSessionRule,
+	"GET /api/model-pricebook":         accessTokenSessionRule,
 	"PUT /api/model-profit/cost-rules": accessTokenSessionRule,
 	"GET /api/operations/overview":     accessTokenSessionRule,
 	"GET /api/operations/server-load":  accessTokenSessionRule,

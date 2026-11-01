@@ -603,6 +603,7 @@ func TestFinancialRoutesPreserveCredentialAndRoleBoundaries(t *testing.T) {
 		{http.MethodGet, "/api/balance-ledger/", common.RoleAdminUser},
 		{http.MethodGet, "/api/model-profit/", common.RoleAdminUser},
 		{http.MethodGet, "/api/model-profit/cost-rules", common.RoleAdminUser},
+		{http.MethodGet, "/api/model-pricebook", common.RoleRootUser},
 		{http.MethodPut, "/api/model-profit/cost-rules", common.RoleRootUser},
 		{http.MethodGet, "/api/upstream-topup/", common.RoleAdminUser},
 		{http.MethodPost, "/api/upstream-topup/", common.RoleAdminUser},
@@ -849,7 +850,7 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 	model.LOG_DB = db
 	common.SetDatabaseTypes(common.MainDatabaseType(), common.MainDatabaseType())
 	require.False(t, db.Migrator().HasTable(&model.User{}), "refuse a shared or previously used database")
-	models := []any{&model.User{}, &model.UserOnboardingSurvey{}, &model.OnboardingSurveyConfigVersion{}, &model.OnboardingSurveyConfigState{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
+	models := []any{&model.ClientActivitySession{}, &model.User{}, &model.UserOnboardingSurvey{}, &model.OnboardingSurveyConfigVersion{}, &model.OnboardingSurveyConfigState{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
 	require.NoError(t, db.AutoMigrate(models...))
 	require.NoError(t, db.AutoMigrate(models...))
 	var version string
