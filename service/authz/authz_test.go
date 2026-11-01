@@ -311,7 +311,7 @@ func TestOperationalPermissionCatalogAndRevocation(t *testing.T) {
 		"upstream_topups": {"read", "write"}, "user_activity": {"read"}, "video_usage": {"read"},
 		"media_operations": {"read"}, "client_model_config": {"read", "write"},
 		"creation_content": {"read", "write"}, "customer_service": {"read", "write"},
-		"announcements": {"read", "write"}, "diagnostics": {"read"}, "user_surveys": {"read"},
+		"announcements": {"read", "write"}, "diagnostics": {"read"}, "user_surveys": {"read", "write"},
 	}
 	catalog := map[string]ResourceDefinition{}
 	for _, resource := range Catalog() {

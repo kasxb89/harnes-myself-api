@@ -42,10 +42,12 @@ func accessTokenScopeRule(scope string) accessTokenRouteRule {
 // DeclareAccessTokenPermissionRoute when they are registered.
 var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	// Preview configuration and questionnaire registrations remain interactive-only.
-	"GET /api/ycapi/catalog":           accessTokenSessionRule,
-	"GET /api/ycapi/configuration":     accessTokenSessionRule,
-	"POST /api/ycapi/quote-preview":    accessTokenSessionRule,
-	"GET /api/user/onboarding-surveys": accessTokenSessionRule,
+	"GET /api/ycapi/catalog":                 accessTokenSessionRule,
+	"GET /api/ycapi/configuration":           accessTokenSessionRule,
+	"POST /api/ycapi/quote-preview":          accessTokenSessionRule,
+	"GET /api/user/onboarding-survey-config": accessTokenSessionRule,
+	"PUT /api/user/onboarding-survey-config": accessTokenSessionRule,
+	"GET /api/user/onboarding-surveys":       accessTokenSessionRule,
 	// Customer support configuration requires an interactive administrator session.
 	"GET /api/announcements":            accessTokenSessionRule,
 	"PUT /api/announcements":            accessTokenSessionRule,

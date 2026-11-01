@@ -8666,6 +8666,27 @@
     "Questionnaire is temporarily unavailable": "Questionnaire is temporarily unavailable",
     "Invalid questionnaire request": "Invalid questionnaire request",
     "This account is not eligible for the questionnaire": "This account is not eligible for the questionnaire",
-    "Questionnaire has already been submitted": "Questionnaire has already been submitted"
+    "Questionnaire has already been submitted": "Questionnaire has already been submitted",
+    "Add scenario": "Add scenario",
+    "Chinese name": "Chinese name",
+    "Discard unsaved questionnaire changes?": "Discard unsaved questionnaire changes?",
+    "English name": "English name",
+    "Enter both names for every option, enable at least one option and keep at most 64 options.": "Enter both names for every option, enable at least one option and keep at most 64 options.",
+    "Failed to load questionnaire options": "Failed to load questionnaire options",
+    "Failed to save questionnaire options": "Failed to save questionnaire options",
+    "Manage questionnaire options, names, ordering and availability.": "Manage questionnaire options, names, ordering and availability.",
+    "Move down": "Move down",
+    "Move up": "Move up",
+    "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.": "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.",
+    "Order": "Order",
+    "Questionnaire options": "Questionnaire options",
+    "Questionnaire options have changed. Review your choices before submitting.": "Questionnaire options have changed. Review your choices before submitting.",
+    "Questionnaire options saved": "Questionnaire options saved",
+    "Reload": "Reload",
+    "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.": "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.",
+    "Saved scenarios can be disabled. Historical answers are retained.": "Saved scenarios can be disabled. Historical answers are retained.",
+    "This questionnaire requires a newer client": "This questionnaire requires a newer client",
+    "You have read-only access to questionnaire options.": "You have read-only access to questionnaire options.",
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Your unsaved changes will be cleared. Saved answers will remain unchanged."
   }
 }

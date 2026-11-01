@@ -23,6 +23,9 @@ import i18next from 'i18next'
 export const safeServerErrorMessage = Symbol('safeServerErrorMessage')
 
 const serverErrorMessageKeys = {
+  SURVEY_CONFIG_CHANGED:
+    'Questionnaire options have changed. Review your choices before submitting.',
+  SURVEY_UNSUPPORTED: 'This questionnaire requires a newer client',
   SURVEY_UNAVAILABLE: 'Questionnaire is temporarily unavailable',
   SURVEY_INVALID_REQUEST: 'Invalid questionnaire request',
   SURVEY_NOT_ELIGIBLE: 'This account is not eligible for the questionnaire',

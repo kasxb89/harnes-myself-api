@@ -51,18 +51,21 @@ func OnboardingSurveyOptions() []SurveyOption {
 // transaction. Migration and reads never backfill eligibility for older users.
 // One primary key per account also makes re-login and challenge replay harmless.
 type UserOnboardingSurvey struct {
-	UserID              int    `gorm:"primaryKey;autoIncrement:false" json:"-"`
-	SurveyID            string `gorm:"type:varchar(64);not null" json:"-"`
-	PhoneE164           string `gorm:"type:varchar(32);not null" json:"-"`
-	RegisteredAt        int64  `gorm:"not null;index:idx_survey_status_registered,priority:2" json:"-"`
-	Status              string `gorm:"type:varchar(16);not null;index:idx_survey_status_registered,priority:1" json:"-"`
-	SelectedOptionsJSON string `gorm:"type:text;not null" json:"-"`
-	Notes               string `gorm:"type:text;not null" json:"-"`
-	SubmittedAt         int64  `gorm:"not null" json:"-"`
-	DeferredAt          int64  `gorm:"not null" json:"-"`
+	ConfigRevision      string            `gorm:"type:varchar(64)" json:"-"`
+	OptionsSnapshotJSON SurveyOptionsJSON `gorm:"" json:"-"`
+	UserID              int               `gorm:"primaryKey;autoIncrement:false" json:"-"`
+	SurveyID            string            `gorm:"type:varchar(64);not null" json:"-"`
+	PhoneE164           string            `gorm:"type:varchar(32);not null" json:"-"`
+	RegisteredAt        int64             `gorm:"not null;index:idx_survey_status_registered,priority:2" json:"-"`
+	Status              string            `gorm:"type:varchar(16);not null;index:idx_survey_status_registered,priority:1" json:"-"`
+	SelectedOptionsJSON string            `gorm:"type:text;not null" json:"-"`
+	Notes               string            `gorm:"type:text;not null" json:"-"`
+	SubmittedAt         int64             `gorm:"not null" json:"-"`
+	DeferredAt          int64             `gorm:"not null" json:"-"`
 }
 
 type OnboardingSurveyView struct {
+	ConfigRevision    string         `json:"config_revision,omitempty"`
 	SchemaVersion     int            `json:"schema_version"`
 	SurveyID          string         `json:"survey_id"`
 	Eligible          bool           `json:"eligible"`
@@ -93,10 +96,20 @@ func EnrollPhoneOnboardingSurveyWithTx(tx *gorm.DB, user *User) error {
 	}).Error
 }
 
-func (s *UserOnboardingSurvey) view() (OnboardingSurveyView, error) {
-	options := OnboardingSurveyOptions()
+func (s *UserOnboardingSurvey) viewWithConfiguration(cfg SurveyConfiguration) (OnboardingSurveyView, error) {
+	options := cfg.ActiveOptions()
+	if s != nil && s.Status == SurveySubmitted {
+		cfg = LegacySurveyConfiguration()
+		options = cfg.ActiveOptions()
+		if s.ConfigRevision != "" {
+			cfg.Revision = s.ConfigRevision
+			if err := common.UnmarshalJsonStr(string(s.OptionsSnapshotJSON), &options); err != nil || len(options) == 0 {
+				return OnboardingSurveyView{}, errors.New("invalid survey snapshot")
+			}
+		}
+	}
 	view := OnboardingSurveyView{
-		SchemaVersion: OnboardingSurveySchemaVersion, SurveyID: OnboardingSurveyID,
+		SchemaVersion: SurveyDynamicSchema, SurveyID: OnboardingSurveyID, ConfigRevision: cfg.Revision,
 		Status: "not_eligible", Options: options, MaxSelections: len(options),
 		MaxNotesLength: OnboardingSurveyMaxNotes, SelectedOptionIDs: []string{},
 	}
@@ -128,11 +141,17 @@ func GetOnboardingSurvey(userID int) (OnboardingSurveyView, error) {
 	if err != nil {
 		return OnboardingSurveyView{}, err
 	}
-	return row.view()
+	cfg, err := GetSurveyConfiguration()
+	if err != nil {
+		return OnboardingSurveyView{}, err
+	}
+	return row.viewWithConfiguration(cfg)
 }
 
 func canonicalSurveyAnswer(selected []string, notes string) (string, string, error) {
-	options := OnboardingSurveyOptions()
+	return canonicalSurveyAnswerOptions(selected, notes, OnboardingSurveyOptions())
+}
+func canonicalSurveyAnswerOptions(selected []string, notes string, options []SurveyOption) (string, string, error) {
 	if len(selected) < 1 || len(selected) > len(options) || !utf8.ValidString(notes) || utf8.RuneCountInString(notes) > OnboardingSurveyMaxNotes {
 		return "", "", ErrSurveyInvalid
 	}
@@ -162,29 +181,58 @@ func canonicalSurveyAnswer(selected []string, notes string) (string, string, err
 }
 
 func SubmitOnboardingSurvey(userID int, selected []string, notes string) (OnboardingSurveyView, error) {
-	answer, notes, err := canonicalSurveyAnswer(selected, notes)
-	if err != nil {
-		return OnboardingSurveyView{}, err
-	}
-	// The first database operation is an atomic conditional write. This avoids
-	// lost updates on every engine and SQLite deferred read-to-write upgrades.
-	err = surveyDB(DB).Model(&UserOnboardingSurvey{}).
-		Where("user_id = ? AND survey_id = ? AND status IN ?", userID, OnboardingSurveyID, []string{SurveyPending, SurveyDeferred}).
-		Updates(map[string]any{"status": SurveySubmitted, "selected_options_json": answer, "notes": notes, "submitted_at": time.Now().Unix()}).Error
-	if err != nil {
-		return OnboardingSurveyView{}, err
-	}
-	row, err := loadOnboardingSurvey(userID)
-	if err != nil {
-		return OnboardingSurveyView{}, err
-	}
-	if row == nil {
-		return OnboardingSurveyView{}, ErrSurveyNotEligible
-	}
-	if row.Status != SurveySubmitted || row.SelectedOptionsJSON != answer || row.Notes != notes {
-		return OnboardingSurveyView{}, ErrSurveyAlreadySubmitted
-	}
-	return row.view()
+	return SubmitOnboardingSurveyVersion(userID, selected, notes, 1, "")
+}
+func SubmitOnboardingSurveyVersion(userID int, selected []string, notes string, schema int, revision string) (OnboardingSurveyView, error) {
+	var view OnboardingSurveyView
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := guardSurveyConfiguration(tx); err != nil {
+			return err
+		}
+		cfg, err := readSurveyConfiguration(tx)
+		if err != nil {
+			return err
+		}
+		var row UserOnboardingSurvey
+		err = surveyDB(tx).First(&row, "user_id = ?", userID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrSurveyNotEligible
+		}
+		if err != nil {
+			return err
+		}
+		if row.Status == SurveySubmitted {
+			view, err = row.viewWithConfiguration(cfg)
+			if err != nil {
+				return err
+			}
+			answer, normalized, e := canonicalSurveyAnswerOptions(selected, notes, view.Options)
+			if e != nil || answer != row.SelectedOptionsJSON || normalized != row.Notes {
+				return ErrSurveyAlreadySubmitted
+			}
+			return nil
+		}
+		if schema == 1 && cfg.Revision != LegacySurveyConfiguration().Revision || schema == 2 && revision != cfg.Revision {
+			return ErrSurveyConfigChanged
+		}
+		answer, normalized, err := canonicalSurveyAnswerOptions(selected, notes, cfg.ActiveOptions())
+		if err != nil {
+			return err
+		}
+		snapshot, err := common.Marshal(cfg.ActiveOptions())
+		if err != nil {
+			return err
+		}
+		if err := surveyDB(tx).Model(&UserOnboardingSurvey{}).Where("user_id = ? AND status IN ?", userID, []string{SurveyPending, SurveyDeferred}).Updates(map[string]any{"status": SurveySubmitted, "selected_options_json": answer, "notes": normalized, "submitted_at": time.Now().Unix(), "config_revision": cfg.Revision, "options_snapshot_json": string(snapshot)}).Error; err != nil {
+			return err
+		}
+		if err := surveyDB(tx).First(&row, "user_id = ?", userID).Error; err != nil {
+			return err
+		}
+		view, err = row.viewWithConfiguration(cfg)
+		return err
+	})
+	return view, err
 }
 
 func DeferOnboardingSurvey(userID int) (OnboardingSurveyView, error) {
@@ -200,20 +248,26 @@ func DeferOnboardingSurvey(userID int) (OnboardingSurveyView, error) {
 	if row == nil {
 		return OnboardingSurveyView{}, ErrSurveyNotEligible
 	}
-	return row.view()
+	cfg, err := GetSurveyConfiguration()
+	if err != nil {
+		return OnboardingSurveyView{}, err
+	}
+	return row.viewWithConfiguration(cfg)
 }
 
 type OnboardingSurveyFilter struct{ Phone, Status, OptionID string }
 
 type OnboardingSurveyRegistration struct {
-	UserID            int      `json:"user_id"`
-	PhoneE164         string   `json:"phone_e164"`
-	Status            string   `json:"status"`
-	SelectedOptionIDs []string `json:"selected_option_ids"`
-	Notes             string   `json:"notes"`
-	RegisteredAt      int64    `json:"registered_at"`
-	SubmittedAt       int64    `json:"submitted_at"`
-	DeferredAt        int64    `json:"deferred_at"`
+	ConfigRevision    string         `json:"config_revision"`
+	SelectedOptions   []SurveyOption `json:"selected_options"`
+	UserID            int            `json:"user_id"`
+	PhoneE164         string         `json:"phone_e164"`
+	Status            string         `json:"status"`
+	SelectedOptionIDs []string       `json:"selected_option_ids"`
+	Notes             string         `json:"notes"`
+	RegisteredAt      int64          `json:"registered_at"`
+	SubmittedAt       int64          `json:"submitted_at"`
+	DeferredAt        int64          `json:"deferred_at"`
 }
 
 func ListOnboardingSurveys(filter OnboardingSurveyFilter, offset, limit int) ([]OnboardingSurveyRegistration, int64, error) {
@@ -225,7 +279,10 @@ func ListOnboardingSurveys(filter OnboardingSurveyFilter, offset, limit int) ([]
 		query = query.Where("status = ?", filter.Status)
 	}
 	if filter.OptionID != "" {
-		query = query.Where("selected_options_json LIKE ?", "%\""+filter.OptionID+"\"%")
+		// IDs contain underscores, which are SQL LIKE wildcards. Use an
+		// explicit escape character with the same meaning on all three engines.
+		id := strings.ReplaceAll(filter.OptionID, "_", "!_")
+		query = query.Where("selected_options_json LIKE ? ESCAPE '!'", "%\""+id+"\"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -235,17 +292,47 @@ func ListOnboardingSurveys(filter OnboardingSurveyFilter, offset, limit int) ([]
 	if err := query.Order("registered_at DESC").Order("user_id DESC").Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	cfg, err := GetSurveyConfiguration()
+	if err != nil {
+		return nil, 0, err
+	}
 	items := make([]OnboardingSurveyRegistration, 0, len(rows))
 	for i := range rows {
-		view, err := rows[i].view()
+		view, err := rows[i].viewWithConfiguration(cfg)
 		if err != nil {
 			return nil, 0, err
 		}
 		items = append(items, OnboardingSurveyRegistration{
-			UserID: rows[i].UserID, PhoneE164: rows[i].PhoneE164, Status: view.Status,
+			ConfigRevision: view.ConfigRevision, SelectedOptions: selectedSurveyOptions(view), UserID: rows[i].UserID, PhoneE164: rows[i].PhoneE164, Status: view.Status,
 			SelectedOptionIDs: view.SelectedOptionIDs, Notes: view.Notes,
 			RegisteredAt: view.RegisteredAt, SubmittedAt: view.SubmittedAt, DeferredAt: view.DeferredAt,
 		})
 	}
 	return items, total, nil
+}
+
+func selectedSurveyOptions(view OnboardingSurveyView) []SurveyOption {
+	options := make([]SurveyOption, 0, len(view.SelectedOptionIDs))
+	for _, o := range view.Options {
+		for _, id := range view.SelectedOptionIDs {
+			if o.ID == id {
+				options = append(options, o)
+				break
+			}
+		}
+	}
+	return options
+}
+func LegacySurveyView(view OnboardingSurveyView) (OnboardingSurveyView, error) {
+	if view.Eligible && view.Status != SurveySubmitted && view.ConfigRevision != LegacySurveyConfiguration().Revision {
+		return view, ErrSurveyUnsupported
+	}
+	if view.Status == SurveySubmitted && view.ConfigRevision != LegacySurveyConfiguration().Revision {
+		return view, ErrSurveyUnsupported
+	}
+	view.SchemaVersion = 1
+	view.ConfigRevision = ""
+	view.Options = OnboardingSurveyOptions()
+	view.MaxSelections = 9
+	return view, nil
 }

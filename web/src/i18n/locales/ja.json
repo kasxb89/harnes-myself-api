@@ -8666,6 +8666,27 @@
     "Questionnaire is temporarily unavailable": "アンケートは一時的に利用できません",
     "Invalid questionnaire request": "アンケートのリクエストが無効です",
     "This account is not eligible for the questionnaire": "このアカウントはアンケートの対象外です",
-    "Questionnaire has already been submitted": "アンケートは送信済みです"
+    "Questionnaire has already been submitted": "アンケートは送信済みです",
+    "Add scenario": "利用目的を追加",
+    "Chinese name": "中国語の名前",
+    "Discard unsaved questionnaire changes?": "未保存の変更を破棄しますか？",
+    "English name": "英語の名前",
+    "Enter both names for every option, enable at least one option and keep at most 64 options.": "各選択肢の両言語の名前を入力し、少なくとも1つを有効にしてください。上限は64項目です。",
+    "Failed to load questionnaire options": "選択肢を読み込めませんでした",
+    "Failed to save questionnaire options": "選択肢を保存できませんでした",
+    "Manage questionnaire options, names, ordering and availability.": "アンケートの選択肢、名前、順序、有効状態を管理します。",
+    "Move down": "下へ移動",
+    "Move up": "上へ移動",
+    "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.": "保存できませんでした。下書きは保持されています。他の管理者が変更した場合は、再読み込みして確認してから保存してください。",
+    "Order": "順序",
+    "Questionnaire options": "アンケートの選択肢",
+    "Questionnaire options have changed. Review your choices before submitting.": "選択肢が変更されました。内容を確認してから送信してください。",
+    "Questionnaire options saved": "選択肢を保存しました",
+    "Reload": "再読み込み",
+    "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.": "利用目的の名前、順序、有効状態を変更できます。送信済みの回答は回答時の名前を保持します。",
+    "Saved scenarios can be disabled. Historical answers are retained.": "保存済みの利用目的は無効化できます。過去の回答は保持されます。",
+    "This questionnaire requires a newer client": "このアンケートには新しいクライアントが必要です",
+    "You have read-only access to questionnaire options.": "選択肢に対する閲覧権限のみがあります。",
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "未保存の変更は消去されます。保存済みの回答は変更されません。"
   }
 }

@@ -8666,6 +8666,27 @@
     "Questionnaire is temporarily unavailable": "問卷暫時無法使用",
     "Invalid questionnaire request": "問卷請求無效",
     "This account is not eligible for the questionnaire": "此帳戶無需填寫本問卷",
-    "Questionnaire has already been submitted": "問卷已提交"
+    "Questionnaire has already been submitted": "問卷已提交",
+    "Add scenario": "新增情境",
+    "Chinese name": "中文名稱",
+    "Discard unsaved questionnaire changes?": "放棄未儲存的問卷修改？",
+    "English name": "英文名稱",
+    "Enter both names for every option, enable at least one option and keep at most 64 options.": "請填寫每個選項的中英文名稱，至少啟用一項，最多保留64項。",
+    "Failed to load questionnaire options": "問卷選項載入失敗",
+    "Failed to save questionnaire options": "問卷選項儲存失敗",
+    "Manage questionnaire options, names, ordering and availability.": "管理問卷選項、名稱、順序及啟用狀態。",
+    "Move down": "下移",
+    "Move up": "上移",
+    "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.": "選項未儲存，草稿已保留。若其他管理員修改了設定，請重新載入後核對再儲存。",
+    "Order": "順序",
+    "Questionnaire options": "問卷選項",
+    "Questionnaire options have changed. Review your choices before submitting.": "問卷選項已變更，請核對選擇後再提交。",
+    "Questionnaire options saved": "問卷選項已儲存",
+    "Reload": "重新載入",
+    "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.": "可改名、排序或停用情境。已提交答案保留填寫時顯示的名稱。",
+    "Saved scenarios can be disabled. Historical answers are retained.": "已儲存的情境可以停用，歷史答案會保留。",
+    "This questionnaire requires a newer client": "本問卷需要更新用戶端",
+    "You have read-only access to questionnaire options.": "您只有問卷選項的檢視權限。",
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "未儲存的修改將被清除，已儲存的答案不受影響。"
   }
 }

@@ -344,6 +344,8 @@ func migrateDB() error {
 		&Token{},
 		&User{},
 		&UserOnboardingSurvey{},
+		&OnboardingSurveyConfigVersion{},
+		&OnboardingSurveyConfigState{},
 		&WalletFundingLot{},
 		&WalletFundingRequest{},
 		&WalletFundingAllocation{},
@@ -397,6 +399,9 @@ func migrateDB() error {
 		&UserAccessToken{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := InitializeSurveyConfiguration(); err != nil {
 		return err
 	}
 	if err := MigrateMediaAdmission(DB); err != nil {

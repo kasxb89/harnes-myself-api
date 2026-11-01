@@ -29,6 +29,8 @@ export interface SurveyOption {
   label_en: string
 }
 export interface SurveyRegistration {
+  config_revision?: string
+  selected_options?: SurveyOption[]
   user_id: number
   phone_e164: string
   status: SurveyStatus
@@ -64,4 +66,51 @@ export async function getSurveyRegistrations(
     throw createServerError(response.data, t('Failed to load questionnaires'))
   }
   return response.data.data
+}
+
+export interface SurveyConfigOption extends SurveyOption {
+  enabled: boolean
+}
+export interface SurveyConfiguration {
+  schema_version: 2
+  survey_id: string
+  config_revision: string
+  options: SurveyConfigOption[]
+}
+export async function getSurveyConfiguration(
+  signal?: AbortSignal
+): Promise<SurveyConfiguration> {
+  const response = await api.get<ApiResponse<SurveyConfiguration>>(
+    '/api/user/onboarding-survey-config',
+    { signal, disableDuplicate: true }
+  )
+  if (!response.data.success || !response.data.data) {
+    throw createServerError(
+      response.data,
+      t('Failed to load questionnaire options')
+    )
+  }
+  return response.data.data
+}
+export async function saveSurveyConfiguration(
+  revision: string,
+  options: SurveyConfigOption[]
+): Promise<SurveyConfiguration> {
+  const response = await api.put<ApiResponse<SurveyConfiguration>>(
+    '/api/user/onboarding-survey-config',
+    { schema_version: 2, expected_config_revision: revision, options }
+  )
+  if (!response.data.success || !response.data.data) {
+    throw createServerError(
+      response.data,
+      t('Failed to save questionnaire options')
+    )
+  }
+  return response.data.data
+}
+export function surveyOptionLabel(
+  option: SurveyOption,
+  language: string
+): string {
+  return language.startsWith('zh') ? option.label : option.label_en
 }

@@ -8666,6 +8666,27 @@
     "Questionnaire is temporarily unavailable": "Le questionnaire est temporairement indisponible",
     "Invalid questionnaire request": "Requête de questionnaire non valide",
     "This account is not eligible for the questionnaire": "Ce compte n’est pas éligible au questionnaire",
-    "Questionnaire has already been submitted": "Le questionnaire a déjà été envoyé"
+    "Questionnaire has already been submitted": "Le questionnaire a déjà été envoyé",
+    "Add scenario": "Ajouter un usage",
+    "Chinese name": "Nom chinois",
+    "Discard unsaved questionnaire changes?": "Abandonner les modifications non enregistrées ?",
+    "English name": "Nom anglais",
+    "Enter both names for every option, enable at least one option and keep at most 64 options.": "Renseignez les deux noms de chaque option, activez au moins une option et conservez au maximum 64 options.",
+    "Failed to load questionnaire options": "Impossible de charger les options",
+    "Failed to save questionnaire options": "Impossible d’enregistrer les options",
+    "Manage questionnaire options, names, ordering and availability.": "Gérer les options, leurs noms, leur ordre et leur disponibilité.",
+    "Move down": "Descendre",
+    "Move up": "Monter",
+    "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.": "Options non enregistrées. Votre brouillon est conservé. Si un autre administrateur a modifié les options, rechargez et vérifiez avant d’enregistrer.",
+    "Order": "Ordre",
+    "Questionnaire options": "Options du questionnaire",
+    "Questionnaire options have changed. Review your choices before submitting.": "Les options ont changé. Vérifiez vos choix avant l’envoi.",
+    "Questionnaire options saved": "Options enregistrées",
+    "Reload": "Recharger",
+    "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.": "Renommez, réordonnez ou désactivez les usages. Les réponses conservent les noms affichés lors de leur envoi.",
+    "Saved scenarios can be disabled. Historical answers are retained.": "Les usages enregistrés peuvent être désactivés. Les réponses historiques sont conservées.",
+    "This questionnaire requires a newer client": "Ce questionnaire nécessite un client plus récent",
+    "You have read-only access to questionnaire options.": "Vous disposez uniquement d’un accès en lecture aux options.",
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Les modifications non enregistrées seront effacées. Les réponses enregistrées resteront intactes."
   }
 }

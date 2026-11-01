@@ -8666,6 +8666,27 @@
     "Questionnaire is temporarily unavailable": "Khảo sát tạm thời không khả dụng",
     "Invalid questionnaire request": "Yêu cầu khảo sát không hợp lệ",
     "This account is not eligible for the questionnaire": "Tài khoản này không thuộc đối tượng khảo sát",
-    "Questionnaire has already been submitted": "Khảo sát đã được gửi"
+    "Questionnaire has already been submitted": "Khảo sát đã được gửi",
+    "Add scenario": "Thêm mục đích",
+    "Chinese name": "Tên tiếng Trung",
+    "Discard unsaved questionnaire changes?": "Bỏ các thay đổi chưa lưu?",
+    "English name": "Tên tiếng Anh",
+    "Enter both names for every option, enable at least one option and keep at most 64 options.": "Điền cả hai tên cho mỗi mục, bật ít nhất một mục và giữ tối đa 64 mục.",
+    "Failed to load questionnaire options": "Không tải được các lựa chọn",
+    "Failed to save questionnaire options": "Không lưu được các lựa chọn",
+    "Manage questionnaire options, names, ordering and availability.": "Quản lý lựa chọn, tên, thứ tự và trạng thái bật.",
+    "Move down": "Chuyển xuống",
+    "Move up": "Chuyển lên",
+    "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.": "Chưa lưu lựa chọn. Bản nháp được giữ lại. Nếu quản trị viên khác đã sửa, hãy tải lại và kiểm tra trước khi lưu.",
+    "Order": "Thứ tự",
+    "Questionnaire options": "Các lựa chọn khảo sát",
+    "Questionnaire options have changed. Review your choices before submitting.": "Các lựa chọn đã thay đổi. Hãy kiểm tra trước khi gửi.",
+    "Questionnaire options saved": "Đã lưu lựa chọn",
+    "Reload": "Tải lại",
+    "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.": "Đổi tên, sắp xếp hoặc tắt các mục đích. Câu trả lời đã gửi giữ tên tại thời điểm điền.",
+    "Saved scenarios can be disabled. Historical answers are retained.": "Có thể tắt mục đã lưu. Câu trả lời cũ được giữ lại.",
+    "This questionnaire requires a newer client": "Khảo sát này cần phiên bản ứng dụng mới hơn",
+    "You have read-only access to questionnaire options.": "Bạn chỉ có quyền xem các lựa chọn.",
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Các thay đổi chưa lưu sẽ bị xóa. Câu trả lời đã lưu không thay đổi."
   }
 }

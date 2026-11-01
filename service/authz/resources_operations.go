@@ -8,6 +8,7 @@ var (
 	BalanceLedgerRead      = Permission{Resource: "balance_ledger", Action: ActionRead}
 	UpstreamTopupsRead     = Permission{Resource: "upstream_topups", Action: ActionRead}
 	UpstreamTopupsWrite    = Permission{Resource: "upstream_topups", Action: ActionWrite}
+	UserSurveysWrite       = Permission{Resource: "user_surveys", Action: ActionWrite}
 	UserSurveysRead        = Permission{Resource: "user_surveys", Action: ActionRead}
 	UserActivityRead       = Permission{Resource: "user_activity", Action: ActionRead}
 	VideoUsageRead         = Permission{Resource: "video_usage", Action: ActionRead}
@@ -31,7 +32,7 @@ func init() {
 		{"model_profits", "Model profits", "finance", "View model revenue, procurement costs and profits without changing prices.", ""},
 		{"balance_ledger", "Balance ledger", "finance", "View registration credits, top-ups and administrator balance changes.", ""},
 		{"upstream_topups", "Upstream top-ups", "finance", "View upstream account top-up records.", "Add, edit and delete upstream top-up records."},
-		{"user_surveys", "User questionnaires", "users", "View new phone registrations, product use choices and questionnaire notes.", ""},
+		{"user_surveys", "User questionnaires", "users", "View new phone registrations, product use choices and questionnaire notes.", "Manage questionnaire options, names, ordering and availability."},
 		{"user_activity", "User activity", "users", "View client activity, sessions and session details.", ""},
 		{"video_usage", "Video statistics", "media", "View video requests, task statistics and usage analysis.", ""},
 		{"media_operations", "Task monitoring and concurrency view", "media", "View image and video tasks and concurrency capacity. Only super administrators can change concurrency settings.", ""},

@@ -87,16 +87,14 @@ function setup(
     role?: number
   } = {}
 ) {
-  useAuthStore
-    .getState()
-    .auth.setUser({
-      id: 1,
-      username: 'admin',
-      role: options.role ?? 10,
-      permissions: {
-        admin_permissions: { user_surveys: { read: options.allowed ?? true } },
-      },
-    })
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: options.role ?? 10,
+    permissions: {
+      admin_permissions: { user_surveys: { read: options.allowed ?? true } },
+    },
+  })
   if (options.mobile) {
     const original = window.matchMedia
     vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
@@ -182,14 +180,12 @@ it('clears visible registrations when permission is revoked', async () => {
   setup()
   await screen.findByText('+8613800000101')
   act(() =>
-    useAuthStore
-      .getState()
-      .auth.setUser({
-        id: 1,
-        username: 'admin',
-        role: 10,
-        permissions: { admin_permissions: { user_surveys: { read: false } } },
-      })
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'admin',
+      role: 10,
+      permissions: { admin_permissions: { user_surveys: { read: false } } },
+    })
   )
   expect(screen.getByText('Access denied')).toBeVisible()
   expect(screen.queryByText('+8613800000101')).not.toBeInTheDocument()
@@ -225,4 +221,155 @@ it('offers complete readable details on the mobile card view', async () => {
     within(dialog).getByText('Daily questions · Software development')
   ).toBeVisible()
   expect(within(dialog).getByText('Questionnaire status')).toBeVisible()
+})
+
+it('shows the submitted snapshot name after the current option was renamed', async () => {
+  setup()
+  vi.mocked(api.get).mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        ...fixture,
+        options: fixture.options.map((o) => ({
+          ...o,
+          label_en: 'Current changed name',
+        })),
+        items: fixture.items.map((row) => ({
+          ...row,
+          selected_options: fixture.options,
+        })),
+      },
+    },
+  })
+  await screen.findByText('Daily questions')
+  await userEvent.click(screen.getByRole('button', { name: 'Details' }))
+  const dialog = await screen.findByRole('dialog')
+  expect(
+    within(dialog).getByText('Daily questions · Software development')
+  ).toBeVisible()
+  expect(
+    within(dialog).queryByText('Current changed name')
+  ).not.toBeInTheDocument()
+})
+function editableConfig() {
+  return {
+    schema_version: 2,
+    survey_id: 'product-use-v1',
+    config_revision: 'a'.repeat(64),
+    options: fixture.options.map((o) => ({ ...o, enabled: true })),
+  }
+}
+it('saves option names, order and availability using the original configuration revision', async () => {
+  setup()
+  act(() =>
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'admin',
+      role: 10,
+      permissions: {
+        admin_permissions: { user_surveys: { read: true, write: true } },
+      },
+    })
+  )
+  const cfg = editableConfig()
+  vi.mocked(api.get).mockImplementation(async (path) => ({
+    data: {
+      success: true,
+      data: path === '/api/user/onboarding-survey-config' ? cfg : fixture,
+    },
+  }))
+  const put = vi.spyOn(api, 'put').mockImplementation(async (_url, body) => ({
+    data: {
+      success: true,
+      data: {
+        ...cfg,
+        ...(body as Record<string, unknown>),
+        config_revision: 'b'.repeat(64),
+      },
+    },
+  }))
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Questionnaire options' })
+  )
+  const dialog = await screen.findByRole('dialog')
+  await within(dialog).findByRole('textbox', { name: 'Chinese name 1' })
+  const name = within(dialog).getByRole('textbox', { name: 'Chinese name 1' })
+  await userEvent.clear(name)
+  await userEvent.type(name, '新的场景名')
+  await userEvent.click(
+    within(dialog).getByRole('checkbox', { name: 'Enabled 1' })
+  )
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: 'Move down 1' })
+  )
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledWith(
+      '/api/user/onboarding-survey-config',
+      expect.objectContaining({
+        schema_version: 2,
+        expected_config_revision: 'a'.repeat(64),
+        options: [
+          cfg.options[1],
+          { ...cfg.options[0], label: '新的场景名', enabled: false },
+        ],
+      })
+    )
+  )
+})
+it('preserves an administrator draft when the server reports a revision conflict', async () => {
+  setup()
+  act(() =>
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'admin',
+      role: 10,
+      permissions: {
+        admin_permissions: { user_surveys: { read: true, write: true } },
+      },
+    })
+  )
+  const cfg = editableConfig()
+  vi.mocked(api.get).mockImplementation(async (path) => ({
+    data: {
+      success: true,
+      data: path === '/api/user/onboarding-survey-config' ? cfg : fixture,
+    },
+  }))
+  vi.spyOn(api, 'put').mockResolvedValue({
+    data: { success: false, code: 'SURVEY_CONFIG_CHANGED' },
+  })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Questionnaire options' })
+  )
+  const dialog = await screen.findByRole('dialog')
+  const name = await within(dialog).findByRole('textbox', {
+    name: 'Chinese name 1',
+  })
+  await userEvent.clear(name)
+  await userEvent.type(name, '保留的草稿')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await within(dialog).findByText(/Options were not saved/)
+  expect(name).toHaveValue('保留的草稿')
+})
+it('lets a read-only operator view options while preventing editing', async () => {
+  setup()
+  const cfg = editableConfig()
+  vi.mocked(api.get).mockImplementation(async (path) => ({
+    data: {
+      success: true,
+      data: path === '/api/user/onboarding-survey-config' ? cfg : fixture,
+    },
+  }))
+  const put = vi.spyOn(api, 'put')
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Questionnaire options' })
+  )
+  const dialog = await screen.findByRole('dialog')
+  const input = await within(dialog).findByRole('textbox', {
+    name: 'Chinese name 1',
+  })
+  expect(input).toBeDisabled()
+  expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled()
+  expect(put).not.toHaveBeenCalled()
 })

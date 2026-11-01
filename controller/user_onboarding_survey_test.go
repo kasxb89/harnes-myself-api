@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -29,8 +30,9 @@ type surveyTestResponse struct {
 	Data    model.OnboardingSurveyView `json:"data"`
 }
 
-func surveyTestRouter() *gin.Engine {
+func surveyTestRouter(extra ...gin.HandlerFunc) *gin.Engine {
 	router := gin.New()
+	router.Use(extra...)
 	self := router.Group("/api/user", middleware.DisableCache(), middleware.UserAuth())
 	self.GET("/onboarding-survey", GetUserOnboardingSurvey)
 	self.POST("/onboarding-survey", SubmitUserOnboardingSurvey)
@@ -283,22 +285,33 @@ func TestOnboardingSurveyConcurrentSubmission(t *testing.T) {
 				paths[1] += "/defer"
 			}
 			var responses [2]*httptest.ResponseRecorder
-			var ready sync.WaitGroup
-			ready.Add(2)
-			require.NoError(t, db.Callback().Update().Before("gorm:begin_transaction").Register("survey:overlap", func(tx *gorm.DB) {
-				if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "UserOnboardingSurvey" {
-					ready.Done()
-					ready.Wait()
+			firstAtGuard, releaseFirst, secondAtHTTP := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("survey:overlap", func(tx *gorm.DB) {
+				if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "OnboardingSurveyConfigState" {
+					once.Do(func() { close(firstAtGuard); <-releaseFirst })
 				}
 			}))
+			var entered atomic.Int32
+			router = surveyTestRouter(func(c *gin.Context) {
+				if entered.Add(1) == 2 {
+					close(secondAtHTTP)
+				}
+				c.Next()
+			})
 			var workers sync.WaitGroup
-			for i := range 2 {
-				workers.Go(func() {
-					responses[i] = surveyHTTPRequest(router, http.MethodPost, paths[i], login.Data.AccessToken, bodies[i])
-				})
-			}
+			workers.Go(func() {
+				responses[0] = surveyHTTPRequest(router, http.MethodPost, paths[0], login.Data.AccessToken, bodies[0])
+			})
+			<-firstAtGuard
+			workers.Go(func() {
+				responses[1] = surveyHTTPRequest(router, http.MethodPost, paths[1], login.Data.AccessToken, bodies[1])
+			})
+			<-secondAtHTTP
+			close(releaseFirst)
 			workers.Wait()
 			require.NoError(t, db.Callback().Update().Remove("survey:overlap"))
+
 			codes := []int{responses[0].Code, responses[1].Code}
 			if mode == "different answer" {
 				assert.ElementsMatch(t, []int{http.StatusOK, http.StatusConflict}, codes)
@@ -388,4 +401,288 @@ func TestOnboardingSurveyUnavailableDoesNotBreakExistingLogin(t *testing.T) {
 	assert.Zero(t, count, "failed registration cannot leave enrollment")
 	var failedUser model.User
 	assert.ErrorIs(t, db.Where("phone_e164 = ?", "+8613800000142").First(&failedUser).Error, gorm.ErrRecordNotFound)
+}
+
+func TestConfigurableSurveyRevisionAndHistoricalMeaning(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	current, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	cfg, err := model.SaveSurveyConfiguration(current.Revision, model.DefaultSurveyConfiguration().Options)
+	require.NoError(t, err)
+	root := model.User{Username: "config-admin", AffCode: "config-admin", Role: common.RoleRootUser, Status: common.UserStatusEnabled, AuthVersion: 1}
+	require.NoError(t, db.Create(&root).Error)
+	admin, err := service.CreateLoginSession(root.Id, "password", "127.0.0.1", "config-fixture")
+	require.NoError(t, err)
+	router := surveyTestRouter()
+	router.GET("/api/user/onboarding-survey-config", middleware.AdminAuth(), middleware.RequirePermission(authz.UserSurveysRead), GetOnboardingSurveyConfiguration)
+	router.PUT("/api/user/onboarding-survey-config", middleware.AdminAuth(), middleware.RequirePermission(authz.UserSurveysWrite), SaveOnboardingSurveyConfiguration)
+	login := surveySignIn(t, "+8613800000201")
+	path := "/api/user/onboarding-survey?schema_version=2"
+	pending := surveyHTTPRequest(router, "GET", path, login.Data.AccessToken, "")
+	require.Equal(t, 200, pending.Code)
+	surveyFixture(t, "pending", pending)
+	require.Len(t, surveyReadResponse(t, pending).Data.Options, 26)
+	assert.Equal(t, 404, surveyHTTPRequest(router, "GET", "/api/user/onboarding-survey", login.Data.AccessToken, "").Code, "legacy client cannot bypass a disabled scenario")
+	configResponse := surveyHTTPRequest(router, "GET", "/api/user/onboarding-survey-config", admin.AccessToken, "")
+	require.Equal(t, 200, configResponse.Code)
+	surveyFixture(t, "configuration", configResponse)
+	// A previously submitted six-e record has no new snapshot columns. Its
+	// original meanings must remain readable without rewriting that row.
+	legacy := surveySignIn(t, "+8613800000202")
+	require.NoError(t, db.Model(&model.UserOnboardingSurvey{}).Where("user_id = ?", legacy.Data.User.ID).Updates(map[string]any{"status": model.SurveySubmitted, "selected_options_json": `["coding"]`, "notes": "legacy answer", "submitted_at": 1600000000}).Error)
+	legacyBefore := surveyHTTPRequest(router, "GET", path, legacy.Data.AccessToken, "")
+	require.Equal(t, 200, legacyBefore.Code)
+	surveyFixture(t, "legacy-submitted", legacyBefore)
+	oldBody, err := common.Marshal(map[string]any{"schema_version": 2, "survey_id": model.OnboardingSurveyID, "config_revision": cfg.Revision, "selected_option_ids": []string{"daily_qa", "code_debugging"}, "notes": "保留我的备注"})
+	require.NoError(t, err)
+	options := append([]model.SurveyConfigOption{}, cfg.Options...)
+	for i := range options {
+		if options[i].ID == "daily_qa" {
+			options[i].Label = "日常交流与问答"
+			options[i].LabelEN = "Everyday conversation and questions"
+		}
+		if options[i].ID == "code_debugging" {
+			options[i].Enabled = false
+		}
+	}
+	options = append(options, model.SurveyConfigOption{ID: "custom_research", Label: "专属资料整理", LabelEN: "Custom research organization", Enabled: true})
+	editBody, err := common.Marshal(map[string]any{"schema_version": 2, "expected_config_revision": cfg.Revision, "options": options})
+	require.NoError(t, err)
+	changed := surveyHTTPRequest(router, "PUT", "/api/user/onboarding-survey-config", admin.AccessToken, string(editBody))
+	require.Equal(t, 200, changed.Code, changed.Body.String())
+	surveyFixture(t, "configuration-changed", changed)
+	stale := surveyHTTPRequest(router, "POST", "/api/user/onboarding-survey", login.Data.AccessToken, string(oldBody))
+	require.Equal(t, 409, stale.Code, stale.Body.String())
+	assert.Equal(t, "SURVEY_CONFIG_CHANGED", surveyReadResponse(t, stale).Code)
+	surveyFixture(t, "stale-config", stale)
+	currentPending := surveyHTTPRequest(router, "GET", path, login.Data.AccessToken, "")
+	require.Equal(t, 200, currentPending.Code)
+	surveyFixture(t, "config-changed-pending", currentPending)
+	view := surveyReadResponse(t, currentPending).Data
+	assert.NotEqual(t, cfg.Revision, view.ConfigRevision)
+	assert.Empty(t, view.SelectedOptionIDs)
+	assert.Empty(t, view.Notes)
+	answer, err := common.Marshal(map[string]any{"schema_version": 2, "survey_id": model.OnboardingSurveyID, "config_revision": view.ConfigRevision, "selected_option_ids": []string{"daily_qa", "custom_research"}, "notes": "保留我的备注"})
+	require.NoError(t, err)
+	submitted := surveyHTTPRequest(router, "POST", "/api/user/onboarding-survey", login.Data.AccessToken, string(answer))
+	require.Equal(t, 200, submitted.Code, submitted.Body.String())
+	surveyFixture(t, "submitted", submitted)
+	snapshot := surveyReadResponse(t, submitted).Data
+	// Rename, reorder and disable selected IDs after submission; old answer,
+	// original labels, ordering and revision still describe the original meaning.
+	latest, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	for i := range latest.Options {
+		if latest.Options[i].ID == "daily_qa" {
+			latest.Options[i].Label = "后来改的名字"
+			latest.Options[i].LabelEN = "Later renamed meaning"
+			latest.Options[i].Enabled = false
+		}
+	}
+	latest.Options[0], latest.Options[1] = latest.Options[1], latest.Options[0]
+	_, err = model.SaveSurveyConfiguration(latest.Revision, latest.Options)
+	require.NoError(t, err)
+	historical := surveyHTTPRequest(router, "GET", path, login.Data.AccessToken, "")
+	require.Equal(t, 200, historical.Code)
+	assert.Equal(t, snapshot, surveyReadResponse(t, historical).Data)
+	surveyFixture(t, "config-changed-submitted", historical)
+	replay := surveyHTTPRequest(router, "POST", "/api/user/onboarding-survey", login.Data.AccessToken, string(answer))
+	require.Equal(t, 200, replay.Code)
+	assert.Equal(t, snapshot, surveyReadResponse(t, replay).Data)
+	assert.Equal(t, surveyReadResponse(t, legacyBefore).Data, surveyReadResponse(t, surveyHTTPRequest(router, "GET", path, legacy.Data.AccessToken, "")).Data)
+	deferredLogin := surveySignIn(t, "+8613800000203")
+	deferred := surveyHTTPRequest(router, "POST", "/api/user/onboarding-survey/defer", deferredLogin.Data.AccessToken, `{"schema_version":2,"survey_id":"product-use-v1"}`)
+	require.Equal(t, 200, deferred.Code)
+	surveyFixture(t, "deferred", deferred)
+	oldPhone := "+8613800000204"
+	old := model.User{Username: phoneUsername(oldPhone), AffCode: "old-config-member", PhoneE164: &oldPhone, Role: 1, Status: 1, AuthVersion: 1}
+	require.NoError(t, db.Create(&old).Error)
+	oldLogin := surveySignIn(t, oldPhone)
+	ineligible := surveyHTTPRequest(router, "GET", path, oldLogin.Data.AccessToken, "")
+	require.Equal(t, 200, ineligible.Code)
+	surveyFixture(t, "not-eligible", ineligible)
+	listing := surveyHTTPRequest(router, "GET", "/api/user/onboarding-surveys", admin.AccessToken, "")
+	require.Equal(t, 200, listing.Code)
+	surveyFixture(t, "admin-registrations", listing)
+	// Startup preserves the administrator's current revision and immutable old
+	// answer, rather than reseeding defaults over edited configuration.
+	before, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	for range 2 {
+		require.NoError(t, db.AutoMigrate(model.SurveyConfigurationModels()...))
+		require.NoError(t, model.InitializeSurveyConfiguration())
+	}
+	after, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	assert.Equal(t, snapshot, surveyReadResponse(t, surveyHTTPRequest(router, "GET", path, login.Data.AccessToken, "")).Data)
+}
+
+func TestConfigurableSurveyRejectsStaleAndInvalidAdministratorWrites(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	cfg, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	for _, change := range []string{"remove saved ID", "duplicate ID", "invalid ID", "empty English label", "no active option", "too many", "control character"} {
+		t.Run(change, func(t *testing.T) {
+			options := append([]model.SurveyConfigOption{}, cfg.Options...)
+			switch change {
+			case "remove saved ID":
+				options = options[1:]
+			case "duplicate ID":
+				options = append(options, options[0])
+			case "invalid ID":
+				options = append(options, model.SurveyConfigOption{ID: "UPPER", Label: "新", LabelEN: "New", Enabled: true})
+			case "empty English label":
+				options[0].LabelEN = ""
+			case "no active option":
+				for i := range options {
+					options[i].Enabled = false
+				}
+			case "too many":
+				for i := range 65 {
+					options = append(options, model.SurveyConfigOption{ID: fmt.Sprintf("extra_%d", i), Label: "新", LabelEN: "New", Enabled: true})
+				}
+			case "control character":
+				options[0].Label = "bad\x01label"
+			}
+			_, err := model.SaveSurveyConfiguration(cfg.Revision, options)
+			assert.ErrorIs(t, err, model.ErrSurveyInvalid)
+			actual, err := model.GetSurveyConfiguration()
+			require.NoError(t, err)
+			assert.Equal(t, cfg, actual)
+		})
+	}
+	// Two real concurrent edits with the same expected revision cannot silently
+	// overwrite each other. The loser must reload the winning configuration.
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(8)
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	var failures [2]error
+	for i := range 2 {
+		workers.Go(func() {
+			<-start
+			options := append([]model.SurveyConfigOption{}, cfg.Options...)
+			options[0].Label = fmt.Sprintf("管理员版本%d", i)
+			_, failures[i] = model.SaveSurveyConfiguration(cfg.Revision, options)
+		})
+	}
+	close(start)
+	workers.Wait()
+	assert.True(t, (failures[0] == nil && errors.Is(failures[1], model.ErrSurveyConfigChanged)) || (failures[1] == nil && errors.Is(failures[0], model.ErrSurveyConfigChanged)), "one editor wins; one receives a revision conflict")
+}
+
+func TestConfigurableSurveyEditAndAnswerAreSerialized(t *testing.T) {
+	for _, editFirst := range []bool{true, false} {
+		t.Run(fmt.Sprint(editFirst), func(t *testing.T) {
+			db, _ := setupPhoneAuthRecovery(t)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			sqlDB.SetMaxOpenConns(8)
+			login := surveySignIn(t, "+8613800000221")
+			cfg, err := model.GetSurveyConfiguration()
+			require.NoError(t, err)
+			changed := append([]model.SurveyConfigOption{}, cfg.Options...)
+			changed[0].Label = "更改后的名称"
+			firstGuard, release, secondEntering := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			require.NoError(t, db.Callback().Update().After("gorm:update").Register("survey:edit-answer", func(tx *gorm.DB) {
+				if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "OnboardingSurveyConfigState" {
+					once.Do(func() { close(firstGuard); <-release })
+				}
+			}))
+			var editErr, answerErr error
+			var answer model.OnboardingSurveyView
+			edit := func() { _, editErr = model.SaveSurveyConfiguration(cfg.Revision, changed) }
+			submit := func() {
+				answer, answerErr = model.SubmitOnboardingSurveyVersion(login.Data.User.ID, []string{"daily_qa"}, "held draft", 2, cfg.Revision)
+			}
+			var workers sync.WaitGroup
+			workers.Go(func() {
+				if editFirst {
+					edit()
+				} else {
+					submit()
+				}
+			})
+			<-firstGuard
+			workers.Go(func() {
+				close(secondEntering)
+				if editFirst {
+					submit()
+				} else {
+					edit()
+				}
+			})
+			<-secondEntering
+			close(release)
+			workers.Wait()
+			require.NoError(t, db.Callback().Update().Remove("survey:edit-answer"))
+			require.NoError(t, editErr)
+			if editFirst {
+				assert.ErrorIs(t, answerErr, model.ErrSurveyConfigChanged)
+				view, err := model.GetOnboardingSurvey(login.Data.User.ID)
+				require.NoError(t, err)
+				assert.Equal(t, model.SurveyPending, view.Status)
+			} else {
+				require.NoError(t, answerErr)
+				assert.Equal(t, cfg.Revision, answer.ConfigRevision)
+				assert.Equal(t, cfg.ActiveOptions(), answer.Options)
+				persisted, err := model.GetOnboardingSurvey(login.Data.User.ID)
+				require.NoError(t, err)
+				assert.Equal(t, answer, persisted)
+			}
+		})
+	}
+}
+
+func TestConfigurableSurveyMaximumPayloadAndUnicode(t *testing.T) {
+	_, _ = setupPhoneAuthRecovery(t)
+	cfg, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	for i := range cfg.Options {
+		cfg.Options[i].Label = strings.Repeat("<", 80)
+		cfg.Options[i].LabelEN = strings.Repeat("<", 160)
+	}
+	for len(cfg.Options) < 64 {
+		i := len(cfg.Options)
+		cfg.Options = append(cfg.Options, model.SurveyConfigOption{ID: fmt.Sprintf("new_scene_%d", i), Label: strings.Repeat("<", 80), LabelEN: strings.Repeat("<", 160), Enabled: true})
+	}
+	cfg, err = model.SaveSurveyConfiguration(cfg.Revision, cfg.Options)
+	require.NoError(t, err)
+	login := surveySignIn(t, "+8613800000222")
+	ids := make([]string, 0, 64)
+	for _, o := range cfg.Options {
+		ids = append(ids, o.ID)
+	}
+	body, err := common.Marshal(map[string]any{"schema_version": 2, "survey_id": "product-use-v1", "config_revision": cfg.Revision, "selected_option_ids": ids, "notes": strings.Repeat("😀", 1000)})
+	require.NoError(t, err)
+	router := surveyTestRouter()
+	submitted := surveyHTTPRequest(router, "POST", "/api/user/onboarding-survey", login.Data.AccessToken, string(body))
+	require.Equal(t, 200, submitted.Code, submitted.Body.String())
+	assert.Less(t, submitted.Body.Len(), 128*1024, "Host's response bound accommodates every allowed field")
+	view := surveyReadResponse(t, submitted).Data
+	assert.Len(t, view.Options, 64)
+	assert.Len(t, view.SelectedOptionIDs, 64)
+	assert.Equal(t, 64, view.MaxSelections)
+}
+
+func TestConfigurableSurveyFilterMatchesExactOptionID(t *testing.T) {
+	_, _ = setupPhoneAuthRecovery(t)
+	cfg, err := model.GetSurveyConfiguration()
+	require.NoError(t, err)
+	cfg.Options = append(cfg.Options, model.SurveyConfigOption{ID: "dailyxqa", Label: "另一场景", LabelEN: "Another scenario", Enabled: true})
+	cfg, err = model.SaveSurveyConfiguration(cfg.Revision, cfg.Options)
+	require.NoError(t, err)
+	for i, id := range []string{"daily_qa", "dailyxqa"} {
+		login := surveySignIn(t, fmt.Sprintf("+861380000023%d", i))
+		_, err := model.SubmitOnboardingSurveyVersion(login.Data.User.ID, []string{id}, "", 2, cfg.Revision)
+		require.NoError(t, err)
+	}
+	items, total, err := model.ListOnboardingSurveys(model.OnboardingSurveyFilter{OptionID: "daily_qa"}, 0, 20)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total, "underscore in a saved option ID is a literal character")
+	require.Len(t, items, 1)
+	assert.Equal(t, []string{"daily_qa"}, items[0].SelectedOptionIDs)
 }

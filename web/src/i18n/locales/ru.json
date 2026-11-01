@@ -8666,6 +8666,27 @@
     "Questionnaire is temporarily unavailable": "Анкета временно недоступна",
     "Invalid questionnaire request": "Недопустимый запрос анкеты",
     "This account is not eligible for the questionnaire": "Для этого аккаунта анкета не предусмотрена",
-    "Questionnaire has already been submitted": "Анкета уже отправлена"
+    "Questionnaire has already been submitted": "Анкета уже отправлена",
+    "Add scenario": "Добавить сценарий",
+    "Chinese name": "Название на китайском",
+    "Discard unsaved questionnaire changes?": "Отменить несохранённые изменения?",
+    "English name": "Название на английском",
+    "Enter both names for every option, enable at least one option and keep at most 64 options.": "Введите оба названия для каждой опции, включите хотя бы одну и оставьте не более 64 опций.",
+    "Failed to load questionnaire options": "Не удалось загрузить варианты",
+    "Failed to save questionnaire options": "Не удалось сохранить варианты",
+    "Manage questionnaire options, names, ordering and availability.": "Управление вариантами, названиями, порядком и доступностью.",
+    "Move down": "Вниз",
+    "Move up": "Вверх",
+    "Options were not saved. Your draft is preserved. If another administrator changed the options, reload and review before saving again.": "Варианты не сохранены. Черновик сохранён. Если другой администратор изменил варианты, загрузите их заново и проверьте перед сохранением.",
+    "Order": "Порядок",
+    "Questionnaire options": "Варианты анкеты",
+    "Questionnaire options have changed. Review your choices before submitting.": "Варианты изменились. Проверьте выбор перед отправкой.",
+    "Questionnaire options saved": "Варианты сохранены",
+    "Reload": "Перезагрузить",
+    "Rename, reorder or disable scenarios. Submitted answers keep the names shown when they were filled in.": "Переименуйте, упорядочите или отключите сценарии. Отправленные ответы сохраняют названия на момент заполнения.",
+    "Saved scenarios can be disabled. Historical answers are retained.": "Сохранённые сценарии можно отключить. Исторические ответы сохраняются.",
+    "This questionnaire requires a newer client": "Для этой анкеты нужен более новый клиент",
+    "You have read-only access to questionnaire options.": "У вас есть только право просмотра вариантов.",
+    "Your unsaved changes will be cleared. Saved answers will remain unchanged.": "Несохранённые изменения будут удалены. Сохранённые ответы останутся без изменений."
   }
 }

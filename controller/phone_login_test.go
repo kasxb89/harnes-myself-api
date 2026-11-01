@@ -47,7 +47,7 @@ type phoneAuthTestResponse struct {
 
 func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 	t.Helper()
-	models := append([]any{&model.User{}, &model.UserOnboardingSurvey{}, &model.AuthFlow{}, &model.Token{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.Log{}, &model.AuditLog{}}, model.WalletFundingModels()...)
+	models := append([]any{&model.User{}, &model.UserOnboardingSurvey{}, &model.OnboardingSurveyConfigVersion{}, &model.OnboardingSurveyConfigState{}, &model.AuthFlow{}, &model.Token{}, &model.UserSession{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.PasskeyCredential{}, &model.Log{}, &model.AuditLog{}}, model.WalletFundingModels()...)
 	var db *gorm.DB
 	dialect := common.DatabaseType(os.Getenv("TEST_TASK_DB_DIALECT"))
 	if dialect == "" || dialect == common.DatabaseTypeSQLite {
@@ -96,6 +96,11 @@ func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 	var preserved model.AuthFlow
 	require.NoError(t, db.First(&preserved, legacy.Id).Error)
 	require.Equal(t, "existing-state", preserved.Payload)
+	require.NoError(t, model.InitializeSurveyConfiguration())
+	// The protocol-1 regression fixture explicitly selects the archived nine-item
+	// configuration; production startup uses the detailed default.
+	require.NoError(t, db.Model(&model.OnboardingSurveyConfigState{}).Where("id = ?", 1).Update("revision", model.LegacySurveyConfiguration().Revision).Error)
+
 	return db, dialect
 }
 

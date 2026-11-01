@@ -50,20 +50,23 @@ import { formatTimestampToDate } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  surveyOptionLabel,
   getSurveyRegistrations,
   type SurveyFilters,
   type SurveyRegistration,
   type SurveyStatus,
 } from './api'
+import { SurveyConfigEditor } from './config-editor'
 
 const EMPTY: SurveyRegistration[] = []
 const INITIAL: SurveyFilters = { p: 1, page_size: 20 }
 
 export function UserSurveys() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const allowed = canAccessAdminRoute(user, '/user-surveys')
   const [filters, setFilters] = useState<SurveyFilters>(INITIAL)
+  const [configOpen, setConfigOpen] = useState(false)
   const [phone, setPhone] = useState('')
   const [selected, setSelected] = useState<SurveyRegistration | null>(null)
   const query = useQuery({
@@ -84,9 +87,12 @@ export function UserSurveys() {
   const optionLabels = useMemo(
     () =>
       new Map(
-        (data?.options ?? []).map((option) => [option.id, t(option.label_en)])
+        (data?.options ?? []).map((option) => [
+          option.id,
+          surveyOptionLabel(option, i18n.resolvedLanguage || i18n.language),
+        ])
       ),
-    [data?.options, t]
+    [data?.options, i18n.resolvedLanguage, i18n.language]
   )
   const columns = useMemo<ColumnDef<SurveyRegistration>[]>(
     () => [
@@ -127,14 +133,26 @@ export function UserSurveys() {
             max={2}
             expandable
             expandLabel={t('Show all scenarios')}
-            items={row.original.selected_option_ids.map((id) => (
-              <StatusBadge
-                key={id}
-                variant='info'
-                copyable={false}
-                label={optionLabels.get(id) ?? id}
-              />
-            ))}
+            items={row.original.selected_option_ids.map((id) => {
+              const option = row.original.selected_options?.find(
+                (item) => item.id === id
+              )
+              return (
+                <StatusBadge
+                  key={id}
+                  variant='info'
+                  copyable={false}
+                  label={
+                    option
+                      ? surveyOptionLabel(
+                          option,
+                          i18n.resolvedLanguage || i18n.language
+                        )
+                      : (optionLabels.get(id) ?? id)
+                  }
+                />
+              )
+            })}
           />
         ),
       },
@@ -190,7 +208,7 @@ export function UserSurveys() {
         ),
       },
     ],
-    [t, optionLabels, statusLabels]
+    [t, optionLabels, statusLabels, i18n.resolvedLanguage, i18n.language]
   )
   const { table } = useDataTable({
     columns,
@@ -231,6 +249,9 @@ export function UserSurveys() {
         {t('User questionnaires')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
+        <Button variant='outline' onClick={() => setConfigOpen(true)}>
+          {t('Questionnaire options')}
+        </Button>
         <Button variant='outline' onClick={refresh} disabled={query.isFetching}>
           {t('Refresh')}
         </Button>
@@ -322,7 +343,10 @@ export function UserSurveys() {
                           { value: 'all', label: t('All scenarios') },
                           ...(data?.options ?? []).map((option) => ({
                             value: option.id,
-                            label: t(option.label_en),
+                            label: surveyOptionLabel(
+                              option,
+                              i18n.resolvedLanguage || i18n.language
+                            ),
                           })),
                         ]}
                         onValueChange={(value) => {
@@ -350,6 +374,9 @@ export function UserSurveys() {
             </div>
           }
         />
+        {configOpen && (
+          <SurveyConfigEditor onClose={() => setConfigOpen(false)} />
+        )}
         <Dialog
           open={selected !== null && !query.isError}
           onOpenChange={(open) => {
@@ -400,7 +427,17 @@ export function UserSurveys() {
               <DetailSection label={t('Product use scenarios')}>
                 <p className='text-sm break-words'>
                   {selected.selected_option_ids
-                    .map((id) => optionLabels.get(id) ?? id)
+                    .map((id) => {
+                      const option = selected.selected_options?.find(
+                        (item) => item.id === id
+                      )
+                      return option
+                        ? surveyOptionLabel(
+                            option,
+                            i18n.resolvedLanguage || i18n.language
+                          )
+                        : (optionLabels.get(id) ?? id)
+                    })
                     .join(' · ') || '—'}
                 </p>
               </DetailSection>

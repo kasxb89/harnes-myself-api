@@ -202,6 +202,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/onboarding-surveys", middleware.DisableCache(), middleware.RequirePermission(authz.UserSurveysRead), controller.ListUserOnboardingSurveys)
+				adminRoute.GET("/onboarding-survey-config", middleware.DisableCache(), middleware.RequirePermission(authz.UserSurveysRead), controller.GetOnboardingSurveyConfiguration)
+				adminRoute.PUT("/onboarding-survey-config", middleware.DisableCache(), middleware.RequirePermission(authz.UserSurveysWrite), middleware.UserCriticalRateLimit("survey-config"), controller.SaveOnboardingSurveyConfiguration)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)

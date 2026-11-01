@@ -844,7 +844,7 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 	model.LOG_DB = db
 	common.SetDatabaseTypes(common.MainDatabaseType(), common.MainDatabaseType())
 	require.False(t, db.Migrator().HasTable(&model.User{}), "refuse a shared or previously used database")
-	models := []any{&model.User{}, &model.UserOnboardingSurvey{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
+	models := []any{&model.User{}, &model.UserOnboardingSurvey{}, &model.OnboardingSurveyConfigVersion{}, &model.OnboardingSurveyConfigState{}, &model.UserSession{}, &model.UserAccessToken{}, &model.Token{}, &model.AuditLog{}, &model.Option{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.UpstreamTopup{}, &model.TopUp{}, &model.Log{}}
 	require.NoError(t, db.AutoMigrate(models...))
 	require.NoError(t, db.AutoMigrate(models...))
 	var version string
@@ -873,6 +873,7 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 		http.DefaultTransport, http.DefaultClient.Transport = previousTransport, previousClientTransport
 		assert.Zero(t, transport.calls)
 	})
+	require.NoError(t, model.InitializeSurveyConfiguration())
 	require.NoError(t, model.EnsureLegacyAccessTokenRetireAt(time.Now().Unix()))
 	credentials, users := map[string]string{}, map[string]int{}
 	for _, identity := range []struct {
@@ -931,6 +932,7 @@ func TestAdminFeaturePermissionBoundaries(t *testing.T) {
 		{"GET", "/api/balance-ledger/", authz.BalanceLedgerRead}, {"GET", "/api/model-profit/", authz.ModelProfitsRead}, {"GET", "/api/model-profit/cost-rules", authz.ModelProfitsRead},
 		{"GET", "/api/upstream-topup/", authz.UpstreamTopupsRead}, {"POST", "/api/upstream-topup/", authz.UpstreamTopupsWrite}, {"PUT", "/api/upstream-topup/1", authz.UpstreamTopupsWrite}, {"DELETE", "/api/upstream-topup/1", authz.UpstreamTopupsWrite},
 		{"GET", "/api/user/onboarding-surveys", authz.UserSurveysRead},
+		{"GET", "/api/user/onboarding-survey-config", authz.UserSurveysRead}, {"PUT", "/api/user/onboarding-survey-config", authz.UserSurveysWrite},
 		{"GET", "/api/client-activity/summary", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions", authz.UserActivityRead}, {"GET", "/api/client-activity/sessions/1", authz.UserActivityRead},
 		{"GET", "/api/media-operations", authz.MediaOperationsRead}, {"GET", "/api/media-concurrency", authz.MediaOperationsRead}, {"GET", "/api/video-usage", authz.VideoUsageRead},
 		{"GET", "/api/operations/overview", authz.OperationsRead}, {"GET", "/api/data/", authz.OperationsRead}, {"GET", "/api/data/users", authz.OperationsRead}, {"GET", "/api/data/flow", authz.OperationsRead},
