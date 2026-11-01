@@ -109,6 +109,9 @@ export interface ClientActivitySummary {
   workload?: ClientWorkloadSummary
   started_sessions: number
   active_users: number
+  client_active_users_today?: number
+  calling_users_today?: number
+  today_start?: number
   online_seconds: number
   foreground_seconds: number
   model_calls: number

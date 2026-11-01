@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Áp dụng khi người dùng chưa chọn mô hình. Để trống sẽ giữ mặc định, gồm H3 cho video. Quyền truy cập và thông số vẫn áp dụng; mô hình không khả dụng cần được chọn lại.",
     "Show announcements at the top of the client": "Hiển thị thông báo ở đầu ứng dụng",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Luân phiên thông báo đã đăng. Người dùng có thể đóng phiên bản hiện tại; nội dung cập nhật có thể hiện lại. Cần bật cả công tắc thông báo chung.",
-    "Use the dedicated client preference page to change this setting": "Vui lòng dùng trang tùy chọn ứng dụng chuyên dụng"
+    "Use the dedicated client preference page to change this setting": "Vui lòng dùng trang tùy chọn ứng dụng chuyên dụng",
+    "Client active users today": "Người dùng ứng dụng hoạt động hôm nay",
+    "Calling users today": "Người dùng gọi mô hình hôm nay",
+    "Daily active users": "Người dùng hoạt động hằng ngày",
+    "Calling users in range": "Người dùng gọi mô hình trong khoảng",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "Tài khoản duy nhất gửi nhịp ứng dụng hôm nay, gồm ứng dụng chạy qua nửa đêm",
+    "Unique accounts with consumption or API error logs today": "Tài khoản duy nhất có nhật ký tiêu thụ hoặc lỗi API hôm nay",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "Tính từ 00:00 giờ Bắc Kinh (UTC+8), mỗi tài khoản một lần cho mỗi chỉ số. Bộ lọc lịch sử không đổi tổng ngày.",
+    "Today starts at 00:00 Beijing time (UTC+8)": "Tính từ 00:00 giờ Bắc Kinh (UTC+8)",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Tài khoản duy nhất có nhật ký tiêu thụ hoặc lỗi API khớp thời gian và mọi bộ lọc, trên tất cả các trang"
   }
 }

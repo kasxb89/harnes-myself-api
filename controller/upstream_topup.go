@@ -78,12 +78,16 @@ func loadOperationsOverview() (gin.H, error) {
 		return nil, err
 	}
 	now := time.Now()
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
-	consumedToday, err := model.SumUsedQuota(0, todayStart, 0, "", "", "", 0, "")
+	todayStart := model.BeijingDayStart(now.Unix())
+	consumedToday, err := model.SumUsedQuota(0, todayStart, now.Unix(), "", "", "", 0, "")
 	if err != nil {
 		return nil, err
 	}
-	activeToday, err := model.CountConsumersSince(todayStart)
+	clientToday, err := model.CountClientActiveUsers(todayStart, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	callingToday, err := model.CountLogUsers(model.LogFilter{StartTimestamp: todayStart, EndTimestamp: now.Unix()}, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -113,17 +117,20 @@ func loadOperationsOverview() (gin.H, error) {
 		callsToday = daily[len(daily)-1].Calls
 	}
 	return gin.H{
-		"spent_cents":          spent,
-		"received":             received,
-		"consumed_quota":       consumed.Quota,
-		"consumed_quota_today": consumedToday.Quota,
-		"active_users_today":   activeToday,
-		"calls_today":          callsToday,
-		"users":                users,
-		"topups":               topupStats,
-		"topup_users":          topupUsers,
-		"recent_topups":        recentTopUps,
-		"daily":                daily,
+		"spent_cents":               spent,
+		"received":                  received,
+		"consumed_quota":            consumed.Quota,
+		"consumed_quota_today":      consumedToday.Quota,
+		"active_users_today":        clientToday,
+		"client_active_users_today": clientToday,
+		"calling_users_today":       callingToday,
+		"today_start":               todayStart,
+		"calls_today":               callsToday,
+		"users":                     users,
+		"topups":                    topupStats,
+		"topup_users":               topupUsers,
+		"recent_topups":             recentTopUps,
+		"daily":                     daily,
 	}, nil
 }
 

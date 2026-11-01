@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply. An unavailable configured model requires another selection.",
     "Show announcements at the top of the client": "Show announcements at the top of the client",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.",
-    "Use the dedicated client preference page to change this setting": "Use the dedicated client preference page to change this setting"
+    "Use the dedicated client preference page to change this setting": "Use the dedicated client preference page to change this setting",
+    "Client active users today": "Client active users today",
+    "Calling users today": "Calling users today",
+    "Daily active users": "Daily active users",
+    "Calling users in range": "Calling users in range",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "Unique accounts reporting a client heartbeat today, including clients started before midnight",
+    "Unique accounts with consumption or API error logs today": "Unique accounts with consumption or API error logs today",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.",
+    "Today starts at 00:00 Beijing time (UTC+8)": "Today starts at 00:00 Beijing time (UTC+8)",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages"
   }
 }

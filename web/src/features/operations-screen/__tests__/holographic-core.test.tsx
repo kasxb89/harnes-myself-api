@@ -203,7 +203,7 @@ it('shows total matching usage and error records without promoting returned-page
         tab: 'usage',
         window,
         logs: { items: [], total: 123 },
-        stats: { quota: 100, rpm: 6, tpm: 1000 },
+        stats: { quota: 100, rpm: 6, tpm: 1000, user_count: 31 },
       }}
       paused={false}
     />
@@ -211,6 +211,9 @@ it('shows total matching usage and error records without promoting returned-page
   expect(
     screen.getByRole('status', { name: 'Consumption records in range' })
   ).toHaveTextContent('123')
+  expect(
+    screen.getByText('Calling users in range').nextElementSibling
+  ).toHaveTextContent('31')
   expect(
     screen.getByText('Consumption records in the last 60 seconds')
       .nextElementSibling

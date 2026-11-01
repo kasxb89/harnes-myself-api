@@ -21,7 +21,8 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatLogQuota } from '@/lib/format'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatLogQuota, formatNumber } from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -37,9 +38,13 @@ function StatBadge(props: {
   label: string
   value: string | number
   accent: string
+  description?: string
 }) {
   return (
-    <span className='border-border/60 bg-muted/25 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs'>
+    <span
+      title={props.description}
+      className='border-border/60 bg-muted/25 inline-flex h-7 items-center gap-2 rounded-md border px-2.5 text-xs shadow-xs'
+    >
       <span className={cn('h-3.5 w-0.5 rounded-full', props.accent)} />
       <span className='text-muted-foreground'>{props.label}</span>
       <span className='text-foreground/85 font-mono font-semibold tabular-nums'>
@@ -50,13 +55,19 @@ function StatBadge(props: {
 }
 
 export function CommonLogsStats() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const { isAdminView: isAdmin } = useLogsViewScope()
   const searchParams = route.useSearch()
   const userId = useAuthStore((state) => state.auth.user?.id)
   const { sensitiveVisible } = useUsageLogsContext()
 
-  const { data: stats, isLoading } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    isPlaceholderData,
+    isError,
+  } = useQuery({
     queryKey: ['usage-logs-stats', isAdmin, userId, searchParams],
     queryFn: async () => {
       const params = buildApiParams({
@@ -82,18 +93,35 @@ export function CommonLogsStats() {
         : undefined,
   })
 
+  const userCount = isPlaceholderData || isError ? undefined : stats?.user_count
+  const userCountLabel =
+    typeof userCount === 'number' &&
+    Number.isSafeInteger(userCount) &&
+    userCount >= 0
+      ? formatNumber(userCount, locale)
+      : '—'
+
   if (isLoading) {
     return (
-      <div className='flex items-center gap-2'>
+      <div className='flex flex-wrap items-center gap-2'>
         <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
+        <Skeleton className='h-7 w-[150px] rounded-md' />
       </div>
     )
   }
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
+      <StatBadge
+        label={t('Calling users in range')}
+        value={userCountLabel}
+        description={t(
+          'Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages'
+        )}
+        accent='bg-emerald-500/70'
+      />
       <StatBadge
         label={t('Usage')}
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}

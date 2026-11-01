@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "仅在用户未指定模型时使用。留空沿用客户端默认（视频为H3）；仍须符合用户可用权限和模型规格。已设置的模型不可用时，客户端会提示重新选择。",
     "Show announcements at the top of the client": "在客户端顶部轮播公告",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "轮播已发布公告；用户可关闭当前版本，内容更新后可再次显示。需同时开启公告总开关。",
-    "Use the dedicated client preference page to change this setting": "请在专用客户端配置页面修改此设置"
+    "Use the dedicated client preference page to change this setting": "请在专用客户端配置页面修改此设置",
+    "Client active users today": "今日客户端活跃用户",
+    "Calling users today": "今日调用用户",
+    "Daily active users": "日活用户",
+    "Calling users in range": "时段调用用户",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "当天上报客户端心跳的去重账号，包含跨天运行的客户端",
+    "Unique accounts with consumption or API error logs today": "当天有消费或 API 错误日志的去重账号",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "按北京时间（UTC+8）当天零点起统计，每项按账号去重；日活不随历史筛选变化。",
+    "Today starts at 00:00 Beijing time (UTC+8)": "按北京时间（UTC+8）当天零点起统计",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "按当前时间和全部筛选条件统计有消费或 API 错误日志的去重账号，覆盖全部分页"
   }
 }

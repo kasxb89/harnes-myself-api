@@ -50,6 +50,139 @@ func exportedRequestIds(lines []map[string]any) []any {
 	return ids
 }
 
+// These observations must use distinct account IDs across the complete filtered
+// log database, independently of pagination, device count or successful billing.
+func TestOperationsDailyAndLogUsers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = false
+	t.Cleanup(func() { common.IsMasterNode = previousMaster })
+	for _, kind := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(kind, func(t *testing.T) {
+			dsn := os.Getenv("AUDIT_" + strings.ToUpper(kind) + "_DSN")
+			if kind != "sqlite" && dsn == "" {
+				t.Skip("isolated database is not configured")
+			}
+			db, _ := newAuditTestDatabase(t, kind, dsn)
+			logDB, logDSN := newAuditTestDatabase(t, kind, dsn)
+			typ := common.DatabaseTypeSQLite
+			if kind == "mysql" {
+				typ = common.DatabaseTypeMySQL
+			}
+			if kind == "postgres" {
+				typ = common.DatabaseTypePostgreSQL
+			}
+			useLogExportDatabases(t, db, logDB, typ, typ)
+			if kind == "sqlite" {
+				previousPath := common.SQLitePath
+				common.SQLitePath = logDSN
+				t.Cleanup(func() { common.SQLitePath = previousPath })
+				logDSN = "local"
+			}
+			t.Setenv("LOG_SQL_DSN", logDSN)
+			require.NoError(t, model.InitLogDB()) // initialize dialect-specific quoted columns
+			logDB = model.LOG_DB
+			require.NoError(t, db.AutoMigrate(&model.ClientActivitySession{}))
+			require.NoError(t, logDB.AutoMigrate(&model.Log{}))
+			// UTC is still October 31; the Beijing day is November 1.
+			now := time.Date(2026, 10, 31, 16, 30, 0, 0, time.UTC).Unix()
+			start := now - 1800
+			sessions := []model.ClientActivitySession{
+				{UserID: 1, SessionID: "overnight", StartedAt: start - 3600, LastSeenAt: now},
+				{UserID: 1, SessionID: "another-device", StartedAt: start + 1, LastSeenAt: now - 1},
+				{UserID: 2, SessionID: "ended-today", StartedAt: start - 7200, LastSeenAt: start, EndedAt: start},
+				{UserID: 3, SessionID: "yesterday", StartedAt: start - 3600, LastSeenAt: start - 1},
+				{UserID: 4, SessionID: "future", StartedAt: now + 1, LastSeenAt: now + 1},
+				{UserID: 0, SessionID: "invalid", StartedAt: start + 1, LastSeenAt: now},
+				{UserID: 7, SessionID: "client-only", StartedAt: start - 86400, LastSeenAt: now - 10},
+			}
+			require.NoError(t, db.Create(&sessions).Error)
+			logs := []model.Log{
+				{UserId: 1, Username: "alice-old", Type: model.LogTypeConsume, CreatedAt: start, ModelName: "m", TokenName: "key", Group: "g", ChannelId: 9, RequestId: "first", UpstreamRequestId: "up"},
+				{UserId: 1, Username: "alice", Type: model.LogTypeConsume, CreatedAt: now, ModelName: "m", TokenName: "key", Group: "g", ChannelId: 9, RequestId: "last"},
+				{UserId: 2, Username: "bob", Type: model.LogTypeError, CreatedAt: start + 1, ModelName: "m", TokenName: "other", Group: "g", ChannelId: 8, RequestId: "failed"},
+				{UserId: 3, Type: model.LogTypeTopup, CreatedAt: now},
+				{UserId: 4, Type: model.LogTypeClientError, CreatedAt: now},
+				{UserId: 5, Type: model.LogTypeConsume, CreatedAt: start - 1},
+				{UserId: 6, Type: model.LogTypeConsume, CreatedAt: now + 1},
+				{UserId: 0, Type: model.LogTypeConsume, CreatedAt: now},
+			}
+			require.NoError(t, logDB.Create(&logs).Error)
+			// Main DB decoys must not contaminate a separately configured log DB.
+			require.NoError(t, db.AutoMigrate(&model.Log{}))
+			require.NoError(t, db.Create(&model.Log{UserId: 99, Type: model.LogTypeConsume, CreatedAt: now}).Error)
+			base := fmt.Sprintf("start_timestamp=%d&end_timestamp=%d&p=99&page_size=1", start, now)
+			for _, tc := range []struct {
+				query string
+				want  int
+			}{
+				{"", 2}, {"&type=2", 1}, {"&type=5", 1}, {"&type=1", 0},
+				{"&request_id=failed", 1}, {"&upstream_request_id=up", 1}, {"&model_name=absent", 0},
+				{"&username=bob&model_name=m&channel=8&group=g&token_name=other", 1},
+				{"&username=alice-old&channel=8", 0}, {"&group=absent", 0},
+			} {
+				t.Run(tc.query, func(t *testing.T) {
+					out := callLogHandler(t, GetLogsStat, 10, common.RoleAdminUser, base+tc.query)[0]
+					require.Equal(t, true, out["success"], out)
+					assert.EqualValues(t, tc.want, out["data"].(map[string]any)["user_count"])
+					if tc.query == "" {
+						encoded, err := common.Marshal(out)
+						require.NoError(t, err)
+						t.Logf("LOG_STATS_JSON=%s", encoded)
+					}
+				})
+			}
+			own := callLogHandler(t, GetLogsSelfStat, 1, common.RoleAdminUser, base+"&username=bob&channel=8")[0]
+			require.Equal(t, true, own["success"])
+			assert.EqualValues(t, 1, own["data"].(map[string]any)["user_count"], "self endpoint cannot escape account ID; admin filters are ignored as on the self list")
+			own = callLogHandler(t, GetLogsSelfStat, 1, common.RoleAdminUser, base+"&request_id=failed")[0]
+			assert.EqualValues(t, 0, own["data"].(map[string]any)["user_count"])
+			summary, err := model.GetClientActivitySummary(model.ClientActivityFilter{Start: start - 86400, End: start - 1}, now)
+			require.NoError(t, err)
+			encoded, err := common.Marshal(summary)
+			require.NoError(t, err)
+			var view map[string]any
+			require.NoError(t, common.Unmarshal(encoded, &view))
+			assert.EqualValues(t, 3, view["client_active_users_today"], "cross-midnight heartbeats, stopped clients and a client-only account count once")
+			assert.EqualValues(t, 2, view["calling_users_today"], "failed-only caller counts; no future/anonymous/topup/client-error rows")
+			assert.EqualValues(t, start, view["today_start"], "Beijing boundary is independent of server timezone and selected history")
+			t.Logf("DAILY_SUMMARY_JSON=%s", encoded)
+			missingIdentity := callLogHandler(t, GetLogsSelfStat, 0, common.RoleAdminUser, base)[0]
+			assert.Equal(t, false, missingIdentity["success"], "an absent self identity must never turn into a global count")
+
+			// The overview and all trend buckets use the same Beijing boundary.
+			require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.UpstreamTopup{}))
+			today := model.BeijingDayStart(time.Now().Unix())
+			require.NoError(t, logDB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.Log{}).Error)
+			require.NoError(t, db.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.ClientActivitySession{}).Error)
+			require.NoError(t, logDB.Create(&[]model.Log{
+				{UserId: 1, Type: model.LogTypeConsume, CreatedAt: today, Quota: 10},
+				{UserId: 2, Type: model.LogTypeError, CreatedAt: today},
+				{UserId: 1, Type: model.LogTypeConsume, CreatedAt: today - 1, Quota: 20},
+				{UserId: 99, Type: model.LogTypeConsume, CreatedAt: today + 86400, Quota: 999},
+			}).Error)
+			require.NoError(t, db.Create(&[]model.ClientActivitySession{
+				{UserID: 7, SessionID: "current-day-overnight", StartedAt: today - 3600, LastSeenAt: today},
+				{UserID: 8, SessionID: "client-only-eight", StartedAt: today - 3600, LastSeenAt: today},
+				{UserID: 9, SessionID: "client-only-nine", StartedAt: today, LastSeenAt: today},
+			}).Error)
+			overview, err := loadOperationsOverview()
+			require.NoError(t, err)
+			assert.EqualValues(t, 3, overview["active_users_today"], "legacy field now agrees with client DAU, independently of consumption-only users")
+			assert.EqualValues(t, 3, overview["client_active_users_today"])
+			assert.EqualValues(t, 2, overview["calling_users_today"])
+			assert.EqualValues(t, 10, overview["consumed_quota_today"], "financial units and consumed-only scope remain intact")
+			assert.EqualValues(t, today, overview["today_start"])
+			daily := overview["daily"].([]model.DailyOperations)
+			require.Len(t, daily, 14)
+			assert.EqualValues(t, today, daily[13].DayStart)
+			assert.EqualValues(t, 10, daily[13].Quota)
+			assert.EqualValues(t, 1, daily[13].Calls)
+			assert.EqualValues(t, 20, daily[12].Quota)
+		})
+	}
+}
+
 // seedExportLogs stores logs of two users: three in the last hour and one
 // from 400 days ago.
 func seedExportLogs(t *testing.T, mainDB *gorm.DB, logDB *gorm.DB, now int64) {

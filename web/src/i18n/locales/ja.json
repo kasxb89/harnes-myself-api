@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "ユーザーがモデルを指定していない場合に適用します。空欄では動画H3などの既定値を使用します。権限と対応仕様は引き続き適用され、設定モデルが利用不可なら再選択が必要です。",
     "Show announcements at the top of the client": "クライアント上部にお知らせを表示",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "公開済みのお知らせを順番に表示します。現在の版を閉じることができ、内容更新後に再表示できます。お知らせの全体設定も有効にしてください。",
-    "Use the dedicated client preference page to change this setting": "専用のクライアント設定ページで変更してください"
+    "Use the dedicated client preference page to change this setting": "専用のクライアント設定ページで変更してください",
+    "Client active users today": "今日のクライアント利用者",
+    "Calling users today": "今日のモデル呼び出し利用者",
+    "Daily active users": "日間アクティブ利用者",
+    "Calling users in range": "期間内のモデル呼び出し利用者",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "日付をまたいで起動中のクライアントを含む、今日ハートビートを送信した重複のないアカウント",
+    "Unique accounts with consumption or API error logs today": "今日の消費または API エラーログにある重複のないアカウント",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "北京時間（UTC+8）の当日0時から集計。指標ごとに各アカウントを1回計上し、履歴フィルターは適用しません。",
+    "Today starts at 00:00 Beijing time (UTC+8)": "北京時間（UTC+8）の当日0時から集計",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "選択した期間と全フィルターに一致する消費または API エラーログのアカウント数。全ページで重複を除外"
   }
 }

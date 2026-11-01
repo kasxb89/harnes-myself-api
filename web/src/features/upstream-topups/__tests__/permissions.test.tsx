@@ -45,6 +45,8 @@ const overview = {
   consumed_quota: 0,
   consumed_quota_today: 0,
   active_users_today: 0,
+  client_active_users_today: 12,
+  calling_users_today: 7,
   calls_today: 0,
   users: { total: 1, new_today: 0, balance_quota: 0 },
   topups: {
@@ -122,6 +124,11 @@ it('business-only viewing loads its own endpoint without showing upstream paymen
     expect(get).toHaveBeenCalledWith('/api/operations/overview')
   )
   expect(screen.getByRole('heading', { name: 'Today' })).toBeVisible()
+  expect(screen.getByText('Client active users today')).toBeVisible()
+  expect(screen.getByText('Calling users today')).toBeVisible()
+  expect(await screen.findByText('12')).toBeVisible()
+  expect(await screen.findByText('7')).toBeVisible()
+  expect(screen.queryByText('Active users today')).not.toBeInTheDocument()
   expect(screen.queryByText('Example supplier')).not.toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Record a top-up' })

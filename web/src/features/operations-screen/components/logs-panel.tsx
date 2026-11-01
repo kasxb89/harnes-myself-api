@@ -195,6 +195,19 @@ export function OperationsLogsPanel(props: {
         {stats && (
           <>
             <StatCard
+              title={t('Calling users in range')}
+              value={
+                stats.user_count === undefined
+                  ? t('Not collected')
+                  : number(stats.user_count)
+              }
+              description={t(
+                'Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages'
+              )}
+              icon={Activity}
+              compactMobile
+            />
+            <StatCard
               title={t('Consumption records in the last 60 seconds')}
               value={number(stats.rpm)}
               description={t(

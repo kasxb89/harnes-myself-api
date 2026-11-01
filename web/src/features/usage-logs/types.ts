@@ -291,6 +291,7 @@ export interface LogStatistics {
   quota: number
   rpm: number
   tpm: number
+  user_count?: number
 }
 
 // ============================================================================

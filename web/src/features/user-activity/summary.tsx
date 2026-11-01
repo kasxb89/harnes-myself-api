@@ -35,6 +35,24 @@ export function ActivitySummary(props: {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const data = props.summary
+  const daily = [
+    {
+      title: t('Client active users today'),
+      value: data?.client_active_users_today,
+      description: t(
+        'Unique accounts reporting a client heartbeat today, including clients started before midnight'
+      ),
+      icon: Monitor,
+    },
+    {
+      title: t('Calling users today'),
+      value: data?.calling_users_today,
+      description: t(
+        'Unique accounts with consumption or API error logs today'
+      ),
+      icon: Activity,
+    },
+  ]
   const presence = [
     {
       title: t('Currently online users'),
@@ -96,6 +114,17 @@ export function ActivitySummary(props: {
     ))
   return (
     <div className='space-y-4' aria-label={t('Client activity summary')}>
+      <section aria-label={t('Daily active users')} className='space-y-2'>
+        <h2 className='text-sm font-medium'>{t('Daily active users')}</h2>
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.'
+          )}
+        </p>
+        <div className='grid grid-cols-2 gap-3 rounded-xl border p-3 sm:gap-5 sm:p-4'>
+          {cards(daily)}
+        </div>
+      </section>
       <section aria-label={t('Global current presence')} className='space-y-2'>
         <h2 className='text-sm font-medium'>{t('Global current presence')}</h2>
         <p className='text-muted-foreground text-xs'>

@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Используются, если пользователь не выбрал модель. Пустое поле сохраняет настройки клиента, включая H3 для видео. Права и поддерживаемые параметры сохраняются. Недоступная модель требует нового выбора.",
     "Show announcements at the top of the client": "Объявления вверху клиента",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Прокручивает опубликованные объявления. Пользователь может закрыть текущую версию; обновлённый текст появится снова. Общий переключатель тоже должен быть включён.",
-    "Use the dedicated client preference page to change this setting": "Измените на странице настроек клиента"
+    "Use the dedicated client preference page to change this setting": "Измените на странице настроек клиента",
+    "Client active users today": "Активные пользователи клиента сегодня",
+    "Calling users today": "Пользователи с вызовами сегодня",
+    "Daily active users": "Активные пользователи за день",
+    "Calling users in range": "Пользователи с вызовами за период",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "Уникальные аккаунты с сигналом клиента сегодня, включая запущенные до полуночи",
+    "Unique accounts with consumption or API error logs today": "Уникальные аккаунты с журналами расхода или ошибок API сегодня",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "С 00:00 по Пекину (UTC+8). Аккаунт учитывается один раз в каждой метрике. Исторические фильтры не меняют итоги дня.",
+    "Today starts at 00:00 Beijing time (UTC+8)": "С 00:00 по Пекину (UTC+8)",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Уникальные аккаунты с расходом или ошибками API за выбранное время по всем фильтрам, на всех страницах"
   }
 }

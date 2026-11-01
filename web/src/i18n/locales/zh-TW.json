@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "僅在使用者未指定模型時使用。留空沿用用戶端預設（影片為H3）；仍須符合使用者權限和模型規格。已設定模型不可用時會提示重新選擇。",
     "Show announcements at the top of the client": "在用戶端頂部輪播公告",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "輪播已發布公告；使用者可關閉目前版本，內容更新後可再次顯示。需同時開啟公告總開關。",
-    "Use the dedicated client preference page to change this setting": "請在專用用戶端設定頁面修改此設定"
+    "Use the dedicated client preference page to change this setting": "請在專用用戶端設定頁面修改此設定",
+    "Client active users today": "今日客戶端活躍使用者",
+    "Calling users today": "今日呼叫使用者",
+    "Daily active users": "每日活躍使用者",
+    "Calling users in range": "時段呼叫使用者",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "當天回報客戶端心跳的不重複帳號，包含跨日執行的客戶端",
+    "Unique accounts with consumption or API error logs today": "當天有消費或 API 錯誤日誌的不重複帳號",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "依北京時間（UTC+8）當天零點起統計，每項依帳號去重；日活不隨歷史篩選變化。",
+    "Today starts at 00:00 Beijing time (UTC+8)": "依北京時間（UTC+8）當天零點起統計",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "依目前時間及所有篩選條件統計有消費或 API 錯誤日誌的不重複帳號，涵蓋所有分頁"
   }
 }

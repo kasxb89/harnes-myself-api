@@ -102,6 +102,10 @@ function observation(snapshot: OperationsSnapshot): CoreObservation {
         },
         stats: [
           {
+            labelKey: 'Calling users in range',
+            value: count(snapshot.stats.user_count),
+          },
+          {
             labelKey: 'Consumption records in the last 60 seconds',
             value: count(snapshot.stats.rpm),
           },

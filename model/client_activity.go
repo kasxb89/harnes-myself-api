@@ -82,6 +82,9 @@ type ClientActivitySummary struct {
 	ForegroundUsers          int64                  `json:"foreground_users"`
 	StartedSessions          int64                  `json:"started_sessions"`
 	ActiveUsers              int64                  `json:"active_users"`
+	ClientActiveUsersToday   int64                  `json:"client_active_users_today"`
+	CallingUsersToday        int64                  `json:"calling_users_today"`
+	TodayStart               int64                  `json:"today_start"`
 	OnlineSeconds            int64                  `json:"online_seconds"`
 	ForegroundSeconds        int64                  `json:"foreground_seconds"`
 	ModelCalls               int64                  `json:"model_calls"`
@@ -313,11 +316,29 @@ func populateClientActivitySummaryUsage(summary *ClientActivitySummary, filter C
 		return err
 	}
 	summary.ModelCalls, summary.ModelErrors = usage.Calls, usage.Errors
-	return nil
+	summary.CallingUsersToday, err = CountLogUsers(LogFilter{StartTimestamp: summary.TodayStart, EndTimestamp: summary.ServerTime}, 0)
+	return err
+}
+
+// CountClientActiveUsers counts accounts observed by a server heartbeat in
+// the current day. A mutable last_seen_at cannot reconstruct past daily usage;
+// do not infer activity across an unobserved sleep gap or session lifetime.
+func CountClientActiveUsers(start, now int64) (int64, error) {
+	var count int64
+	err := DB.Model(&ClientActivitySession{}).
+		Where("user_id > 0 AND last_seen_at >= ? AND last_seen_at <= ?", start, now).
+		Distinct("user_id").Count(&count).Error
+	return count, err
 }
 
 func getClientActivitySummaryDB(db *gorm.DB, filter ClientActivityFilter, now int64) (*ClientActivitySummary, error) {
 	summary := ClientActivitySummary{ServerTime: now, HeartbeatIntervalSeconds: ClientActivityHeartbeatSeconds, OnlineTimeoutSeconds: ClientActivityTimeoutSeconds}
+	summary.TodayStart = BeijingDayStart(now)
+	if err := db.Model(&ClientActivitySession{}).
+		Where("user_id > 0 AND last_seen_at >= ? AND last_seen_at <= ?", summary.TodayStart, now).
+		Distinct("user_id").Count(&summary.ClientActiveUsersToday).Error; err != nil {
+		return nil, err
+	}
 	periodFilter := filter
 	periodFilter.Scope, periodFilter.TimeBasis = "history", "started"
 	query := clientActivityQueryDB(db, periodFilter, now)

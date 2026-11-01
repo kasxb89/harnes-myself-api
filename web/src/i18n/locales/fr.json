@@ -8695,6 +8695,15 @@
     "Image and video defaults apply only when the user has not chosen a model. Empty settings keep the client defaults, including H3 video. User access and supported specifications still apply.": "Utilisés si aucun modèle n’est choisi. Un champ vide conserve les valeurs du client, dont H3 pour la vidéo. Les droits et les formats restent applicables. Un modèle indisponible nécessite un autre choix.",
     "Show announcements at the top of the client": "Afficher les annonces en haut du client",
     "Rotate published announcements at the top. Users can close the current version; updated content can appear again. The announcement master switch must also be enabled.": "Fait défiler les annonces publiées. Les utilisateurs peuvent fermer la version actuelle ; un contenu modifié peut réapparaître. Activez aussi l’interrupteur général.",
-    "Use the dedicated client preference page to change this setting": "Utilisez la page des préférences du client"
+    "Use the dedicated client preference page to change this setting": "Utilisez la page des préférences du client",
+    "Client active users today": "Utilisateurs actifs du client aujourd’hui",
+    "Calling users today": "Utilisateurs ayant appelé aujourd’hui",
+    "Daily active users": "Utilisateurs actifs quotidiens",
+    "Calling users in range": "Utilisateurs ayant appelé sur la période",
+    "Unique accounts reporting a client heartbeat today, including clients started before midnight": "Comptes distincts ayant envoyé un signal du client aujourd’hui, y compris les clients démarrés avant minuit",
+    "Unique accounts with consumption or API error logs today": "Comptes distincts avec des journaux de consommation ou d’erreur API aujourd’hui",
+    "Today starts at 00:00 Beijing time (UTC+8). Each account counts once per metric. Daily totals do not follow history filters.": "Depuis minuit à Pékin (UTC+8), un compte par indicateur. Les filtres historiques ne modifient pas ces totaux.",
+    "Today starts at 00:00 Beijing time (UTC+8)": "Depuis minuit à Pékin (UTC+8)",
+    "Unique accounts with consumption or API error logs matching the selected time and all filters, across all pages": "Comptes distincts avec des journaux de consommation ou d’erreur API selon la période et tous les filtres, sur toutes les pages"
   }
 }

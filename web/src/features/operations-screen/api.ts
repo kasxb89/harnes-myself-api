@@ -41,6 +41,7 @@ const logPageSchema = z.object({
   total: z.number().int().nonnegative(),
 })
 const logStatsSchema = z.object({
+  user_count: z.number().int().nonnegative().optional(),
   quota: z.number().finite(),
   rpm: z.number().nonnegative().finite(),
   tpm: z.number().nonnegative().finite(),

@@ -558,6 +558,29 @@ func (f LogFilter) apply(tx *gorm.DB) (*gorm.DB, error) {
 	return tx, nil
 }
 
+// CountLogUsers counts calling accounts across the entire filtered log set.
+// Errors are attempts too; top-ups, refunds and client-only reports are not.
+// A positive userID restricts the self endpoint by immutable account identity.
+func CountLogUsers(filter LogFilter, userID int) (int64, error) {
+	tx, err := filter.apply(LOG_DB.Table("logs"))
+	if err != nil {
+		return 0, err
+	}
+	tx = tx.Where("logs.type IN ? AND logs.user_id > 0", []int{LogTypeConsume, LogTypeError})
+	if userID > 0 {
+		tx = tx.Where("logs.user_id = ?", userID)
+	}
+	var count int64
+	err = tx.Distinct("user_id").Count(&count).Error
+	return count, err
+}
+
+// BeijingDayStart is the reporting boundary, independent of host timezone.
+func BeijingDayStart(now int64) int64 {
+	at := time.Unix(now, 0).In(time.FixedZone("Asia/Shanghai", 8*60*60))
+	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, at.Location()).Unix()
+}
+
 func GetAllLogs(filter LogFilter, startIdx int, num int) (logs []*Log, total int64, err error) {
 	tx, err := filter.apply(LOG_DB)
 	if err != nil {
@@ -873,12 +896,12 @@ func OperationsByDay(days int) ([]DailyOperations, error) {
 		return series, nil
 	}
 	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	today := time.Unix(BeijingDayStart(now.Unix()), 0).In(time.FixedZone("Asia/Shanghai", 8*60*60))
 	windowStart := today.AddDate(0, 0, -(days - 1)).Unix()
 
 	buckets := make(map[int64]*DailyOperations, days)
 	bucketFor := func(timestamp int64) *DailyOperations {
-		at := time.Unix(timestamp, 0)
+		at := time.Unix(timestamp, 0).In(today.Location())
 		key := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, at.Location()).Unix()
 		bucket, ok := buckets[key]
 		if !ok {
@@ -894,7 +917,7 @@ func OperationsByDay(days int) ([]DailyOperations, error) {
 	}, 0)
 	if err := LOG_DB.Table("logs").
 		Select("created_at, quota").
-		Where("type = ? AND created_at >= ?", LogTypeConsume, windowStart).
+		Where("type = ? AND created_at >= ? AND created_at <= ?", LogTypeConsume, windowStart, now.Unix()).
 		Find(&consumption).Error; err != nil {
 		return nil, err
 	}
@@ -907,7 +930,7 @@ func OperationsByDay(days int) ([]DailyOperations, error) {
 	signups := make([]struct{ CreatedAt int64 }, 0)
 	if err := DB.Model(&User{}).
 		Select("created_at").
-		Where("created_at >= ?", windowStart).
+		Where("created_at >= ? AND created_at <= ?", windowStart, now.Unix()).
 		Find(&signups).Error; err != nil {
 		return nil, err
 	}
@@ -921,7 +944,7 @@ func OperationsByDay(days int) ([]DailyOperations, error) {
 	}, 0)
 	if err := DB.Model(&TopUp{}).
 		Select("complete_time, money").
-		Where("status = ? AND complete_time >= ?", common.TopUpStatusSuccess, windowStart).
+		Where("status = ? AND complete_time >= ? AND complete_time <= ?", common.TopUpStatusSuccess, windowStart, now.Unix()).
 		Find(&topups).Error; err != nil {
 		return nil, err
 	}

@@ -55,6 +55,7 @@ import {
   StatCard,
   type StatCardDetail,
 } from '@/features/dashboard/components/ui/stat-card'
+import { toIntlLocale } from '@/i18n/languages'
 import { hasPermission } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
 import {
@@ -62,6 +63,7 @@ import {
   formatQuotaWithCurrency,
   type CurrencyFormatOptions,
 } from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -129,10 +131,13 @@ type LedgerPayload = {
   /** Quota users actually consumed in total. Quota, not money: the deployment's
    * own rate converts it, so a re-priced deployment still reads correctly. */
   consumed_quota: number
-  /** Quota users consumed since local midnight. */
+  /** Quota users consumed since Beijing midnight. */
   consumed_quota_today: number
-  /** Users who consumed anything since local midnight. */
+  /** Legacy alias for today's client heartbeat users. */
   active_users_today: number
+  client_active_users_today?: number
+  calling_users_today?: number
+  today_start?: number
   /** Requests served since local midnight. */
   calls_today: number
   users: UserGrowth
@@ -166,7 +171,9 @@ function formatCents(cents: number, currency: string): string {
 }
 
 function formatDay(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString()
+  return new Date(seconds * 1000).toLocaleDateString(undefined, {
+    timeZone: 'Asia/Shanghai',
+  })
 }
 
 function formatDateTime(seconds: number): string {
@@ -202,7 +209,8 @@ function SectionHeader(props: { title: string; description: string }) {
 }
 
 export function UpstreamTopupsPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const queryClient = useQueryClient()
   const user = useAuthStore((state) => state.auth.user)
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
@@ -350,7 +358,7 @@ export function UpstreamTopupsPage() {
           <section className='bg-card overflow-hidden rounded-2xl border p-4 shadow-xs sm:p-5'>
             <SectionHeader
               title={t('Today')}
-              description={t('Live figures since local midnight')}
+              description={t('Today starts at 00:00 Beijing time (UTC+8)')}
             />
             <div className='mt-4'>
               <MetricRow>
@@ -388,11 +396,44 @@ export function UpstreamTopupsPage() {
                 <StatCard
                   title={t('Calls today')}
                   value={overviewData?.calls_today ?? 0}
-                  description={`${t('Active users today')} ${overviewData?.active_users_today ?? 0}`}
+                  description={t('Today starts at 00:00 Beijing time (UTC+8)')}
                   icon={Activity}
                   tone='accent-1'
                   sparkline={calls}
                   loading={overview.isLoading}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('Client active users today')}
+                  value={
+                    overviewData?.client_active_users_today === undefined
+                      ? t('Not collected')
+                      : formatNumber(
+                          overviewData.client_active_users_today,
+                          locale
+                        )
+                  }
+                  description={t(
+                    'Unique accounts reporting a client heartbeat today, including clients started before midnight'
+                  )}
+                  icon={Activity}
+                  loading={overview.isLoading}
+                  error={overview.isError}
+                  compactMobile
+                />
+                <StatCard
+                  title={t('Calling users today')}
+                  value={
+                    overviewData?.calling_users_today === undefined
+                      ? t('Not collected')
+                      : formatNumber(overviewData.calling_users_today, locale)
+                  }
+                  description={t(
+                    'Unique accounts with consumption or API error logs today'
+                  )}
+                  icon={Activity}
+                  loading={overview.isLoading}
+                  error={overview.isError}
                   compactMobile
                 />
               </MetricRow>

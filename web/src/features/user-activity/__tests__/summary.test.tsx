@@ -42,6 +42,61 @@ const titles = [
 
 afterEach(cleanup)
 
+it('separates Beijing daily client users from calling users and keeps old servers unknown', async () => {
+  const i18n = createInstance()
+  await i18n.init({
+    lng: 'en',
+    resources,
+    keySeparator: false,
+    nsSeparator: false,
+  })
+  const summary = {
+    server_time: 1,
+    heartbeat_interval_seconds: 30,
+    online_timeout_seconds: 90,
+    online_users: 1,
+    foreground_users: 1,
+    started_sessions: 0,
+    active_users: 0,
+    online_seconds: 0,
+    foreground_seconds: 0,
+    model_calls: 0,
+    model_errors: 0,
+    client_active_users_today: 12,
+    calling_users_today: 7,
+  }
+  const view = render(
+    <I18nextProvider i18n={i18n}>
+      <ActivitySummary
+        summary={summary}
+        loading={false}
+        error={false}
+        history={false}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('Client active users today')).toBeVisible()
+  expect(screen.getByText('Calling users today')).toBeVisible()
+  expect(screen.getByText('12')).toBeVisible()
+  expect(screen.getByText('7')).toBeVisible()
+  view.rerender(
+    <I18nextProvider i18n={i18n}>
+      <ActivitySummary
+        summary={{
+          ...summary,
+          client_active_users_today: undefined,
+          calling_users_today: undefined,
+        }}
+        loading={false}
+        error={false}
+        history={false}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.queryByText('12')).not.toBeInTheDocument()
+  expect(screen.getAllByText('Not collected').length).toBeGreaterThanOrEqual(2)
+})
+
 it.each(Object.keys(resources) as (keyof typeof resources)[])(
   'renders all five summary titles using the actual %s translations without English fallback',
   async (language) => {
