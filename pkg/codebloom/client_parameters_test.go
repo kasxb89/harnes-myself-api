@@ -12,7 +12,7 @@ import (
 func TestCodeBloomClientCandidateParameters(t *testing.T) {
 	models, err := Models()
 	require.NoError(t, err)
-	require.Len(t, models, 37)
+	require.GreaterOrEqual(t, len(models), 37)
 	previews := make([]map[string]any, 0, len(models))
 	for _, m := range models {
 		t.Run(m.ID, func(t *testing.T) {
@@ -38,10 +38,16 @@ func TestCodeBloomClientCandidateParameters(t *testing.T) {
 				assert.Equal(t, 0, params["x-reference-limits"].(map[string]any)["images"])
 			} else {
 				caps := params["x-text-capabilities"].(map[string]any)
-				assert.Equal(t, false, caps["vision"])
-				assert.Equal(t, false, caps["tools"])
-				assert.Equal(t, false, caps["reasoning"])
-				assert.Equal(t, "pending_verification", caps["operational_status"])
+				assert.Equal(t, m.ActivationReady, caps["vision"])
+				assert.Equal(t, m.ActivationReady, caps["tools"])
+				if m.ActivationReady {
+					assert.Equal(t, "available", caps["operational_status"])
+					assert.Equal(t, m.ReasoningObserved, caps["reasoning"])
+					assert.Equal(t, []string{"text", "image"}, caps["input_modalities"])
+				} else {
+					assert.Equal(t, "pending_verification", caps["operational_status"])
+					assert.Equal(t, false, caps["reasoning"])
+				}
 				assert.NotContains(t, caps, "max_input_tokens", "no capacity was verified")
 			}
 			prices := ClientPrices(m.ID)

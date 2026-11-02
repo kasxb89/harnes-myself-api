@@ -1,6 +1,7 @@
 package codebloom
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -10,6 +11,10 @@ import (
 // Approved user prices do not imply verified credentials or capabilities.
 // Existing providers retain their ordinary availability rules.
 func PubliclyAvailable(id string) bool {
+	if slices.Contains(liveText.ReviewedModelIDs, id) {
+		m, ok := Lookup(id)
+		return ok && m.ActivationReady
+	}
 	for _, candidate := range approved.Models {
 		if candidate.ID == id {
 			m, ok := Lookup(id)
@@ -27,6 +32,21 @@ func ClientParameters(id string) map[string]any {
 		return nil
 	}
 	if m.Kind == "text" {
+		if m.ActivationReady {
+			reasoning := "unverified"
+			mode := "unknown"
+			if m.ReasoningObserved {
+				reasoning, mode = "supported", "automatic"
+			}
+			return map[string]any{"type": "object", "properties": map[string]any{}, "x-model-kind": "text", "x-text-capabilities": map[string]any{
+				"schema_version": 2, "tools": true, "vision": true, "reasoning": m.ReasoningObserved, "stream": true,
+				"verification":     map[string]string{"tools": "supported", "vision": "supported", "reasoning": reasoning},
+				"input_modalities": []string{"text", "image"}, "reasoning_mode": mode,
+				"reasoning_controls": map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
+				"operational_status": "available", "default_output_tokens": 8192, "default_output_tokens_source": "gateway_policy",
+				"native_max_input_tokens": nil, "native_max_output_tokens": nil,
+			}}
+		}
 		return map[string]any{"type": "object", "properties": map[string]any{}, "x-model-kind": "text", "x-text-capabilities": map[string]any{
 			"schema_version": 2, "tools": false, "vision": false, "reasoning": false, "stream": true,
 			"verification":     map[string]string{"tools": "unverified", "vision": "unverified", "reasoning": "unverified"},

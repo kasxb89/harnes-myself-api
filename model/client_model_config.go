@@ -57,6 +57,9 @@ func ClientModelDisplayName(id string) string {
 // modelDisplayName changes presentation only; routing and stored identities
 // continue to use the exact model ID.
 func modelDisplayName(id string) string {
+	if candidate, ok := codebloom.Lookup(id); ok {
+		return "qq-" + candidate.UpstreamID
+	}
 	switch id {
 	case "MiniMax-H3":
 		return "mt-MiniMax-H3"

@@ -191,12 +191,24 @@ func Models() ([]Model, error) {
 	if imageQualificationError != nil {
 		return nil, imageQualificationError
 	}
+	if textQualificationError != nil {
+		return nil, textQualificationError
+	}
 	var c catalog
 	if err := common.Unmarshal(catalogData, &c); err != nil {
 		return nil, err
 	}
 	for i := range c.Models {
-		c.Models[i] = withImageQualification(c.Models[i])
+		c.Models[i] = withTextQualification(withImageQualification(c.Models[i]))
+	}
+	for _, proof := range liveText.Models {
+		if proof.AdditionalModel != nil {
+			copy, ok := Lookup(proof.ID)
+			if !ok {
+				return nil, fmt.Errorf("qualified text model is unavailable")
+			}
+			c.Models = append(c.Models, copy)
+		}
 	}
 	return c.Models, nil
 }
@@ -204,7 +216,7 @@ func Models() ([]Model, error) {
 // Lookup requires the isolated public ID; raw supplier IDs never alias existing
 // providers. Returned nested maps and slices cannot mutate the shared snapshot.
 func Lookup(id string) (Model, bool) {
-	if catalogError != nil || imageQualificationError != nil {
+	if catalogError != nil || imageQualificationError != nil || textQualificationError != nil {
 		return Model{}, false
 	}
 	for _, m := range approved.Models {
@@ -219,7 +231,21 @@ func Lookup(id string) (Model, bool) {
 		if err := common.Unmarshal(data, &copy); err != nil {
 			return Model{}, false
 		}
-		return withImageQualification(copy), true
+		return withTextQualification(withImageQualification(copy)), true
+	}
+	for _, proof := range liveText.Models {
+		if proof.ID != id || proof.AdditionalModel == nil {
+			continue
+		}
+		raw, err := common.Marshal(proof.AdditionalModel)
+		if err != nil {
+			return Model{}, false
+		}
+		var copy Model
+		if common.Unmarshal(raw, &copy) != nil {
+			return Model{}, false
+		}
+		return withTextQualification(copy), true
 	}
 	return Model{}, false
 }

@@ -12,6 +12,34 @@ import (
 
 const expectedIDs = `deepseek-v4.1-flash deepseek-v4.1-flash-1017 gpt-5.6-terra gpt-5.6-sol gpt-6.1-terra gpt-6-sol minimax-m3.1-flash step-5-preview mimo-v2.6-pro glm-5.3-flash deepseek-v4-pro gpt-6-astra glm-5.3-flashx kimi-k2.7-code gpt-6.1-sol hy3 qwen3.8-max deepseek-v4-flash-0731 deepseek-v4-pro-0813 kimi-k3.1-pro kimi-k2.6 deepseek-v4-flash kimi-k3 qwen3.7-max kimi-k2.7 glm-5.1 qwen3.8-flash grok-imagine-image-2.0 grok-imagine-image gemini-3.1-flash-image-preview nano-banana-2 gpt-image-2.5-sunburst gemini-nano-banana-2.1 gpt-image-2.5-flare gpt-image-2k nano-banana-pro gemini-3-pro-image-preview`
 
+func TestTextQualificationRequiresVisionToolRoundtripAndBilling(t *testing.T) {
+	proof := textQualification{ID: "ys-kimi-k2.7", CheckedAt: "2026-11-02", Vision: "verified", Tools: "verified", ToolRoundtrip: "verified", BillableUsage: "verified", RequestSHA256: strings.Repeat("a", 64), ResponseSHA256: strings.Repeat("b", 64), MeterEvidenceSHA256: strings.Repeat("c", 64)}
+	for _, test := range []struct {
+		name   string
+		mutate func(*textQualification)
+	}{
+		{"image not verified", func(p *textQualification) { p.Vision = "unverified" }},
+		{"tool not verified", func(p *textQualification) { p.Tools = "unverified" }},
+		{"tool result not verified", func(p *textQualification) { p.ToolRoundtrip = "unverified" }},
+		{"billing unresolved", func(p *textQualification) { p.BillableUsage = "unknown" }},
+		{"missing evidence", func(p *textQualification) { p.RequestSHA256 = "" }},
+		{"unsupported billing variable", func(p *textQualification) { p.ID = "ys-gpt-6.1-sol" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			p := proof
+			test.mutate(&p)
+			raw, err := common.Marshal(textQualificationSnapshot{SchemaVersion: 1, ReviewedModelIDs: []string{p.ID}, Models: []textQualification{p}})
+			require.NoError(t, err)
+			_, err = loadTextQualifications(raw)
+			require.Error(t, err)
+		})
+	}
+	raw, err := common.Marshal(textQualificationSnapshot{SchemaVersion: 1, ReviewedModelIDs: []string{proof.ID}, Models: []textQualification{proof}})
+	require.NoError(t, err)
+	_, err = loadTextQualifications(raw)
+	require.NoError(t, err)
+}
+
 func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {
 	models, err := Models()
 	require.NoError(t, err)
@@ -23,18 +51,24 @@ func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {
 		assert.Equal(t, "ys-"+m.UpstreamID, m.ID)
 		assert.Equal(t, m.ID, m.Name)
 		_, imageQualified := liveImages[m.ID]
-		assert.Equal(t, imageQualified, m.ActivationReady)
+		textQualified := slices.ContainsFunc(liveText.Models, func(p textQualification) bool { return p.ID == m.ID })
+		assert.Equal(t, imageQualified || textQualified, m.ActivationReady)
 		assert.Nil(t, m.CashCostCNY)
 		assert.Nil(t, m.ContextWindow)
 		assert.Nil(t, m.MaxOutputTokens)
 		if !m.ActivationReady {
 			assert.GreaterOrEqual(t, len(m.PendingReasons), 3)
 		} else {
-			assert.Equal(t, "image", m.Kind)
+			assert.Contains(t, []string{"image", "text"}, m.Kind)
 			assert.Equal(t, []string{"cash_procurement_conversion_unknown"}, m.PendingReasons)
 		}
-		assert.Equal(t, "unverified", m.CapabilityStatus["vision_input"])
-		assert.Equal(t, "unverified", m.CapabilityStatus["tools"])
+		if textQualified {
+			assert.Equal(t, "verified", m.CapabilityStatus["vision_input"])
+			assert.Equal(t, "verified", m.CapabilityStatus["tools"])
+		} else {
+			assert.Equal(t, "unverified", m.CapabilityStatus["vision_input"])
+			assert.Equal(t, "unverified", m.CapabilityStatus["tools"])
+		}
 		_, rawExists := Lookup(m.UpstreamID)
 		assert.False(t, rawExists, "raw supplier IDs must not alias old providers")
 		_, retiredExists := Lookup("codebloom-" + m.UpstreamID)
@@ -51,12 +85,19 @@ func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {
 			require.NotNil(t, component.RetailCNY)
 		}
 	}
-	assert.Equal(t, strings.Fields(expectedIDs), actual)
-	assert.Len(t, models, 37)
-	assert.Equal(t, 141, components)
+	wantIDs := strings.Fields(expectedIDs)
+	extraComponents := 0
+	for _, proof := range liveText.Models {
+		if proof.AdditionalModel != nil {
+			wantIDs = append(wantIDs, proof.AdditionalModel.UpstreamID)
+			extraComponents += len(proof.AdditionalModel.CostComponents)
+		}
+	}
+	assert.Equal(t, wantIDs, actual)
+	assert.Equal(t, 141+extraComponents, components)
 	for _, excluded := range strings.Fields(`MiniMax-M3 MiniMax-M2.7 MiniMax-M2.7-highspeed mimo-v2.5 hy4 qwen3.8-max-0902 glm-5.2 glm-5.3 hy4-preview`) {
 		_, ok := Lookup("ys-" + excluded)
-		assert.False(t, ok, "excluded candidate: %s", excluded)
+		assert.Equal(t, slices.ContainsFunc(liveText.Models, func(p textQualification) bool { return p.ID == "ys-"+excluded && p.AdditionalModel != nil }), ok, "historical exclusion requires fresh exact-route qualification: %s", excluded)
 	}
 }
 
@@ -173,15 +214,16 @@ func TestImageEvidenceNeverExpandsNameIntoParameters(t *testing.T) {
 func TestSnapshotCopiesCannotMutateLaterRequests(t *testing.T) {
 	first, err := Models()
 	require.NoError(t, err)
+	originalVision := first[0].CapabilityStatus["vision_input"]
 	first[0].PendingReasons[0] = "changed"
-	first[0].CapabilityStatus["vision_input"] = "verified"
+	first[0].CapabilityStatus["vision_input"] = "tampered"
 	first[0].VerifiedRequestOptions["stream_options"].(map[string]any)["include_usage"] = false
 	first[0].CostComponents[0].Params["injected"] = true
 	*first[0].CostComponents[0].RetailCNY = 1000
 	next, err := Models()
 	require.NoError(t, err)
 	assert.NotEqual(t, "changed", next[0].PendingReasons[0])
-	assert.Equal(t, "unverified", next[0].CapabilityStatus["vision_input"])
+	assert.Equal(t, originalVision, next[0].CapabilityStatus["vision_input"])
 	assert.Equal(t, true, next[0].VerifiedRequestOptions["stream_options"].(map[string]any)["include_usage"])
 	assert.NotContains(t, next[0].CostComponents[0].Params, "injected")
 	require.NotNil(t, next[0].CostComponents[0].RetailCNY)

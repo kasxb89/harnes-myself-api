@@ -1,0 +1,603 @@
+{
+  "schema_version": 1,
+  "reviewed_model_ids": [
+    "ys-kimi-k2.7",
+    "ys-kimi-k3",
+    "ys-kimi-k2.6",
+    "ys-hy4-preview",
+    "ys-glm-5.3-flashx",
+    "ys-glm-5.3-flash",
+    "ys-deepseek-v4-pro-0813",
+    "ys-MiniMax-M2.7",
+    "ys-qwen3.8-max",
+    "ys-MiniMax-M3",
+    "ys-qwen3.8-flash",
+    "ys-minimax-m3.1-flash",
+    "ys-deepseek-v4.1-flash-1017",
+    "ys-glm-5.2",
+    "ys-deepseek-v4-flash-0731",
+    "ys-hy4",
+    "ys-glm-5.1",
+    "ys-kimi-k2.7-code",
+    "ys-qwen3.7-max",
+    "ys-glm-5.3",
+    "ys-deepseek-v4.1-flash",
+    "ys-mimo-v2.6-pro",
+    "ys-kimi-k3.1-pro",
+    "ys-deepseek-v4-pro",
+    "ys-MiniMax-M2.7-highspeed",
+    "ys-step-5-preview",
+    "ys-qwen3.8-max-0902",
+    "ys-mimo-v2.5",
+    "ys-hy3",
+    "ys-deepseek-v4-flash",
+    "ys-gpt-6.1-terra",
+    "ys-gpt-6.1-sol",
+    "ys-gpt-5.6-terra",
+    "ys-gpt-6-sol",
+    "ys-gpt-6-astra",
+    "ys-gpt-5.6-sol"
+  ],
+  "models": [
+    {
+      "id": "ys-kimi-k2.7",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "eaa20f99e0ae3ce645634e964c40962c1aaf41b33dca47547499d9194acfd007",
+      "response_sha256": "8b8d0c48c95ded7e895f79238ab44d599f8ca9fc37987c6f4e3499382d7f74a7",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-kimi-k3",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "360398a434ddb54274d870e419c87bf31dae8f26405afc71f5e82ad366edcc2b",
+      "response_sha256": "139f0826d446cb60601b46095e73722e19988374d8e038b6599ce9d1c37402f7",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-kimi-k2.6",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "a391da4e22cc566f7185b35b1b8fb105db9d0bd1b4d7fbf8f5e28375b7f09dfd",
+      "response_sha256": "c74a133ec57c97c32eee784c849ca6afe25fc5765f81ddd07af5b804b47dab9a",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-hy4-preview",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "864d00984c0567fa5d7a5475fe51d4a17faab29ae5a73ffe44dc8a5205179f77",
+      "response_sha256": "920ff01c8afbed767fcce2a0bb242f0a2db14d9a17a72ba160dea6bb5d96aa45",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa",
+      "additional_model": {
+        "id": "ys-hy4-preview",
+        "name": "ys-hy4-preview",
+        "upstream_id": "hy4-preview",
+        "kind": "text",
+        "transport": "chat_completions",
+        "credential_env": "CODEBLOOM_CN_KEY",
+        "account_multiplier": 0.5,
+        "base_billing_expression": "tier(\"base\", p * 6 + c * 18 + cr * 0.3)",
+        "checked_at": "2026-11-02",
+        "currency": "CNY_ACCOUNT_CREDIT",
+        "cost_basis": "account_credit_snapshot",
+        "cash_cost_cny": null,
+        "retail_cny": null,
+        "activation_ready": false,
+        "pending_reasons": [
+          "credentials_not_configured",
+          "multimodal_input_unverified",
+          "complete_generation_contract_unverified"
+        ],
+        "reasoning_observed": false,
+        "capability_status": {
+          "text_input": "verified",
+          "vision_input": "unverified",
+          "audio_input": "unverified",
+          "tools": "unverified",
+          "reasoning_controls": "unverified",
+          "context_window": "unverified",
+          "max_output_tokens": "unverified",
+          "async_polling": "unverified",
+          "text_output": "verified",
+          "reasoning_output": "unverified"
+        },
+        "verified_request_options": {
+          "stream": true,
+          "max_tokens": 1024,
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "observed_output": null,
+        "context_window": null,
+        "max_output_tokens": null,
+        "cost_components": [
+          {
+            "params": {},
+            "direction": "input",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 3.0,
+            "retail_cny": 4.199999999999999
+          },
+          {
+            "params": {},
+            "direction": "output",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 9.0,
+            "retail_cny": 12.6
+          },
+          {
+            "params": {},
+            "direction": "cache_read",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 0.15,
+            "retail_cny": 0.21
+          }
+        ],
+        "cost_conditions": {},
+        "cost_notes": [
+          "Account credit rates already include this account multiplier exactly once. Cash procurement cost needs the unknown credit-purchase exchange rate.",
+          "These conditions describe upstream accounting only, not a user price, context window or verified maximum output.",
+          "Unlisted cache/usage components are not confirmed free."
+        ],
+        "retail_checked_at": "2026-11-02",
+        "retail_pricing_status": "approved_account_multiplier_plus_0_20",
+        "retail_account_multiplier": 0.7,
+        "retail_markup_cny": null
+      }
+    },
+    {
+      "id": "ys-glm-5.3-flashx",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "3a90ff0061636f5c3ce21d47ab81ed221d3bb58129147bc63dd96d6597b61a9a",
+      "response_sha256": "3c77d70f92f267896eb913f797fc3611789e1ebb10b68b6cb621ea07975d8f7d",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-glm-5.3-flash",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "8ffd6b6e268780fd0ada14a5fbd07eb380c9d7caf003c8daa41250f6dd494b39",
+      "response_sha256": "949107f6783b716181badeaed31feea9e6bb4ea2fb83b350f198c8b5e9999ba4",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-deepseek-v4-pro-0813",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "e6356a05b4040e54742f1e13e46049c57b7e556cf4db63136d01ced616ac22b7",
+      "response_sha256": "7f7c7c90df79b26969d863be770ebe097c6b51075d8720a5cca6fdee502359a8",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-MiniMax-M3",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "5a156fc06baef830bb0d17bf92614e411c3b6781c971c1fa810932418d2443d4",
+      "response_sha256": "8213cb4f6daa0b254e906599e0eace262a6d3fbe18ba8dffcd273f6315624f08",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa",
+      "additional_model": {
+        "id": "ys-MiniMax-M3",
+        "name": "ys-MiniMax-M3",
+        "upstream_id": "MiniMax-M3",
+        "kind": "text",
+        "transport": "chat_completions",
+        "credential_env": "CODEBLOOM_CN_KEY",
+        "account_multiplier": 0.5,
+        "base_billing_expression": "tier(\"base\", p * 2 + c * 8 + cr * 0.5)",
+        "checked_at": "2026-11-02",
+        "currency": "CNY_ACCOUNT_CREDIT",
+        "cost_basis": "account_credit_snapshot",
+        "cash_cost_cny": null,
+        "retail_cny": null,
+        "activation_ready": false,
+        "pending_reasons": [
+          "credentials_not_configured",
+          "multimodal_input_unverified",
+          "complete_generation_contract_unverified"
+        ],
+        "reasoning_observed": false,
+        "capability_status": {
+          "text_input": "verified",
+          "vision_input": "unverified",
+          "audio_input": "unverified",
+          "tools": "unverified",
+          "reasoning_controls": "unverified",
+          "context_window": "unverified",
+          "max_output_tokens": "unverified",
+          "async_polling": "unverified",
+          "text_output": "verified",
+          "reasoning_output": "unverified"
+        },
+        "verified_request_options": {
+          "stream": true,
+          "max_tokens": 1024,
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "observed_output": null,
+        "context_window": null,
+        "max_output_tokens": null,
+        "cost_components": [
+          {
+            "params": {},
+            "direction": "input",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 1.0,
+            "retail_cny": 1.4
+          },
+          {
+            "params": {},
+            "direction": "output",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 4.0,
+            "retail_cny": 5.6
+          },
+          {
+            "params": {},
+            "direction": "cache_read",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 0.25,
+            "retail_cny": 0.35
+          }
+        ],
+        "cost_conditions": {},
+        "cost_notes": [
+          "Account credit rates already include this account multiplier exactly once. Cash procurement cost needs the unknown credit-purchase exchange rate.",
+          "These conditions describe upstream accounting only, not a user price, context window or verified maximum output.",
+          "Unlisted cache/usage components are not confirmed free."
+        ],
+        "retail_checked_at": "2026-11-02",
+        "retail_pricing_status": "approved_account_multiplier_plus_0_20",
+        "retail_account_multiplier": 0.7,
+        "retail_markup_cny": null
+      }
+    },
+    {
+      "id": "ys-minimax-m3.1-flash",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "cb1c9e13ebf2880a644a84d7b66d9ba8bec0170e842e64af0b5171fefef62ff7",
+      "response_sha256": "b94b26656e1c9f4f5b7a3e31d574ce753dc93eb7604c42b58c441a0c5805b7ea",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-deepseek-v4.1-flash-1017",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "3dea411364d4e59ad513836e47c66136792273171f377067b41f02121f0d83b7",
+      "response_sha256": "af2b7aec8400e29592ae664012dea8556bbc26abd23c6848253731c80c7988ed",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-glm-5.2",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "c7450d978900277383caa201cda78e0b7d6bb6143b591daa39b8ec1e70ba9e50",
+      "response_sha256": "6795f19ca4e81b685d9ec60a08686a09e4653748b1a1eceb59072997a217ea37",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa",
+      "additional_model": {
+        "id": "ys-glm-5.2",
+        "name": "ys-glm-5.2",
+        "upstream_id": "glm-5.2",
+        "kind": "text",
+        "transport": "chat_completions",
+        "credential_env": "CODEBLOOM_CN_KEY",
+        "account_multiplier": 0.5,
+        "base_billing_expression": "tier(\"standard\", p * 8 + c * 28 + cr * 2)",
+        "checked_at": "2026-11-02",
+        "currency": "CNY_ACCOUNT_CREDIT",
+        "cost_basis": "account_credit_snapshot",
+        "cash_cost_cny": null,
+        "retail_cny": null,
+        "activation_ready": false,
+        "pending_reasons": [
+          "credentials_not_configured",
+          "multimodal_input_unverified",
+          "complete_generation_contract_unverified"
+        ],
+        "reasoning_observed": false,
+        "capability_status": {
+          "text_input": "verified",
+          "vision_input": "unverified",
+          "audio_input": "unverified",
+          "tools": "unverified",
+          "reasoning_controls": "unverified",
+          "context_window": "unverified",
+          "max_output_tokens": "unverified",
+          "async_polling": "unverified",
+          "text_output": "verified",
+          "reasoning_output": "unverified"
+        },
+        "verified_request_options": {
+          "stream": true,
+          "max_tokens": 1024,
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "observed_output": null,
+        "context_window": null,
+        "max_output_tokens": null,
+        "cost_components": [
+          {
+            "params": {},
+            "direction": "input",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 4.0,
+            "retail_cny": 5.6
+          },
+          {
+            "params": {},
+            "direction": "output",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 14.0,
+            "retail_cny": 19.599999999999998
+          },
+          {
+            "params": {},
+            "direction": "cache_read",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 1.0,
+            "retail_cny": 1.4
+          }
+        ],
+        "cost_conditions": {},
+        "cost_notes": [
+          "Account credit rates already include this account multiplier exactly once. Cash procurement cost needs the unknown credit-purchase exchange rate.",
+          "These conditions describe upstream accounting only, not a user price, context window or verified maximum output.",
+          "Unlisted cache/usage components are not confirmed free."
+        ],
+        "retail_checked_at": "2026-11-02",
+        "retail_pricing_status": "approved_account_multiplier_plus_0_20",
+        "retail_account_multiplier": 0.7,
+        "retail_markup_cny": null
+      }
+    },
+    {
+      "id": "ys-deepseek-v4-flash-0731",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "168142958ab1cb758643623ceb58a71d1a18b29ba7422fd44aa5c0f5f157f9e6",
+      "response_sha256": "d5e9a3b24bda87f438f6903adf4d11e14577c367b63e60ceb42257985d7adbe4",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-glm-5.1",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "7405700d7aeaa8cb5ed7852b0286df629d26a6944f934b534f2d74ac1516ce30",
+      "response_sha256": "5266c3da1bd6ccb519de8b53bbc13ea00a0542c0fd7c35b9a01d3f27b30da82e",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-glm-5.3",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "d4181f11fe470079bdd01b56457f5d602dec51034ca352ccb8efd88a61dcb052",
+      "response_sha256": "e57c7d9d32a322ee9cb2942ae983b7e69e067099c72f6c944d2e54b303f2ceeb",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa",
+      "additional_model": {
+        "id": "ys-glm-5.3",
+        "name": "ys-glm-5.3",
+        "upstream_id": "glm-5.3",
+        "kind": "text",
+        "transport": "chat_completions",
+        "credential_env": "CODEBLOOM_CN_KEY",
+        "account_multiplier": 0.5,
+        "base_billing_expression": "tier(\"base\", p * 8 + c * 28 + cr * 2)",
+        "checked_at": "2026-11-02",
+        "currency": "CNY_ACCOUNT_CREDIT",
+        "cost_basis": "account_credit_snapshot",
+        "cash_cost_cny": null,
+        "retail_cny": null,
+        "activation_ready": false,
+        "pending_reasons": [
+          "credentials_not_configured",
+          "multimodal_input_unverified",
+          "complete_generation_contract_unverified"
+        ],
+        "reasoning_observed": false,
+        "capability_status": {
+          "text_input": "verified",
+          "vision_input": "unverified",
+          "audio_input": "unverified",
+          "tools": "unverified",
+          "reasoning_controls": "unverified",
+          "context_window": "unverified",
+          "max_output_tokens": "unverified",
+          "async_polling": "unverified",
+          "text_output": "verified",
+          "reasoning_output": "unverified"
+        },
+        "verified_request_options": {
+          "stream": true,
+          "max_tokens": 1024,
+          "stream_options": {
+            "include_usage": true
+          }
+        },
+        "observed_output": null,
+        "context_window": null,
+        "max_output_tokens": null,
+        "cost_components": [
+          {
+            "params": {},
+            "direction": "input",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 4.0,
+            "retail_cny": 5.6
+          },
+          {
+            "params": {},
+            "direction": "output",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 14.0,
+            "retail_cny": 19.599999999999998
+          },
+          {
+            "params": {},
+            "direction": "cache_read",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 1.0,
+            "retail_cny": 1.4
+          }
+        ],
+        "cost_conditions": {},
+        "cost_notes": [
+          "Account credit rates already include this account multiplier exactly once. Cash procurement cost needs the unknown credit-purchase exchange rate.",
+          "These conditions describe upstream accounting only, not a user price, context window or verified maximum output.",
+          "Unlisted cache/usage components are not confirmed free."
+        ],
+        "retail_checked_at": "2026-11-02",
+        "retail_pricing_status": "approved_account_multiplier_plus_0_20",
+        "retail_account_multiplier": 0.7,
+        "retail_markup_cny": null
+      }
+    },
+    {
+      "id": "ys-deepseek-v4.1-flash",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "75eed172003560246de32772b686389d5bd22a033811d9100bebcc98b4944207",
+      "response_sha256": "239f8393645428e27a47f9eeff134a779f630b1ccfa4b1621eb35a2d46075996",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-mimo-v2.6-pro",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "803cb89a5a0cf5acb1e457d6c1e48fc82ca1d0b5a661791b2bad40d2d1d27aad",
+      "response_sha256": "24c9a208107c07c920d48ee36dd9443556784828e3af8e9be24a2d21798cd0bc",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-kimi-k3.1-pro",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "7093020f115c6f5d05f473d0e243252bf4f6913d29a24b781e36fd800b2885fd",
+      "response_sha256": "c30abe99f3d58b4720a3b5c06bc2548d085ed32848bb94cd161568918fd5abde",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-deepseek-v4-pro",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "0937aab37ae637b1393dbd09c55968b1fad08dade665e1351ec1fc96f29071de",
+      "response_sha256": "e4b4ef3e34dd466b1342c6a490bac3e4c1a6970f0ff5547fb21a8e4d5983e6e1",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-step-5-preview",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "3dd641a1aaacced411546190654d0aa5115da932b22dc3cef73b4e5ad0133a3e",
+      "response_sha256": "eaaee1883cf82a5ce9682876574991d2526fa0b658a29d1319d469606b822d84",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-hy3",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "32e39b241612d403a421f208ff71516f1898b89bc3e5c0908549e9a7dce651fd",
+      "response_sha256": "4826577f4a0bb577295defeb7e0b7f38eef6ee014a547dfdf0841d6c1720e3a9",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-gpt-6-astra",
+      "checked_at": "2026-11-02",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "597640655239f08ea50049477808d66ed2370e1b62f25182b5af79c41b461f6d",
+      "response_sha256": "23c0672645658688ef13d152c0ef057f3ed00f3f93775e063bbf63db2ad26bb8",
+      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    }
+  ]
+}

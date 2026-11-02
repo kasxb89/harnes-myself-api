@@ -56,7 +56,7 @@ func Snapshot() ([]Quote, error) {
 			return nil, err
 		}
 		source := fmt.Sprintf("https://codebloom.club/api/pricing ; account multiplier %g applied once; upstream expression: %s ; cost conditions: %s ; retail policy: %s, approved %s ; %s", model.AccountMultiplier, model.BaseBillingExpression, conditions, model.RetailPricingStatus, model.RetailCheckedAt, strings.Join(model.CostNotes, "; "))
-		snapshot.Quotes = append(snapshot.Quotes, Quote{ModelName: model.ID, Name: model.Name, Provider: "CodeBloom", Basis: model.CostBasis, CheckedAt: model.CheckedAt, RetailCheckedAt: model.RetailCheckedAt, Source: source, Currency: model.Currency, Prices: prices})
+		snapshot.Quotes = append(snapshot.Quotes, Quote{ModelName: model.ID, Name: "qq-" + model.UpstreamID, Provider: "CodeBloom", Basis: model.CostBasis, CheckedAt: model.CheckedAt, RetailCheckedAt: model.RetailCheckedAt, Source: source, Currency: model.Currency, Prices: prices})
 	}
 	return snapshot.Quotes, nil
 }
