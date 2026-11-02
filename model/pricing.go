@@ -396,7 +396,7 @@ func updatePricing() {
 			}
 		}
 		if candidate, ok := codebloom.Lookup(model); ok {
-			pricing.Kind, pricing.DisplayName = candidate.Kind, candidate.Name
+			pricing.Kind, pricing.DisplayName = candidate.Kind, ClientModelDisplayName(model)
 			pricing.Parameters = codebloom.ClientParameters(model)
 			pricing.RetailPriceRows = codebloom.ClientPrices(model)
 		}

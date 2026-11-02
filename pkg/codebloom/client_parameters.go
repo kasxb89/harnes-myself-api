@@ -39,11 +39,14 @@ func ClientParameters(id string) map[string]any {
 				reasoning, mode = "supported", "automatic"
 			}
 			return map[string]any{"type": "object", "properties": map[string]any{}, "x-model-kind": "text", "x-text-capabilities": map[string]any{
-				"schema_version": 2, "tools": true, "vision": true, "reasoning": m.ReasoningObserved, "stream": true,
+				"schema_version": 2, "revision": "codebloom-live-20261102", "checked_at": "2026-11-02", "tools": true, "vision": true, "reasoning": m.ReasoningObserved, "stream": true,
 				"verification":     map[string]string{"tools": "supported", "vision": "supported", "reasoning": reasoning},
 				"input_modalities": []string{"text", "image"}, "reasoning_mode": mode,
-				"reasoning_controls": map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
-				"operational_status": "available", "default_output_tokens": 8192, "default_output_tokens_source": "gateway_policy",
+				"tools_config":            map[string]any{"protocol": "openai-chat", "roundtrip_verified": true, "verified_tool_choices": []string{"function", "none"}, "parallel_calls": "unverified"},
+				"vision_config":           map[string]any{"verified_transports": []string{"data_url"}, "verified_mime_types": []string{"image/png"}, "billing": "input_tokens"},
+				"reasoning_omit_behavior": "provider_default",
+				"reasoning_controls":      map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false},
+				"operational_status":      "available", "default_output_tokens": 8192, "default_output_tokens_source": "gateway_policy",
 				"native_max_input_tokens": nil, "native_max_output_tokens": nil,
 			}}
 		}

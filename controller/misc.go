@@ -44,6 +44,7 @@ func GetStatus(c *gin.Context) {
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
 	clientModelConfig := model.CurrentClientModelConfig()
 	clientModelPresentation := model.CurrentClientModelPresentation()
+	clientMediaDefaults := model.CurrentClientMediaDefaults()
 	customerService := model.PublicCustomerService()
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
@@ -77,7 +78,7 @@ func GetStatus(c *gin.Context) {
 		},
 		"desktop_update":            system_setting.GetDesktopUpdateStatus(),
 		"client_model_config":       clientModelConfig,
-		"client_media_defaults":     model.CurrentClientMediaDefaults(),
+		"client_media_defaults":     clientMediaDefaults,
 		"client_model_presentation": clientModelPresentation,
 		"client_activity_workload": gin.H{
 			"schema_version":             1,

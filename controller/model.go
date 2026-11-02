@@ -372,9 +372,16 @@ func ListModels(c *gin.Context, modelType int) {
 					c.AbortWithStatus(http.StatusServiceUnavailable)
 					return
 				}
-				value["kind"], value["display_name"] = candidate.Kind, candidate.Name
+				value["kind"], value["display_name"] = candidate.Kind, model.ClientModelDisplayName(entry.Id)
 				parameters := codebloom.ClientParameters(entry.Id)
-				if candidate.Kind == "image" {
+				if candidate.Kind == "text" {
+					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
+					parameters, err = service.WithEffectiveTextCatalogCapacity(entry.Id, parameters, capacity)
+					if err != nil {
+						c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
+						return
+					}
+				} else if candidate.Kind == "image" {
 					parameters = model.WithMediaClientConcurrencyHint(parameters, "codebloom-image", entry.Id, candidate.Kind)
 				}
 				value["parameters"] = parameters

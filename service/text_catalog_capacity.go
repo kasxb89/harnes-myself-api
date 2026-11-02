@@ -16,8 +16,16 @@ import (
 // not a separately measured supplier input maximum.
 func WithEffectiveTextCatalogCapacity(id string, parameters map[string]any, capacity model.EffectiveModelCapacity) (map[string]any, error) {
 	approved, ok := ycapi.Lookup(id)
+	fallbackOutput := 8192 // User-approved product default; never a supplier maximum.
+	codeBloomText := false
 	if !ok || approved.Kind != "text" {
-		return parameters, nil
+		candidate, found := codebloom.Lookup(id)
+		if !found || candidate.Kind != "text" || !candidate.ActivationReady {
+			return parameters, nil
+		}
+		codeBloomText = true
+	} else {
+		fallbackOutput = approved.MaxOutputTokens
 	}
 	if capacity.ContextWindow == nil || *capacity.ContextWindow <= 0 || capacity.MaxOutputTokens == nil || *capacity.MaxOutputTokens <= 0 {
 		return nil, errors.New("effective text capacity is unavailable")
@@ -35,10 +43,14 @@ func WithEffectiveTextCatalogCapacity(id string, parameters map[string]any, capa
 	text["max_output_tokens"] = *capacity.MaxOutputTokens
 	text["default_output_tokens"] = *capacity.MaxOutputTokens
 	text["default_output_tokens_source"] = "gateway_policy"
-	text["fallback_output_tokens"] = approved.MaxOutputTokens
+	text["fallback_output_tokens"] = fallbackOutput
 	text["fallback_output_tokens_source"] = "user_approved_product_budget"
 	text["output_limit_source"] = "gateway_policy"
 	text["native_max_output_tokens"] = nil
+	if codeBloomText {
+		text["context_window_source"] = "gateway_policy"
+		text["native_context_window"] = nil
+	}
 	copy["x-text-capabilities"] = text
 	return copy, nil
 }
@@ -70,8 +82,15 @@ func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string) ([]
 			} else {
 				item.Parameters = model.WithMediaClientConcurrencyHint(item.Parameters, "ycapi", item.ModelName, approved.Kind)
 			}
-		} else if candidate, ok := codebloom.Lookup(item.ModelName); ok && candidate.Kind == "image" {
-			item.Parameters = model.WithMediaClientConcurrencyHint(item.Parameters, "codebloom-image", item.ModelName, candidate.Kind)
+		} else if candidate, ok := codebloom.Lookup(item.ModelName); ok {
+			if candidate.Kind == "text" {
+				item.Parameters, err = WithEffectiveTextCatalogCapacity(item.ModelName, item.Parameters, capacity)
+				if err != nil {
+					return nil, err
+				}
+			} else if candidate.Kind == "image" {
+				item.Parameters = model.WithMediaClientConcurrencyHint(item.Parameters, "codebloom-image", item.ModelName, candidate.Kind)
+			}
 		}
 		result = append(result, item)
 	}
