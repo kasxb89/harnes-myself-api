@@ -29,6 +29,7 @@ import { Field, FieldGroup } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
+import { getModelDisplayName } from '@/lib/model-display-name'
 
 import {
   clientModelRankSchema,
@@ -76,34 +77,38 @@ export function ModelOrderEditor(props: ModelOrderEditorProps) {
       id: 'model',
       header: t('Model'),
       cellClassName: 'whitespace-normal',
-      cell: (row) => (
-        <div className='flex min-w-0 flex-col gap-1'>
-          <span className='break-all'>{row.id}</span>
-          {row.displayName !== row.id && (
-            <span className='text-muted-foreground break-words'>
-              {row.displayName}
-            </span>
-          )}
-          <div className='flex flex-wrap gap-1'>
-            {row.id === props.defaultChatModel && (
-              <Badge
-                variant='secondary'
-                className='h-auto max-w-full text-left whitespace-normal'
-              >
-                {t('Default chat model')}
-              </Badge>
+      cell: (row) => {
+        const displayName = getModelDisplayName(row.id, row.displayName)
+        const secondaryName = displayName === row.id ? row.displayName : row.id
+        return (
+          <div className='flex min-w-0 flex-col gap-1'>
+            <span className='break-all'>{displayName}</span>
+            {secondaryName !== displayName && (
+              <span className='text-muted-foreground break-words'>
+                {secondaryName}
+              </span>
             )}
-            {!row.available && (
-              <Badge
-                variant='outline'
-                className='h-auto max-w-full text-left whitespace-normal'
-              >
-                {t('Unavailable')}
-              </Badge>
-            )}
+            <div className='flex flex-wrap gap-1'>
+              {row.id === props.defaultChatModel && (
+                <Badge
+                  variant='secondary'
+                  className='h-auto max-w-full text-left whitespace-normal'
+                >
+                  {t('Default chat model')}
+                </Badge>
+              )}
+              {!row.available && (
+                <Badge
+                  variant='outline'
+                  className='h-auto max-w-full text-left whitespace-normal'
+                >
+                  {t('Unavailable')}
+                </Badge>
+              )}
+            </div>
           </div>
-        </div>
-      ),
+        )
+      },
     },
     {
       id: 'rank',

@@ -4876,6 +4876,7 @@
     "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.": "Модель чата не задана. Клиент с политикой платформы выбирает первую доступную аккаунту модель в заданном порядке.",
     "No platform image model is set. Use the first model in the account image catalog.": "Модель изображений не задана: используется первая доступная модель в каталоге аккаунта.",
     "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.": "Модель видео не задана: используется MiniMax-H3 и 768P, если разрешение не указано.",
+    "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.": "Модель видео не задана: используется {{model}} и 768P, если разрешение не указано.",
     "No plugins available for binding": "Нет доступных для привязки плагинов",
     "No preceding rule matched": "Ни одно предыдущее правило не совпало",
     "No preference": "Без предпочтений",

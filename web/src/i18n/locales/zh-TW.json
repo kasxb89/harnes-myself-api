@@ -4876,6 +4876,7 @@
     "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.": "平台尚未指定聊天型號。跟隨平台策略的用戶端依後台排序，使用該帳號可用的第一款聊天模型。",
     "No platform image model is set. Use the first model in the account image catalog.": "平台尚未指定圖片型號，使用該帳號圖片目錄中第一個可用模型。",
     "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.": "平台尚未指定影片型號，沿用 MiniMax-H3；未指定解析度時使用 768P。",
+    "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.": "平台尚未指定影片型號，沿用 {{model}}；未指定解析度時使用 768P。",
     "No plugins available for binding": "目前沒有可綁定的外掛",
     "No preceding rule matched": "前面的規則均未命中",
     "No preference": "無偏好",

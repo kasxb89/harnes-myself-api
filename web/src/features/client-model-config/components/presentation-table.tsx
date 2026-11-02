@@ -24,6 +24,7 @@ import {
 } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { getModelDisplayName } from '@/lib/model-display-name'
 
 import type { ClientModelOption, ClientModelPresentationEntry } from '../types'
 
@@ -49,26 +50,36 @@ export function PresentationTable(props: PresentationTableProps) {
       displayName: catalog.get(id)?.display_name ?? id,
     }))
     .filter((row) =>
-      `${row.id} ${row.displayName}`.toLowerCase().includes(search)
+      `${row.id} ${row.displayName} ${getModelDisplayName(row.id, row.displayName)}`
+        .toLowerCase()
+        .includes(search)
     )
   const columns: StaticDataTableColumn<PresentationRow>[] = [
     {
       id: 'model',
       header: t('Model'),
       cellClassName: 'whitespace-normal',
-      cell: (row) => (
-        <div className='flex min-w-0 flex-col gap-1'>
-          <span className='break-all'>{row.id}</span>
-          {!row.available && (
-            <Badge
-              variant='outline'
-              className='h-auto max-w-full whitespace-normal'
-            >
-              {t('Unavailable')}
-            </Badge>
-          )}
-        </div>
-      ),
+      cell: (row) => {
+        const displayName = getModelDisplayName(row.id, row.displayName)
+        return (
+          <div className='flex min-w-0 flex-col gap-1'>
+            <span className='break-all'>{displayName}</span>
+            {displayName !== row.id && (
+              <span className='text-muted-foreground break-words'>
+                {row.id}
+              </span>
+            )}
+            {!row.available && (
+              <Badge
+                variant='outline'
+                className='h-auto max-w-full whitespace-normal'
+              >
+                {t('Unavailable')}
+              </Badge>
+            )}
+          </div>
+        )
+      },
     },
     {
       id: 'presentation',

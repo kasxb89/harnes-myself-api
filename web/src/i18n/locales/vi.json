@@ -4876,6 +4876,7 @@
     "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.": "Chưa đặt mô hình trò chuyện. Ứng dụng theo chính sách nền tảng sẽ dùng mô hình khả dụng đầu tiên theo thứ tự đã đặt.",
     "No platform image model is set. Use the first model in the account image catalog.": "Chưa đặt mô hình ảnh; dùng mô hình khả dụng đầu tiên trong danh mục ảnh của tài khoản.",
     "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.": "Chưa đặt mô hình video; dùng MiniMax-H3, mặc định 768P khi chưa chọn độ phân giải.",
+    "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.": "Chưa đặt mô hình video; dùng {{model}}, mặc định 768P khi chưa chọn độ phân giải.",
     "No plugins available for binding": "Không có plugin để liên kết",
     "No preceding rule matched": "Không khớp quy tắc nào trước đó",
     "No preference": "Không có ưu tiên",

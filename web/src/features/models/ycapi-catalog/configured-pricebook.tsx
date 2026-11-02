@@ -37,6 +37,7 @@ import { shanghaiDateTime } from '@/features/model-profits/lib/period'
 import { ModelPriceCell } from '@/features/pricing/components/model-price-cell'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
+import { getModelDisplayName } from '@/lib/model-display-name'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -259,7 +260,7 @@ export function ConfiguredModelPricebook() {
         if (stateFilter === 'not_enabled' && row.state === 'enabled') {
           return false
         }
-        return `${row.model_name} ${row.approved_quote?.name ?? ''} ${row.channel_name} ${row.upstream_host} ${row.upstream_host === 'metaso.cn' ? t('Metaso direct') : ''}`
+        return `${row.model_name} ${getModelDisplayName(row.model_name, row.display_name, row.approved_quote?.name ?? row.model_name)} ${row.channel_name} ${row.upstream_host} ${row.upstream_host === 'metaso.cn' ? t('Metaso direct') : ''}`
           .toLowerCase()
           .includes(search.trim().toLowerCase())
       }),
@@ -285,19 +286,23 @@ export function ConfiguredModelPricebook() {
       accessorKey: 'model_name',
       header: t('Model Name'),
       meta: { mobileTitle: true },
-      cell: ({ row }) => (
-        <div className='max-w-64 space-y-1 break-all'>
-          <strong>
-            {row.original.approved_quote?.name ?? row.original.model_name}
-          </strong>
-          {row.original.approved_quote &&
-            row.original.approved_quote.name !== row.original.model_name && (
+      cell: ({ row }) => {
+        const displayName = getModelDisplayName(
+          row.original.model_name,
+          row.original.display_name,
+          row.original.approved_quote?.name ?? row.original.model_name
+        )
+        return (
+          <div className='max-w-64 space-y-1 break-all'>
+            <strong>{displayName}</strong>
+            {displayName !== row.original.model_name && (
               <div className='text-muted-foreground text-xs'>
                 {row.original.model_name}
               </div>
             )}
-        </div>
-      ),
+          </div>
+        )
+      },
     },
     {
       id: 'upstream',
@@ -567,9 +572,13 @@ export function ConfiguredModelPricebook() {
           if (!open) setDetails(null)
         }}
         title={
-          details?.row.approved_quote?.name ??
-          details?.row.model_name ??
-          t('Procurement price')
+          details
+            ? getModelDisplayName(
+                details.row.model_name,
+                details.row.display_name,
+                details.row.approved_quote?.name ?? details.row.model_name
+              )
+            : t('Procurement price')
         }
         description={t(
           details?.kind === 'effective'

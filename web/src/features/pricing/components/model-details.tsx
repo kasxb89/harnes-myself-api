@@ -57,6 +57,7 @@ import {
 } from '@/features/performance-metrics/lib/format'
 import { PluginIcon } from '@/features/task-plugins/components/plugin-icon'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import { getModelDisplayName } from '@/lib/model-display-name'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -610,7 +611,7 @@ function ModelHeader(props: { model: PricingModel }) {
       <div className='flex items-center gap-2.5'>
         {modelIcon}
         <h1 className='font-mono text-xl font-bold tracking-tight sm:text-2xl'>
-          {model.model_name}
+          {getModelDisplayName(model.model_name, model.display_name)}
         </h1>
         <CopyButton
           value={model.model_name || ''}
@@ -1593,7 +1594,12 @@ export function ModelDetailsDrawer(props: ModelDetailsDrawerProps) {
         )}
       >
         <SheetHeader className='sr-only'>
-          <SheetTitle>{props.model.model_name}</SheetTitle>
+          <SheetTitle>
+            {getModelDisplayName(
+              props.model.model_name,
+              props.model.display_name
+            )}
+          </SheetTitle>
           <SheetDescription>{t('Model details')}</SheetDescription>
         </SheetHeader>
         <div className='flex-1 overflow-y-auto px-4 pt-11 pb-5 sm:px-6 sm:pt-12 sm:pb-6'>

@@ -23,6 +23,7 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { SettingsCard } from '@/features/system-settings/components/settings-card'
+import { getModelDisplayName } from '@/lib/model-display-name'
 
 import { getClientMediaDefaults } from '../api'
 import type { ClientModelConfig } from '../types'
@@ -92,9 +93,10 @@ export function ClientDefaultsSummary(props: { config: ClientModelConfig }) {
               <div className='min-w-0 space-y-1'>
                 <dt className='font-medium'>{t('Default video model')}</dt>
                 <dd className='break-words'>
-                  {media.data.default_video_model ||
+                  {getModelDisplayName(media.data.default_video_model) ||
                     t(
-                      'No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.'
+                      'No platform video model is set. Use {{model}}, with 768P when no resolution is specified.',
+                      { model: getModelDisplayName('MiniMax-H3') }
                     )}
                 </dd>
               </div>

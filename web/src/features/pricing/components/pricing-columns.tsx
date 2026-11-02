@@ -27,6 +27,7 @@ import {
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import { getModelDisplayName } from '@/lib/model-display-name'
 
 import { parseTags } from '../lib/filters'
 import type { PricingModel } from '../types'
@@ -62,7 +63,7 @@ export function usePricingColumns(
           <div className='flex max-w-full min-w-0 items-center gap-2'>
             {modelIcon}
             <span className='truncate font-mono text-sm font-medium'>
-              {model.model_name}
+              {getModelDisplayName(model.model_name, model.display_name)}
             </span>
           </div>
         )

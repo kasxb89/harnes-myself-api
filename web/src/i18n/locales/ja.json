@@ -4876,6 +4876,7 @@
     "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.": "チャットモデルは未指定です。プラットフォームの方針に従うクライアントは、設定順で最初に利用可能なモデルを使います。",
     "No platform image model is set. Use the first model in the account image catalog.": "画像モデルは未指定です。アカウントの画像一覧で最初に利用可能なモデルを使います。",
     "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.": "動画モデルは未指定です。MiniMax-H3 を使い、解像度の指定がなければ 768P にします。",
+    "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.": "動画モデルは未指定です。{{model}} を使い、解像度の指定がなければ 768P にします。",
     "No plugins available for binding": "紐付け可能なプラグインがありません",
     "No preceding rule matched": "先行するルールに一致しない場合",
     "No preference": "設定なし",

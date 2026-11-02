@@ -25,6 +25,7 @@ type configuredPricebookRow struct {
 	ConfiguredGroups []string                   `json:"configured_groups"`
 	Expressions      map[string]string          `json:"expressions"`
 	ModelName        string                     `json:"model_name"`
+	DisplayName      string                     `json:"display_name"`
 	ChannelID        int                        `json:"channel_id"`
 	ChannelName      string                     `json:"channel_name"`
 	ChannelType      int                        `json:"channel_type"`
@@ -213,6 +214,7 @@ func GetConfiguredModelPricebook(c *gin.Context) {
 	}
 	for i := range rows {
 		row := &rows[i]
+		row.DisplayName = model.ClientModelDisplayName(row.ModelName)
 		entry := entries[row.ModelName]
 		quote := quoteByName[row.ModelName]
 		if quote != nil && (quote.Provider != "Metaso" || row.ChannelID == 0 || row.UpstreamHost == "metaso.cn") && (quote.Provider != "CodeBloom" || row.ChannelID == 0 || row.UpstreamHost == "codebloom.club") {

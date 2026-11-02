@@ -48,6 +48,12 @@ type ClientModelCandidate struct {
 	VideoEligible bool   `json:"video_eligible"`
 }
 
+// ClientModelDisplayName returns a presentation label without changing the
+// canonical model ID used for routing, pricing or stored tasks.
+func ClientModelDisplayName(id string) string {
+	return modelDisplayName(id)
+}
+
 // modelDisplayName changes presentation only; routing and stored identities
 // continue to use the exact model ID.
 func modelDisplayName(id string) string {

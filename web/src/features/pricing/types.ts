@@ -59,6 +59,7 @@ export type PricingModel = {
   billing_plugin_variants?: BillingPluginVariant[]
   id: number
   model_name: string
+  display_name?: string
   description?: string
   icon?: string
   vendor_id?: number

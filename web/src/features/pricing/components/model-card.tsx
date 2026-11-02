@@ -24,6 +24,7 @@ import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { getLobeIcon } from '@/lib/lobe-icon'
+import { getModelDisplayName } from '@/lib/model-display-name'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -283,7 +284,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             className='line-clamp-2 font-mono text-[15px] leading-snug font-semibold [overflow-wrap:anywhere]'
             title={props.model.model_name}
           >
-            {props.model.model_name}
+            {getModelDisplayName(
+              props.model.model_name,
+              props.model.display_name
+            )}
           </h3>
           {props.model.vendor_name && (
             <p

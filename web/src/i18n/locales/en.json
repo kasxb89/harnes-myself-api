@@ -4876,6 +4876,7 @@
     "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.": "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.",
     "No platform image model is set. Use the first model in the account image catalog.": "No platform image model is set. Use the first model in the account image catalog.",
     "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.": "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.",
+    "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.": "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.",
     "No plugins available for binding": "No plugins available for binding",
     "No preceding rule matched": "No preceding rule matched",
     "No preference": "No preference",

@@ -4876,6 +4876,7 @@
     "No platform chat model is set. Clients following platform policy use the first available chat model in the configured order.": "Aucun modèle de discussion défini. Les clients suivant la plateforme choisissent le premier modèle accessible dans l’ordre configuré.",
     "No platform image model is set. Use the first model in the account image catalog.": "Aucun modèle d’image défini : utiliser le premier modèle accessible du catalogue du compte.",
     "No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.": "Aucun modèle vidéo défini : utiliser MiniMax-H3, en 768P si la résolution est omise.",
+    "No platform video model is set. Use {{model}}, with 768P when no resolution is specified.": "Aucun modèle vidéo défini : utiliser {{model}}, en 768P si la résolution est omise.",
     "No plugins available for binding": "Aucune extension disponible à associer",
     "No preceding rule matched": "Aucune règle précédente ne correspond",
     "No preference": "Aucune préférence",

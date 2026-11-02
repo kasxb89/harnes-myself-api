@@ -93,6 +93,7 @@ const pricebookSchema = z.object({
   rows: z.array(
     z.object({
       model_name: z.string(),
+      display_name: z.string().optional(),
       channel_id: z.number().int().nonnegative(),
       state: z.enum(['enabled', 'disabled', 'not_configured', 'excluded']),
       origin: z.string().default('channel'),

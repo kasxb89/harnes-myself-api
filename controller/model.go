@@ -380,14 +380,17 @@ func ListModels(c *gin.Context, modelType int) {
 				value["parameters"] = parameters
 				value["retail_price_rows"] = codebloom.ClientPrices(entry.Id)
 				publicModels = append(publicModels, value)
-			} else if entry.Id == "MiniMax-H3" && h3Parameters != nil {
+			} else if entry.Id == "MiniMax-H3" {
 				data, _ := common.Marshal(entry)
 				var value map[string]any
 				if common.Unmarshal(data, &value) != nil {
 					c.AbortWithStatus(http.StatusServiceUnavailable)
 					return
 				}
-				value["kind"], value["parameters"] = "video", h3Parameters
+				value["display_name"] = model.ClientModelDisplayName(entry.Id)
+				if h3Parameters != nil {
+					value["kind"], value["parameters"] = "video", h3Parameters
+				}
 				publicModels = append(publicModels, value)
 			} else {
 				publicModels = append(publicModels, entry)

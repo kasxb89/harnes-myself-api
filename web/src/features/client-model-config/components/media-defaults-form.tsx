@@ -40,6 +40,7 @@ import {
 import { FormDirtyIndicator } from '@/features/system-settings/components/form-dirty-indicator'
 import { SettingsCard } from '@/features/system-settings/components/settings-card'
 import { SettingsPageFormActions } from '@/features/system-settings/components/settings-page-context'
+import { getModelDisplayName } from '@/lib/model-display-name'
 
 import { getClientMediaDefaults, saveClientMediaDefaults } from '../api'
 import type { ClientModelOption } from '../types'
@@ -100,7 +101,7 @@ export function ClientMediaDefaultsSection(props: {
       label: 'Default video model',
       eligible: 'video_eligible',
       fallback:
-        'No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.',
+        'No platform video model is set. Use {{model}}, with 768P when no resolution is specified.',
     },
   ] as const
   const invalid = fields.some(
@@ -174,7 +175,11 @@ export function ClientMediaDefaultsSection(props: {
                           .filter((m) => m[eligible] === true)
                           .map((m) => ({
                             value: m.id,
-                            label: m.display_name || m.id,
+                            label: getModelDisplayName(
+                              m.id,
+                              m.display_name,
+                              m.display_name || m.id
+                            ),
                             description: m.id,
                           })),
                       ]}
@@ -185,7 +190,9 @@ export function ClientMediaDefaultsSection(props: {
                     />
                   </FormControl>
                   {field.value === '' && (
-                    <FormDescription>{t(fallback)}</FormDescription>
+                    <FormDescription>
+                      {t(fallback, { model: getModelDisplayName('MiniMax-H3') })}
+                    </FormDescription>
                   )}
                   <FormMessage />
                 </FormItem>
