@@ -166,7 +166,8 @@ func TestImageEvidenceNeverExpandsNameIntoParameters(t *testing.T) {
 	}
 	assert.Equal(t, "approved_image_cost_plus_0_10", chat.RetailPricingStatus)
 	assert.NotContains(t, chat.PendingReasons, "retail_price_pending")
-	assert.False(t, chat.ActivationReady, "a known price is not a qualified route")
+	assert.True(t, chat.ActivationReady, "this exact route has separate live generation, billing, decode and retained-handler proofs")
+	assert.False(t, m.ActivationReady, "a different image's known price and synthetic handler fixture cannot qualify its route")
 }
 
 func TestSnapshotCopiesCannotMutateLaterRequests(t *testing.T) {

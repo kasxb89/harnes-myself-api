@@ -15,6 +15,36 @@
       "retained_protocol_sha256": "ee4f4980a363af65b7530b0b6e9cfe0dfe57ca84a2bd9ea0ce308edbb4a18354",
       "width": 768,
       "height": 1152
+    },
+    {
+      "id": "ys-grok-imagine-image",
+      "upstream_id": "grok-imagine-image",
+      "checked_at": "2026-11-02",
+      "generation": "verified",
+      "billable_usage": "verified",
+      "image_decoded": true,
+      "request_sha256": "38dc4a70e827e41017e0e2d8aad8dc7e84c976a451794af556fe869fe54843a6",
+      "response_sha256": "7dcc0c70c9e82f9853d7d73e26566b66fdb87d852867f896686749877c93c278",
+      "image_sha256": "cad75605e881863a7b6cf6e97bfa6f7c2b90e4484b3e05c69559392865053af2",
+      "meter_evidence_sha256": "8dc7d0cd31d709d3da2478b702024a63cd44584a1dde5edf1d48b8434c4b59c5",
+      "width": 768,
+      "height": 1152,
+      "retained_protocol_sha256": "18cecf3c0c1bbe9339f4132120631d2e68a4255ea6757dfbdf364b383ff8f690"
+    },
+    {
+      "id": "ys-gemini-3.1-flash-image-preview",
+      "upstream_id": "gemini-3.1-flash-image-preview",
+      "checked_at": "2026-11-02",
+      "generation": "verified",
+      "billable_usage": "verified",
+      "image_decoded": true,
+      "request_sha256": "70eafb31b026b21a7e9deb8528bed1b7b9c82bc9eb2a6ea8ad048aa5df8e417b",
+      "response_sha256": "4c8eed26cd6715e268a3684bfa3ecd45300ff00ab4d32b54bd14bc6ca0da07e0",
+      "image_sha256": "837210f2ae3aedc365d10b346c2918dcde8f5cd8a10e07528956e41e92fbc0fd",
+      "meter_evidence_sha256": "6eebf27d045df7603822ab24914023fea7b092f9b6a4fbbf73ac28edba88d86a",
+      "width": 1408,
+      "height": 768,
+      "retained_protocol_sha256": "e983cb541497ee5e8880e02706ef23c13fd14ad429043a1940e4a9cae4525028"
     }
   ]
 }
