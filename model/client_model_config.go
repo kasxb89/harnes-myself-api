@@ -52,6 +52,8 @@ type ClientModelCandidate struct {
 // continue to use the exact model ID.
 func modelDisplayName(id string) string {
 	switch id {
+	case "MiniMax-H3":
+		return "mt-MiniMax-H3"
 	case "lec-mj-seedance-2-5-cd-720p":
 		return "Seedance 2.5 · 720p · 30秒（线路1）"
 	case "sd-25-900-2":
