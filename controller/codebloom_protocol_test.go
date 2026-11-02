@@ -130,6 +130,56 @@ func TestCodeBloomPendingCatalogFenceDatabase(t *testing.T) {
 	assert.Zero(t, count)
 	require.NoError(t, db.Model(&model.Task{}).Count(&count).Error)
 	assert.Zero(t, count)
+
+	// The released client consumes single-image retail rows. Only the three
+	// qualified n=1 routes may expose this equivalent display unit; the source
+	// snapshot and billing metadata must retain their per-request meaning.
+	retail := map[string]string{
+		"ys-grok-imagine-image-2.0":         "0.25",
+		"ys-grok-imagine-image":             "0.2125",
+		"ys-gemini-3.1-flash-image-preview": "0.25",
+	}
+	for id := range retail {
+		require.NoError(t, db.Create(&model.Ability{Group: "default", Model: id, ChannelId: channel.Id, Enabled: true}).Error)
+	}
+	model.InvalidatePricingCache()
+	cachedBefore, err := common.Marshal(model.GetPricing())
+	require.NoError(t, err)
+	recorder = httptest.NewRecorder()
+	ctx, _ = gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/pricing", nil)
+	GetPricing(ctx)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &envelope))
+	require.True(t, envelope.Success)
+	require.Len(t, envelope.Data, len(retail)+1, "pending candidates remain hidden")
+	for _, row := range envelope.Data {
+		price, qualified := retail[row.ModelName]
+		if !qualified {
+			assert.Equal(t, "preserved-chat", row.ModelName)
+			assert.Empty(t, row.RetailPriceRows)
+			continue
+		}
+		assert.Equal(t, []map[string]any{{
+			"params":     map[string]any{"mode": "text-to-image", "count": float64(1)},
+			"retail_cny": price, "unit": "CNY / image",
+		}}, row.RetailPriceRows)
+		source := codebloom.ClientPrices(row.ModelName)
+		require.Len(t, source, 1)
+		assert.Equal(t, "CNY / request", source[0]["unit"])
+		assert.Equal(t, "request", source[0]["direction"])
+		assert.Equal(t, price, source[0]["retail_cny"])
+	}
+	cachedAfter, err := common.Marshal(model.GetPricing())
+	require.NoError(t, err)
+	assert.JSONEq(t, string(cachedBefore), string(cachedAfter), "public display must not mutate cached billing metadata")
+	if output := os.Getenv("TEST_CODEBLOOM_PUBLIC_PRICING_OUTPUT"); output != "" {
+		file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		require.NoError(t, err)
+		_, err = file.Write(recorder.Body.Bytes())
+		require.NoError(t, err)
+		require.NoError(t, file.Close())
+	}
 }
 
 // The real retry host and production TaskAdaptor see a post-send transport

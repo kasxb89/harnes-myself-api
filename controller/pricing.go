@@ -96,6 +96,22 @@ func GetPricing(c *gin.Context) {
 			delete(groupRatio, group)
 		}
 	}
+	for i := range pricing {
+		switch pricing[i].ModelName {
+		case "ys-grok-imagine-image-2.0", "ys-grok-imagine-image", "ys-gemini-3.1-flash-image-preview":
+			if len(pricing[i].RetailPriceRows) != 1 {
+				continue
+			}
+			// These qualified routes enforce n=1 and retain one image. Publish
+			// the equivalent per-image retail display without changing the
+			// source's per-request account cost or cached pricing rows.
+			pricing[i].RetailPriceRows = []map[string]any{{
+				"params":     map[string]any{"mode": "text-to-image", "count": 1},
+				"retail_cny": pricing[i].RetailPriceRows[0]["retail_cny"],
+				"unit":       "CNY / image",
+			}}
+		}
+	}
 
 	c.JSON(200, gin.H{
 		"success":            true,
