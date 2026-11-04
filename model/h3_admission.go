@@ -547,7 +547,7 @@ func releaseH3Admission(tx *gorm.DB, admission *H3Admission) error {
 }
 
 func releaseH3Capacity(tx *gorm.DB, admission *H3Admission, now int64) error {
-	result := tx.Model(&H3Admission{}).Where("id = ? AND capacity_released_at = 0", admission.ID).Update("capacity_released_at", now)
+	result := tx.Model(&H3Admission{}).Where("id = ? AND capacity_released_at = 0", admission.ID).UpdateColumn("capacity_released_at", now)
 	if result.Error != nil || result.RowsAffected == 0 {
 		return result.Error
 	}

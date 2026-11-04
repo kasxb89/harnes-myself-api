@@ -107,9 +107,9 @@ func TestMediaCapacityExpiryDatabase(t *testing.T) {
 						sending, billing = created, "reserved"
 					}
 					if h3 {
-						require.NoError(t, db.Create(&H3Admission{ID: task.TaskID, TaskDBID: task.ID, ChannelID: 1, AccountID: "h3-expiry", State: state, BillingState: billing, CreatedAt: created, SendingAt: sending}).Error)
+						require.NoError(t, db.Create(&H3Admission{ID: task.TaskID, TaskDBID: task.ID, ChannelID: 1, AccountID: "h3-expiry", State: state, BillingState: billing, CreatedAt: created, SendingAt: sending, UpdatedAt: created}).Error)
 					} else {
-						require.NoError(t, db.Create(&MediaAdmission{ID: task.TaskID, TaskDBID: task.ID, ChannelID: 1, PoolID: "image-expiry", State: state, BillingState: billing, CreatedAt: created, SendingAt: sending}).Error)
+						require.NoError(t, db.Create(&MediaAdmission{ID: task.TaskID, TaskDBID: task.ID, ChannelID: 1, PoolID: "image-expiry", State: state, BillingState: billing, CreatedAt: created, SendingAt: sending, UpdatedAt: created}).Error)
 					}
 				}
 			}
@@ -121,6 +121,8 @@ func TestMediaCapacityExpiryDatabase(t *testing.T) {
 				require.NoError(t, db.Migrator().DropColumn(&H3Admission{}, "CapacityReleasedAt"))
 			}
 			beforeHash, err := historicalRowsHash(db.Model(&MediaAdmission{}).Select("*").Order("id"))
+			require.NoError(t, err)
+			beforeH3Hash, err := historicalRowsHash(db.Model(&H3Admission{}).Select("*").Order("id"))
 			require.NoError(t, err)
 			require.NoError(t, MigrateH3Admission(db))
 			require.NoError(t, MigrateH3Admission(db))
@@ -143,6 +145,12 @@ func TestMediaCapacityExpiryDatabase(t *testing.T) {
 			count, err := ExpireMediaCapacity(ctx, now)
 			require.NoError(t, err)
 			assert.Equal(t, 8, count)
+			expiredHash, err := historicalRowsHash(db.Model(&MediaAdmission{}).Select("*").Order("id"))
+			require.NoError(t, err)
+			assert.Equal(t, beforeHash, expiredHash, "expiry changes only the capacity marker, preserving financial evidence")
+			expiredH3Hash, err := historicalRowsHash(db.Model(&H3Admission{}).Select("*").Order("id"))
+			require.NoError(t, err)
+			assert.Equal(t, beforeH3Hash, expiredH3Hash)
 			count, err = ExpireMediaCapacity(ctx, now)
 			require.NoError(t, err)
 			assert.Zero(t, count, "repeated passes cannot release a slot twice")

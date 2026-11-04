@@ -1034,7 +1034,7 @@ func releaseMediaAdmission(tx *gorm.DB, admission *MediaAdmission) error {
 }
 
 func releaseMediaCapacity(tx *gorm.DB, admission *MediaAdmission, now int64) error {
-	result := tx.Model(&MediaAdmission{}).Where("id = ? AND capacity_released_at = 0", admission.ID).Update("capacity_released_at", now)
+	result := tx.Model(&MediaAdmission{}).Where("id = ? AND capacity_released_at = 0", admission.ID).UpdateColumn("capacity_released_at", now)
 	if result.Error != nil || result.RowsAffected == 0 {
 		return result.Error
 	}
