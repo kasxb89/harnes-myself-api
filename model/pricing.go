@@ -571,6 +571,9 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 			return nil
 		}
 		parameters := ycapi.ClientParameters(model)
+		if parameters != nil {
+			parameters["x-task-plugin-runtime"] = map[string]any{"key": key, "version": version, "api_version": 1}
+		}
 		if parameters != nil && version == "1.0.0" {
 			// Keep the old parameter contract, but never certify recovery for
 			// an installed override that predates the model-object parser.

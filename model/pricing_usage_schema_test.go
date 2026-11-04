@@ -24,7 +24,10 @@ func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
 			require.NotNil(t, parameters)
 			binding, ok := parameters["x-task-plugin"].(map[string]any)
 			require.True(t, ok)
-			assert.Equal(t, version, binding["version"])
+			assert.Equal(t, "1.0.0", binding["version"], "released 1104.1 clients require the unchanged wire contract")
+			runtime, ok := parameters["x-task-plugin-runtime"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, version, runtime["version"])
 			_, recovery := parameters["x-image-receipt-recovery"]
 			assert.Equal(t, version == "1.0.1", recovery, "old installed overrides cannot certify the fixed parser")
 		})
