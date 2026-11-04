@@ -1233,6 +1233,19 @@ func TestH3AdmissionSweepPreservesReservedAndSendingFences(t *testing.T) {
 	assert.Equal(t, model.H3Sending, fenced.State)
 	assert.Equal(t, sending.PrivateData.UpstreamTaskID, f.task(t, sending.TaskID).PrivateData.UpstreamTaskID)
 	assert.Equal(t, 2, f.occupied(t))
+	// The independent 30-minute capacity policy must run even when the older
+	// task-failure timeout is disabled. It never changes the durable send state.
+	constant.TaskTimeoutMinutes = 0
+	require.NoError(t, f.db.Model(&model.H3Admission{}).Where("id IN ?", []string{"task_h3_sweep_reserved", "task_h3_sweep_sending"}).Update("created_at", time.Now().Add(-31*time.Minute).Unix()).Error)
+	service.RunTaskPollingOnce(context.Background(), nil)
+	assert.Zero(t, f.occupied(t))
+	for _, state := range []string{model.H3Reserved, model.H3Sending} {
+		var admission model.H3Admission
+		require.NoError(t, f.db.Where("id = ?", "task_h3_sweep_"+state).First(&admission).Error)
+		assert.Equal(t, state, admission.State)
+		assert.Positive(t, admission.CapacityReleasedAt)
+		assert.Equal(t, "UNKNOWN", string(f.task(t, admission.ID).Status))
+	}
 	wallet, token := f.balance(t)
 	assert.Equal(t, 100000000, wallet)
 	assert.Equal(t, 100000000, token)

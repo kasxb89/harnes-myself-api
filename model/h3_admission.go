@@ -41,18 +41,19 @@ type H3Account struct {
 	UpdatedAt           int64  `json:"updated_at"`
 }
 
-// H3Admission is a durable send fence, not a time-expiring lease. No timer may
-// release sending/unknown work: the provider may still be rendering it.
+// The send fence survives capacity expiry so original provider work remains
+// queryable and cannot be resubmitted merely because its local slot expired.
 type H3Admission struct {
-	SendingAt    int64  `json:"-"`
-	ID           string `gorm:"primaryKey;type:varchar(191)" json:"-"`
-	TaskDBID     int64  `gorm:"uniqueIndex" json:"-"`
-	AccountID    string `gorm:"type:varchar(64);index" json:"-"`
-	ChannelID    int    `gorm:"index" json:"-"`
-	State        string `gorm:"type:varchar(20);index" json:"-"`
-	BillingState string `gorm:"type:varchar(24)" json:"-"`
-	CreatedAt    int64  `json:"-"`
-	UpdatedAt    int64  `json:"-"`
+	CapacityReleasedAt int64  `gorm:"not null;default:0" json:"-"`
+	SendingAt          int64  `json:"-"`
+	ID                 string `gorm:"primaryKey;type:varchar(191)" json:"-"`
+	TaskDBID           int64  `gorm:"uniqueIndex" json:"-"`
+	AccountID          string `gorm:"type:varchar(64);index" json:"-"`
+	ChannelID          int    `gorm:"index" json:"-"`
+	State              string `gorm:"type:varchar(20);index" json:"-"`
+	BillingState       string `gorm:"type:varchar(24)" json:"-"`
+	CreatedAt          int64  `json:"-"`
+	UpdatedAt          int64  `json:"-"`
 }
 
 func MigrateH3Admission(db *gorm.DB) error {
@@ -231,7 +232,7 @@ func ReconcileH3Account(ctx context.Context, accountID string) error {
 			}
 		}
 		var occupied int64
-		if err := tx.Model(&H3Admission{}).Where("account_id = ? AND state <> ?", account.ID, H3Released).Count(&occupied).Error; err != nil {
+		if err := tx.Model(&H3Admission{}).Where("account_id = ? AND state <> ? AND capacity_released_at = 0", account.ID, H3Released).Count(&occupied).Error; err != nil {
 			return err
 		}
 		return tx.Model(&H3Account{}).Where("id = ?", account.ID).Updates(map[string]any{"occupied": occupied, "reconciled": true, "updated_at": time.Now().Unix()}).Error
@@ -370,7 +371,8 @@ func SaveH3BillingReservation(ctx context.Context, task *Task) error {
 }
 
 func MarkH3Sending(ctx context.Context, id string) error {
-	result := DB.WithContext(ctx).Model(&H3Admission{}).Where("id = ? AND state = ? AND billing_state = ?", id, H3Reserved, "reserved").Updates(map[string]any{"state": H3Sending, "sending_at": time.Now().Unix(), "updated_at": time.Now().Unix()})
+	now := time.Now().Unix()
+	result := DB.WithContext(ctx).Model(&H3Admission{}).Where("id = ? AND state = ? AND billing_state = ? AND capacity_released_at = 0 AND created_at > ?", id, H3Reserved, "reserved", now-int64(MediaCapacityHoldTimeout/time.Second)).Updates(map[string]any{"state": H3Sending, "sending_at": now, "updated_at": now})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -541,7 +543,15 @@ func releaseH3Admission(tx *gorm.DB, admission *H3Admission) error {
 	if result.RowsAffected == 0 {
 		return nil
 	}
-	counter := tx.Model(&H3Account{}).Where("id = ? AND occupied > 0", admission.AccountID).Updates(map[string]any{"occupied": gorm.Expr("occupied - 1"), "updated_at": time.Now().Unix()})
+	return releaseH3Capacity(tx, admission, time.Now().Unix())
+}
+
+func releaseH3Capacity(tx *gorm.DB, admission *H3Admission, now int64) error {
+	result := tx.Model(&H3Admission{}).Where("id = ? AND capacity_released_at = 0", admission.ID).Update("capacity_released_at", now)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return result.Error
+	}
+	counter := tx.Model(&H3Account{}).Where("id = ? AND occupied > 0", admission.AccountID).Updates(map[string]any{"occupied": gorm.Expr("occupied - 1"), "updated_at": now})
 	if counter.Error != nil {
 		return counter.Error
 	}
@@ -567,6 +577,12 @@ func GuardH3ChannelChange(ctx context.Context, channelID int) error {
 	}
 	var count int64
 	if err := DB.WithContext(ctx).Model(&H3Account{}).Where("channel_id = ? AND (enabled = ? OR occupied > 0)", channelID, true).Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("H3 account must be disabled and have no unresolved tasks before changing or deleting its channel")
+	}
+	if err := DB.WithContext(ctx).Model(&H3Admission{}).Where("channel_id = ? AND state <> ?", channelID, H3Released).Count(&count).Error; err != nil {
 		return err
 	}
 	if count > 0 {

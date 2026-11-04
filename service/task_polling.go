@@ -160,6 +160,13 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 	}
 
 	common.SysLog(common.LogText("task progress polling started"))
+	// Release only the local capacity. Original tasks, send fences, polling and
+	// financial reservations survive expiry, including missing provider IDs.
+	if released, err := model.ExpireMediaCapacity(ctx, time.Now()); err != nil {
+		logger.LogError(ctx, common.LogText("Failed to expire media capacity: %v", err))
+	} else if released > 0 {
+		logger.LogInfo(ctx, common.LogText("Expired %d media capacity holds after 30 minutes; original tasks retained", released))
+	}
 	// Only an original host-verified create refusal may recover a pending
 	// refund here. A missing provider ID or local timeout is never sufficient.
 	if rejectedTasks, err := model.PendingMediaCreateRejectionTasks(ctx, 100); err != nil {

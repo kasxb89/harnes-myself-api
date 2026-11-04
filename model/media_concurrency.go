@@ -28,6 +28,7 @@ const MediaSending = "sending"
 const MediaActive = "active"
 const MediaUnknown = "unknown"
 const MediaReleased = "released"
+const MediaCapacityHoldTimeout = 30 * time.Minute
 
 var ErrMediaCapacity = errors.New("upstream media account capacity exhausted")
 var ErrMediaAdmissionUnavailable = errors.New("media admission is unavailable")
@@ -94,16 +95,17 @@ type MediaPool struct {
 	UpdatedAt      int64  `json:"-"`
 }
 
-// MediaAdmission never expires. A disconnected request, a local timeout or a
-// lost provider receipt cannot prove that a paid upstream operation stopped.
+// Capacity expires independently of the durable send fence and billing state.
+// A local timeout never proves that a paid upstream operation stopped.
 type MediaAdmission struct {
-	ID               string `gorm:"primaryKey;type:varchar(191)" json:"-"`
-	TaskDBID         int64  `gorm:"uniqueIndex" json:"-"`
-	PoolID           string `gorm:"type:varchar(64);index" json:"-"`
-	ChannelID        int    `gorm:"index" json:"-"`
-	State            string `gorm:"type:varchar(20);index" json:"-"`
-	BillingState     string `gorm:"type:varchar(24)" json:"-"`
-	ProviderTerminal bool   `json:"-"`
+	ID                 string `gorm:"primaryKey;type:varchar(191)" json:"-"`
+	TaskDBID           int64  `gorm:"uniqueIndex" json:"-"`
+	PoolID             string `gorm:"type:varchar(64);index" json:"-"`
+	ChannelID          int    `gorm:"index" json:"-"`
+	State              string `gorm:"type:varchar(20);index" json:"-"`
+	BillingState       string `gorm:"type:varchar(24)" json:"-"`
+	ProviderTerminal   bool   `json:"-"`
+	CapacityReleasedAt int64  `gorm:"not null;default:0" json:"-"`
 	// CreateRejection is a host-verified original create response, never vendor task data.
 	CreateRejection string `gorm:"type:text" json:"-"`
 	SendingAt       int64  `json:"-"`
@@ -738,7 +740,7 @@ func reconcileMediaPool(tx *gorm.DB, pool *MediaPool) error {
 		return err
 	}
 	var occupied int64
-	if err := tx.Model(&MediaAdmission{}).Where("pool_id = ? AND state <> ?", pool.ID, MediaReleased).Count(&occupied).Error; err != nil {
+	if err := tx.Model(&MediaAdmission{}).Where("pool_id = ? AND state <> ? AND capacity_released_at = 0", pool.ID, MediaReleased).Count(&occupied).Error; err != nil {
 		return err
 	}
 	pool.Occupied = int(occupied)
@@ -845,7 +847,8 @@ func RecordMediaCapacityRejection(ctx context.Context, task *Task, selectedKey, 
 }
 
 func MarkMediaSending(ctx context.Context, id string) error {
-	result := DB.WithContext(ctx).Model(&MediaAdmission{}).Where("id = ? AND state = ? AND sending_at = 0 AND billing_state = ?", id, MediaReserved, "reserved").Updates(map[string]any{"state": MediaSending, "sending_at": time.Now().Unix(), "updated_at": time.Now().Unix()})
+	now := time.Now().Unix()
+	result := DB.WithContext(ctx).Model(&MediaAdmission{}).Where("id = ? AND state = ? AND sending_at = 0 AND billing_state = ? AND capacity_released_at = 0 AND created_at > ?", id, MediaReserved, "reserved", now-int64(MediaCapacityHoldTimeout/time.Second)).Updates(map[string]any{"state": MediaSending, "sending_at": now, "updated_at": now})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -1027,7 +1030,15 @@ func releaseMediaAdmission(tx *gorm.DB, admission *MediaAdmission) error {
 	if result.Error != nil || result.RowsAffected == 0 {
 		return result.Error
 	}
-	result = tx.Model(&MediaPool{}).Where("id = ? AND occupied > 0", admission.PoolID).Updates(map[string]any{"occupied": gorm.Expr("occupied - 1"), "updated_at": time.Now().Unix()})
+	return releaseMediaCapacity(tx, admission, time.Now().Unix())
+}
+
+func releaseMediaCapacity(tx *gorm.DB, admission *MediaAdmission, now int64) error {
+	result := tx.Model(&MediaAdmission{}).Where("id = ? AND capacity_released_at = 0", admission.ID).Update("capacity_released_at", now)
+	if result.Error != nil || result.RowsAffected == 0 {
+		return result.Error
+	}
+	result = tx.Model(&MediaPool{}).Where("id = ? AND occupied > 0", admission.PoolID).Updates(map[string]any{"occupied": gorm.Expr("occupied - 1"), "updated_at": now})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -1035,6 +1046,48 @@ func releaseMediaAdmission(tx *gorm.DB, admission *MediaAdmission) error {
 		return ErrMediaAdmissionUnavailable
 	}
 	return nil
+}
+
+// ExpireMediaCapacity recovers local slots without declaring provider success,
+// failure or a refund. The durable admission state and task stay untouched so
+// late original receipts/results can still complete normally. Each pass is
+// bounded; subsequent task-polling passes handle any remaining expired rows.
+func ExpireMediaCapacity(ctx context.Context, now time.Time) (int, error) {
+	if DB == nil {
+		return 0, ErrMediaAdmissionUnavailable
+	}
+	released := 0
+	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if _, err := lockMediaPolicy(tx); err != nil {
+			return err
+		}
+		cutoff := now.Add(-MediaCapacityHoldTimeout).Unix()
+		var media []MediaAdmission
+		if err := lockForUpdate(tx).Where("state <> ? AND capacity_released_at = 0 AND created_at > 0 AND created_at <= ?", MediaReleased, cutoff).Order("created_at, id").Limit(100).Find(&media).Error; err != nil {
+			return err
+		}
+		for i := range media {
+			if err := releaseMediaCapacity(tx, &media[i], now.Unix()); err != nil {
+				return err
+			}
+			released++
+		}
+		var h3 []H3Admission
+		if err := lockForUpdate(tx).Where("state <> ? AND capacity_released_at = 0 AND created_at > 0 AND created_at <= ?", H3Released, cutoff).Order("created_at, id").Limit(100).Find(&h3).Error; err != nil {
+			return err
+		}
+		for i := range h3 {
+			if err := releaseH3Capacity(tx, &h3[i], now.Unix()); err != nil {
+				return err
+			}
+			released++
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return released, nil
 }
 
 func ReleaseMediaUnsent(ctx context.Context, task *Task) error {

@@ -202,6 +202,11 @@ func historicalRowsHash(query *gorm.DB) (string, error) {
 		}
 		row := make(map[string]any, len(columns))
 		for i, value := range values {
+			// Local slot expiry is independent of the immutable financial
+			// evidence, including receipts frozen before this column existed.
+			if columns[i] == "capacity_released_at" {
+				continue
+			}
 			kind := "null"
 			var encoded any
 			switch v := value.(type) {
@@ -687,7 +692,7 @@ func verifyHistoricalReceipt(tx *gorm.DB, receipt MediaHistoricalReconciliation,
 		return nil
 	}
 	var count int64
-	if err := tx.Model(&MediaAdmission{}).Where("pool_id IN (?) AND state <> ?", tx.Model(&MediaAdmission{}).Select("pool_id").Where("task_db_id = ?", receipt.TaskDBID), MediaReleased).Count(&count).Error; err != nil {
+	if err := tx.Model(&MediaAdmission{}).Where("pool_id IN (?) AND state <> ? AND capacity_released_at = 0", tx.Model(&MediaAdmission{}).Select("pool_id").Where("task_db_id = ?", receipt.TaskDBID), MediaReleased).Count(&count).Error; err != nil {
 		return err
 	}
 	var pool MediaPool
@@ -790,10 +795,10 @@ func ReconcileMediaHistoricalManifest(ctx context.Context, data []byte, expected
 				return ErrMediaHistoricalEvidence
 			}
 			var occupied int64
-			if err = tx.Model(&MediaAdmission{}).Where("pool_id = ? AND state <> ?", pool.ID, MediaReleased).Count(&occupied).Error; err != nil {
+			if err = tx.Model(&MediaAdmission{}).Where("pool_id = ? AND state <> ? AND capacity_released_at = 0", pool.ID, MediaReleased).Count(&occupied).Error; err != nil {
 				return err
 			}
-			if pool.Occupied != int(occupied) || occupied <= 0 {
+			if pool.Occupied != int(occupied) || (occupied <= 0 && admission.CapacityReleasedAt == 0) {
 				return ErrMediaHistoricalEvidence
 			}
 			tasks = append(tasks, task)
