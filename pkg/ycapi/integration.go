@@ -224,7 +224,7 @@ func ClientParameters(id string) map[string]any {
 		delete(parameters, "x-reference-limits")
 		return parameters
 	}
-	parameters["x-task-plugin"] = map[string]any{"key": "ycapi", "version": "1.0.0", "api_version": 1}
+	parameters["x-task-plugin"] = map[string]any{"key": "ycapi", "version": "1.0.1", "api_version": 1}
 	if m.Kind == "image" {
 		parameters["x-image-receipt-recovery"] = map[string]any{"schema_version": 1, "submit_model_metadata": true, "original_task_artifacts": true}
 	}

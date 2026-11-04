@@ -25,7 +25,7 @@ export const meta = {
   apiVersion: 1,
   key: "ycapi",
   name: "YCAPI",
-  version: "1.0.0",
+  version: "1.0.1",
   icon: "text:YC",
   author: { name: "Yunshu" },
   baseUrl: "https://ycapi.token6688.com",

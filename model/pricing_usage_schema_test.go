@@ -17,6 +17,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
+	for _, version := range []string{"1.0.0", "1.0.1"} {
+		t.Run(version, func(t *testing.T) {
+			parameters := taskPluginParameterSchema("ycapi", version, "ycapi-flux-kontext")
+			require.NotNil(t, parameters)
+			binding, ok := parameters["x-task-plugin"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, version, binding["version"])
+			_, recovery := parameters["x-image-receipt-recovery"]
+			assert.Equal(t, version == "1.0.1", recovery, "old installed overrides cannot certify the fixed parser")
+		})
+	}
+	assert.Nil(t, taskPluginParameterSchema("ycapi", "1.0.2", "ycapi-flux-kontext"))
+}
+
 func pricingUsagePluginSource(version, usageSchema string) string {
 	return fmt.Sprintf(`
 export const meta = {

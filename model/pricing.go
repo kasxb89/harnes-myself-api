@@ -567,10 +567,17 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 		}
 		return codebloom.ClientParameters(model)
 	case "ycapi":
-		if version != "1.0.0" {
+		if version != "1.0.0" && version != "1.0.1" {
 			return nil
 		}
-		return ycapi.ClientParameters(model)
+		parameters := ycapi.ClientParameters(model)
+		if parameters != nil && version == "1.0.0" {
+			// Keep the old parameter contract, but never certify recovery for
+			// an installed override that predates the model-object parser.
+			parameters["x-task-plugin"] = map[string]any{"key": key, "version": version, "api_version": 1}
+			delete(parameters, "x-image-receipt-recovery")
+		}
+		return parameters
 	case "blackrxai-video":
 		return blackrxVideoClientParameters(model)
 	case "toapis-image":
