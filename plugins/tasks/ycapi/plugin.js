@@ -159,7 +159,7 @@ export function buildSubmitRequest(ctx) {
   return {
     url: ctx.baseUrl + (model.kind === "video" ? "/v1/videos/generations" : "/api/v1/model-runtime/invoke"),
     method: "POST",
-    headers: { Authorization: ctx.authHeader, "Content-Type": "application/json" },
+    headers: { Authorization: "Bearer " + ctx.apiKey, "Content-Type": "application/json" },
     body,
   };
 }
@@ -243,7 +243,7 @@ export function buildQueryRequest(ctx) {
   return {
     url: ctx.baseUrl + (model.kind === "video" ? "/v1/tasks/" : "/api/v1/model-runtime/tasks/") + encodeURIComponent(ctx.taskId),
     method: "GET",
-    headers: { Authorization: ctx.authHeader },
+    headers: { Authorization: "Bearer " + ctx.apiKey },
   };
 }
 export function parseTaskResult(ctx, body) {

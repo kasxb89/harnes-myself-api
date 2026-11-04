@@ -87,9 +87,15 @@ func TestYcapiApprovedMediaWirePlansAndDurableTerminalState(t *testing.T) {
 					}
 					request["prompt"], request["n"] = "Synthetic local generation", 1
 				}
-				ctx := map[string]any{"model": m.ID, "upstreamModel": m.ID, "baseUrl": "https://ycapi.fixture", "authHeader": "Bearer synthetic-fixture", "publicTaskId": "task_fixed_local", "requestBody": request}
+				ctx := map[string]any{"model": m.ID, "upstreamModel": m.ID, "baseUrl": "https://ycapi.fixture", "apiKey": "synthetic-fixture", "authHeader": "synthetic-fixture", "publicTaskId": "task_fixed_local", "requestBody": request}
 				value, err := plugin.Engine.Call(context.Background(), "buildSubmitRequest", ctx)
 				require.NoError(t, err)
+				assert.Equal(t, "Bearer synthetic-fixture", value.(map[string]any)["headers"].(map[string]any)["Authorization"])
+				queryCtx := maps.Clone(ctx)
+				queryCtx["taskId"] = "provider-original"
+				query, err := plugin.Engine.Call(context.Background(), "buildQueryRequest", queryCtx)
+				require.NoError(t, err)
+				assert.Equal(t, "Bearer synthetic-fixture", query.(map[string]any)["headers"].(map[string]any)["Authorization"])
 				wire := value.(map[string]any)["body"].(map[string]any)
 				assert.Equal(t, "task_fixed_local", wire["client_request_id"])
 				assert.Equal(t, m.Prices[index].LaneID, wire["lane_id"], "the selected specification must pin its approved lane")
