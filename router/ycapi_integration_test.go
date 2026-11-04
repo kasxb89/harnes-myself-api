@@ -214,6 +214,10 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 		approved, ok := ycapi.Lookup(id)
 		require.True(t, ok)
 		assert.Equal(t, approved.Kind, entry["kind"])
+		if approved.Kind == "image" {
+			parameters := entry["parameters"].(map[string]any)
+			assert.Equal(t, map[string]any{"schema_version": float64(1), "submit_model_metadata": true, "original_task_artifacts": true}, parameters["x-image-receipt-recovery"])
+		}
 		prices, ok := entry["retail_price_rows"].([]any)
 		require.True(t, ok)
 		priceRows += len(prices)
@@ -538,7 +542,8 @@ func TestYcapiMediaDurableAdmissionPollingAndOwnerIsolation(t *testing.T) {
 							_, _ = w.Write(encoded)
 							return
 						}
-						encoded, _ := common.Marshal(map[string]any{"task_id": providerID, "status": "queued", "is_final": false})
+						encoded, _ := common.Marshal(map[string]any{"task_id": providerID, "status": "queued", "is_final": false,
+							"model": map[string]any{"public_model": upstreamModel, "upstream_model": "supplier-private-alias", "category": kind}})
 						_, _ = w.Write(encoded)
 						return
 					}
@@ -823,6 +828,39 @@ func TestYcapiAudioRequiresActualMeteringBeforeFinalSettlement(t *testing.T) {
 	result, err := plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, body)
 	require.NoError(t, err)
 	assert.Equal(t, "SUCCESS", result.(map[string]any)["status"])
+}
+
+func TestYcapiRuntimeModelMetadataKeepsOriginalImageReceiptAndArtifacts(t *testing.T) {
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	plugin, err := jsplugin.CompilePlugin(source, jsplugin.Options{})
+	require.NoError(t, err)
+	ctx := map[string]any{"model": "ycapi-flux-kontext", "upstreamModel": "ycapi-flux-kontext", "taskId": "provider-original",
+		"requestBody": map[string]any{"model": "ycapi-flux-kontext", "prompt": "Synthetic image", "quality": "pro", "size": "1:1", "n": 1}}
+	accepted := map[string]any{"task_id": "provider-original", "status": "pending", "model": map[string]any{
+		"public_model": "flux-kontext", "upstream_model": "", "provider": "", "category": "image"}}
+	value, err := plugin.Engine.Call(context.Background(), "parseSubmitResponse", ctx, map[string]any{"body": accepted})
+	require.NoError(t, err, "the runtime invoke endpoint returns model metadata rather than a model string")
+	parsed := value.(map[string]any)
+	assert.Equal(t, "provider-original", parsed["taskId"])
+	ctx["state"] = parsed["state"]
+	completed := map[string]any{"id": "provider-original", "model": "flux-kontext", "status": "completed", "is_final": true,
+		"result": map[string]any{"images": []any{map[string]any{"url": "https://cdn.example/original.png"}}}}
+	value, err = plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, completed)
+	require.NoError(t, err)
+	result := value.(map[string]any)
+	assert.Equal(t, "SUCCESS", result["status"])
+	artifacts, err := plugin.Engine.Call(context.Background(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": result["state"]})
+	require.NoError(t, err)
+	assert.Equal(t, "image", artifacts.([]any)[0].(map[string]any)["key"])
+	wrongModel := maps.Clone(accepted)
+	wrongModel["model"] = map[string]any{"public_model": "another-model"}
+	_, err = plugin.Engine.Call(context.Background(), "parseSubmitResponse", ctx, map[string]any{"body": wrongModel})
+	assert.Error(t, err, "the provider's public model still has to match the submitted model")
+	wrongTask := maps.Clone(completed)
+	wrongTask["id"] = "another-task"
+	_, err = plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, wrongTask)
+	assert.Error(t, err, "polling still binds to the exact original provider task")
 }
 
 // TEST_H3_SQL_DSN and TEST_H3_LOG_SQL_DSN select the existing disposable

@@ -225,6 +225,9 @@ func ClientParameters(id string) map[string]any {
 		return parameters
 	}
 	parameters["x-task-plugin"] = map[string]any{"key": "ycapi", "version": "1.0.0", "api_version": 1}
+	if m.Kind == "image" {
+		parameters["x-image-receipt-recovery"] = map[string]any{"schema_version": 1, "submit_model_metadata": true, "original_task_artifacts": true}
+	}
 	if m.Kind == "audio" {
 		properties = map[string]any{"input": map[string]any{"type": "string", "maxLength": 2000}, "instructions": false}
 		for key, field := range m.Params {

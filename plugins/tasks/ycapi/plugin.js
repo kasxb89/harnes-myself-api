@@ -188,7 +188,10 @@ function snapshot(body, model, expectedId) {
   const id = body.task_id || body.id;
   if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(id) || (expectedId && id !== expectedId))
     throw new Error("Upstream task identity mismatch");
-  if ((body.model || body.model_id) && (body.model || body.model_id) !== model.upstream) throw new Error("Upstream task model mismatch");
+  const modelMetadata = object(body.model);
+  const responseModel = modelMetadata ? modelMetadata.public_model : body.model || body.model_id;
+  if (modelMetadata && (typeof responseModel !== "string" || !responseModel)) throw new Error("Invalid upstream task model");
+  if (responseModel && responseModel !== model.upstream && responseModel !== model.id) throw new Error("Upstream task model mismatch");
   const status = typeof body.status === "string" ? body.status.toLowerCase() : "unknown";
   const data = { id, kind: model.kind, status, is_final: body.is_final === true, outputs: outputs(body, model.kind) };
   const error = object(body.error) || {};
