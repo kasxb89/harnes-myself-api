@@ -355,7 +355,7 @@ func GetAllUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	pageInfo.SetItems(userListWithClientVersions(c, users))
 
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -385,9 +385,38 @@ func SearchUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(users)
+	pageInfo.SetItems(userListWithClientVersions(c, users))
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+type userListItem struct {
+	*model.User
+	ClientVersion *model.ClientVersionObservation `json:"client_version,omitempty"`
+}
+
+func userListWithClientVersions(c *gin.Context, users []*model.User) any {
+	if len(users) == 0 || !authz.Can(c.GetInt("id"), c.GetInt("role"), authz.UserActivityRead) {
+		return users
+	}
+	ids := make([]int, 0, len(users))
+	for _, user := range users {
+		ids = append(ids, user.Id)
+	}
+	versions, err := model.LatestClientVersions(c.Request.Context(), ids)
+	if err != nil {
+		logger.LogError(c.Request.Context(), common.LogText("failed to load user client versions: %v", err))
+		return users
+	}
+	byUser := make(map[int]*model.ClientVersionObservation, len(versions))
+	for i := range versions {
+		byUser[versions[i].UserID] = &versions[i]
+	}
+	items := make([]userListItem, 0, len(users))
+	for _, user := range users {
+		items = append(items, userListItem{User: user, ClientVersion: byUser[user.Id]})
+	}
+	return items
 }
 
 func canManageTargetRole(myRole int, targetRole int) bool {

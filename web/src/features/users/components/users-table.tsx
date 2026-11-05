@@ -30,10 +30,12 @@ import {
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { hasPermission } from '@/lib/admin-permissions'
 import {
   createServerError,
   requireServerSuccess,
 } from '@/lib/server-error-message'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getGroups, getUsers, searchUsers } from '../api'
 import {
@@ -64,7 +66,17 @@ function isDisabledUserRow(user: User) {
 
 export function UsersTable() {
   const { t } = useTranslation()
-  const columns = useUsersColumns()
+  const userColumns = useUsersColumns()
+  const canViewClientVersion = useAuthStore((state) =>
+    hasPermission(state.auth.user, 'user_activity', 'read')
+  )
+  const columns = useMemo(
+    () =>
+      canViewClientVersion
+        ? userColumns
+        : userColumns.filter((column) => column.id !== 'client_version'),
+    [userColumns, canViewClientVersion]
+  )
   const { refreshTrigger } = useUsers()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const [sorting, setSorting] = useState<SortingState>([])

@@ -59,6 +59,13 @@ export const userSchema = z.object({
   created_at: z.number().optional(),
   updated_at: z.number().optional(),
   last_login_at: z.number().optional(),
+  client_version: z
+    .object({
+      app_version: z.string(),
+      platform: z.string(),
+      last_seen_at: z.number(),
+    })
+    .optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
   admin_permissions: z

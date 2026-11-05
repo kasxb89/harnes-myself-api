@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -37,6 +38,31 @@ type ClientActivityHeartbeat struct {
 	Foreground bool   `json:"foreground"`
 	Platform   string `json:"platform"`
 	AppVersion string `json:"app_version"`
+}
+
+// ClientVersionObservation is the last desktop version reported by an account.
+type ClientVersionObservation struct {
+	UserID     int    `json:"-"`
+	AppVersion string `json:"app_version"`
+	Platform   string `json:"platform"`
+	LastSeenAt int64  `json:"last_seen_at"`
+}
+
+// LatestClientVersions returns at most one observation for each requested user.
+func LatestClientVersions(ctx context.Context, userIDs []int) ([]ClientVersionObservation, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	db := DB.WithContext(ctx)
+	latest := db.Table("client_activity_sessions AS candidate").Select("candidate.id").
+		Where("candidate.user_id = u.id AND candidate.app_version <> ''").
+		Order("candidate.last_seen_at DESC, candidate.id DESC").Limit(1)
+	var observations []ClientVersionObservation
+	err := db.Table("users AS u").
+		Select("u.id AS user_id, activity.app_version, activity.platform, activity.last_seen_at").
+		Joins("JOIN client_activity_sessions AS activity ON activity.id = (?)", latest).
+		Where("u.id IN ?", userIDs).Scan(&observations).Error
+	return observations, err
 }
 
 type ClientActivityView struct {

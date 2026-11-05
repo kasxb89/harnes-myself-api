@@ -28,6 +28,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAdminUserListShowsLatestClientVersionWithActivityPermission(t *testing.T) {
+	admin, _ := setupAccessTokenAudit(t)
+	db := model.DB
+	require.NoError(t, db.AutoMigrate(&model.ClientActivitySession{}))
+	target := model.User{Username: "version-target", AffCode: "version-target"}
+	unreported := model.User{Username: "version-unreported", AffCode: "version-unreported"}
+	require.NoError(t, db.Create(&target).Error)
+	require.NoError(t, db.Create(&unreported).Error)
+	require.NoError(t, db.Create(&[]model.ClientActivitySession{
+		{UserID: target.Id, SessionID: "older", AppVersion: "0.2.1-alpha.2", Platform: "win32", LastSeenAt: 10, EndedAt: 10},
+		{UserID: target.Id, SessionID: "tied", AppVersion: "0.2.1-alpha.2.20261106.1", Platform: "win32", LastSeenAt: 20},
+		{UserID: target.Id, SessionID: "latest", AppVersion: "0.2.1-alpha.2.20261106.2", Platform: "darwin", LastSeenAt: 20},
+	}).Error)
+	read := func(path string, handler gin.HandlerFunc) map[int]*model.ClientVersionObservation {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, path, nil)
+		ctx.Set("id", admin.Id)
+		ctx.Set("role", common.RoleAdminUser)
+		handler(ctx)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		var response struct {
+			Success bool `json:"success"`
+			Data    struct {
+				Items []struct {
+					ID            int                             `json:"id"`
+					ClientVersion *model.ClientVersionObservation `json:"client_version"`
+				} `json:"items"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		versions := make(map[int]*model.ClientVersionObservation)
+		for _, item := range response.Data.Items {
+			versions[item.ID] = item.ClientVersion
+		}
+		return versions
+	}
+	resource := authz.UserActivityRead.Resource
+	require.NoError(t, authz.SetUserPermissions(admin.Id, authz.PermissionsMap{resource: {"read": false}}))
+	denied := read("/api/user/", GetAllUsers)
+	require.Contains(t, denied, target.Id)
+	assert.Nil(t, denied[target.Id])
+	require.NoError(t, authz.SetUserPermissions(admin.Id, authz.PermissionsMap{resource: {"read": true}}))
+	expected := &model.ClientVersionObservation{AppVersion: "0.2.1-alpha.2.20261106.2", Platform: "darwin", LastSeenAt: 20}
+	list := read("/api/user/", GetAllUsers)
+	assert.Equal(t, expected, list[target.Id])
+	require.Contains(t, list, unreported.Id)
+	assert.Nil(t, list[unreported.Id])
+	assert.Equal(t, map[int]*model.ClientVersionObservation{target.Id: expected},
+		read("/api/user/search?keyword=version-target", SearchUsers))
+}
+
 func TestClientActivityDatabaseMatrix(t *testing.T) {
 	for _, kind := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(kind, func(t *testing.T) {

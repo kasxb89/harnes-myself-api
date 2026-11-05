@@ -20,7 +20,10 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ActivityTimeCell } from '@/components/activity-time-cell'
+import {
+  ActivityTimeCell,
+  TimestampCell,
+} from '@/components/activity-time-cell'
 import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { LongText } from '@/components/long-text'
@@ -45,6 +48,12 @@ import {
 import type { User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 import { UserQuotaCell } from './user-quota-cell'
+
+const desktopPlatforms: Record<string, string> = {
+  win32: 'Windows',
+  darwin: 'macOS',
+  linux: 'Linux',
+}
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
@@ -289,6 +298,33 @@ export function useUsersColumns(): ColumnDef<User>[] {
         size: 240,
         enableSorting: false,
         meta: { mobileHidden: true },
+      },
+      {
+        id: 'client_version',
+        header: t('Last reported Yunshu version'),
+        cell: ({ row }) => {
+          const version = row.original.client_version
+          if (!version) {
+            return <span className='text-muted-foreground'>{t('No data')}</span>
+          }
+          return (
+            <div className='flex min-w-0 flex-col gap-1'>
+              <LongText className='text-sm'>{version.app_version}</LongText>
+              <span className='text-muted-foreground text-xs'>
+                {desktopPlatforms[version.platform] ?? version.platform}
+              </span>
+              <TimestampCell
+                timestamp={version.last_seen_at}
+                format='absolute'
+                justNowLabel={t('Just now')}
+                className='text-muted-foreground text-xs'
+              />
+            </div>
+          )
+        },
+        size: 200,
+        enableSorting: false,
+        meta: { mobileOrder: 20 },
       },
       {
         accessorKey: 'created_at',

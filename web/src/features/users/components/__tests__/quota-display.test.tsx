@@ -254,7 +254,14 @@ function UsersPage() {
   )
 }
 
-async function renderUsersList(emptyInvitation = false) {
+async function renderUsersList(
+  emptyInvitation = false,
+  clientVersion?: {
+    app_version: string
+    platform: string
+    last_seen_at: number
+  }
+) {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'admin', role: 100 })
   const usersResponse = {
     data: {
@@ -272,6 +279,7 @@ async function renderUsersList(emptyInvitation = false) {
             request_count: 0,
             created_at: Math.floor(Date.now() / 1000) - 86400,
             last_login_at: Math.floor(Date.now() / 1000) - 20,
+            client_version: clientVersion,
             group: 'default',
             aff_count: emptyInvitation ? 0 : 2,
             aff_history_quota: emptyInvitation ? 0 : 500000,
@@ -362,6 +370,25 @@ it('shows balance above usage on mobile cards in Chinese', async () => {
   } finally {
     await i18n.changeLanguage('en')
   }
+})
+
+it('shows the reported Yunshu release, platform and observation time', async () => {
+  const version = {
+    app_version: '0.2.1-alpha.2.20261106.1',
+    platform: 'darwin',
+    last_seen_at: 1793890800,
+  }
+  await renderUsersList(false, version)
+  expect(
+    screen.getByRole('columnheader', { name: 'Last reported Yunshu version' })
+  ).toBeInTheDocument()
+  const cell = screen.getByRole('cell', {
+    name: /0\.2\.1-alpha\.2\.20261106\.1/,
+  })
+  expect(within(cell).getByText('macOS')).toBeInTheDocument()
+  expect(within(cell).getByRole('time')).toHaveTextContent(
+    formatTimestampToDate(version.last_seen_at)
+  )
 })
 
 it('combines creation and last login into one column with full dates visible directly', async () => {
