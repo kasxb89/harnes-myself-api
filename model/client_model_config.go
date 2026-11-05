@@ -57,6 +57,9 @@ func ClientModelDisplayName(id string) string {
 // modelDisplayName changes presentation only; routing and stored identities
 // continue to use the exact model ID.
 func modelDisplayName(id string) string {
+	if id == "ys-deepseek-v4.1-flash-1017" {
+		return "yunshu-flash"
+	}
 	if candidate, ok := codebloom.Lookup(id); ok {
 		return "qq-" + candidate.UpstreamID
 	}
