@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -24,11 +25,13 @@ const SessionHintCookieName = "new_api_has_session"
 const SessionHintCookieValue = "1"
 
 var (
-	ErrLoginSessionInvalid  = errors.New("login session is invalid")
-	ErrLoginSessionRevoked  = errors.New("login session is revoked")
-	ErrLoginSessionMismatch = errors.New("login session does not match the expected session")
-	ErrRefreshTokenInvalid  = errors.New("refresh token is invalid")
-	ErrRefreshRace          = errors.New("refresh token was already rotated")
+	ErrLoginSessionInvalid   = errors.New("login session is invalid")
+	ErrLoginSessionRevoked   = errors.New("login session is revoked")
+	ErrLoginSessionMismatch  = errors.New("login session does not match the expected session")
+	ErrRefreshTokenInvalid   = errors.New("refresh token is invalid")
+	ErrRefreshCookieMissing  = errors.New("refresh cookie is missing")
+	ErrRefreshAttemptInvalid = errors.New("refresh attempt is invalid")
+	ErrRefreshRace           = errors.New("refresh token was already rotated")
 )
 
 type LoginSessionView struct {
@@ -235,6 +238,22 @@ func advanceCurrentSessionToVersion(identity AuthIdentity, nextUserAuthVersion i
 }
 
 func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*AuthBundle, *model.User, error) {
+	return refreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent, "")
+}
+
+// RefreshRecoverableLoginSession retries a desktop rotation with a private,
+// random attempt secret that commits to the successor in the existing refresh hash.
+func RefreshRecoverableLoginSession(rawRefreshToken, expectedSID, ip, userAgent, attempt string) (*AuthBundle, *model.User, error) {
+	if len(attempt) != 64 {
+		return nil, nil, ErrRefreshAttemptInvalid
+	}
+	if _, err := hex.DecodeString(attempt); err != nil {
+		return nil, nil, ErrRefreshAttemptInvalid
+	}
+	return refreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent, strings.ToLower(attempt))
+}
+
+func refreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent, attempt string) (*AuthBundle, *model.User, error) {
 	sid, secret, ok := splitRefreshToken(rawRefreshToken)
 	if !ok {
 		return nil, nil, ErrRefreshTokenInvalid
@@ -276,8 +295,13 @@ func RefreshLoginSession(rawRefreshToken, expectedSID, ip, userAgent string) (*A
 		_, _ = model.RevokeUserSession(session.UserID, session.SID, "user_security_changed")
 		return nil, nil, ErrLoginSessionRevoked
 	}
+	rotate := model.RotateUserSessionRefresh
 	nextSecret := deriveNextRefreshSecret(sid, secret)
-	rotated, err := model.RotateUserSessionRefresh(session.UserID, sid, hashRefreshSecret(secret), hashRefreshSecret(nextSecret), time.Now().Unix(), RefreshReplayWindow)
+	if attempt != "" {
+		rotate = model.RotateRecoverableUserSessionRefresh
+		nextSecret = common.GenerateHMACWithKey(authSigningKey("refresh-rotate-desktop-v1"), sid+"."+secret+"."+attempt)
+	}
+	rotated, err := rotate(session.UserID, sid, hashRefreshSecret(secret), hashRefreshSecret(nextSecret), time.Now().Unix(), RefreshReplayWindow)
 	if err != nil {
 		if errors.Is(err, model.ErrUserSessionRefreshRace) && rotated != nil &&
 			hashRefreshSecret(nextSecret) == rotated.RefreshHash {
@@ -484,6 +508,10 @@ func authSessionErrorCode(err error) (int, string) {
 		return http.StatusConflict, "AUTH_SESSION_MISMATCH"
 	case errors.Is(err, ErrRefreshRace):
 		return http.StatusConflict, "AUTH_REFRESH_RACE"
+	case errors.Is(err, ErrRefreshCookieMissing):
+		return http.StatusUnauthorized, "AUTH_REFRESH_COOKIE_MISSING"
+	case errors.Is(err, ErrRefreshAttemptInvalid):
+		return http.StatusBadRequest, "AUTH_REFRESH_ATTEMPT_INVALID"
 	case errors.Is(err, ErrAuthTokenExpired):
 		return http.StatusUnauthorized, "AUTH_TOKEN_EXPIRED"
 	case errors.Is(err, ErrLoginSessionRevoked):

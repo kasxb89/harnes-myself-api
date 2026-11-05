@@ -457,6 +457,16 @@ func ListActiveUserSessions(userID int, currentSID string, now int64) ([]UserSes
 // recognized previous digest outside its grace window is treated as reuse;
 // an unknown secret never revokes the victim session.
 func RotateUserSessionRefresh(userID int, sid, presentedHash, nextHash string, now int64, grace time.Duration) (*UserSession, error) {
+	return rotateUserSessionRefresh(userID, sid, presentedHash, nextHash, now, grace, false)
+}
+
+// RotateRecoverableUserSessionRefresh allows replay when the derived successor
+// already stored on the active session proves possession of the same attempt secret.
+func RotateRecoverableUserSessionRefresh(userID int, sid, presentedHash, nextHash string, now int64, grace time.Duration) (*UserSession, error) {
+	return rotateUserSessionRefresh(userID, sid, presentedHash, nextHash, now, grace, true)
+}
+
+func rotateUserSessionRefresh(userID int, sid, presentedHash, nextHash string, now int64, grace time.Duration, recoverable bool) (*UserSession, error) {
 	if userID <= 0 || sid == "" || presentedHash == "" || nextHash == "" || hmac.Equal([]byte(presentedHash), []byte(nextHash)) {
 		return nil, ErrUserSessionInvalid
 	}
@@ -514,7 +524,7 @@ func RotateUserSessionRefresh(userID int, sid, presentedHash, nextHash string, n
 		if session.PreviousRefreshHash == "" || !hmac.Equal([]byte(session.PreviousRefreshHash), []byte(presentedHash)) {
 			return nil, ErrUserSessionRefreshInvalid
 		}
-		if now <= session.PreviousValidUntil {
+		if now <= session.PreviousValidUntil || (recoverable && hmac.Equal([]byte(session.RefreshHash), []byte(nextHash))) {
 			return &session, ErrUserSessionRefreshRace
 		}
 

@@ -368,6 +368,45 @@ func TestLoginSessionCreateRefreshAndRevoke(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrLoginSessionRevoked))
 }
 
+func TestRecoverableRefreshReturnsCommittedSuccessorAfterLegacyGrace(t *testing.T) {
+	useTestSessionSecret(t)
+	user := setupAuthSessionTestDB(t)
+	attempt := strings.Repeat("a", 64)
+	for _, scenario := range []string{"same attempt", "different attempt", "revoked"} {
+		t.Run(scenario, func(t *testing.T) {
+			original, err := CreateLoginSession(user.Id, "password", "127.0.0.1", "desktop")
+			require.NoError(t, err)
+			committed, _, err := RefreshRecoverableLoginSession(original.RefreshToken, original.Session.SID, "127.0.0.1", "desktop", attempt)
+			require.NoError(t, err)
+			require.NotEqual(t, original.RefreshToken, committed.RefreshToken)
+			require.NoError(t, model.DB.Model(&model.UserSession{}).Where("sid = ?", original.Session.SID).
+				Update("previous_valid_until", time.Now().Add(-2*time.Minute).Unix()).Error)
+			presentedAttempt := attempt
+			if scenario == "different attempt" {
+				presentedAttempt = strings.Repeat("b", 64)
+			}
+			if scenario == "revoked" {
+				_, err := model.RevokeUserSession(user.Id, original.Session.SID, "logout")
+				require.NoError(t, err)
+			}
+			recovered, _, err := RefreshRecoverableLoginSession(original.RefreshToken, original.Session.SID, "127.0.0.1", "desktop", presentedAttempt)
+			if scenario != "same attempt" {
+				require.ErrorIs(t, err, ErrLoginSessionRevoked)
+				require.Nil(t, recovered)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, committed.RefreshToken, recovered.RefreshToken)
+			assert.Equal(t, committed.Session.SID, recovered.Session.SID)
+			assert.Equal(t, original.Session.ExpiresAt, recovered.Session.ExpiresAt)
+			identity, err := ParseAccessToken(recovered.AccessToken)
+			require.NoError(t, err)
+			_, _, err = ValidateLoginSession(identity)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestIndependentRedisSessionRevokeConvergesAfterCacheTTL(t *testing.T) {
 	useTestSessionSecret(t)
 	user := setupAuthSessionTestDB(t)

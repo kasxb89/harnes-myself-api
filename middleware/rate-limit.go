@@ -208,7 +208,7 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 		case "GET /api/status":
 			status(c)
 			return
-		case "POST /api/user/auth/refresh":
+		case "POST /api/user/auth/refresh", "POST /api/user/auth/refresh/recoverable":
 			// The route still applies its origin guard and mandatory 120/minute
 			// AuthRefreshRateLimit before reading any refresh credential.
 			return

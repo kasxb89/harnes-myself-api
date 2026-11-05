@@ -15,14 +15,33 @@ import (
 )
 
 func RefreshAuth(c *gin.Context) {
+	refreshAuth(c, false)
+}
+
+func RefreshRecoverableAuth(c *gin.Context) {
+	refreshAuth(c, true)
+}
+
+func refreshAuth(c *gin.Context, recoverable bool) {
 	setAuthNoStore(c)
 	rawRefreshToken, err := c.Cookie(service.RefreshCookieName)
 	if err != nil || rawRefreshToken == "" {
+		if recoverable {
+			writeAuthSessionError(c, service.ErrRefreshCookieMissing)
+			return
+		}
 		service.ClearRefreshCookie(c)
 		writeAuthSessionError(c, service.ErrRefreshTokenInvalid)
 		return
 	}
-	bundle, user, err := service.RefreshLoginSession(rawRefreshToken, c.GetHeader("X-Auth-Session"), c.ClientIP(), c.Request.UserAgent())
+	expectedSID := c.GetHeader("X-Auth-Session")
+	var bundle *service.AuthBundle
+	var user *model.User
+	if recoverable {
+		bundle, user, err = service.RefreshRecoverableLoginSession(rawRefreshToken, expectedSID, c.ClientIP(), c.Request.UserAgent(), c.GetHeader("X-Yunshu-Refresh-Attempt"))
+	} else {
+		bundle, user, err = service.RefreshLoginSession(rawRefreshToken, expectedSID, c.ClientIP(), c.Request.UserAgent())
+	}
 	if err != nil {
 		if errors.Is(err, service.ErrRefreshTokenInvalid) || errors.Is(err, service.ErrLoginSessionRevoked) {
 			service.ClearRefreshCookie(c)

@@ -82,6 +82,7 @@ var accessTokenExemptRoutes = []string{
 
 	// Browser session cookie endpoints.
 	"POST /api/user/auth/refresh",
+	"POST /api/user/auth/refresh/recoverable",
 	"POST /api/user/auth/logout",
 
 	// Payment callbacks.
@@ -193,9 +194,15 @@ func TestAuthRefreshHasIndependentBoundedRateLimit(t *testing.T) {
 			}
 			// Missing credentials still reach normal authentication, never a
 			// successful session, even when the credential-attempt bucket is full.
-			for range 120 {
-				response := request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "http://example.com")
+			refreshPaths := []string{"/api/user/auth/refresh", "/api/user/auth/refresh/recoverable"}
+			for i := range 120 {
+				path := refreshPaths[i%len(refreshPaths)]
+				response := request(http.MethodPost, path, remoteAddr, "http://example.com")
 				require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
+				if path == "/api/user/auth/refresh/recoverable" {
+					assert.Contains(t, response.Body.String(), "AUTH_REFRESH_COOKIE_MISSING")
+					assert.Empty(t, response.Header().Values("Set-Cookie"))
+				}
 			}
 			response := request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "http://example.com")
 			require.Equal(t, http.StatusTooManyRequests, response.Code)
@@ -203,7 +210,9 @@ func TestAuthRefreshHasIndependentBoundedRateLimit(t *testing.T) {
 			assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
 			assert.Empty(t, response.Header().Values("Set-Cookie"), "a transient limit must not clear refresh credentials")
 			assert.JSONEq(t, `{"success":false,"code":"AUTH_REFRESH_RATE_LIMITED","message":"Too many requests","message_key":"Too many requests"}`, response.Body.String())
-			assert.Equal(t, http.StatusForbidden, request(http.MethodPost, "/api/user/auth/refresh", remoteAddr, "https://untrusted.example").Code)
+			for _, path := range refreshPaths {
+				assert.Equal(t, http.StatusForbidden, request(http.MethodPost, path, remoteAddr, "https://untrusted.example").Code)
+			}
 			assert.Equal(t, http.StatusUnauthorized, request(http.MethodPost, "/api/user/auth/refresh", otherRemoteAddr, "http://example.com").Code)
 			assert.Equal(t, http.StatusNoContent, request(http.MethodGet, "/security-budget", otherRemoteAddr, "http://example.com").Code)
 
