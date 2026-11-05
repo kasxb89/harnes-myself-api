@@ -97,6 +97,30 @@ func ChatEnvelope(id string, request any) (map[string]any, error) {
 }
 
 func ClientPrices(id string) []map[string]any {
+	rows := LegacyClientPrices(id)
+	capability, ok := ImageRatios(id)
+	if !ok {
+		return rows
+	}
+	// Preserve the original dated square references. Other ratios share the
+	// reviewed retail tier, but do not inherit an unverified native list price.
+	originals := slices.Clone(rows)
+	m, _ := Lookup(id)
+	for i, original := range originals {
+		for _, ratio := range capability.OfferRatios[m.Offers[i].ID][1:] {
+			row := maps.Clone(original)
+			params := maps.Clone(original["params"].(map[string]any))
+			params[capability.RatioField] = ratio
+			row["params"] = params
+			delete(row, "official_reference")
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// LegacyClientPrices preserves discovery for installed 1.0.0/1.0.1 plugins.
+func LegacyClientPrices(id string) []map[string]any {
 	m, ok := Lookup(id)
 	if !ok {
 		return nil
@@ -147,6 +171,9 @@ func PluginCatalog() ([]byte, error) {
 	if catalogError != nil {
 		return nil, catalogError
 	}
+	if imageCapabilityError != nil {
+		return nil, imageCapabilityError
+	}
 	var models []map[string]any
 	for _, m := range approved.Models {
 		if m.Kind == "text" {
@@ -161,9 +188,17 @@ func PluginCatalog() ([]byte, error) {
 					break
 				}
 			}
-			offers = append(offers, map[string]any{"id": o.ID, "params": o.Params, "lane": lane})
+			offer := map[string]any{"id": o.ID, "params": o.Params, "lane": lane}
+			if m.Kind == "image" {
+				offer["image_ratios"] = ImageOfferRatios(m.ID, o.ID)
+			}
+			offers = append(offers, offer)
 		}
-		models = append(models, map[string]any{"id": m.ID, "upstream": m.UpstreamID, "kind": m.Kind, "fields": m.Params, "offers": offers})
+		entry := map[string]any{"id": m.ID, "upstream": m.UpstreamID, "kind": m.Kind, "fields": m.Params, "offers": offers}
+		if capability, ok := ImageRatios(m.ID); ok {
+			entry["image_control"] = map[string]any{"ratio_field": capability.RatioField, "ratios": capability.Ratios}
+		}
+		models = append(models, entry)
 	}
 	return common.Marshal(models)
 }
@@ -204,6 +239,15 @@ func BillingExpression(id string, usdCny decimal.Decimal) (string, error) {
 }
 
 func ClientParameters(id string) map[string]any {
+	return clientParameters(id, true)
+}
+
+// LegacyClientParameters must accompany an older executing immutable plugin.
+func LegacyClientParameters(id string) map[string]any {
+	return clientParameters(id, false)
+}
+
+func clientParameters(id string, imageRatios bool) map[string]any {
 	m, ok := Lookup(id)
 	if !ok {
 		return nil
@@ -274,7 +318,14 @@ func ClientParameters(id string) map[string]any {
 			fields[name] = map[string]any{"enum": []any{value}}
 		}
 		if m.Kind == "image" {
-			fields["size"] = map[string]any{"enum": []string{"1:1"}}
+			ratios := []string{"1:1"}
+			if imageRatios {
+				ratios = ImageOfferRatios(id, offer.ID)
+				if len(ratios) == 0 {
+					return nil
+				}
+			}
+			fields["size"] = map[string]any{"enum": ratios}
 			delete(fields, "ratio")
 		}
 		branches = append(branches, map[string]any{"properties": fields})

@@ -323,6 +323,7 @@ func ListModels(c *gin.Context, modelType int) {
 			"nextPageToken": nil,
 		})
 	default:
+		pluginGeneration := jsplugin.DefaultRegistry.Generation()
 		var h3Parameters map[string]any
 		for _, entry := range userOpenAiModels {
 			if entry.Id == "MiniMax-H3" {
@@ -346,7 +347,7 @@ func ListModels(c *gin.Context, modelType int) {
 				}
 				value["kind"] = approved.Kind
 				value["display_name"] = approved.Name
-				parameters := ycapi.ClientParameters(entry.Id)
+				parameters, prices := model.YcapiRuntimeCatalog(pluginGeneration, entry.Id)
 				if approved.Kind == "text" {
 					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
 					var err error
@@ -359,7 +360,7 @@ func ListModels(c *gin.Context, modelType int) {
 					parameters = model.WithMediaClientConcurrencyHint(parameters, "ycapi", entry.Id, approved.Kind)
 				}
 				value["parameters"] = parameters
-				value["retail_price_rows"] = ycapi.ClientPrices(entry.Id)
+				value["retail_price_rows"] = prices
 				publicModels = append(publicModels, value)
 			} else if candidate, ok := codebloom.Lookup(entry.Id); ok {
 				data, err := common.Marshal(entry)

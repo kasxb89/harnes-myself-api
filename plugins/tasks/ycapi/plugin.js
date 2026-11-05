@@ -25,7 +25,7 @@ export const meta = {
   apiVersion: 1,
   key: "ycapi",
   name: "YCAPI",
-  version: "1.0.1",
+  version: "1.0.2",
   icon: "text:YC",
   author: { name: "Yunshu" },
   baseUrl: "https://ycapi.token6688.com",
@@ -115,15 +115,35 @@ function normalize(source, model) {
   }
   if (values.seconds !== undefined && values.duration !== undefined && !equal(values.seconds, values.duration)) throw new Error("Conflicting video duration");
   if (values.ratio !== undefined && values.aspect_ratio !== undefined && !equal(values.ratio, values.aspect_ratio)) throw new Error("Conflicting aspect ratio");
+  let imageControl, imageRatio, imageSizeIsRatio = false;
+  if (model.kind === "image") {
+    imageControl = object(model.image_control);
+    if (!imageControl || !["size", "aspect_ratio"].includes(imageControl.ratio_field) || !Array.isArray(imageControl.ratios) || !imageControl.ratios.length)
+      throw new Error("Image aspect ratio controls are unavailable");
+    imageSizeIsRatio = values.size !== undefined && (String(values.size).includes(":") || imageControl.ratios.some((ratio) => equal(ratio, values.size)));
+    const ratios = [values.ratio, values.aspect_ratio, imageSizeIsRatio ? values.size : undefined].filter((value) => value !== undefined);
+    if (ratios.some((value) => !equal(value, ratios[0]))) throw new Error("Conflicting aspect ratio");
+    if (ratios.length) {
+      imageRatio = imageControl.ratios.find((ratio) => equal(ratio, ratios[0]));
+      if (imageRatio === undefined) throw new Error("Unsupported image aspect ratio");
+    }
+  }
   const candidates = model.offers.filter((offer) => {
     const p = offer.params;
+    if (model.kind === "image") {
+      const ratio = imageRatio === undefined ? p[imageControl.ratio_field] : imageRatio;
+      if (!Array.isArray(offer.image_ratios) || !offer.image_ratios.some((allowed) => equal(allowed, ratio))) return false;
+    }
     for (const [key, value] of Object.entries(values)) {
+      // Image shape is independent of the existing resolution/quality price
+      // tier. Keep that tier's original identity and procurement route.
+      if (model.kind === "image" && (key === "ratio" || key === "aspect_ratio" || key === "size" && imageSizeIsRatio)) continue;
       let expected;
       if (key === "seconds" || key === "duration") expected = p.duration;
       else if (key === "ratio" || key === "aspect_ratio") expected = p.aspect_ratio || (String(p.size).includes(":") ? p.size : "1:1");
       else if (key === "resolution") expected = p.resolution || (!String(p.size).includes(":") ? p.size : undefined);
       else if (key === "size") {
-        if (model.kind === "image") expected = String(value).includes(":") ? "1:1" : p.resolution || p.size;
+        if (model.kind === "image") expected = p.resolution || (!String(p.size).includes(":") ? p.size : undefined);
         else expected = String(value).includes(":") ? p.aspect_ratio : p.resolution;
       } else expected = p[key];
       if (expected === undefined || !equal(value, expected)) return false;
@@ -132,9 +152,15 @@ function normalize(source, model) {
   });
   if (candidates.length !== 1) throw new Error("Select a complete approved generation specification");
   const offer = candidates[0];
+  const params = { ...offer.params, prompt };
+  if (model.kind === "image") {
+    const ratio = imageRatio === undefined ? params[imageControl.ratio_field] : imageRatio;
+    if (!imageControl.ratios.some((allowed) => equal(allowed, ratio))) throw new Error("Unsupported image aspect ratio");
+    params[imageControl.ratio_field] = ratio;
+  }
   return {
     offer,
-    params: { ...offer.params, prompt },
+    params,
     facts: model.kind === "video" ? { seconds: Number(offer.params.duration), spec: offer.id } : { image_count: 1, spec: offer.id },
   };
 }

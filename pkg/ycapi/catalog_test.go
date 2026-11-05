@@ -3,6 +3,7 @@ package ycapi
 import (
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"testing"
 
@@ -12,6 +13,98 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestImageRatiosKeepOriginalPriceTiersAndExactLaneCapabilities(t *testing.T) {
+	require.NoError(t, imageCapabilityError)
+	before, err := Snapshot()
+	require.NoError(t, err)
+	var exported []map[string]any
+	combinations := 0
+	for _, m := range approved.Models {
+		if m.Kind != "image" {
+			continue
+		}
+		t.Run(m.ID, func(t *testing.T) {
+			capability, ok := ImageRatios(m.ID)
+			require.True(t, ok)
+			legacy := LegacyClientPrices(m.ID)
+			prices := ClientPrices(m.ID)
+			require.GreaterOrEqual(t, len(prices), len(legacy))
+			assert.Equal(t, legacy, prices[:len(legacy)], "original square references must stay byte-equivalent")
+			parameters := ClientParameters(m.ID)
+			branches := parameters["oneOf"].([]any)
+			require.Len(t, branches, len(m.Offers))
+			legacyBranches := LegacyClientParameters(m.ID)["oneOf"].([]any)
+			expectedRows := 0
+			for i, offer := range m.Offers {
+				ratios := ImageOfferRatios(m.ID, offer.ID)
+				require.NotEmpty(t, ratios)
+				fields := branches[i].(map[string]any)["properties"].(map[string]any)
+				assert.Equal(t, ratios, fields["size"].(map[string]any)["enum"])
+				assert.Equal(t, []string{"1:1"}, legacyBranches[i].(map[string]any)["properties"].(map[string]any)["size"].(map[string]any)["enum"])
+				expectedRows += len(ratios)
+				for _, ratio := range ratios {
+					matched := 0
+					for _, row := range prices {
+						params := row["params"].(map[string]any)
+						if params[capability.RatioField] != ratio {
+							continue
+						}
+						sameTier := true
+						for key, value := range offer.Params {
+							if key != capability.RatioField && params[key] != value {
+								sameTier = false
+							}
+						}
+						if !sameTier {
+							continue
+						}
+						matched++
+						assert.Equal(t, legacy[i]["retail_cny"], row["retail_cny"])
+						if ratio != "1:1" {
+							assert.NotContains(t, row, "official_reference", "a square native reference is not a wide-image quote")
+						}
+						assert.Equal(t, "1:1", offer.Params[capability.RatioField])
+					}
+					assert.Equal(t, 1, matched, "one exact price per qualified ratio/tier")
+				}
+			}
+			assert.Len(t, prices, expectedRows)
+			combinations += expectedRows
+			exported = append(exported, map[string]any{"model_name": m.ID, "display_name": m.Name, "kind": "image", "parameters": parameters, "retail_price_rows": prices})
+		})
+	}
+	assert.Equal(t, 151, combinations)
+	after, err := Snapshot()
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+	if output := os.Getenv("TEST_YCAPI_IMAGE_PARAMETERS_OUTPUT"); output != "" {
+		body, err := common.Marshal(map[string]any{"data": exported})
+		require.NoError(t, err)
+		file, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		require.NoError(t, err)
+		_, err = file.Write(body)
+		require.NoError(t, err)
+		require.NoError(t, file.Close())
+	}
+}
+
+func TestImageRatioCapabilitiesDoNotBroadenOtherTiersOrSharedState(t *testing.T) {
+	const model = "ycapi-gemini-3-pro-image"
+	capability, ok := ImageRatios(model)
+	require.True(t, ok)
+	assert.Contains(t, capability.Ratios, "21:9")
+	assert.Contains(t, ImageOfferRatios(model, "ed67fe2877e5345e"), "21:9")
+	assert.NotContains(t, ImageOfferRatios(model, "7cffccab262c7e46"), "21:9", "the fixed 2K lane supports fewer ratios")
+	assert.Equal(t, []string{"1:1"}, ImageOfferRatios("ycapi-gemini-3.1-flash-lite-image", "ed67fe2877e5345e"))
+	assert.NotContains(t, ImageOfferRatios("ycapi-doubao-seedream-5-0-pro", "54646ea3fa521240"), "auto")
+	capability.Ratios[0] = "changed"
+	capability.OfferRatios["ed67fe2877e5345e"][0] = "changed"
+	assert.Equal(t, "1:1", ImageOfferRatios(model, "ed67fe2877e5345e")[0])
+	assert.Empty(t, ImageOfferRatios(model, "not-a-price-tier"))
+	_, ok = ImageRatios("ycapi-grok-imagine-video")
+	assert.False(t, ok)
+}
 
 func TestApprovedSaleRowsUseTheExistingQuotaConversion(t *testing.T) {
 	rate := decimal.RequireFromString("7.3")

@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,69 @@ func TestYcapiApprovedMediaWirePlansAndDurableTerminalState(t *testing.T) {
 					usage, err := plugin.Engine.Call(context.Background(), "extractUsage", ctx)
 					require.NoError(t, err)
 					assert.EqualValues(t, len([]byte(request["input"].(string))), usage.(map[string]any)["input_tokens"])
+				}
+				if m.Kind == "image" {
+					capability, ok := ycapi.ImageRatios(m.ID)
+					require.True(t, ok)
+					offerRatios := ycapi.ImageOfferRatios(m.ID, offer.ID)
+					require.NotEmpty(t, offerRatios)
+					for _, ratio := range offerRatios {
+						t.Run(ratio, func(t *testing.T) {
+							selected := maps.Clone(request)
+							selected["size"] = ratio
+							selectedCtx := maps.Clone(ctx)
+							selectedCtx["requestBody"] = selected
+							value, err := plugin.Engine.Call(context.Background(), "buildSubmitRequest", selectedCtx)
+							require.NoError(t, err)
+							wire := value.(map[string]any)["body"].(map[string]any)
+							assert.Equal(t, m.Prices[index].LaneID, wire["lane_id"], "shape cannot select another procurement route")
+							params := wire["params"].(map[string]any)
+							expected := maps.Clone(offer.Params)
+							expected[capability.RatioField], expected["prompt"] = ratio, request["prompt"]
+							expectedJSON, err := common.Marshal(expected)
+							require.NoError(t, err)
+							paramsJSON, err := common.Marshal(params)
+							require.NoError(t, err)
+							assert.JSONEq(t, string(expectedJSON), string(paramsJSON), "only the supplier's actual shape field may change")
+							usage, err := plugin.Engine.Call(context.Background(), "extractUsage", selectedCtx)
+							require.NoError(t, err)
+							assert.Equal(t, offer.ID, usage.(map[string]any)["spec"], "all shapes retain the original priced specification")
+							assert.EqualValues(t, 1, usage.(map[string]any)["image_count"])
+						})
+					}
+					aliasRatio := offerRatios[len(offerRatios)-1]
+					for _, name := range []string{"ratio", "aspect_ratio"} {
+						selected := maps.Clone(request)
+						delete(selected, "size")
+						selected[name] = aliasRatio
+						ctx["requestBody"] = selected
+						value, err := plugin.Engine.Call(context.Background(), "buildSubmitRequest", ctx)
+						require.NoError(t, err)
+						wire := value.(map[string]any)["body"].(map[string]any)
+						assert.Equal(t, aliasRatio, wire["params"].(map[string]any)[capability.RatioField])
+					}
+					for _, ratio := range capability.Ratios {
+						if slices.Contains(offerRatios, ratio) {
+							continue
+						}
+						selected := maps.Clone(request)
+						selected["size"] = ratio
+						ctx["requestBody"] = selected
+						_, err := plugin.Engine.Call(context.Background(), "buildSubmitRequest", ctx)
+						assert.Error(t, err, "a model-wide shape cannot bypass its selected procurement tier's verified controls")
+					}
+					for _, patch := range []map[string]any{
+						{"size": "99:1"}, {"size": "16:9", "ratio": "9:16"},
+						{"size": "16:9", "aspect_ratio": "9:16"}, {"size": "16:9", "metadata": map[string]any{"size": "9:16"}},
+						{"size": "16:9", "resolution": "999K"}, {"size": "16:9", "n": 2}, {"size": "16:9", "count": 2},
+					} {
+						selected := maps.Clone(request)
+						maps.Copy(selected, patch)
+						ctx["requestBody"] = selected
+						_, err := plugin.Engine.Call(context.Background(), "buildSubmitRequest", ctx)
+						assert.Error(t, err, "invalid shape aliases, tiers and counts must fail before any submission")
+					}
+					ctx["requestBody"] = request
 				}
 				unsafe := maps.Clone(request)
 				unsafe["lane_id"] = "caller-override"
@@ -210,7 +274,7 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 		Data []map[string]any `json:"data"`
 	}
 	require.NoError(t, common.Unmarshal(models.Body.Bytes(), &catalog))
-	count, priceRows := 0, 0
+	count, originalPriceRows := 0, 0
 	for _, entry := range catalog.Data {
 		id, _ := entry["id"].(string)
 		if !strings.HasPrefix(id, "ycapi-") {
@@ -226,10 +290,38 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 		}
 		prices, ok := entry["retail_price_rows"].([]any)
 		require.True(t, ok)
-		priceRows += len(prices)
+		originalPriceRows += len(approved.Prices)
+		expectedRows := len(approved.Prices)
+		if approved.Kind == "image" {
+			expectedRows = 0
+			for _, offer := range approved.Offers {
+				expectedRows += len(ycapi.ImageOfferRatios(id, offer.ID))
+			}
+		}
+		assert.Len(t, prices, expectedRows)
 		for i, value := range prices {
 			price, ok := value.(map[string]any)
 			require.True(t, ok)
+			if i >= len(approved.Prices) {
+				assert.NotContains(t, price, "official_reference", "non-square retail tiers do not imply a verified native comparison")
+				capability, ok := ycapi.ImageRatios(id)
+				require.True(t, ok)
+				params := maps.Clone(price["params"].(map[string]any))
+				delete(params, capability.RatioField)
+				var matches []int
+				for index, candidate := range approved.Prices {
+					originalParams := maps.Clone(candidate.Params)
+					delete(originalParams, capability.RatioField)
+					if maps.EqualFunc(originalParams, params, func(a, b any) bool { return fmt.Sprint(a) == fmt.Sprint(b) }) {
+						matches = append(matches, index)
+					}
+				}
+				require.Len(t, matches, 1, "a non-square price must identify exactly one original resolution/quality tier")
+				original := prices[matches[0]].(map[string]any)
+				assert.Equal(t, original["retail_cny"], price["retail_cny"])
+				assert.Equal(t, original["retail_total_cny"], price["retail_total_cny"])
+				continue
+			}
 			reference, ok := price["official_reference"].(map[string]any)
 			require.True(t, ok, "every approved row has a same-unit official reference")
 			assert.EqualValues(t, 1, reference["schema_version"])
@@ -250,7 +342,7 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 43, count)
-	assert.Equal(t, 113, priceRows)
+	assert.Equal(t, 113, originalPriceRows)
 	for _, key := range []string{"procurement", "lane_id", "channel_id", "synthetic-ycapi-only", "ycapi-flux-2\"", "ycapi-seedance-2-5-special\""} {
 		assert.NotContains(t, models.Body.String(), key)
 	}
@@ -292,6 +384,61 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 	}
 	protected := f.request(t, http.MethodGet, "/api/ycapi/catalog", "", "h3routermember")
 	assert.NotContains(t, protected.Body.String(), `"procurementCny"`)
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2"} {
+		t.Run("executing-"+version, func(t *testing.T) {
+			versionSource := strings.Replace(source, `version: "1.0.2"`, `version: "`+version+`"`, 1)
+			_, err := jsplugin.DefaultRegistry.Register(versionSource, jsplugin.Options{})
+			require.NoError(t, err)
+			model.InvalidatePricingCache()
+			models := f.request(t, http.MethodGet, "/v1/models", "", "h3routermember")
+			pricing := f.request(t, http.MethodGet, "/api/pricing", "", "h3routermember")
+			require.Equal(t, http.StatusOK, models.Code, models.Body.String())
+			require.Equal(t, http.StatusOK, pricing.Code, pricing.Body.String())
+			var catalog struct {
+				Data []struct {
+					ID         string           `json:"id"`
+					Kind       string           `json:"kind"`
+					Parameters map[string]any   `json:"parameters"`
+					Rows       []map[string]any `json:"retail_price_rows"`
+				} `json:"data"`
+			}
+			var priced struct {
+				Data []struct {
+					ID         string           `json:"model_name"`
+					Parameters map[string]any   `json:"parameters"`
+					Rows       []map[string]any `json:"retail_price_rows"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(models.Body.Bytes(), &catalog))
+			require.NoError(t, common.Unmarshal(pricing.Body.Bytes(), &priced))
+			matched := 0
+			for _, item := range catalog.Data {
+				if !strings.HasPrefix(item.ID, "ycapi-") || item.Kind != "image" {
+					continue
+				}
+				for _, price := range priced.Data {
+					if price.ID != item.ID {
+						continue
+					}
+					matched++
+					assert.Equal(t, price.Parameters, item.Parameters, "both endpoints must declare the executing plugin's identical controls")
+					assert.Equal(t, price.Rows, item.Rows, "both endpoints must publish prices for exactly those controls")
+				}
+				assert.Equal(t, version, item.Parameters["x-task-plugin-runtime"].(map[string]any)["version"])
+				_, recovery := item.Parameters["x-image-receipt-recovery"]
+				assert.Equal(t, version != "1.0.0", recovery)
+				if version != "1.0.2" {
+					for _, branch := range item.Parameters["oneOf"].([]any) {
+						properties := branch.(map[string]any)["properties"].(map[string]any)
+						assert.Equal(t, []any{"1:1"}, properties["size"].(map[string]any)["enum"])
+					}
+				}
+			}
+			assert.Equal(t, 8, matched)
+		})
+	}
 }
 
 func TestYcapiRemovedModelRejectsStaleChannelBeforeQuotaOrUpstream(t *testing.T) {
@@ -850,12 +997,17 @@ func TestYcapiRuntimeModelMetadataKeepsOriginalImageReceiptAndArtifacts(t *testi
 	parsed := value.(map[string]any)
 	assert.Equal(t, "provider-original", parsed["taskId"])
 	ctx["state"] = parsed["state"]
+	legacyFacts := parsed["state"].(map[string]any)["facts"]
 	completed := map[string]any{"id": "provider-original", "model": "flux-kontext", "status": "completed", "is_final": true,
 		"result": map[string]any{"images": []any{map[string]any{"url": "https://cdn.example/original.png"}}}}
 	value, err = plugin.Engine.Call(context.Background(), "parseTaskResult", ctx, completed)
 	require.NoError(t, err)
 	result := value.(map[string]any)
 	assert.Equal(t, "SUCCESS", result["status"])
+	assert.Equal(t, legacyFacts, result["state"].(map[string]any)["facts"], "upgrading shape controls cannot replace an existing task's priced specification")
+	usage, err := plugin.Engine.Call(context.Background(), "extractUsageOnComplete", ctx, result, completed)
+	require.NoError(t, err)
+	assert.Empty(t, usage, "image completion keeps the submission's frozen count and specification")
 	artifacts, err := plugin.Engine.Call(context.Background(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": result["state"]})
 	require.NoError(t, err)
 	assert.Equal(t, "image", artifacts.([]any)[0].(map[string]any)["key"])

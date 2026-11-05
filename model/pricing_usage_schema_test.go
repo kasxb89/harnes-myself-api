@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -18,7 +19,7 @@ import (
 )
 
 func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
-	for _, version := range []string{"1.0.0", "1.0.1"} {
+	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2"} {
 		t.Run(version, func(t *testing.T) {
 			parameters := taskPluginParameterSchema("ycapi", version, "ycapi-flux-kontext")
 			require.NotNil(t, parameters)
@@ -29,10 +30,44 @@ func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
 			require.True(t, ok)
 			assert.Equal(t, version, runtime["version"])
 			_, recovery := parameters["x-image-receipt-recovery"]
-			assert.Equal(t, version == "1.0.1", recovery, "old installed overrides cannot certify the fixed parser")
+			assert.Equal(t, version != "1.0.0", recovery, "old installed overrides cannot certify the fixed parser")
+			branches := parameters["oneOf"].([]any)
+			size := branches[0].(map[string]any)["properties"].(map[string]any)["size"].(map[string]any)["enum"].([]string)
+			if version == "1.0.2" {
+				assert.Contains(t, size, "16:9")
+			} else {
+				assert.Equal(t, []string{"1:1"}, size, "new host code cannot advertise shapes an old override still rejects")
+			}
 		})
 	}
-	assert.Nil(t, taskPluginParameterSchema("ycapi", "1.0.2", "ycapi-flux-kontext"))
+	assert.Nil(t, taskPluginParameterSchema("ycapi", "1.0.3", "ycapi-flux-kontext"))
+}
+
+func TestPricingYcapiImagePricesFollowExecutingOverride(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	insertPricingEndpointChannel(t, 917, constant.ChannelTypeTaskPlugin, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 917, "ycapi-flux-kontext")
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+	for _, version := range []string{"1.0.1", "1.0.2"} {
+		source := fmt.Sprintf(`
+export const meta = {apiVersion: 1, key: "ycapi", name: "YCAPI", version: %q, author: {name: "Test"},
+  models: ["ycapi-flux-kontext"], fetchMode: "per_task", usageSchema: {}};
+export function buildSubmitRequest() {return {};}
+export function parseSubmitResponse() {return {};}
+export function buildQueryRequest() {return {};}
+export function parseTaskResult() {return {};}
+`, version)
+		_, err := jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+		require.NoError(t, err)
+		InvalidatePricingCache()
+		row := pricingByModel(GetPricing())["ycapi-flux-kontext"]
+		if version == "1.0.1" {
+			assert.Equal(t, ycapi.LegacyClientPrices(row.ModelName), row.RetailPriceRows)
+		} else {
+			assert.Equal(t, ycapi.ClientPrices(row.ModelName), row.RetailPriceRows)
+			assert.Greater(t, len(row.RetailPriceRows), len(ycapi.LegacyClientPrices(row.ModelName)))
+		}
+	}
 }
 
 func pricingUsagePluginSource(version, usageSchema string) string {

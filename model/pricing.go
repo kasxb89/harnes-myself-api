@@ -404,8 +404,7 @@ func updatePricing() {
 		if approved, ok := ycapi.Lookup(model); ok {
 			pricing.Kind = approved.Kind
 			pricing.DisplayName = approved.Name
-			pricing.Parameters = ycapi.ClientParameters(model)
-			pricing.RetailPriceRows = ycapi.ClientPrices(model)
+			pricing.Parameters, pricing.RetailPriceRows = YcapiRuntimeCatalog(pluginGeneration, model)
 		}
 		plugin, ok := pluginGeneration.GetByModel(model)
 		if !ok {
@@ -537,6 +536,20 @@ func blackrxVideoReferenceLimits(model string) [3]int {
 	}
 }
 
+// YcapiRuntimeCatalog keeps public discovery and pricing on the parameter and
+// retail contracts implemented by the same executing plugin generation.
+func YcapiRuntimeCatalog(generation *jsplugin.RoutingGeneration, id string) (map[string]any, []map[string]any) {
+	parameters := ycapi.LegacyClientParameters(id)
+	prices := ycapi.LegacyClientPrices(id)
+	if plugin, ok := generation.GetByModel(id); ok {
+		parameters = taskPluginClientParameters(plugin.Meta.Key, plugin.Meta.Version, id)
+		if plugin.Meta.Key == "ycapi" && plugin.Meta.Version == "1.0.2" {
+			prices = ycapi.ClientPrices(id)
+		}
+	}
+	return parameters, prices
+}
+
 func taskPluginClientParameters(key, version, model string) map[string]any {
 	parameters := taskPluginParameterSchema(key, version, model)
 	if parameters == nil {
@@ -567,10 +580,13 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 		}
 		return codebloom.ClientParameters(model)
 	case "ycapi":
-		if version != "1.0.0" && version != "1.0.1" {
+		if version != "1.0.0" && version != "1.0.1" && version != "1.0.2" {
 			return nil
 		}
-		parameters := ycapi.ClientParameters(model)
+		parameters := ycapi.LegacyClientParameters(model)
+		if version == "1.0.2" {
+			parameters = ycapi.ClientParameters(model)
+		}
 		if parameters != nil {
 			parameters["x-task-plugin-runtime"] = map[string]any{"key": key, "version": version, "api_version": 1}
 		}
