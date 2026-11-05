@@ -332,6 +332,7 @@ func updatePricing() {
 	}
 
 	pricingMap = make([]Pricing, 0)
+	presentation := CurrentClientModelPresentation()
 	pluginGeneration := jsplugin.DefaultRegistry.Generation()
 	for model, groups := range modelGroupsMap {
 		if !codebloom.PubliclyAvailable(model) {
@@ -396,7 +397,7 @@ func updatePricing() {
 			}
 		}
 		if candidate, ok := codebloom.Lookup(model); ok {
-			pricing.Kind, pricing.DisplayName = candidate.Kind, ClientModelDisplayName(model)
+			pricing.Kind = candidate.Kind
 			pricing.Parameters = codebloom.ClientParameters(model)
 			pricing.RetailPriceRows = codebloom.ClientPrices(model)
 		}
@@ -448,6 +449,7 @@ func updatePricing() {
 				})
 			}
 		}
+		pricing.DisplayName = presentation.DisplayName(model, pricing.DisplayName)
 		pricingMap = append(pricingMap, pricing)
 	}
 

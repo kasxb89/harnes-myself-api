@@ -221,12 +221,19 @@ test('independent description override and hidden badge save only the presentati
   )
   await setup()
   await edit()
+  fireEvent.change(
+    within(getDialog()).getByRole('textbox', { name: 'Display name' }),
+    {
+      target: { value: 'Live model label' },
+    }
+  )
   await customDescription('<b>Plain text</b>\nSecond line')
   await userEvent.selectOptions(
     within(getDialog()).getByRole('combobox', { name: 'Badge display' }),
     'hidden'
   )
   await apply()
+  expect(screen.getByText('Live model label')).toBeVisible()
   expect(screen.getByText('<b>Plain text</b> Second line')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: 'Save client model configuration' })
@@ -236,7 +243,7 @@ test('independent description override and hidden badge save only the presentati
     expect(api.put).toHaveBeenCalledWith(presentationUrl, {
       schema_version: 1,
       models: JSON.parse(
-        '{"__proto__":{"description":"kept"},"retired-model":{"badge":"legacy"},"deepseek-chat":{"description":"<b>Plain text</b>\\nSecond line","badge":""}}'
+        '{"__proto__":{"description":"kept"},"retired-model":{"badge":"legacy"},"deepseek-chat":{"display_name":"Live model label","description":"<b>Plain text</b>\\nSecond line","badge":""}}'
       ),
     })
   )

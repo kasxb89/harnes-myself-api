@@ -47,7 +47,8 @@ export function PresentationTable(props: PresentationTableProps) {
     .map((id) => ({
       id,
       available: catalog.has(id),
-      displayName: catalog.get(id)?.display_name ?? id,
+      displayName:
+        props.entries[id]?.display_name ?? catalog.get(id)?.display_name ?? id,
     }))
     .filter((row) =>
       `${row.id} ${row.displayName} ${getModelDisplayName(row.id, row.displayName)}`

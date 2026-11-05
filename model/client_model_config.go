@@ -250,6 +250,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 			taskModels[strings.ToLower(name)] = struct{}{}
 		}
 	}
+	presentation := CurrentClientModelPresentation()
 	byID := make(map[string]ClientModelCandidate)
 	for _, ability := range abilities {
 		channel, enabled := channels[ability.ChannelId]
@@ -258,7 +259,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 		}
 		candidate := byID[ability.Model]
 		candidate.ID = ability.Model
-		candidate.DisplayName = modelDisplayName(ability.Model)
+		candidate.DisplayName = presentation.DisplayName(ability.Model, modelDisplayName(ability.Model))
 		candidate.ChatEligible = candidate.ChatEligible || clientModelSupportsChat(channel, ability.Model, metadataByModel[ability.Model], taskModels)
 		image, video := clientModelMediaEligibility(channel, ability.Model)
 		candidate.ImageEligible = candidate.ImageEligible || image

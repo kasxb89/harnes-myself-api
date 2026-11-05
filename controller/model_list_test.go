@@ -321,6 +321,50 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.Empty(t, missingExprPricing.BillingExpr)
 }
 
+func TestListModelsAppliesSavedDisplayNameWithoutChangingIdentity(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	const id = "zz-editable-label"
+	require.NoError(t, db.Create(&model.User{Id: 1001, Username: "label-user", Password: "password", Group: "default", Status: common.UserStatusEnabled}).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: id, ChannelId: 1, Enabled: true}).Error)
+	common.OptionMapRWMutex.Lock()
+	previousOptions := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+		model.InvalidatePricingCache()
+	})
+	model.InvalidatePricingCache()
+	baseline := pricingByModelName(model.GetPricing())[id]
+	require.Equal(t, id, baseline.DisplayName)
+	for _, label := range []string{"First label", "Second label"} {
+		badge := "Retained badge"
+		require.NoError(t, model.SaveClientModelPresentation(model.ClientModelPresentation{SchemaVersion: 1, Models: map[string]model.ClientModelPresentationEntry{
+			id: {DisplayName: &label, Badge: &badge}, "unavailable-id": {DisplayName: &label},
+		}}))
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		ctx.Set("id", 1001)
+		ListModels(ctx, constant.ChannelTypeOpenAI)
+		assert.Equal(t, map[string]struct{}{id: {}}, decodeListModelsResponse(t, recorder))
+		assert.Contains(t, recorder.Body.String(), `"display_name":"`+label+`"`)
+		expected := baseline
+		expected.DisplayName = label
+		assert.Equal(t, expected, pricingByModelName(model.GetPricing())[id])
+		public := model.PublicClientModelPresentation()
+		assert.Equal(t, map[string]model.ClientModelPresentationEntry{id: {Badge: &badge}}, public.Models)
+	}
+	require.NoError(t, model.SaveClientModelPresentation(model.ClientModelPresentation{
+		SchemaVersion: 1, Models: map[string]model.ClientModelPresentationEntry{},
+	}))
+	assert.Equal(t, baseline, pricingByModelName(model.GetPricing())[id])
+}
+
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {
 	withSelfUseModeEnabled(t)
 	db := setupModelListControllerTestDB(t)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -26,6 +27,7 @@ var (
 // Fields are optional pointers: missing uses the client's fallback, while an
 // explicit empty string clears it. All text is inert display data, never HTML.
 type ClientModelPresentationEntry struct {
+	DisplayName *string `json:"display_name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Badge       *string `json:"badge,omitempty"`
 }
@@ -103,7 +105,7 @@ func ParseClientModelPresentation(data []byte) (ClientModelPresentation, error) 
 			return invalid, ErrInvalidClientModelPresentation
 		}
 		fields, err := clientModelPresentationObject(raw)
-		if err != nil || len(fields) > 2 {
+		if err != nil || len(fields) > 3 {
 			return invalid, ErrInvalidClientModelPresentation
 		}
 		entry := ClientModelPresentationEntry{}
@@ -113,6 +115,12 @@ func ParseClientModelPresentation(data []byte) (ClientModelPresentation, error) 
 				return invalid, ErrInvalidClientModelPresentation
 			}
 			switch key {
+			case "display_name":
+				if text == "" || text != strings.TrimSpace(text) || len(utf16.Encode([]rune(text))) > 100 ||
+					strings.ContainsFunc(text, unicode.IsControl) || strings.ContainsAny(text, "\u2028\u2029") {
+					return invalid, ErrInvalidClientModelPresentation
+				}
+				entry.DisplayName = &text
 			case "description":
 				if len(utf16.Encode([]rune(text))) > 500 {
 					return invalid, ErrInvalidClientModelPresentation
@@ -140,6 +148,32 @@ func CurrentClientModelPresentation() ClientModelPresentation {
 		return config
 	}
 	return ClientModelPresentation{SchemaVersion: 1, Models: map[string]ClientModelPresentationEntry{}}
+}
+
+// DisplayName resolves an exact model label with the caller's catalog fallback.
+func (config ClientModelPresentation) DisplayName(id, fallback string) string {
+	if label := config.Models[id].DisplayName; label != nil {
+		return *label
+	}
+	return fallback
+}
+
+// PublicClientModelPresentation retains the description and badge protocol for
+// older clients. Model names are published through the model catalog.
+func PublicClientModelPresentation() ClientModelPresentation {
+	config := CurrentClientModelPresentation()
+	for id, entry := range config.Models {
+		if entry.DisplayName == nil {
+			continue
+		}
+		if entry.Description == nil && entry.Badge == nil {
+			delete(config.Models, id)
+			continue
+		}
+		entry.DisplayName = nil
+		config.Models[id] = entry
+	}
+	return config
 }
 
 func SaveClientModelPresentation(config ClientModelPresentation) error {
@@ -181,6 +215,7 @@ func SaveClientModelPresentation(config ClientModelPresentation) error {
 	}
 	common.OptionMap[keyClientModelPresentation] = string(data)
 	common.OptionMapRWMutex.Unlock()
+	InvalidatePricingCache()
 	return nil
 }
 

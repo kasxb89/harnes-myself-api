@@ -107,6 +107,9 @@ function ClientModelPresentationForm(props: PresentationFormProps) {
       setBaseline(data)
       queryClient.setQueryData(['client-model-presentation'], data)
       void queryClient.invalidateQueries({ queryKey: ['status'] })
+      void queryClient.invalidateQueries({
+        queryKey: ['client-model-config', 'models'],
+      })
       toast.success(t('Model descriptions and badges saved'))
     },
     onError: (error) => handleServerError(error),

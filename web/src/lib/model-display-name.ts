@@ -17,13 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-/** Keep the Metaso display name separate from its legacy API identifier. */
+/** Prefer the catalog label with the route's default as a fallback. */
 export function getModelDisplayName(
   modelId: string,
   displayName?: string,
   fallbackName = modelId
 ): string {
-  if (modelId !== 'MiniMax-H3') return fallbackName
   const name = displayName?.trim()
-  return name && name !== modelId ? name : 'mt-MiniMax-H3'
+  if (name && name !== modelId) return name
+  return modelId === 'MiniMax-H3' ? 'mt-MiniMax-H3' : fallbackName
 }

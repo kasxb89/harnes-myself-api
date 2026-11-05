@@ -31,6 +31,7 @@ export type ClientModelOption = {
 }
 
 export type ClientModelPresentationEntry = {
+  display_name?: string
   description?: string
   badge?: string
 }

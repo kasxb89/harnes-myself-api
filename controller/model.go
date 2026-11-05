@@ -336,6 +336,7 @@ func ListModels(c *gin.Context, modelType int) {
 				break
 			}
 		}
+		presentation := model.CurrentClientModelPresentation()
 		publicModels := make([]any, 0, len(userOpenAiModels))
 		for _, entry := range userOpenAiModels {
 			if approved, ok := ycapi.Lookup(entry.Id); ok {
@@ -346,7 +347,7 @@ func ListModels(c *gin.Context, modelType int) {
 					return
 				}
 				value["kind"] = approved.Kind
-				value["display_name"] = approved.Name
+				value["display_name"] = presentation.DisplayName(entry.Id, approved.Name)
 				parameters, prices := model.YcapiRuntimeCatalog(pluginGeneration, entry.Id)
 				if approved.Kind == "text" {
 					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
@@ -373,7 +374,7 @@ func ListModels(c *gin.Context, modelType int) {
 					c.AbortWithStatus(http.StatusServiceUnavailable)
 					return
 				}
-				value["kind"], value["display_name"] = candidate.Kind, model.ClientModelDisplayName(entry.Id)
+				value["kind"], value["display_name"] = candidate.Kind, presentation.DisplayName(entry.Id, model.ClientModelDisplayName(entry.Id))
 				parameters := codebloom.ClientParameters(entry.Id)
 				if candidate.Kind == "text" {
 					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
@@ -395,11 +396,16 @@ func ListModels(c *gin.Context, modelType int) {
 					c.AbortWithStatus(http.StatusServiceUnavailable)
 					return
 				}
-				value["display_name"] = model.ClientModelDisplayName(entry.Id)
+				value["display_name"] = presentation.DisplayName(entry.Id, model.ClientModelDisplayName(entry.Id))
 				if h3Parameters != nil {
 					value["kind"], value["parameters"] = "video", h3Parameters
 				}
 				publicModels = append(publicModels, value)
+			} else if label := presentation.DisplayName(entry.Id, ""); label != "" {
+				publicModels = append(publicModels, struct {
+					dto.OpenAIModels
+					DisplayName string `json:"display_name"`
+				}{entry, label})
 			} else {
 				publicModels = append(publicModels, entry)
 			}

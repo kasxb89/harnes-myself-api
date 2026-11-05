@@ -212,9 +212,10 @@ func GetConfiguredModelPricebook(c *gin.Context) {
 	for _, entry := range snapshot.Entries {
 		entries[entry.ModelName] = entry
 	}
+	presentation := model.CurrentClientModelPresentation()
 	for i := range rows {
 		row := &rows[i]
-		row.DisplayName = model.ClientModelDisplayName(row.ModelName)
+		row.DisplayName = presentation.DisplayName(row.ModelName, model.ClientModelDisplayName(row.ModelName))
 		entry := entries[row.ModelName]
 		quote := quoteByName[row.ModelName]
 		if quote != nil && (quote.Provider != "Metaso" || row.ChannelID == 0 || row.UpstreamHost == "metaso.cn") && (quote.Provider != "CodeBloom" || row.ChannelID == 0 || row.UpstreamHost == "codebloom.club") {

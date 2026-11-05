@@ -92,6 +92,22 @@ export function PresentationDialog(props: PresentationDialogProps) {
           )}
         >
           <FieldGroup>
+            <FormField
+              control={form.control}
+              name='displayName'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Display name')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} maxLength={100} />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Leave empty to use default')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             {(['description', 'badge'] as const).map((fieldName) => (
               <Field key={fieldName}>
                 <FormField

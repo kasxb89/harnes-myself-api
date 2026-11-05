@@ -43,7 +43,7 @@ func GetStatus(c *gin.Context) {
 	cs := console_setting.GetConsoleSetting()
 	passkeySetting := system_setting.PasskeySettingsSnapshot()
 	clientModelConfig := model.CurrentClientModelConfig()
-	clientModelPresentation := model.CurrentClientModelPresentation()
+	clientModelPresentation := model.PublicClientModelPresentation()
 	clientMediaDefaults := model.CurrentClientMediaDefaults()
 	customerService := model.PublicCustomerService()
 	common.OptionMapRWMutex.RLock()

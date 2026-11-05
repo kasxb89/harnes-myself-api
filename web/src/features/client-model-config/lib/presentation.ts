@@ -23,8 +23,19 @@ import type {
   ClientModelPresentationEntry,
 } from '../types'
 
+const displayNameSchema = z
+  .string()
+  .max(100)
+  .refine(
+    (value) =>
+      value !== '' &&
+      !/^\p{White_Space}|\p{White_Space}$/u.test(value) &&
+      !/[\p{Cc}\u2028\u2029]/u.test(value)
+  )
+
 const presentationEntrySchema = z
   .object({
+    display_name: displayNameSchema.optional(),
     description: z.string().max(500).optional(),
     badge: z
       .string()
@@ -83,6 +94,7 @@ export function sameClientModelPresentation(
     ids.every(
       (id) =>
         Object.hasOwn(right.models, id) &&
+        left.models[id].display_name === right.models[id].display_name &&
         left.models[id].description === right.models[id].description &&
         left.models[id].badge === right.models[id].badge
     )
@@ -96,6 +108,7 @@ const presentationFieldSchema = z.object({
 
 export const presentationEditorSchema = z
   .object({
+    displayName: z.union([z.literal(''), displayNameSchema]),
     description: presentationFieldSchema,
     badge: presentationFieldSchema,
   })
@@ -135,7 +148,9 @@ export type PresentationEditorValues = z.infer<typeof presentationEditorSchema>
 export function presentationEntryToForm(
   entry: ClientModelPresentationEntry
 ): PresentationEditorValues {
-  const values = {} as PresentationEditorValues
+  const values = {
+    displayName: entry.display_name ?? '',
+  } as PresentationEditorValues
   for (const field of ['description', 'badge'] as const) {
     const text = entry[field]
     let mode: PresentationEditorValues['description']['mode'] = 'custom'
@@ -150,6 +165,7 @@ export function presentationFormToEntry(
   values: PresentationEditorValues
 ): ClientModelPresentationEntry {
   const entry: ClientModelPresentationEntry = {}
+  if (values.displayName !== '') entry.display_name = values.displayName
   for (const field of ['description', 'badge'] as const) {
     if (values[field].mode === 'hidden') entry[field] = ''
     else if (values[field].mode === 'custom') entry[field] = values[field].text
