@@ -268,6 +268,8 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.GET("/model_capacity", controller.GetModelCapacity)
 			optionRoute.PUT("/model_capacity", middleware.SessionCookieOriginGuard(), controller.SaveModelCapacity)
+			optionRoute.GET("/model_capacity/catalog", controller.GetModelCapacityCatalog)
+			optionRoute.PATCH("/model_capacity", middleware.SessionCookieOriginGuard(), controller.PatchModelCapacity)
 			optionRoute.GET("/request_policy", controller.GetRequestPolicy)
 			optionRoute.PATCH("/request_policy", controller.UpdateRequestPolicy)
 			optionRoute.PUT("/", controller.UpdateOption)

@@ -200,12 +200,16 @@ func CurrentClientModelConfig() ClientModelConfig {
 // ListClientModelCandidates reads live abilities and channels instead of the
 // pricing cache. No channel credentials, group names, or channel IDs are exposed.
 func ListClientModelCandidates() ([]ClientModelCandidate, error) {
+	return listClientModelCandidates(DB)
+}
+
+func listClientModelCandidates(db *gorm.DB) ([]ClientModelCandidate, error) {
 	candidates := make([]ClientModelCandidate, 0)
-	if DB == nil {
+	if db == nil {
 		return nil, ErrClientModelCatalog
 	}
 	var abilities []Ability
-	if err := DB.Model(&Ability{}).Select("model", "channel_id").Distinct().Where("enabled = ?", true).
+	if err := db.Model(&Ability{}).Select("model", "channel_id").Distinct().Where("enabled = ?", true).
 		Order("model, channel_id").Find(&abilities).Error; err != nil {
 		return nil, ErrClientModelCatalog
 	}
@@ -223,7 +227,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 	channels := make(map[int]Channel, len(channelIDs))
 	for start := 0; start < len(channelIDs); start += 500 {
 		var batch []Channel
-		if err := DB.Model(&Channel{}).Select("id", "type", "settings", "setting", "model_mapping", "key", "base_url", "header_override", "channel_info").
+		if err := db.Model(&Channel{}).Select("id", "type", "settings", "setting", "model_mapping", "key", "base_url", "header_override", "channel_info").
 			Where("id IN ? AND status = ?", channelIDs[start:min(start+500, len(channelIDs))], common.ChannelStatusEnabled).
 			Find(&batch).Error; err != nil {
 			return nil, ErrClientModelCatalog
@@ -233,7 +237,7 @@ func ListClientModelCandidates() ([]ClientModelCandidate, error) {
 		}
 	}
 	var metadata []Model
-	if err := DB.Select("id", "model_name", "name_rule", "endpoints").Order("id").Find(&metadata).Error; err != nil {
+	if err := db.Select("id", "model_name", "name_rule", "endpoints").Order("id").Find(&metadata).Error; err != nil {
 		return nil, ErrClientModelCatalog
 	}
 	names := make([]string, 0, len(abilities))

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
@@ -13,6 +14,8 @@ import (
 )
 
 const ModelCapacityOptionKey = "ModelCapacityPolicies"
+
+var modelCapacityMutationMu sync.Mutex
 
 // CapacityRoute is administrator evidence for one exact public ID and route.
 // Empty metadata never opts an existing model into capacity management.
@@ -68,7 +71,6 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 		return errors.New("invalid model capacity schema or size")
 	}
 	seen := map[string]bool{}
-	fields := map[string]string{}
 	for _, r := range cfg.Routes {
 		key := fmt.Sprintf("%s\x00%s\x00%d\x00%s", r.Model, r.Group, r.ChannelID, r.RouteModel)
 		if seen[key] {
@@ -100,12 +102,6 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 		default:
 			return errors.New("unsupported model capacity budget field")
 		}
-		groupKey := r.Model
-		presence := fmt.Sprintf("%t/%t", r.ContextWindow != nil, r.MaxOutputTokens != nil)
-		if prior, ok := fields[groupKey]; ok && prior != presence {
-			return errors.New("all managed routes for an exact public model must verify the same capacity fields")
-		}
-		fields[groupKey] = presence
 	}
 	return nil
 }
@@ -113,6 +109,8 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 // Save retains previously declared fields/routes: omission is not revocation.
 // Existing channel/ability switches remain the authority for availability.
 func SaveModelCapacityConfig(cfg ModelCapacityConfig) error {
+	modelCapacityMutationMu.Lock()
+	defer modelCapacityMutationMu.Unlock()
 	if err := validateModelCapacityConfig(cfg); err != nil {
 		return err
 	}

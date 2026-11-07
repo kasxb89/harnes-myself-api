@@ -756,7 +756,7 @@ test('empty platform defaults explain catalog fallbacks and the H3 resolution wi
   ).toBeVisible()
   expect(
     within(summary).getByText(
-      'No platform video model is set. Use MiniMax-H3, with 768P when no resolution is specified.'
+      'No platform video model is set. Use mt-MiniMax-H3, with 768P when no resolution is specified.'
     )
   ).toBeVisible()
   expect(

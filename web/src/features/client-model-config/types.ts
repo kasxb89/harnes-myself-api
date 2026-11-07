@@ -46,3 +46,35 @@ export type ClientMediaDefaults = {
   default_image_model: string
   default_video_model: string
 }
+
+export type ClientModelCapacityRoute = {
+  model: string
+  group: string
+  channel_id: number
+  channel_name: string
+  route_model: string
+  context_window?: number
+  max_output_tokens?: number
+  budget_field: string
+  source: string
+  verified_at: string
+  configured: boolean
+  valid: boolean
+  requires_full_capacity?: boolean
+}
+
+export type ClientModelCapacityCatalog = {
+  revision: string
+  routes: ClientModelCapacityRoute[]
+}
+
+export type ClientModelCapacityChange = Pick<
+  ClientModelCapacityRoute,
+  | 'model'
+  | 'group'
+  | 'channel_id'
+  | 'route_model'
+  | 'budget_field'
+  | 'source'
+  | 'verified_at'
+> & { context_window?: number; max_output_tokens?: number }

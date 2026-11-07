@@ -22,13 +22,42 @@ import type { ApiResponse } from '@/features/profile/types'
 import { api } from '@/lib/api'
 import { createServerError } from '@/lib/server-error-message'
 
+import { clientModelCapacityCatalogSchema } from './lib/capacity'
 import { clientModelPresentationSchema } from './lib/presentation'
 import type {
+  ClientModelCapacityCatalog,
+  ClientModelCapacityChange,
   ClientMediaDefaults,
   ClientModelConfig,
   ClientModelOption,
   ClientModelPresentation,
 } from './types'
+
+export async function getClientModelCapacities(): Promise<ClientModelCapacityCatalog> {
+  const response = await api.get<ApiResponse<ClientModelCapacityCatalog>>(
+    '/api/option/model_capacity/catalog'
+  )
+  const parsed = clientModelCapacityCatalogSchema.safeParse(response.data.data)
+  if (!response.data.success || !parsed.success) {
+    throw createServerError(response.data, t('Failed to load model capacities'))
+  }
+  return parsed.data
+}
+
+export async function saveClientModelCapacities(value: {
+  revision: string
+  routes: ClientModelCapacityChange[]
+}): Promise<ClientModelCapacityCatalog> {
+  const response = await api.patch<ApiResponse<ClientModelCapacityCatalog>>(
+    '/api/option/model_capacity',
+    value
+  )
+  const parsed = clientModelCapacityCatalogSchema.safeParse(response.data.data)
+  if (!response.data.success || !parsed.success) {
+    throw createServerError(response.data, t('Failed to save model capacities'))
+  }
+  return parsed.data
+}
 
 export async function getClientModelConfig(): Promise<ClientModelConfig> {
   const response = await api.get<ApiResponse<ClientModelConfig>>(

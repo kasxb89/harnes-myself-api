@@ -27,9 +27,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FormNavigationGuard } from '@/features/system-settings/components/form-navigation-guard'
 import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
 import { canAccessAdminRoute, hasPermission } from '@/lib/admin-permissions'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getClientModelCatalog, getClientModelConfig } from './api'
+import { ClientModelCapacitySection } from './components/capacity-section'
 import { ClientModelConfigForm } from './components/config-form'
 import { ClientDefaultsSummary } from './components/defaults-summary'
 import { ClientMediaDefaultsSection } from './components/media-defaults-form'
@@ -45,16 +47,21 @@ export function ClientModelConfigPage() {
     <ClientModelConfigEditor
       key={user?.id}
       readOnly={!hasPermission(user, 'client_model_config', 'write')}
+      canEditCapacities={(user?.role ?? 0) >= ROLE.SUPER_ADMIN}
     />
   )
 }
 
-function ClientModelConfigEditor(props: { readOnly: boolean }) {
+function ClientModelConfigEditor(props: {
+  readOnly: boolean
+  canEditCapacities: boolean
+}) {
   const { t } = useTranslation()
   const [tab, setTab] = useState('preferences')
   const [configDirty, setConfigDirty] = useState(false)
   const [mediaDirty, setMediaDirty] = useState(false)
   const [presentationDirty, setPresentationDirty] = useState(false)
+  const [capacityDirty, setCapacityDirty] = useState(false)
   const [actions, setActions] = useState<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<HTMLSpanElement | null>(null)
   const config = useQuery({
@@ -91,7 +98,9 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <FormNavigationGuard
-            when={configDirty || presentationDirty || mediaDirty}
+            when={
+              configDirty || presentationDirty || mediaDirty || capacityDirty
+            }
           />
           <Tabs
             value={tab}
@@ -100,7 +109,7 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
           >
             {config.data && <ClientDefaultsSummary config={config.data} />}
             <TabsList
-              className='h-auto w-full flex-wrap'
+              className='grid h-auto w-full grid-cols-2 group-data-horizontal/tabs:h-auto sm:flex sm:flex-wrap'
               aria-label={t('Client model settings')}
             >
               <TabsTrigger
@@ -112,6 +121,14 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
               <TabsTrigger value='media' className='h-auto whitespace-normal'>
                 {t('Image and video defaults')}
               </TabsTrigger>
+              {props.canEditCapacities && (
+                <TabsTrigger
+                  value='capacity'
+                  className='h-auto whitespace-normal'
+                >
+                  {t('Context and output limits')}
+                </TabsTrigger>
+              )}
               <TabsTrigger
                 value='presentation'
                 className='h-auto whitespace-normal'
@@ -172,6 +189,15 @@ function ClientModelConfigEditor(props: { readOnly: boolean }) {
                 }}
               />
             </TabsContent>
+            {props.canEditCapacities && (
+              <TabsContent value='capacity' keepMounted>
+                <ClientModelCapacitySection
+                  models={catalog.data ?? []}
+                  active={tab === 'capacity'}
+                  onDirtyChange={setCapacityDirty}
+                />
+              </TabsContent>
+            )}
           </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>
