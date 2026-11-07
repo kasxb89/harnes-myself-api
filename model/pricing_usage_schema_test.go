@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,89 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBillingOptionUpdateReleasesConfigLockBeforePricingInvalidation(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+	savedBilling := make(map[string]string)
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		if strings.HasPrefix(key, "billing_setting.") {
+			savedBilling[key] = value
+		}
+		return nil
+	}))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(savedBilling)) })
+	common.OptionMapRWMutex.Lock()
+	savedOptions := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = savedOptions
+		common.OptionMapRWMutex.Unlock()
+	})
+
+	// A pricing refresh can hold this lock before reading model presentation.
+	updatePricingLock.Lock()
+	pricingMap = []Pricing{{ModelName: "stale-lock-order-cache"}}
+	lastGetPricingTime = time.Now()
+	pricingHeld := true
+	common.OptionMapRWMutex.RLock()
+	readerHeld := true
+	writerDone := make(chan struct{})
+	readerDone := make(chan struct{})
+	readerStarted := false
+	var writeErr error
+	defer func() {
+		if readerHeld {
+			common.OptionMapRWMutex.RUnlock()
+		}
+		if pricingHeld {
+			updatePricingLock.Unlock()
+		}
+		<-writerDone
+		if readerStarted {
+			<-readerDone
+		}
+	}()
+	const value = `{"lock-order-probe":"tiered_expr"}`
+	go func() {
+		writeErr = updateOptionMap("billing_setting.billing_mode", value)
+		close(writerDone)
+	}()
+
+	// The held reader prevents the writer from entering. TryRLock fails only
+	// once that writer has queued, making the lock interleaving deterministic.
+	deadline := time.Now().Add(2 * time.Second)
+	for common.OptionMapRWMutex.TryRLock() {
+		common.OptionMapRWMutex.RUnlock()
+		require.True(t, time.Now().Before(deadline), "configuration writer did not queue")
+		runtime.Gosched()
+	}
+	common.OptionMapRWMutex.RUnlock()
+	readerHeld = false
+	readerStarted = true
+	go func() {
+		CurrentClientModelPresentation()
+		close(readerDone)
+	}()
+	select {
+	case <-readerDone:
+	case <-time.After(2 * time.Second):
+		t.Error("configuration reads blocked behind pricing cache invalidation")
+	}
+	select {
+	case <-writerDone:
+		t.Error("billing update returned before pricing invalidation could finish")
+	default:
+	}
+	updatePricingLock.Unlock()
+	pricingHeld = false
+	<-writerDone
+	require.NoError(t, writeErr)
+	assert.Equal(t, value, common.OptionMap["billing_setting.billing_mode"])
+	assert.Equal(t, billing_setting.BillingModeTieredExpr, billing_setting.GetBillingMode("lock-order-probe"))
+	assert.NotContains(t, pricingByModel(GetPricing()), "stale-lock-order-cache", "returning from the update must invalidate the public pricing cache")
+}
 
 func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
 	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2"} {

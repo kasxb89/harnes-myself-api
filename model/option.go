@@ -507,11 +507,21 @@ func updateOptionMap(key string, value string) (err error) {
 		return nil
 	}
 	common.OptionMapRWMutex.Lock()
-	defer common.OptionMapRWMutex.Unlock()
+	needsPricingInvalidation := false
+	defer func() {
+		common.OptionMapRWMutex.Unlock()
+		// Pricing refresh reads OptionMap while holding its own cache lock.
+		// Release the configuration lock before waiting for that cache lock.
+		if needsPricingInvalidation {
+			InvalidatePricingCache()
+			ratio_setting.InvalidateExposedDataCache()
+		}
+	}()
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {
+		needsPricingInvalidation = strings.HasPrefix(key, "billing_setting.")
 		return nil // 已由配置系统处理
 	}
 
@@ -876,9 +886,6 @@ func handleConfigUpdate(key, value string) bool {
 	// 特定配置的后处理
 	if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
-	} else if configName == "billing_setting" {
-		InvalidatePricingCache()
-		ratio_setting.InvalidateExposedDataCache()
 	}
 
 	return true // 已处理
