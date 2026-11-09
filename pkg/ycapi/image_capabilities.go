@@ -3,7 +3,9 @@ package ycapi
 import (
 	_ "embed"
 	"fmt"
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -15,10 +17,19 @@ import (
 var imageCapabilityData []byte
 
 type ImageRatioCapability struct {
-	ModelID     string              `json:"model_id"`
-	RatioField  string              `json:"ratio_field"`
-	Ratios      []string            `json:"ratios"`
-	OfferRatios map[string][]string `json:"offer_ratios"`
+	ModelID     string               `json:"model_id"`
+	RatioField  string               `json:"ratio_field"`
+	Ratios      []string             `json:"ratios"`
+	OfferRatios map[string][]string  `json:"offer_ratios"`
+	Edit        *ImageEditCapability `json:"edit,omitempty"`
+}
+
+// ImageEditCapability binds reference support to paid, decoded original-lane
+// results. A model card or a dry-run alone never enables an edit offer.
+type ImageEditCapability struct {
+	MaxImages int               `json:"max_images"`
+	MaxBytes  int               `json:"max_bytes"`
+	Offers    map[string]string `json:"offers"` // original offer -> evidence SHA256
 }
 
 type imageCapabilitySnapshot struct {
@@ -69,6 +80,21 @@ func loadImageCapabilities() (imageCapabilitySnapshot, error) {
 		if len(capability.OfferRatios) != len(m.Offers) {
 			return snapshot, fmt.Errorf("image capability offer count differs")
 		}
+		if edit := capability.Edit; edit != nil {
+			if edit.MaxImages != 1 || edit.MaxBytes != 5*1024*1024 || len(edit.Offers) == 0 {
+				return snapshot, fmt.Errorf("invalid verified image edit limits")
+			}
+			for offer, digest := range edit.Offers {
+				if len(digest) != 64 || !slices.ContainsFunc(m.Offers, func(o Offer) bool { return o.ID == offer }) {
+					return snapshot, fmt.Errorf("invalid image edit offer evidence")
+				}
+				for _, c := range digest {
+					if !strings.ContainsRune("0123456789abcdef", c) {
+						return snapshot, fmt.Errorf("invalid image edit evidence digest")
+					}
+				}
+			}
+		}
 	}
 	return snapshot, nil
 }
@@ -82,6 +108,11 @@ func ImageRatios(id string) (ImageRatioCapability, bool) {
 	for _, capability := range imageCapabilities.Models {
 		if capability.ModelID == id {
 			capability.Ratios = slices.Clone(capability.Ratios)
+			if capability.Edit != nil {
+				edit := *capability.Edit
+				edit.Offers = maps.Clone(edit.Offers)
+				capability.Edit = &edit
+			}
 			offers := capability.OfferRatios
 			capability.OfferRatios = make(map[string][]string, len(capability.OfferRatios))
 			for offer, ratios := range offers {

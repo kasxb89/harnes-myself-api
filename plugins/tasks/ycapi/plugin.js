@@ -25,7 +25,7 @@ export const meta = {
   apiVersion: 1,
   key: "ycapi",
   name: "YCAPI",
-  version: "1.0.2",
+  version: "1.0.3",
   icon: "text:YC",
   author: { name: "Yunshu" },
   baseUrl: "https://ycapi.token6688.com",
@@ -45,7 +45,7 @@ export const meta = {
           })),
   })),
   protocols: [
-    { name: "openai_image", models: MODELS.filter((m) => m.kind === "image").map((m) => m.id) },
+    { name: "openai_image", models: MODELS.filter((m) => m.kind === "image").map((m) => m.id), retainResult: true },
     { name: "openai_video", models: MODELS.filter((m) => m.kind === "video").map((m) => m.id) },
   ],
 };
@@ -72,7 +72,7 @@ function normalize(source, model) {
   const allowed =
     model.kind === "audio"
       ? ["model", "input", "voice", "response_format", "speed", "quote_id"]
-      : ["model", "prompt", "n", "count", "size", "resolution", "quality", "seconds", "duration", "ratio", "aspect_ratio", "metadata", "response_format"];
+      : ["model", "prompt", "n", "count", "size", "resolution", "quality", "seconds", "duration", "ratio", "aspect_ratio", "metadata", "response_format", ...(model.kind === "image" ? ["reference_images"] : [])];
   for (const key of Object.keys(source)) if (!allowed.includes(key)) throw new Error("Unsupported generation parameter: " + key);
   if (source.model !== undefined && source.model !== model.id) throw new Error("Generation model does not match the route");
   if (model.kind === "audio") {
@@ -99,7 +99,9 @@ function normalize(source, model) {
     }
     return { params, offer: model.offers[0], facts: { input_tokens: estimatedInput, output_tokens: 8192 } };
   }
-  const prompt = text(source.prompt, 16000);
+  const imagePrefix = model.upstream === "kling-image-o3" && Array.isArray(source.reference_images) && source.reference_images.length
+    ? "参考图片按上传顺序编号为图1。基于图1执行以下编辑，保留未要求修改的内容：\n" : "";
+  const prompt = text(source.prompt, model.upstream === "kling-image-o3" ? 2500 - Array.from(imagePrefix).length : 16000);
   for (const name of ["n", "count"])
     if (source[name] !== undefined && Number(source[name]) !== 1) throw new Error("Only one output is available for this specification");
   const metadata = source.metadata === undefined ? {} : object(source.metadata);
@@ -157,6 +159,16 @@ function normalize(source, model) {
     const ratio = imageRatio === undefined ? params[imageControl.ratio_field] : imageRatio;
     if (!imageControl.ratios.some((allowed) => equal(allowed, ratio))) throw new Error("Unsupported image aspect ratio");
     params[imageControl.ratio_field] = ratio;
+    const edit = object(model.image_edit);
+    const refs = imageReferences(source, edit ? edit.max_images : 0, edit ? edit.max_bytes : 5242880);
+    if (refs.length) {
+      if (!Array.isArray(edit.offers) || !edit.offers.includes(offer.id)) throw new Error("Image editing has not been verified for this specification");
+      if (model.upstream === "gemini-nano-banana-2.1-image" && refs.some((ref) => typeof ref !== "string" || !ref.startsWith("https://assets.token6688.com/sha256/")))
+        throw new Error("Upload the reference image before editing with this model");
+      params.mode = "image-edit";
+      params.images = refs;
+      if (imagePrefix) params.prompt = imagePrefix + prompt;
+    }
   }
   return {
     offer,
@@ -181,7 +193,8 @@ export function buildSubmitRequest(ctx) {
   const body =
     model.kind === "video"
       ? { ...normalized.params, model: model.upstream, ...fields }
-      : { model_id: model.upstream, modality: model.kind, operation: model.kind === "audio" ? "speech" : "generate", params: normalized.params, ...fields };
+      : { model_id: model.upstream, modality: model.kind, operation: model.kind === "audio" ? "speech" : normalized.params.images ? "edit" : "generate", params: normalized.params,
+          ...(normalized.params.images ? { attachments: normalized.params.images } : {}), ...fields };
   return {
     url: ctx.baseUrl + (model.kind === "video" ? "/v1/videos/generations" : "/api/v1/model-runtime/invoke"),
     method: "POST",
@@ -307,8 +320,12 @@ export function buildContentRequest(ctx) {
 export const protocols = {
   openai_image: {
     decodeRequest: function (ctx) {
-      if (ctx.operation !== "generate") throw new Error("Image editing is not included");
-      return decode(ctx, "image");
+      const model = modelFor(ctx);
+      if (model.kind !== "image") throw new Error("This model does not support image generation");
+      const edit = object(model.image_edit);
+      const body = decodeImageRequest(ctx, edit ? edit.max_images : 0, edit ? edit.max_bytes : 5242880);
+      normalize(body, model);
+      return { kind: "submit", model: ctx.model, action: body.reference_images ? "image_edit" : "image", requestBody: body };
     },
     render: function (ctx, _task) {
       if (!ctx.artifacts || !ctx.artifacts.image) throw new Error("Image artifact is unavailable");

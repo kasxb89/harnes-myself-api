@@ -3,7 +3,7 @@
   "supplier": "CodeBloom",
   "version": "codebloom-account-credit-and-retail-candidates-20261102-v2",
   "checked_at": "2026-11-01",
-  "count": 37,
+  "count": 38,
   "strict_multimodal_gate": true,
   "generation_enabled": false,
   "retail_pricing_status": "approved",
@@ -3501,6 +3501,80 @@
         "Unlisted cache/usage components are not confirmed free."
       ],
       "retail_checked_at": "2026-11-02",
+      "retail_pricing_status": "approved_image_cost_plus_0_10",
+      "retail_account_multiplier": null,
+      "retail_markup_cny": 0.1
+    },
+    {
+      "id": "ys-gpt-image-2.5",
+      "name": "ys-gpt-image-2.5",
+      "upstream_id": "gpt-image-2.5",
+      "kind": "image",
+      "transport": "images_generations",
+      "credential_env": "CODEBLOOM_IMAGE_KEY",
+      "account_multiplier": 0.75,
+      "base_billing_expression": "tier(\"image\", fixed(0.1)) * image_count",
+      "checked_at": "2026-11-09",
+      "currency": "CNY_ACCOUNT_CREDIT",
+      "cost_basis": "account_credit_snapshot",
+      "cash_cost_cny": null,
+      "retail_cny": 0.175,
+      "activation_ready": false,
+      "pending_reasons": [
+        "credentials_not_configured",
+        "multimodal_input_unverified",
+        "complete_generation_contract_unverified"
+      ],
+      "reasoning_observed": false,
+      "capability_status": {
+        "text_input": "verified",
+        "vision_input": "unverified",
+        "audio_input": "unverified",
+        "tools": "unverified",
+        "reasoning_controls": "unverified",
+        "context_window": "unverified",
+        "max_output_tokens": "unverified",
+        "async_polling": "unverified",
+        "image_output": "verified",
+        "text_to_image": "verified",
+        "reference_image_input": "unverified",
+        "image_edit": "unverified",
+        "image_upload": "unverified",
+        "size_control": "verified_exact_payload_only",
+        "multi_image_output": "unverified",
+        "quality_control": "unverified"
+      },
+      "verified_request_options": {
+        "size": "1024x1024",
+        "n": 1
+      },
+      "observed_output": {
+        "width": 1024,
+        "height": 1024,
+        "format": "png"
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "cost_components": [
+        {
+          "params": {
+            "mode": "text-to-image",
+            "size": "1024x1024",
+            "n": 1
+          },
+          "direction": "image",
+          "unit": "CNY / image",
+          "account_credit_cny": 0.075,
+          "retail_cny": 0.175
+        }
+      ],
+      "cost_conditions": {},
+      "cost_notes": [
+        "Account credit rates already include this account multiplier exactly once. Cash procurement cost needs the unknown credit-purchase exchange rate.",
+        "These conditions describe upstream accounting only, not a user price, context window or verified maximum output.",
+        "Unlisted cache/usage components are not confirmed free."
+      ],
+      "retail_checked_at": "2026-11-09",
       "retail_pricing_status": "approved_image_cost_plus_0_10",
       "retail_account_multiplier": null,
       "retail_markup_cny": 0.1

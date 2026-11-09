@@ -197,6 +197,9 @@ func PluginCatalog() ([]byte, error) {
 		entry := map[string]any{"id": m.ID, "upstream": m.UpstreamID, "kind": m.Kind, "fields": m.Params, "offers": offers}
 		if capability, ok := ImageRatios(m.ID); ok {
 			entry["image_control"] = map[string]any{"ratio_field": capability.RatioField, "ratios": capability.Ratios}
+			if edit := capability.Edit; edit != nil {
+				entry["image_edit"] = map[string]any{"max_images": edit.MaxImages, "max_bytes": edit.MaxBytes, "offers": slices.Sorted(maps.Keys(edit.Offers))}
+			}
 		}
 		models = append(models, entry)
 	}
@@ -245,6 +248,31 @@ func ClientParameters(id string) map[string]any {
 // LegacyClientParameters must accompany an older executing immutable plugin.
 func LegacyClientParameters(id string) map[string]any {
 	return clientParameters(id, false)
+}
+
+// ImageEditClientParameters is published only with the executing 1.0.3 image
+// adapter. Original text-to-image specifications and prices stay unchanged.
+func ImageEditClientParameters(id string) map[string]any {
+	parameters := ClientParameters(id)
+	capability, ok := ImageRatios(id)
+	if parameters == nil || !ok || capability.Edit == nil {
+		return parameters
+	}
+	edit := capability.Edit
+	properties := parameters["properties"].(map[string]any)
+	properties["reference_images"] = map[string]any{"type": "array", "maxItems": edit.MaxImages, "items": map[string]any{"type": "string"}}
+	parameters["x-reference-limits"].(map[string]any)["images"] = edit.MaxImages
+	m, _ := Lookup(id)
+	var specifications []any
+	for i, offer := range m.Offers {
+		if _, verified := edit.Offers[offer.ID]; !verified {
+			continue
+		}
+		specifications = append(specifications, parameters["oneOf"].([]any)[i])
+	}
+	parameters["x-image-edit"] = map[string]any{"schema_version": 1, "max_reference_bytes": edit.MaxBytes, "specifications": specifications,
+		"reference_upload": map[string]any{"path": "/v1/uploads/images", "origin": "https://assets.token6688.com"}}
+	return parameters
 }
 
 func clientParameters(id string, imageRatios bool) map[string]any {

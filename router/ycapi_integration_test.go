@@ -386,9 +386,9 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 	assert.NotContains(t, protected.Body.String(), `"procurementCny"`)
 	source, err := plugins.Source("ycapi")
 	require.NoError(t, err)
-	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2"} {
+	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2", "1.0.3"} {
 		t.Run("executing-"+version, func(t *testing.T) {
-			versionSource := strings.Replace(source, `version: "1.0.2"`, `version: "`+version+`"`, 1)
+			versionSource := strings.Replace(source, `version: "1.0.3"`, `version: "`+version+`"`, 1)
 			_, err := jsplugin.DefaultRegistry.Register(versionSource, jsplugin.Options{})
 			require.NoError(t, err)
 			model.InvalidatePricingCache()
@@ -429,7 +429,7 @@ func TestYcapiApprovedCatalogPricesAndSafeOrdinaryDiscovery(t *testing.T) {
 				assert.Equal(t, version, item.Parameters["x-task-plugin-runtime"].(map[string]any)["version"])
 				_, recovery := item.Parameters["x-image-receipt-recovery"]
 				assert.Equal(t, version != "1.0.0", recovery)
-				if version != "1.0.2" {
+				if version != "1.0.2" && version != "1.0.3" {
 					for _, branch := range item.Parameters["oneOf"].([]any) {
 						properties := branch.(map[string]any)["properties"].(map[string]any)
 						assert.Equal(t, []any{"1:1"}, properties["size"].(map[string]any)["enum"])

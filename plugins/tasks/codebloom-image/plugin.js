@@ -1,6 +1,7 @@
 // CodeBloom's verified image-only transports. A model's name does not grant
 // reference, editing, quality or resolution controls that its route did not test.
 const IMAGE_TRANSPORTS = {
+  "gpt-image-2.5": "images_generations",
   "gpt-image-2.5-sunburst": "images_generations",
   "gpt-image-2.5-flare": "images_generations",
   "gpt-image-2k": "images_generations",
@@ -13,12 +14,13 @@ const IMAGE_TRANSPORTS = {
   "gemini-3-pro-image-preview": "chat_completions",
 };
 const MODELS = Object.keys(IMAGE_TRANSPORTS).map((id) => "ys-" + id);
+const EDIT_MODELS = globalThis.codebloomImageEditModels || [];
 
 export const meta = {
   apiVersion: 1,
   key: "codebloom-image",
   name: "CodeBloom Images",
-  version: "1.0.0",
+  version: "1.0.1",
   icon: "text:CB",
   author: { name: "Yunshu" },
   baseUrl: "https://codebloom.club",
@@ -48,7 +50,7 @@ function normalize(ctx) {
   const body = ctx.requestBody;
   if (!object(body)) throw new Error("A JSON image request is required");
   for (const key of Object.keys(body))
-    if (!["model", "prompt", "n", "count", "size", "stream", "response_format"].includes(key)) throw new Error("Unsupported image parameter: " + key);
+    if (!["model", "prompt", "n", "count", "size", "stream", "response_format", "reference_images"].includes(key)) throw new Error("Unsupported image parameter: " + key);
   if (body.model !== undefined && body.model !== model.id) throw new Error("Image model differs from the declared route");
   if (typeof body.prompt !== "string" || !body.prompt.trim() || Array.from(body.prompt).length > 16000)
     throw new Error("A nonempty image prompt of at most 16000 characters is required");
@@ -58,7 +60,10 @@ function normalize(ctx) {
   if (model.transport === "images_generations") {
     if (body.size !== undefined && body.size !== "1024x1024") throw new Error("Only the verified 1024x1024 image size is supported");
   } else if (body.size !== undefined) throw new Error("This image transport has no verified size control");
-  return { model, prompt: body.prompt };
+  const references = imageReferences(body, EDIT_MODELS.includes(model.id) ? 1 : 0, 5242880);
+  if (references.length && model.transport === "images_generations" && references.some((ref) => !object(ref)))
+    throw new Error("This image edit requires a multipart image upload");
+  return { model, prompt: body.prompt, references };
 }
 
 export function buildSubmitRequest(ctx) {
@@ -67,14 +72,28 @@ export function buildSubmitRequest(ctx) {
   const root = typeof ctx.baseUrl === "string" ? ctx.baseUrl.replace(/\/+$/, "") : "";
   if (!root) throw new Error("Image upstream is not configured");
   const images = normalized.model.transport === "images_generations";
+  const edit = normalized.references.length > 0;
+  if (images && edit) {
+    return {
+      url: root + "/v1/images/edits", method: "POST", action: "image_edit",
+      headers: { Authorization: "Bearer " + ctx.apiKey }, bodyType: "multipart",
+      parts: [
+        { name: "model", value: normalized.model.upstream }, { name: "prompt", value: normalized.prompt },
+        { name: "size", value: "1024x1024" }, { name: "n", value: "1" }, { name: "response_format", value: "url" },
+        ...normalized.references.map((ref) => ({ name: "image", fileRef: ref.__fileRef })),
+      ],
+    };
+  }
   return {
     url: root + (images ? "/v1/images/generations" : "/v1/chat/completions"),
     method: "POST",
     headers: { Authorization: "Bearer " + ctx.apiKey, "Content-Type": "application/json" },
     body: images
-      ? { model: normalized.model.upstream, prompt: normalized.prompt, size: "1024x1024", n: 1 }
-      : { model: normalized.model.upstream, messages: [{ role: "user", content: normalized.prompt }], stream: false },
-    action: "text_to_image",
+      ? { model: normalized.model.upstream, prompt: normalized.prompt, size: "1024x1024", n: 1, response_format: "url" }
+      : { model: normalized.model.upstream, messages: [{ role: "user", content: edit
+          ? [{ type: "text", text: normalized.prompt }, ...normalized.references.map((url) => ({ type: "image_url", image_url: { url } }))]
+          : normalized.prompt }], stream: false },
+    action: edit ? "image_edit" : "text_to_image",
   };
 }
 
@@ -124,7 +143,11 @@ export function parseSubmitResponse(ctx, response) {
   const body = response.body;
   if (!Number.isInteger(response.statusCode) || response.statusCode < 200 || response.statusCode >= 300 || !object(body) || body.error)
     throw new Error("Image upstream did not return a verified result");
-  if (body.model !== undefined && body.model !== normalized.model.upstream) throw new Error("Image upstream returned a different model");
+  // This exact supplier alias returns gpt-image-2 for both generate and edit.
+  // No other GPT variant may borrow that observed response identity.
+  if (body.model !== undefined && body.model !== normalized.model.upstream &&
+      !(normalized.model.upstream === "gpt-image-2k" && body.model === "gpt-image-2"))
+    throw new Error("Image upstream returned a different model");
   let urls = [];
   if (normalized.model.transport === "images_generations") {
     urls = uniqueURLs((Array.isArray(body.data) ? body.data : []).filter(object).map((item) => item.url));
@@ -172,13 +195,9 @@ export function buildContentRequest(ctx) {
 export const protocols = {
   openai_image: {
     decodeRequest(ctx) {
-      if (ctx.operation !== "generate") throw new Error("Image editing is not supported by this route");
-      if (!ctx.body || ctx.body.kind !== "json" || !object(ctx.body.value)) throw new Error("A JSON image request is required");
-      const req = ctx.body.value;
-      const body = Object.assign({}, req, { model: ctx.model });
-      if (req.model !== undefined && req.model !== ctx.model) throw new Error("Image model differs from the declared route");
+      const body = decodeImageRequest(ctx, EDIT_MODELS.includes(ctx.model) ? 1 : 0, 5242880);
       normalize({ model: ctx.model, requestBody: body });
-      return { kind: "submit", model: ctx.model, action: "text_to_image", requestBody: body };
+      return { kind: "submit", model: ctx.model, action: body.reference_images ? "image_edit" : "text_to_image", requestBody: body };
     },
     render(ctx, task) {
       const artifact = object(ctx.artifacts) && object(ctx.artifacts["image-1"]) ? ctx.artifacts["image-1"] : null;

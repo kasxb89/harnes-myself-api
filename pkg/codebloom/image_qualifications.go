@@ -28,6 +28,9 @@ type imageQualification struct {
 	RetainedProtocolSHA256 string `json:"retained_protocol_sha256"`
 	Width                  int    `json:"width"`
 	Height                 int    `json:"height"`
+	EditRequestSHA256      string `json:"edit_request_sha256,omitempty"`
+	EditResponseSHA256     string `json:"edit_response_sha256,omitempty"`
+	EditImageSHA256        string `json:"edit_image_sha256,omitempty"`
 }
 
 type imageQualificationSnapshot struct {
@@ -42,7 +45,7 @@ func loadImageQualifications(data []byte) (map[string]imageQualification, error)
 	if err := common.Unmarshal(data, &snapshot); err != nil {
 		return nil, err
 	}
-	if snapshot.SchemaVersion != 1 || snapshot.Models == nil || len(snapshot.Models) > 10 {
+	if snapshot.SchemaVersion != 1 || snapshot.Models == nil || len(snapshot.Models) > 11 {
 		return nil, fmt.Errorf("invalid live image qualification schema")
 	}
 	qualified := map[string]imageQualification{}
@@ -63,12 +66,34 @@ func loadImageQualifications(data []byte) (map[string]imageQualification, error)
 				return nil, fmt.Errorf("missing image qualification evidence digest")
 			}
 		}
+		if proof.EditRequestSHA256 != "" || proof.EditResponseSHA256 != "" || proof.EditImageSHA256 != "" {
+			for _, value := range []string{proof.EditRequestSHA256, proof.EditResponseSHA256, proof.EditImageSHA256} {
+				if !hex.MatchString(value) {
+					return nil, fmt.Errorf("incomplete image edit qualification")
+				}
+			}
+		}
 		if candidate.Transport == "images_generations" && (proof.Width != 1024 || proof.Height != 1024) {
 			return nil, fmt.Errorf("image response differs from the verified request size")
 		}
 		qualified[proof.ID] = proof
 	}
 	return qualified, nil
+}
+
+// ImageEditModels returns only exact routes whose reference input produced a
+// real decoded image. The returned identifiers carry no price or credentials.
+func ImageEditModels() []string {
+	var ids []string
+	if imageQualificationError != nil {
+		return ids
+	}
+	for _, candidate := range approved.Models {
+		if proof, ok := liveImages[candidate.ID]; ok && proof.EditImageSHA256 != "" {
+			ids = append(ids, candidate.ID)
+		}
+	}
+	return ids
 }
 
 func withImageQualification(m Model) Model {
@@ -78,6 +103,9 @@ func withImageQualification(m Model) Model {
 			m.PendingReasons = []string{"cash_procurement_conversion_unknown"}
 			m.CapabilityStatus["complete_generation_contract"] = "verified"
 			m.CapabilityStatus["billable_usage"] = "verified"
+			if liveImages[m.ID].EditImageSHA256 != "" {
+				m.CapabilityStatus["image_to_image"] = "verified"
+			}
 		}
 	}
 	return m

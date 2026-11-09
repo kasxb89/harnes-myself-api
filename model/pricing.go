@@ -545,11 +545,23 @@ func YcapiRuntimeCatalog(generation *jsplugin.RoutingGeneration, id string) (map
 	prices := ycapi.LegacyClientPrices(id)
 	if plugin, ok := generation.GetByModel(id); ok {
 		parameters = taskPluginClientParameters(plugin.Meta.Key, plugin.Meta.Version, id)
-		if plugin.Meta.Key == "ycapi" && plugin.Meta.Version == "1.0.2" {
+		if plugin.Meta.Key == "ycapi" && (plugin.Meta.Version == "1.0.2" || plugin.Meta.Version == "1.0.3") {
 			prices = ycapi.ClientPrices(id)
 		}
 	}
 	return parameters, prices
+}
+
+// CodeBloomRuntimeParameters never advertises editing for an older immutable
+// plugin merely because its host has learned a newer parameter schema.
+func CodeBloomRuntimeParameters(generation *jsplugin.RoutingGeneration, id string) map[string]any {
+	parameters := codebloom.ClientParameters(id)
+	if candidate, ok := codebloom.Lookup(id); ok && candidate.Kind == "image" {
+		if plugin, found := generation.GetByModel(id); found {
+			return taskPluginClientParameters(plugin.Meta.Key, plugin.Meta.Version, id)
+		}
+	}
+	return parameters
 }
 
 func taskPluginClientParameters(key, version, model string) map[string]any {
@@ -577,20 +589,29 @@ func taskPluginClientParameters(key, version, model string) map[string]any {
 func taskPluginParameterSchema(key, version, model string) map[string]any {
 	switch key {
 	case "codebloom-image":
-		if version != "1.0.0" {
+		if version != "1.0.0" && version != "1.0.1" {
 			return nil
+		}
+		if version == "1.0.1" {
+			return codebloom.ImageEditClientParameters(model)
 		}
 		return codebloom.ClientParameters(model)
 	case "ycapi":
-		if version != "1.0.0" && version != "1.0.1" && version != "1.0.2" {
+		if version != "1.0.0" && version != "1.0.1" && version != "1.0.2" && version != "1.0.3" {
 			return nil
 		}
 		parameters := ycapi.LegacyClientParameters(model)
-		if version == "1.0.2" {
+		if version == "1.0.2" || version == "1.0.3" {
 			parameters = ycapi.ClientParameters(model)
+		}
+		if version == "1.0.3" {
+			parameters = ycapi.ImageEditClientParameters(model)
 		}
 		if parameters != nil {
 			parameters["x-task-plugin-runtime"] = map[string]any{"key": key, "version": version, "api_version": 1}
+			if version == "1.0.3" && parameters["x-model-kind"] == MediaImage {
+				parameters["x-image-task-submit"] = map[string]any{"schema_version": 1, "prefer": "respond-async"}
+			}
 		}
 		if parameters != nil && version == "1.0.0" {
 			// Keep the old parameter contract, but never certify recovery for

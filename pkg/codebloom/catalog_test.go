@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const expectedIDs = `deepseek-v4.1-flash deepseek-v4.1-flash-1017 gpt-5.6-terra gpt-5.6-sol gpt-6.1-terra gpt-6-sol minimax-m3.1-flash step-5-preview mimo-v2.6-pro glm-5.3-flash deepseek-v4-pro gpt-6-astra glm-5.3-flashx kimi-k2.7-code gpt-6.1-sol hy3 qwen3.8-max deepseek-v4-flash-0731 deepseek-v4-pro-0813 kimi-k3.1-pro kimi-k2.6 deepseek-v4-flash kimi-k3 qwen3.7-max kimi-k2.7 glm-5.1 qwen3.8-flash grok-imagine-image-2.0 grok-imagine-image gemini-3.1-flash-image-preview nano-banana-2 gpt-image-2.5-sunburst gemini-nano-banana-2.1 gpt-image-2.5-flare gpt-image-2k nano-banana-pro gemini-3-pro-image-preview`
+const expectedIDs = `deepseek-v4.1-flash deepseek-v4.1-flash-1017 gpt-5.6-terra gpt-5.6-sol gpt-6.1-terra gpt-6-sol minimax-m3.1-flash step-5-preview mimo-v2.6-pro glm-5.3-flash deepseek-v4-pro gpt-6-astra glm-5.3-flashx kimi-k2.7-code gpt-6.1-sol hy3 qwen3.8-max deepseek-v4-flash-0731 deepseek-v4-pro-0813 kimi-k3.1-pro kimi-k2.6 deepseek-v4-flash kimi-k3 qwen3.7-max kimi-k2.7 glm-5.1 qwen3.8-flash grok-imagine-image-2.0 grok-imagine-image gemini-3.1-flash-image-preview nano-banana-2 gpt-image-2.5-sunburst gemini-nano-banana-2.1 gpt-image-2.5-flare gpt-image-2k nano-banana-pro gemini-3-pro-image-preview gpt-image-2.5`
 
 func TestTextQualificationRequiresVisionToolRoundtripAndBilling(t *testing.T) {
 	proof := textQualification{ID: "ys-kimi-k2.7", CheckedAt: "2026-11-02", Vision: "verified", Tools: "verified", ToolRoundtrip: "verified", BillableUsage: "verified", RequestSHA256: strings.Repeat("a", 64), ResponseSHA256: strings.Repeat("b", 64), MeterEvidenceSHA256: strings.Repeat("c", 64)}
@@ -94,7 +94,7 @@ func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {
 		}
 	}
 	assert.Equal(t, wantIDs, actual)
-	assert.Equal(t, 141+extraComponents, components)
+	assert.Equal(t, 142+extraComponents, components)
 	for _, excluded := range strings.Fields(`MiniMax-M3 MiniMax-M2.7 MiniMax-M2.7-highspeed mimo-v2.5 hy4 qwen3.8-max-0902 glm-5.2 glm-5.3 hy4-preview`) {
 		_, ok := Lookup("ys-" + excluded)
 		assert.Equal(t, slices.ContainsFunc(liveText.Models, func(p textQualification) bool { return p.ID == "ys-"+excluded && p.AdditionalModel != nil }), ok, "historical exclusion requires fresh exact-route qualification: %s", excluded)

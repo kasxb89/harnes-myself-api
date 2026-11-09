@@ -98,6 +98,17 @@ func serveTaskPluginImageProtocol(c *gin.Context, pinned pluginruntime.PinnedEnd
 		return
 	}
 	task := outcome.Task
+	// The native YCAPI create already has a durable upstream task. Return its
+	// public receipt promptly when requested; the existing poller and canonical
+	// task/artifact reads finish the same submission after disconnects.
+	if pinned.Plugin.Meta.Key == "ycapi" && pinned.Plugin.Meta.Version == "1.0.3" &&
+		strings.EqualFold(strings.TrimSpace(clientRequest.Header.Get("Prefer")), "respond-async") &&
+		task.Status != model.TaskStatusSuccess && task.Status != model.TaskStatusFailure {
+		c.Header("Preference-Applied", "respond-async")
+		c.Header("X-New-Api-Task-Id", task.TaskID)
+		c.JSON(http.StatusAccepted, gin.H{"id": task.TaskID, "task_id": task.TaskID, "model": task.Properties.OriginModelName, "status": "pending"})
+		return
+	}
 	if task.Status != model.TaskStatusSuccess && task.Status != model.TaskStatusFailure {
 		if taskErr = waitTaskPluginImageTask(c, task, deps); taskErr != nil {
 			if c.Request.Context().Err() == nil {

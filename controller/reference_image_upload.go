@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -35,14 +36,22 @@ func UploadReferenceImage(c *gin.Context) {
 	base := common.GetContextKeyString(c, constant.ContextKeyChannelBaseUrl)
 	baseURL, err := url.Parse(base)
 	channel, channelErr := model.CacheGetChannel(common.GetContextKeyInt(c, constant.ContextKeyChannelId))
-	if !exists || !valid || upload == nil || upload.Model != dto.ReferenceImageUploadModel || !configured ||
+	pluginKey, uploadPath := dto.ReferenceImageUploadPlugin, "/v1/uploads/images"
+	ycapiUpload := false
+	if upload != nil && upload.Model != dto.ReferenceImageUploadModel {
+		capability, ok := ycapi.ImageRatios(upload.Model)
+		ycapiUpload = ok && capability.Edit != nil && len(upload.Image) <= capability.Edit.MaxBytes
+		pluginKey, uploadPath = "ycapi", "/v1/files"
+	}
+	validBase := err == nil && baseURL != nil && ((pluginKey == "ycapi" && ycapiUpload && baseURL.Host == "ycapi.token6688.com") ||
+		(pluginKey == dto.ReferenceImageUploadPlugin && (baseURL.Host == "toapis.cn" || baseURL.Host == "toapis.com")))
+	if !exists || !valid || upload == nil || !configured || !validBase ||
 		channelErr != nil || channel == nil || channel.Status != common.ChannelStatusEnabled ||
-		channel.Type != constant.ChannelTypeTaskPlugin || channel.GetSetting().TaskPluginKey != dto.ReferenceImageUploadPlugin || channel.GetBaseURL() != base ||
+		channel.Type != constant.ChannelTypeTaskPlugin || channel.GetSetting().TaskPluginKey != pluginKey || channel.GetBaseURL() != base ||
 		common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeTaskPlugin ||
-		settings.TaskPluginKey != dto.ReferenceImageUploadPlugin || settings.TLSInsecureSkipVerify || common.TLSInsecureSkipVerify || key == "" ||
+		settings.TaskPluginKey != pluginKey || settings.TLSInsecureSkipVerify || common.TLSInsecureSkipVerify || key == "" ||
 		err != nil || baseURL.Scheme != "https" || baseURL.User != nil || baseURL.RawQuery != "" || baseURL.ForceQuery || baseURL.Fragment != "" ||
-		baseURL.Opaque != "" || baseURL.Port() != "" || baseURL.Path != "" && baseURL.Path != "/" ||
-		baseURL.Host != "toapis.cn" && baseURL.Host != "toapis.com" {
+		baseURL.Opaque != "" || baseURL.Port() != "" || baseURL.Path != "" && baseURL.Path != "/" {
 		abortReferenceImageUploadResponse(c, http.StatusServiceUnavailable, "image_upload_unavailable", i18n.MsgReferenceImageUploadUnavailable)
 		return
 	}
@@ -78,7 +87,7 @@ func UploadReferenceImage(c *gin.Context) {
 		abortReferenceImageUploadResponse(c, http.StatusServiceUnavailable, "image_upload_unavailable", i18n.MsgReferenceImageUploadUnavailable)
 		return
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+baseURL.Host+"/v1/uploads/images", &body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+baseURL.Host+uploadPath, &body)
 	if err != nil {
 		abortReferenceImageUploadResponse(c, http.StatusServiceUnavailable, "image_upload_unavailable", i18n.MsgReferenceImageUploadUnavailable)
 		return
@@ -112,15 +121,39 @@ func UploadReferenceImage(c *gin.Context) {
 		return
 	}
 	var result dto.ReferenceImageUploadResponse
-	if common.Unmarshal(data, &result) != nil || !result.Success || result.Data == nil || result.Error != nil ||
+	if ycapiUpload {
+		var native struct {
+			ID       string `json:"id"`
+			Object   string `json:"object"`
+			URL      string `json:"url"`
+			MIMEType string `json:"content_type"`
+			Bytes    int64  `json:"bytes"`
+		}
+		if response.StatusCode == http.StatusCreated && common.Unmarshal(data, &native) == nil && native.Object == "file" {
+			result = dto.ReferenceImageUploadResponse{Success: true, Data: &dto.ReferenceImageUploadData{ID: native.ID, URL: native.URL, MIMEType: native.MIMEType, Size: native.Bytes}}
+		}
+	} else if common.Unmarshal(data, &result) != nil {
+		abortReferenceImageUploadResponse(c, http.StatusBadGateway, "image_upload_upstream_error", i18n.MsgReferenceImageUploadUpstreamError)
+		return
+	}
+	if !result.Success || result.Data == nil || result.Error != nil ||
 		result.Data.ID == "" || len(result.Data.ID) > 256 || strings.ContainsFunc(result.Data.ID, unicode.IsControl) ||
 		result.Data.MIMEType != upload.MIMEType || result.Data.Size != int64(len(upload.Image)) ||
-		!validReferenceImageUploadURL(result.Data.URL) {
+		!(ycapiUpload && validYcapiReferenceImageUploadURL(result.Data.URL) || !ycapiUpload && validReferenceImageUploadURL(result.Data.URL)) {
 		abortReferenceImageUploadResponse(c, http.StatusBadGateway, "image_upload_upstream_error", i18n.MsgReferenceImageUploadUpstreamError)
 		return
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, dto.ReferenceImageUploadResponse{Success: true, Data: result.Data})
+}
+
+func validYcapiReferenceImageUploadURL(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && len(value) <= 2048 && parsed.Scheme == "https" && parsed.Host == "assets.token6688.com" &&
+		parsed.User == nil && parsed.RawQuery == "" && !parsed.ForceQuery && parsed.Fragment == "" && parsed.RawPath == "" &&
+		strings.HasPrefix(parsed.Path, "/sha256/") && len(parsed.Path) > 70 && !strings.Contains(parsed.Path, "..") &&
+		!strings.ContainsFunc(parsed.Path, unicode.IsSpace) && !strings.ContainsFunc(parsed.Path, unicode.IsControl) &&
+		!strings.ContainsAny(value, "\\\r\n\t ") && !strings.ContainsFunc(value, unicode.IsControl)
 }
 
 func abortReferenceImageUploadResponse(c *gin.Context, status int, code, message string) {

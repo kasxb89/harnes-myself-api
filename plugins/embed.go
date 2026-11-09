@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"io/fs"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/codebloom"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 )
 
 //go:embed tasks
 var taskPlugins embed.FS
+
+//go:embed image_input.js
+var imageInputSource string
 
 func init() {
 	entries, err := fs.ReadDir(taskPlugins, "tasks")
@@ -49,7 +54,14 @@ func Source(key string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "globalThis.ycapiApprovedCatalog = " + string(catalog) + ";\n" + string(source), nil
+		return "globalThis.ycapiApprovedCatalog = " + string(catalog) + ";\n" + imageInputSource + "\n" + string(source), nil
+	}
+	if key == "codebloom-image" {
+		models, err := common.Marshal(codebloom.ImageEditModels())
+		if err != nil {
+			return "", err
+		}
+		return "globalThis.codebloomImageEditModels = " + string(models) + ";\n" + imageInputSource + "\n" + string(source), nil
 	}
 	return string(source), nil
 }

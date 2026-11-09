@@ -375,7 +375,7 @@ func ListModels(c *gin.Context, modelType int) {
 					return
 				}
 				value["kind"], value["display_name"] = candidate.Kind, presentation.DisplayName(entry.Id, model.ClientModelDisplayName(entry.Id))
-				parameters := codebloom.ClientParameters(entry.Id)
+				parameters := model.CodeBloomRuntimeParameters(pluginGeneration, entry.Id)
 				if candidate.Kind == "text" {
 					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
 					parameters, err = service.WithEffectiveTextCatalogCapacity(entry.Id, parameters, capacity)

@@ -72,6 +72,27 @@ func ClientParameters(id string) map[string]any {
 	}
 }
 
+// ImageEditClientParameters accompanies the executing 1.0.1 adapter only.
+// The 1.0.0 wire marker remains readable by already released desktop clients.
+func ImageEditClientParameters(id string) map[string]any {
+	parameters := ClientParameters(id)
+	if parameters == nil {
+		return nil
+	}
+	m, _ := Lookup(id)
+	if m.Kind != "image" {
+		return parameters
+	}
+	parameters["x-task-plugin-runtime"] = map[string]any{"key": "codebloom-image", "version": "1.0.1", "api_version": 1}
+	if !slices.Contains(ImageEditModels(), id) {
+		return parameters
+	}
+	parameters["properties"].(map[string]any)["reference_images"] = map[string]any{"type": "array", "maxItems": 1, "items": map[string]any{"type": "string"}}
+	parameters["x-reference-limits"].(map[string]any)["images"] = 1
+	parameters["x-image-edit"] = map[string]any{"schema_version": 1, "max_reference_bytes": 5 * 1024 * 1024}
+	return parameters
+}
+
 // ClientPrices projects approved user prices only. Account credit procurement,
 // supplier multipliers and credentials never enter a client response.
 func ClientPrices(id string) []map[string]any {

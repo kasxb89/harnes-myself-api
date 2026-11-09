@@ -38,6 +38,14 @@
           "2:3",
           "21:9"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "54646ea3fa521240": "eb780a10ff791be468a1bb39c932c12a5eceb37193b00e0188f787fe926b6a74",
+          "2b5e714abc9ffe6b": "d5aca45c3b1c362b5e3d72cd6e27cb4e8c65963d8badb846a18ab6820e171a1f"
+        }
       }
     },
     {
@@ -65,6 +73,14 @@
           "4:3",
           "3:4"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "d55a007e9c829202": "2f0a3f31fdfde234e55ee77b99a60e54fc49af6a29a8f5b4458e206a327d5126",
+          "e03303c81ccc3dc7": "2a0c1d91d29516c037134e72060fba758cb7cb550bf171788d1a78214276284a"
+        }
       }
     },
     {
@@ -117,6 +133,15 @@
           "21:9",
           "auto"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "ed67fe2877e5345e": "48c6b76d302be9c8c7dd95f8647a716a864d2aa40e18496c9922268b5736f71a",
+          "7cffccab262c7e46": "d666e881cef414e76038f4abdbcaa422d0bbfb47177ddc6b88043139fcb0c6e8",
+          "049ea0991d21bf4c": "30e7c3ee93cfe8d81309ee870da295d749138fb5930bb7120aef5f888556c15b"
+        }
       }
     },
     {
@@ -183,6 +208,15 @@
           "16:9",
           "21:9"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "47166f6d306fb0c4": "1ab5af2ec71dca7d8eb03c418efd1b3c7576d3ce4e6211941bd7fb8aae5e9048",
+          "c67045cd5f46d2af": "2116fa2e96e2e62a85200682b5078ff3a82ef0b974e7e21b57b9b6c0e6b095a9",
+          "0cb3d9c5b6638eed": "892fbd04b966f88e1d9c61e168636a69308744d0928364b37b83ab7814b2245d"
+        }
       }
     },
     {
@@ -195,6 +229,13 @@
         "ed67fe2877e5345e": [
           "1:1"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "ed67fe2877e5345e": "7c69353e45df89fb0de95ee17a46c3ceaa5afc5fff0137b6999894818b3c4b80"
+        }
       }
     },
     {
@@ -249,6 +290,13 @@
           "16:9",
           "21:9"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "ed67fe2877e5345e": "6dcada65377703e41b0d8c3d515c1a694aadc52e9c7f79807fff8bdfb0af46e2"
+        }
       }
     },
     {
@@ -273,6 +321,13 @@
           "4:3",
           "3:4"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "b1d163f04add7327": "17c19e2b39b7364994a512f40a5a1fbe019d5005d5a9873e4cf109460865ff88"
+        }
       }
     },
     {
@@ -319,6 +374,15 @@
           "2:3",
           "21:9"
         ]
+      },
+      "edit": {
+        "max_images": 1,
+        "max_bytes": 5242880,
+        "offers": {
+          "ed67fe2877e5345e": "47275b8d305bd63d17bec3abc6eac1c436d8a195c5eb18249f2e24097f0cdc49",
+          "7cffccab262c7e46": "6ceede26706d0045d4cea42c23ccf30f42286ea83323bf43ef7ed760ab3993f0",
+          "049ea0991d21bf4c": "e73a9b19cc21ec4bed77802e3615249c8755d6ae0b0197d8dbba5aefda56bd09"
+        }
       }
     }
   ],

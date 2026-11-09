@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/image/vp8"
@@ -106,17 +107,27 @@ func PrepareReferenceImageUpload() gin.HandlerFunc {
 			}
 		}
 		generation := jsplugin.DefaultRegistry.Generation()
-		plugin, ok := generation.Get(dto.ReferenceImageUploadPlugin)
+		pluginKey := dto.ReferenceImageUploadPlugin
+		if upload.Model != dto.ReferenceImageUploadModel {
+			pluginKey = "ycapi"
+		}
+		plugin, ok := generation.Get(pluginKey)
 		binding, routed := generation.LookupDeclaredRoute(http.MethodPost, "/toapis/v1/images/generations")
-		if !ok || plugin == nil || !routed || binding.Plugin != plugin || binding.Route.Type != jsplugin.RouteTypeSubmit ||
-			!slices.Contains(plugin.Meta.Models, upload.Model) || len(binding.Route.Models) > 0 && !slices.Contains(binding.Route.Models, upload.Model) {
+		if pluginKey == "ycapi" {
+			endpoint, found := generation.LookupEndpoint(http.MethodPost, "/v1/images/generations", upload.Model)
+			routed = found && plugin != nil && endpoint.Plugin == plugin && plugin.Meta.Version == "1.0.3"
+		} else {
+			routed = routed && binding.Plugin == plugin && binding.Route.Type == jsplugin.RouteTypeSubmit &&
+				(len(binding.Route.Models) == 0 || slices.Contains(binding.Route.Models, upload.Model))
+		}
+		if !ok || plugin == nil || !routed || !slices.Contains(plugin.Meta.Models, upload.Model) {
 			abortReferenceImageUpload(c, http.StatusServiceUnavailable, "image_upload_unavailable", i18n.MsgReferenceImageUploadUnavailable)
 			return
 		}
 		c.Set(dto.ContextKeyReferenceImageUpload, upload)
 		defer c.Set(dto.ContextKeyReferenceImageUpload, nil)
 		c.Set("resolved_task_model", upload.Model)
-		c.Set("expected_task_plugin_key", dto.ReferenceImageUploadPlugin)
+		c.Set("expected_task_plugin_key", pluginKey)
 		c.Set(jsplugin.ContextKeyPinnedPlugin, jsplugin.PinnedPlugin{Generation: generation, Plugin: plugin})
 		c.Next()
 	}
@@ -192,7 +203,10 @@ func parseReferenceImageUpload(request *http.Request) (*dto.ReferenceImageUpload
 				return nil, status, code
 			}
 			if string(data) != dto.ReferenceImageUploadModel {
-				return nil, http.StatusBadRequest, "invalid_request"
+				capability, ok := ycapi.ImageRatios(string(data))
+				if !ok || capability.Edit == nil {
+					return nil, http.StatusBadRequest, "invalid_request"
+				}
 			}
 			upload.Model = string(data)
 		case "file":
@@ -261,6 +275,15 @@ func parseReferenceImageUpload(request *http.Request) (*dto.ReferenceImageUpload
 	}
 	if !modelSeen || !fileSeen {
 		return nil, http.StatusBadRequest, "invalid_request"
+	}
+	if upload.Model != dto.ReferenceImageUploadModel {
+		if !slices.Contains([]string{"image/png", "image/jpeg", "image/webp"}, upload.MIMEType) {
+			return nil, http.StatusUnsupportedMediaType, "image_upload_unsupported_type"
+		}
+		capability, ok := ycapi.ImageRatios(upload.Model)
+		if !ok || capability.Edit == nil || len(upload.Image) > capability.Edit.MaxBytes {
+			return nil, http.StatusRequestEntityTooLarge, "image_upload_too_large"
+		}
 	}
 	return upload, 0, ""
 }

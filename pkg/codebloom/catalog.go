@@ -87,7 +87,7 @@ func loadCatalog(data []byte) (catalog, error) {
 	if err := common.Unmarshal(data, &c); err != nil {
 		return c, err
 	}
-	if c.SchemaVersion != 1 || c.Count != 37 || len(c.Models) != c.Count || len(c.Excluded) != 9 || !c.StrictMultimodalGate || c.GenerationEnabled || c.RetailPricingStatus != "approved" || c.CashProcurementStatus != "credit_purchase_exchange_rate_unknown" {
+	if c.SchemaVersion != 1 || c.Count != 38 || len(c.Models) != c.Count || len(c.Excluded) != 9 || !c.StrictMultimodalGate || c.GenerationEnabled || c.RetailPricingStatus != "approved" || c.CashProcurementStatus != "credit_purchase_exchange_rate_unknown" {
 		return c, fmt.Errorf("invalid CodeBloom candidate catalog policy")
 	}
 	seen := make(map[string]bool, c.Count)
@@ -101,10 +101,10 @@ func loadCatalog(data []byte) (catalog, error) {
 		kinds[m.Kind]++
 		credentials[m.CredentialEnv]++
 		expectedMultiplier := map[string]float64{"CODEBLOOM_GPT_KEY": .25, "CODEBLOOM_CN_KEY": .5, "CODEBLOOM_IMAGE_KEY": .75}[m.CredentialEnv]
-		if expectedMultiplier == 0 || m.AccountMultiplier != expectedMultiplier || m.Currency != "CNY_ACCOUNT_CREDIT" || m.CostBasis != "account_credit_snapshot" || m.BaseBillingExpression == "" || m.CheckedAt != "2026-11-01" {
+		if expectedMultiplier == 0 || m.AccountMultiplier != expectedMultiplier || m.Currency != "CNY_ACCOUNT_CREDIT" || m.CostBasis != "account_credit_snapshot" || m.BaseBillingExpression == "" || (m.CheckedAt != "2026-11-01" && !(m.ID == "ys-gpt-image-2.5" && m.CheckedAt == "2026-11-09")) {
 			return c, fmt.Errorf("invalid CodeBloom account-credit cost basis")
 		}
-		if m.ActivationReady || m.CashCostCNY != nil || m.ContextWindow != nil || m.MaxOutputTokens != nil || m.RetailCheckedAt != "2026-11-02" {
+		if m.ActivationReady || m.CashCostCNY != nil || m.ContextWindow != nil || m.MaxOutputTokens != nil || (m.RetailCheckedAt != "2026-11-02" && !(m.ID == "ys-gpt-image-2.5" && m.RetailCheckedAt == "2026-11-09")) {
 			return c, fmt.Errorf("CodeBloom unverified cash cost or capacity cannot be activated")
 		}
 		if m.Kind == "text" {
@@ -169,7 +169,7 @@ func loadCatalog(data []byte) (catalog, error) {
 			}
 		}
 	}
-	if kinds["text"] != 27 || kinds["image"] != 10 || credentials["CODEBLOOM_GPT_KEY"] != 6 || credentials["CODEBLOOM_CN_KEY"] != 21 || credentials["CODEBLOOM_IMAGE_KEY"] != 10 {
+	if kinds["text"] != 27 || kinds["image"] != 11 || credentials["CODEBLOOM_GPT_KEY"] != 6 || credentials["CODEBLOOM_CN_KEY"] != 21 || credentials["CODEBLOOM_IMAGE_KEY"] != 11 {
 		return c, fmt.Errorf("invalid CodeBloom candidate groups")
 	}
 	excludedIDs := map[string]bool{}

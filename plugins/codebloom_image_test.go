@@ -1,9 +1,16 @@
 package plugins_test
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,6 +27,7 @@ import (
 )
 
 var codebloomImages = map[string]string{
+	"gpt-image-2.5":          "images_generations",
 	"gpt-image-2.5-sunburst": "images_generations", "gpt-image-2.5-flare": "images_generations", "gpt-image-2k": "images_generations",
 	"grok-imagine-image-2.0": "chat_completions", "grok-imagine-image": "chat_completions", "gemini-3.1-flash-image-preview": "chat_completions", "nano-banana-2": "chat_completions", "gemini-nano-banana-2.1": "chat_completions", "nano-banana-pro": "chat_completions", "gemini-3-pro-image-preview": "chat_completions",
 }
@@ -53,7 +61,7 @@ func codebloomHook(t *testing.T, p *jsplugin.LoadedPlugin, name string, args ...
 
 func TestCodeBloomImageRequestTransports(t *testing.T) {
 	registry, plugin := newCodeBloomImagePlugin(t)
-	require.Len(t, plugin.Meta.Models, 10)
+	require.Len(t, plugin.Meta.Models, 11)
 	require.Len(t, plugin.Meta.Protocols, 1)
 	require.NotNil(t, plugin.Meta.Protocols[0].RetainResult)
 	assert.True(t, *plugin.Meta.Protocols[0].RetainResult)
@@ -63,7 +71,7 @@ func TestCodeBloomImageRequestTransports(t *testing.T) {
 			binding, found := registry.Generation().LookupEndpoint("POST", "/v1/images/generations", public)
 			require.True(t, found)
 			assert.Equal(t, "codebloom-image", binding.Plugin.Meta.Key)
-			assert.Equal(t, "1.0.0", binding.Plugin.Meta.Version)
+			assert.Equal(t, "1.0.1", binding.Plugin.Meta.Version)
 			assert.Equal(t, 1, binding.Plugin.Meta.APIVersion)
 			_, found = registry.Generation().LookupEndpoint("POST", "/v1/images/generations", "ycapi-"+raw)
 			assert.False(t, found)
@@ -79,7 +87,7 @@ func TestCodeBloomImageRequestTransports(t *testing.T) {
 			assert.Equal(t, raw, body["model"])
 			if transport == "images_generations" {
 				assert.Equal(t, "https://codebloom.example/v1/images/generations", out["url"])
-				assert.Equal(t, map[string]any{"model": raw, "prompt": "a cat", "size": "1024x1024", "n": float64(1)}, body)
+				assert.Equal(t, map[string]any{"model": raw, "prompt": "a cat", "size": "1024x1024", "n": float64(1), "response_format": "url"}, body)
 			} else {
 				assert.Equal(t, "https://codebloom.example/v1/chat/completions", out["url"])
 				assert.Equal(t, map[string]any{"model": raw, "stream": false, "messages": []any{map[string]any{"role": "user", "content": "a cat"}}}, body)
@@ -283,4 +291,141 @@ func TestCodeBloomImageHostContentRequestIsCredentialless(t *testing.T) {
 	require.Error(t, err)
 	_, err = adaptor.BuildContentRequest(t.Context(), task, "image-1", channel.TaskArtifactClientRequest{Method: http.MethodPost})
 	require.Error(t, err)
+}
+
+// Explicit private fixtures replay real supplier receipts and image bytes.
+// The synthetic qualification injection exists only in this test; production
+// still requires the separately committed qualification and enabled abilities.
+func TestObservedImageEditOriginalReceiptAndArtifactContracts(t *testing.T) {
+	manifest := os.Getenv("TEST_IMAGE_EDIT_OBSERVED_MANIFEST")
+	if manifest == "" {
+		t.Skip("explicit private original image-edit evidence required")
+	}
+	raw, err := os.ReadFile(manifest)
+	require.NoError(t, err)
+	var entries []struct {
+		Label         string         `json:"label"`
+		Provider      string         `json:"provider"`
+		Model         string         `json:"model"`
+		Upstream      string         `json:"upstream"`
+		Offer         string         `json:"offer"`
+		Lane          string         `json:"lane"`
+		Request       map[string]any `json:"request"`
+		SubmitPath    string         `json:"submit_path"`
+		PollPath      string         `json:"poll_path"`
+		ImagePath     string         `json:"image_path"`
+		ReferencePath string         `json:"reference_path"`
+		ImageSHA256   string         `json:"image_sha256"`
+		Width         int            `json:"width"`
+		Height        int            `json:"height"`
+	}
+	require.NoError(t, common.Unmarshal(raw, &entries))
+	require.NotEmpty(t, entries)
+	var reports []map[string]any
+	for _, entry := range entries {
+		t.Run(entry.Label, func(t *testing.T) {
+			source, err := builtinplugins.Source(entry.Provider)
+			require.NoError(t, err)
+			var injection string
+			if entry.Provider == "ycapi" {
+				injection = fmt.Sprintf("globalThis.ycapiApprovedCatalog.find(m => m.id === %q).image_edit = {max_images:1,max_bytes:5242880,offers:[%q]};", entry.Model, entry.Offer)
+			} else {
+				injection = fmt.Sprintf("globalThis.codebloomImageEditModels = [%q];", entry.Model)
+			}
+			lines := strings.SplitN(source, "\n", 2)
+			require.Len(t, lines, 2)
+			source = lines[0] + "\n" + injection + "\n" + lines[1]
+			p, err := jsplugin.CompilePlugin(source, jsplugin.Options{})
+			require.NoError(t, err)
+			request := maps.Clone(entry.Request)
+			var body map[string]any
+			if entry.Provider == "ycapi" {
+				body = map[string]any{"kind": "json", "value": request}
+			} else {
+				fields := map[string][]string{}
+				for key, value := range request {
+					fields[key] = []string{fmt.Sprint(value)}
+				}
+				reference, err := os.ReadFile(entry.ReferencePath)
+				require.NoError(t, err)
+				body = map[string]any{"kind": "multipart", "fields": fields, "files": []any{map[string]any{
+					"field": "image[]", "ref": "request_file:image[]", "filename": "reference.png", "mimeType": "image/png", "size": len(reference)}}}
+			}
+			decoded, err := p.Engine.CallPath(t.Context(), "protocols", []string{"openai_image", "decodeRequest"}, map[string]any{"model": entry.Model, "operation": "edit", "body": body})
+			require.NoError(t, err)
+			intent := codebloomObject(t, decoded)
+			ctx := map[string]any{"model": entry.Model, "upstreamModel": entry.Model, "baseUrl": "https://supplier.invalid", "apiKey": "synthetic-secret", "publicTaskId": "task_observed_image_edit", "requestBody": intent["requestBody"]}
+			if entry.Provider == "codebloom-image" {
+				ctx["upstreamModel"] = entry.Upstream
+			}
+			wire := codebloomHook(t, p, "buildSubmitRequest", ctx)
+			facts := codebloomHook(t, p, "extractUsage", ctx)
+			assert.EqualValues(t, 1, facts["image_count"])
+			if entry.Provider == "ycapi" {
+				envelope := codebloomObject(t, wire["body"])
+				assert.Equal(t, "edit", envelope["operation"])
+				assert.Equal(t, entry.Lane, envelope["lane_id"])
+				assert.Equal(t, entry.Upstream, envelope["model_id"])
+				params := codebloomObject(t, envelope["params"])
+				assert.Equal(t, params["images"], envelope["attachments"])
+				assert.Equal(t, "image-edit", params["mode"])
+				assert.Equal(t, entry.Offer, facts["spec"])
+			} else if strings.HasPrefix(entry.Upstream, "gpt-") {
+				assert.Equal(t, "https://supplier.invalid/v1/images/edits", wire["url"])
+				assert.Equal(t, "multipart", wire["bodyType"])
+				parts := wire["parts"].([]any)
+				assert.Equal(t, "request_file:image[]", codebloomObject(t, parts[len(parts)-1])["fileRef"])
+			} else {
+				assert.Equal(t, "https://supplier.invalid/v1/chat/completions", wire["url"])
+				messages := codebloomObject(t, wire["body"])["messages"].([]any)
+				content := codebloomObject(t, messages[0])["content"].([]any)
+				require.Len(t, content, 2)
+				assert.Equal(t, "image_url", codebloomObject(t, content[1])["type"])
+			}
+			submit, err := os.ReadFile(entry.SubmitPath)
+			require.NoError(t, err)
+			var response any
+			require.NoError(t, common.Unmarshal(submit, &response))
+			parsed := codebloomHook(t, p, "parseSubmitResponse", ctx, map[string]any{"statusCode": 200, "body": response})
+			state := parsed["state"]
+			if entry.Provider == "ycapi" {
+				poll, err := os.ReadFile(entry.PollPath)
+				require.NoError(t, err)
+				var original any
+				require.NoError(t, common.Unmarshal(poll, &original))
+				final := codebloomHook(t, p, "parseTaskResult", map[string]any{"model": entry.Model, "upstreamModel": entry.Model, "taskId": parsed["taskId"], "state": state}, original)
+				assert.Equal(t, "SUCCESS", final["status"])
+				state = final["state"]
+			} else {
+				assert.Equal(t, "SUCCESS", codebloomObject(t, parsed["immediate"])["status"])
+			}
+			task := map[string]any{"taskId": "task_observed_image_edit", "status": "SUCCESS", "state": state, "data": parsed["taskData"]}
+			value, err := p.Engine.Call(t.Context(), "listArtifacts", task)
+			require.NoError(t, err)
+			artifacts := value.([]any)
+			require.Len(t, artifacts, 1)
+			key := codebloomObject(t, artifacts[0])["key"].(string)
+			content := codebloomHook(t, p, "buildContentRequest", map[string]any{"state": state, "data": parsed["taskData"], "artifactKey": key, "clientRequest": map[string]any{"method": "GET"}})
+			assert.Equal(t, true, content["credentialless"])
+			assert.NotContains(t, content, "headers")
+			gateway := "https://gateway.example/harness/v1/tasks/task_observed_image_edit/artifacts/" + key + "/content?access=synthetic-only"
+			rendered, err := p.Engine.CallPath(t.Context(), "protocols", []string{"openai_image", "render"}, map[string]any{"artifacts": map[string]any{key: map[string]any{"url": gateway}}}, task)
+			require.NoError(t, err)
+			data := codebloomObject(t, rendered)["data"].([]any)
+			assert.Equal(t, gateway, codebloomObject(t, data[0])["url"])
+			bytes, err := os.ReadFile(entry.ImagePath)
+			require.NoError(t, err)
+			assert.Equal(t, entry.ImageSHA256, fmt.Sprintf("%x", sha256.Sum256(bytes)))
+			decodedImage, _, err := image.Decode(strings.NewReader(string(bytes)))
+			require.NoError(t, err)
+			assert.Equal(t, entry.Width, decodedImage.Bounds().Dx())
+			assert.Equal(t, entry.Height, decodedImage.Bounds().Dy())
+			reports = append(reports, map[string]any{"label": entry.Label, "model": entry.Model, "offer": entry.Offer, "image_sha256": entry.ImageSHA256, "verified": true, "image_count": 1, "credentialless_artifact": true, "original_task_result": true})
+		})
+	}
+	if output := os.Getenv("TEST_IMAGE_EDIT_OBSERVED_REPORT"); output != "" {
+		encoded, err := common.Marshal(reports)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(output, encoded, 0o600))
+	}
 }

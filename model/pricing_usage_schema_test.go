@@ -103,7 +103,7 @@ func TestBillingOptionUpdateReleasesConfigLockBeforePricingInvalidation(t *testi
 }
 
 func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
-	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2"} {
+	for _, version := range []string{"1.0.0", "1.0.1", "1.0.2", "1.0.3"} {
 		t.Run(version, func(t *testing.T) {
 			parameters := taskPluginParameterSchema("ycapi", version, "ycapi-flux-kontext")
 			require.NotNil(t, parameters)
@@ -117,14 +117,18 @@ func TestYcapiRecoveryDeclarationFollowsExecutingPluginVersion(t *testing.T) {
 			assert.Equal(t, version != "1.0.0", recovery, "old installed overrides cannot certify the fixed parser")
 			branches := parameters["oneOf"].([]any)
 			size := branches[0].(map[string]any)["properties"].(map[string]any)["size"].(map[string]any)["enum"].([]string)
-			if version == "1.0.2" {
+			if version == "1.0.2" || version == "1.0.3" {
 				assert.Contains(t, size, "16:9")
 			} else {
 				assert.Equal(t, []string{"1:1"}, size, "new host code cannot advertise shapes an old override still rejects")
 			}
+			_, editing := parameters["x-image-edit"]
+			_, asynchronous := parameters["x-image-task-submit"]
+			assert.Equal(t, version == "1.0.3", editing)
+			assert.Equal(t, version == "1.0.3", asynchronous)
 		})
 	}
-	assert.Nil(t, taskPluginParameterSchema("ycapi", "1.0.3", "ycapi-flux-kontext"))
+	assert.Nil(t, taskPluginParameterSchema("ycapi", "1.0.4", "ycapi-flux-kontext"))
 }
 
 func TestPricingYcapiImagePricesFollowExecutingOverride(t *testing.T) {
