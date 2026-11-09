@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { invalidateModelPricing } from '@/features/model-pricing/api'
 import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { formatTimestamp } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -88,8 +89,13 @@ export function UnifiedModelSection(props: {
     onSuccess: async () => {
       setConfirm(null)
       onDirtyChange(false)
-      await cache.invalidateQueries({ queryKey: ['unified-models'] })
-      await cache.invalidateQueries({ queryKey: ['client-model-config'] })
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ['unified-models'] }),
+        cache.invalidateQueries({ queryKey: ['client-model-config'] }),
+        cache.invalidateQueries({ queryKey: ['configured-model-pricebook'] }),
+        cache.invalidateQueries({ queryKey: ['model-profits'] }),
+        invalidateModelPricing(cache),
+      ])
       toast.success(t('Model configuration published'))
     },
     onError: handleServerError,
