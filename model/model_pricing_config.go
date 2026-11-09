@@ -360,7 +360,7 @@ func ValidateModelPricing(name string, values PricingValues) error {
 
 // Writes pass the locked database snapshot here, so allowing an unchanged stale
 // override cannot bypass validation through an out-of-date process-local cache.
-func validateModelPricing(name string, values, previous PricingValues) error {
+func validateModelPricing(name string, values, previous PricingValues, nativeModels ...string) error {
 	if strings.TrimSpace(name) == "" {
 		return errors.New("model name is required")
 	}
@@ -443,6 +443,23 @@ func validateModelPricing(name string, values, previous PricingValues) error {
 						err = billing_setting.SmokeTestTaskExpr(expression, schema)
 					}
 				} else {
+					err = billing_setting.SmokeTestExpr(expression)
+				}
+			} else if len(nativeModels) > 0 {
+				tested := false
+				for _, native := range nativeModels {
+					for _, plugin := range generation.PluginsByModel(native) {
+						schema, _ := plugin.Meta.UsageForModel(native)
+						tested = true
+						if err = billing_setting.SmokeTestTaskExpr(expression, schema); err != nil {
+							break
+						}
+					}
+					if err != nil {
+						break
+					}
+				}
+				if !tested {
 					err = billing_setting.SmokeTestExpr(expression)
 				}
 			} else if !unchanged || len(billingexpr.UsedUsageKeys(expression)) == 0 {
@@ -545,7 +562,9 @@ func UpdateModelPricingOptions(updates map[string]string) error {
 	})
 }
 
-func mutateModelPricingOptions(mutate func(*gorm.DB, map[string]map[string]any) error) error {
+func mutateModelPricingOptions(mutate func(*gorm.DB, map[string]map[string]any) error, afterCommit ...func()) error {
+	modelConfigurationMu.Lock()
+	defer modelConfigurationMu.Unlock()
 	modelPricingMutationMu.Lock()
 	defer modelPricingMutationMu.Unlock()
 	var committed map[string]map[string]any
@@ -594,6 +613,9 @@ func mutateModelPricingOptions(mutate func(*gorm.DB, map[string]map[string]any) 
 		if err := updateOptionMap(key, string(encoded)); err != nil {
 			return err
 		}
+	}
+	for _, commit := range afterCommit {
+		commit()
 	}
 	RefreshPricing()
 	ratio_setting.InvalidateExposedDataCache()

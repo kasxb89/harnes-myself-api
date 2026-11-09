@@ -616,6 +616,11 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			UpstreamModel:       pinned.MappedModel,
 			Stream:              stream,
 		}
+		protocolContext, err = protocolContext.WithNativeBody()
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol alias request")
+			return
+		}
 		hookStarted := time.Now()
 		candidates := pinned.Candidates
 		if len(candidates) == 0 {
@@ -635,9 +640,12 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			resolvedValue, requestBodyText, callErr := candidate.Plugin.Engine.CallPathWithMemberJSON(
 				context.WithoutCancel(c.Request.Context()), pluginruntime.DefaultCallTimeout,
 				candidate.Plugin.Meta.JSONTextMember("requestBody"),
-				"protocols", []string{candidate.Protocol, "decodeRequest"}, candidateContext.JSValueFor(candidate.Plugin.Meta),
+				"protocols", []string{candidate.Protocol, "decodeRequest"}, candidateContext.DecodeValueFor(candidate.Plugin.Meta),
 			)
 			result, resultOK := resolvedValue.(map[string]any)
+			if resultOK && pinned.MappedModel != "" && result["model"] == pinned.MappedModel {
+				result["model"] = pinned.Model
+			}
 			detail := ""
 			reason := ""
 			if callErr != nil {

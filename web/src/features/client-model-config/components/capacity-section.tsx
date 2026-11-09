@@ -25,7 +25,7 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Combobox } from '@/components/ui/combobox'
 import { Label } from '@/components/ui/label'
-import { SettingsCard } from '@/features/system-settings/components/settings-card'
+import { SettingsSection } from '@/features/system-settings/components/settings-section'
 
 import { getClientModelCapacities } from '../api'
 import type { ClientModelCapacityCatalog, ClientModelOption } from '../types'
@@ -79,7 +79,7 @@ export function ClientModelCapacitySection(props: CapacitySectionProps) {
         )
     )
   return (
-    <SettingsCard
+    <SettingsSection
       title={t('Context and output limits')}
       description={t(
         'Configure chat model limits here. Signed-in clients refresh model settings automatically, usually within one minute.'
@@ -157,6 +157,6 @@ export function ClientModelCapacitySection(props: CapacitySectionProps) {
           )}
         </div>
       )}
-    </SettingsCard>
+    </SettingsSection>
   )
 }

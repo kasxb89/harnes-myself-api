@@ -51,6 +51,11 @@ type ClientModelCandidate struct {
 // ClientModelDisplayName returns a presentation label without changing the
 // canonical model ID used for routing, pricing or stored tasks.
 func ClientModelDisplayName(id string) string {
+	if records, err := CurrentPublishedModelConfigurations(); err == nil {
+		if record, ok := records[id]; ok {
+			return record.Definition.DisplayName
+		}
+	}
 	return modelDisplayName(id)
 }
 
@@ -209,7 +214,7 @@ func listClientModelCandidates(db *gorm.DB) ([]ClientModelCandidate, error) {
 		return nil, ErrClientModelCatalog
 	}
 	var abilities []Ability
-	if err := db.Model(&Ability{}).Select("model", "channel_id").Distinct().Where("enabled = ?", true).
+	if err := db.Model(&Ability{}).Select("model", "channel_id", "group").Distinct().Where("enabled = ?", true).
 		Order("model, channel_id").Find(&abilities).Error; err != nil {
 		return nil, ErrClientModelCatalog
 	}
@@ -255,17 +260,37 @@ func listClientModelCandidates(db *gorm.DB) ([]ClientModelCandidate, error) {
 		}
 	}
 	presentation := CurrentClientModelPresentation()
+	managed, err := CurrentPublishedModelConfigurations()
+	if err != nil {
+		return nil, ErrClientModelCatalog
+	}
 	byID := make(map[string]ClientModelCandidate)
 	for _, ability := range abilities {
 		channel, enabled := channels[ability.ChannelId]
 		if !enabled || !validClientModelID(ability.Model) || !codebloom.PubliclyAvailable(ability.Model) || !BlackrxCatalogAllowsModel(&channel, ability.Model) {
 			continue
 		}
+		if record, exists := managed[ability.Model]; exists && !record.Definition.Enabled {
+			continue
+		}
 		candidate := byID[ability.Model]
 		candidate.ID = ability.Model
 		candidate.DisplayName = presentation.DisplayName(ability.Model, modelDisplayName(ability.Model))
+		if record, ok := managed[ability.Model]; ok {
+			candidate.DisplayName = record.Definition.DisplayName
+		}
 		candidate.ChatEligible = candidate.ChatEligible || clientModelSupportsChat(channel, ability.Model, metadataByModel[ability.Model], taskModels)
 		image, video := clientModelMediaEligibility(channel, ability.Model)
+		if record, managed := managed[ability.Model]; managed && record.Definition.Kind != "text" {
+			candidate.ChatEligible = false
+			for _, route := range record.Definition.Routes {
+				if route.ChannelID == ability.ChannelId && route.Group == ability.Group && route.Enabled {
+					nativeImage, nativeVideo := clientModelMediaEligibility(channel, route.UpstreamModel)
+					image = image || nativeImage
+					video = video || nativeVideo
+				}
+			}
+		}
 		candidate.ImageEligible = candidate.ImageEligible || image
 		candidate.VideoEligible = candidate.VideoEligible || video
 		byID[ability.Model] = candidate

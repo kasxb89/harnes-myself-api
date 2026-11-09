@@ -668,7 +668,7 @@ it('shows task tier ranges in the schema unit and converts site currency only on
   expect(button).not.toHaveTextContent('1M tokens')
 })
 
-it('opens the effective expression breakdown from the price without creating metadata', async () => {
+it('links effective expression details to unified configuration without creating metadata', async () => {
   const expression =
     '(len <= 200000 ? tier("standard", p * 3 + c * 15 + cr * 0.3) : tier("long", p * 6 + c * 22.5 + cr * 0.6)) * (header("x-priority") == "high" ? 2 : 1)'
   await renderList([channel], {
@@ -688,16 +688,15 @@ it('opens the effective expression breakdown from the price without creating met
   await userEvent.click(
     screen.getByRole('button', { name: 'View pricing for channel-only' })
   )
-  const preview = await screen.findByRole('region', { name: 'Current Billing' })
-  expect(preview).toHaveTextContent('standard')
-  expect(preview).toHaveTextContent('long')
-  expect(preview).toHaveTextContent('0.3')
-  expect(preview).toHaveTextContent('0.6')
-  expect(preview).toHaveTextContent('x-priority')
+  const entry = await screen.findByRole('link', {
+    name: 'Open unified model configuration',
+  })
+  expect(entry.getAttribute('href')).toContain('model=channel-only')
+  expect(screen.queryByRole('button', { name: 'Save model prices' })).toBeNull()
   expect(write).not.toHaveBeenCalled()
 })
 
-it('shows an unrecognized expression as special and retains its full source in pricing details', async () => {
+it('shows unrecognized pricing as special and opens its canonical configuration destination', async () => {
   const expression = 'tier("custom", max(p * 2 + c * 8, 100))'
   await renderList([channel], {
     pricing: [
@@ -719,8 +718,11 @@ it('shows an unrecognized expression as special and retains its full source in p
   expect(button).not.toHaveTextContent('$2')
   expect(button).not.toHaveTextContent(expression)
   await userEvent.click(button)
-  const preview = await screen.findByRole('region', { name: 'Current Billing' })
-  expect(preview).toHaveTextContent(expression)
+  const entry = await screen.findByRole('link', {
+    name: 'Open unified model configuration',
+  })
+  expect(entry.getAttribute('href')).toContain('model=channel-only')
+  expect(screen.queryByRole('button', { name: 'Save model prices' })).toBeNull()
 })
 
 it('distinguishes pending and failed pricing requests from an unset price', async () => {

@@ -1284,6 +1284,9 @@ func writeTaskPluginProtocolEvent(c *gin.Context, event dto.PluginResponsesStrea
 }
 
 func respondPluginProtocolSubmissionError(c *gin.Context, taskErr *dto.TaskError) {
+	if taskErr != nil && respondModelConfigurationUnsent(c, taskErr.StatusCode, taskErr.Code, taskErr.Message) {
+		return
+	}
 	if respondMediaNotSubmittedError(c, taskErr, true) {
 		return
 	}

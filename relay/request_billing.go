@@ -25,7 +25,7 @@ import (
 // pricing snapshot on the RelayInfo (`PriceData` / `TieredBillingSnapshot`).
 // Settle reads that snapshot, so every model the relay actually serves has to
 // pass through here before the attempt runs.
-func resolveRequestPrice(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+func resolveRequestPrice(c *gin.Context, info *relaycommon.RelayInfo) (func(), *types.NewAPIError) {
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	meta := &types.TokenCountMeta{TokenType: types.TokenTypeTokenizer}
 	if info.Request != nil && (needSensitiveCheck || constant.CountToken) {
@@ -49,20 +49,25 @@ func resolveRequestPrice(c *gin.Context, info *relaycommon.RelayInfo) *types.New
 			service.RequestPolicy(c).AddEvent(service.PolicyEvent{ErrorCode: string(types.ErrorCodeSensitiveWordsDetected), ErrorSource: "local", Decision: service.PolicyDecision{Action: "stop", Reason: "local_rejection", Source: "global"}, Health: "unchanged"})
 			message := fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", "))
 			logger.LogWarn(c, message)
-			return types.NewError(errors.New(message), types.ErrorCodeSensitiveWordsDetected)
+			return func() {}, types.NewError(errors.New(message), types.ErrorCodeSensitiveWordsDetected)
 		}
 	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, info)
 	if err != nil {
-		return types.NewError(err, types.ErrorCodeCountTokenFailed)
+		return func() {}, types.NewError(err, types.ErrorCodeCountTokenFailed)
 	}
 	info.SetEstimatePromptTokens(tokens)
 
-	if _, err := helper.ModelPriceHelper(c, info, tokens, meta); err != nil {
-		return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+	release, configErr := service.LockModelConfiguration(c, info.OriginModelName, info.Request)
+	if configErr != nil {
+		return func() {}, configErr
 	}
-	return nil
+	if _, err := helper.ModelPriceHelper(c, info, tokens, meta); err != nil {
+		release()
+		return func() {}, types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+	}
+	return release, nil
 }
 
 // PrepareRequestBilling estimates and reserves one request's charge. Transports
@@ -72,13 +77,20 @@ func PrepareRequestBilling(c *gin.Context, info *relaycommon.RelayInfo) *types.N
 	if apiErr := checkModelBillingAvailability(c, info.OriginModelName); apiErr != nil {
 		return apiErr
 	}
-	if apiErr := resolveRequestPrice(c, info); apiErr != nil {
+	if configErr := service.CaptureModelConfiguration(c, info.OriginModelName); configErr != nil {
+		return configErr
+	}
+	release, apiErr := resolveRequestPrice(c, info)
+	if apiErr != nil {
 		return apiErr
 	}
+	defer release()
 	if info.PriceData.FreeModel {
+		c.Set("model_configuration_billing_started", true)
 		logger.LogInfo(c, common.LogText("model %s is free, skipping pre-consume", info.OriginModelName))
 		return nil
 	}
+	c.Set("model_configuration_billing_started", true)
 	return service.PreConsumeBilling(c, info.PriceData.QuotaToPreConsume, info)
 }
 
@@ -103,9 +115,11 @@ func ReprepareFallbackBilling(c *gin.Context, info *relaycommon.RelayInfo, model
 	// price resolution or the consume log.
 	info.BillingModelName = ""
 	info.TieredBillingSnapshot = nil
-	if apiErr := resolveRequestPrice(c, info); apiErr != nil {
+	release, apiErr := resolveRequestPrice(c, info)
+	if apiErr != nil {
 		return apiErr
 	}
+	defer release()
 	if info.PriceData.FreeModel || info.Billing == nil {
 		return nil
 	}

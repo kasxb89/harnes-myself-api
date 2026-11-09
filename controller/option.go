@@ -91,7 +91,7 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
+		if k == model.ModelConfigurationKey || strings.HasPrefix(k, model.ModelConfigurationHistoryPrefix) || k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
 			continue
 		}
 		value := common.Interface2String(v)

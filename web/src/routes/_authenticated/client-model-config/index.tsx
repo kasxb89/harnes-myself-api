@@ -17,17 +17,32 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
+import { z } from 'zod'
 
 import { ClientModelConfigPage } from '@/features/client-model-config'
 import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/client-model-config/')({
+  validateSearch: z.object({
+    model: z.string().max(128).optional(),
+    tab: z.enum(['unified', 'preferences', 'media', 'presentation']).optional(),
+  }),
   beforeLoad: () => {
     const user = useAuthStore.getState().auth.user
     if (!canAccessAdminRoute(user, '/client-model-config')) {
       throw redirect({ to: '/403' })
     }
   },
-  component: ClientModelConfigPage,
+  component: ClientConfigurationRoute,
 })
+
+function ClientConfigurationRoute() {
+  const search = Route.useSearch()
+  return (
+    <ClientModelConfigPage
+      initialModel={search.model}
+      initialTab={search.tab}
+    />
+  )
+}

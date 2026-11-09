@@ -202,6 +202,8 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	modelConfigurationMu.Lock()
+	defer modelConfigurationMu.Unlock()
 	// Serialize the database snapshot with client preference commits so an old
 	// periodic read cannot overwrite a newly committed complete object in memory.
 	clientModelConfigMutex.Lock()
@@ -284,6 +286,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if isModelConfigurationOption(key) {
+		return ErrModelConfigurationDedicatedAPI
+	}
 	if strings.EqualFold(key, ModelCapacityOptionKey) {
 		return errors.New("Use the model capacity configuration API")
 	}
@@ -315,6 +320,10 @@ func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
+	if isModelExecutionGlobalOption(key) {
+		modelConfigurationMu.Lock()
+		defer modelConfigurationMu.Unlock()
+	}
 	// Keep a newly inserted collation alias inside the transaction so a
 	// rejected protected option cannot leave a shadow row behind.
 	if err := DB.Transaction(func(tx *gorm.DB) error {
@@ -326,6 +335,9 @@ func UpdateOption(key string, value string) error {
 		}
 		if err := tx.Where(&Option{Key: key}).Take(&option).Error; err != nil {
 			return err
+		}
+		if isModelConfigurationOption(option.Key) {
+			return ErrModelConfigurationDedicatedAPI
 		}
 		if strings.EqualFold(option.Key, ModelCapacityOptionKey) {
 			return errors.New("Use the model capacity configuration API")
@@ -390,6 +402,9 @@ func validateClientAnnouncementOptionWrite(tx *gorm.DB, requestedKey, storedKey 
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
 	for key := range values {
+		if isModelConfigurationOption(key) {
+			return ErrModelConfigurationDedicatedAPI
+		}
 		if strings.EqualFold(key, ModelCapacityOptionKey) {
 			return errors.New("Use the model capacity configuration API")
 		}
@@ -426,6 +441,13 @@ func UpdateOptionsBulk(values map[string]string) error {
 			return err
 		}
 	}
+	for key := range values {
+		if IsModelPricingOption(key) || isModelExecutionGlobalOption(key) {
+			modelConfigurationMu.Lock()
+			defer modelConfigurationMu.Unlock()
+			break
+		}
+	}
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
@@ -459,6 +481,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
+			}
+			if isModelConfigurationOption(option.Key) {
+				return ErrModelConfigurationDedicatedAPI
 			}
 			if strings.EqualFold(option.Key, ModelCapacityOptionKey) {
 				return errors.New("Use the model capacity configuration API")
@@ -500,7 +525,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey || isClientAnnouncementsMetadataOption(key) {
+	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey || isClientAnnouncementsMetadataOption(key) || strings.HasPrefix(strings.ToLower(key), strings.ToLower(ModelConfigurationHistoryPrefix)) {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()

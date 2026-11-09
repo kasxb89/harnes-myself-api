@@ -38,8 +38,8 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { FormDirtyIndicator } from '@/features/system-settings/components/form-dirty-indicator'
-import { SettingsCard } from '@/features/system-settings/components/settings-card'
 import { SettingsPageFormActions } from '@/features/system-settings/components/settings-page-context'
+import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { getModelDisplayName } from '@/lib/model-display-name'
 
 import { getClientMediaDefaults, saveClientMediaDefaults } from '../api'
@@ -157,7 +157,7 @@ export function ClientMediaDefaultsSection(props: {
           </Alert>
         )}
         {fields.map(({ name, label, eligible, fallback }) => (
-          <SettingsCard key={name} title={t(label)}>
+          <SettingsSection key={name} title={t(label)}>
             <FormField
               control={form.control}
               name={name}
@@ -191,14 +191,16 @@ export function ClientMediaDefaultsSection(props: {
                   </FormControl>
                   {field.value === '' && (
                     <FormDescription>
-                      {t(fallback, { model: getModelDisplayName('MiniMax-H3') })}
+                      {t(fallback, {
+                        model: getModelDisplayName('MiniMax-H3'),
+                      })}
                     </FormDescription>
                   )}
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </SettingsCard>
+          </SettingsSection>
         ))}
       </form>
     </Form>

@@ -25,18 +25,45 @@ import {
 } from '@tanstack/react-router'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
+import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
 import { api } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ClientModelConfigPage } from '..'
+import { ClientModelCapacitySection } from '../components/capacity-section'
 import { capacityFormSchema } from '../lib/capacity'
 import type { ClientModelCapacityCatalog } from '../types'
 
 let catalog: ClientModelCapacityCatalog
 const clients: QueryClient[] = []
+
+// The old form/API remains compatible without exposing a second editor.
+function LegacyCapacityHarness() {
+  const [actions, setActions] = useState<HTMLDivElement | null>(null)
+  return (
+    <SettingsPageProvider
+      actionsContainer={actions}
+      suppressSectionHeader={false}
+    >
+      <div ref={setActions} />
+      <ClientModelCapacitySection
+        active
+        models={[
+          {
+            id: 'yunshu-flash',
+            display_name: 'Cloud Flash',
+            chat_eligible: true,
+          },
+        ]}
+        onDirtyChange={() => undefined}
+      />
+    </SettingsPageProvider>
+  )
+}
 
 beforeEach(() => {
   useAuthStore
@@ -119,7 +146,9 @@ async function setup(activate = true) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   clients.push(client)
-  const root = createRootRoute({ component: ClientModelConfigPage })
+  const root = createRootRoute({
+    component: activate ? LegacyCapacityHarness : ClientModelConfigPage,
+  })
   const router = createRouter({
     routeTree: root,
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -134,9 +163,6 @@ async function setup(activate = true) {
     await screen.findByRole('combobox', { name: 'Default chat model' })
     return user
   }
-  await user.click(
-    await screen.findByRole('tab', { name: 'Context and output limits' })
-  )
   await screen.findByRole('textbox', { name: 'Context window (tokens)' })
   return user
 }
@@ -274,7 +300,7 @@ test('an unavailable catalog offers a retry without any editable token fields', 
     defaultOptions: { queries: { retry: false } },
   })
   clients.push(client)
-  const root = createRootRoute({ component: ClientModelConfigPage })
+  const root = createRootRoute({ component: LegacyCapacityHarness })
   const router = createRouter({
     routeTree: root,
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -283,9 +309,6 @@ test('an unavailable catalog offers a retry without any editable token fields', 
     <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>
-  )
-  await userEvent.click(
-    await screen.findByRole('tab', { name: 'Context and output limits' })
   )
   expect(
     await screen.findByText('Failed to load model capacities')

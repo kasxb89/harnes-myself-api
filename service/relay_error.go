@@ -24,6 +24,8 @@ import (
 // plugin messages, provider responses, URLs and credentials are never persisted.
 func TaskSubmissionFailure(code string) (string, string) {
 	switch {
+	case code == "model_config_changed" || code == "model_config_unavailable" || code == "model_parameters_invalid":
+		return code, "Model configuration changed. Refresh the model list before a new operation"
 	case code == "insufficient_user_quota":
 		return code, "Insufficient account balance or subscription quota to submit this task"
 	case code == "pre_consume_token_quota_failed":

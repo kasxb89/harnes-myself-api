@@ -30,27 +30,28 @@ type VideoQuoteSegment struct {
 }
 
 type VideoQuoteResponse struct {
-	Object           string              `json:"object"`
-	SchemaVersion    int                 `json:"schema_version"`
-	QuoteID          string              `json:"quote_id"`
-	AccountBinding   string              `json:"account_binding"`
-	Model            string              `json:"model"`
-	WorksCount       int                 `json:"works_count"`
-	Segments         []VideoQuoteSegment `json:"segments"`
-	OneWorkQuota     int                 `json:"one_work_quota"`
-	TotalQuota       int                 `json:"total_quota"`
-	Currency         string              `json:"currency"`
-	QuotaPerUSD      float64             `json:"quota_per_usd"`
-	USDExchangeRate  float64             `json:"usd_exchange_rate"`
-	EstimatedOneWork string              `json:"estimated_one_work"`
-	EstimatedTotal   string              `json:"estimated_total"`
-	PricingRevision  string              `json:"pricing_revision"`
-	CreatedAt        int64               `json:"created_at"`
-	ExpiresAt        int64               `json:"expires_at"`
-	EstimateOnly     bool                `json:"estimate_only"`
-	Charged          bool                `json:"charged"`
-	Submitted        bool                `json:"submitted"`
-	Reserved         bool                `json:"reserved"`
+	ModelConfigVersion string              `json:"model_config_version,omitempty"`
+	Object             string              `json:"object"`
+	SchemaVersion      int                 `json:"schema_version"`
+	QuoteID            string              `json:"quote_id"`
+	AccountBinding     string              `json:"account_binding"`
+	Model              string              `json:"model"`
+	WorksCount         int                 `json:"works_count"`
+	Segments           []VideoQuoteSegment `json:"segments"`
+	OneWorkQuota       int                 `json:"one_work_quota"`
+	TotalQuota         int                 `json:"total_quota"`
+	Currency           string              `json:"currency"`
+	QuotaPerUSD        float64             `json:"quota_per_usd"`
+	USDExchangeRate    float64             `json:"usd_exchange_rate"`
+	EstimatedOneWork   string              `json:"estimated_one_work"`
+	EstimatedTotal     string              `json:"estimated_total"`
+	PricingRevision    string              `json:"pricing_revision"`
+	CreatedAt          int64               `json:"created_at"`
+	ExpiresAt          int64               `json:"expires_at"`
+	EstimateOnly       bool                `json:"estimate_only"`
+	Charged            bool                `json:"charged"`
+	Submitted          bool                `json:"submitted"`
+	Reserved           bool                `json:"reserved"`
 }
 
 type VideoQuoteError struct {

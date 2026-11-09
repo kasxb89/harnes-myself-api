@@ -42,8 +42,50 @@ import { ClientModelConfigPage } from '..'
 import {
   clientModelConfigFormSchema,
   clientModelConfigSchema,
+  unifiedModelFormSchema,
 } from '../lib/schema'
 import type { ClientModelConfig, ClientModelOption } from '../types'
+
+test('unified editor keeps unknown limits blank and requires the correct context/output pair before enabling text', () => {
+  const draft = {
+    display_name: 'Local test model',
+    kind: 'text',
+    enabled: false,
+    source: 'Local synthetic declaration',
+    routes: [],
+    parameter_json: '',
+    cost_json: '[]',
+    context_window: Number.NaN,
+    max_output_tokens: Number.NaN,
+  }
+  expect(unifiedModelFormSchema.safeParse(draft).success).toBe(true)
+  expect(
+    unifiedModelFormSchema.safeParse({ ...draft, enabled: true }).success
+  ).toBe(false)
+  expect(
+    unifiedModelFormSchema.safeParse({
+      ...draft,
+      enabled: true,
+      context_window: 32768,
+    }).success
+  ).toBe(false)
+  expect(
+    unifiedModelFormSchema.safeParse({
+      ...draft,
+      enabled: true,
+      context_window: 32768,
+      max_output_tokens: 8192,
+    }).success
+  ).toBe(true)
+  expect(
+    unifiedModelFormSchema.safeParse({
+      ...draft,
+      enabled: true,
+      context_window: 8192,
+      max_output_tokens: 32768,
+    }).success
+  ).toBe(false)
+})
 
 const initial: ClientModelConfig = {
   schema_version: 1,
@@ -140,6 +182,12 @@ async function selectOption(
 
 test('empty preferences show the catalog fallback and save stays disabled until an edit', async () => {
   await setup()
+  expect(
+    screen.queryByRole('tab', { name: 'Context and output limits' })
+  ).toBeNull()
+  expect(
+    screen.getAllByRole('tab', { name: 'Models, prices and parameters' })
+  ).toHaveLength(1)
   expect(
     screen.getByRole('combobox', { name: 'Default chat model' })
   ).toHaveValue('No default preference')

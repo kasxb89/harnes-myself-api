@@ -31,13 +31,15 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getClientModelCatalog, getClientModelConfig } from './api'
-import { ClientModelCapacitySection } from './components/capacity-section'
 import { ClientModelConfigForm } from './components/config-form'
 import { ClientDefaultsSummary } from './components/defaults-summary'
 import { ClientMediaDefaultsSection } from './components/media-defaults-form'
 import { ClientModelPresentationSection } from './components/presentation-form'
+import { UnifiedModelSection } from './components/unified-model-section'
 
-export function ClientModelConfigPage() {
+export function ClientModelConfigPage(
+  props: { initialModel?: string; initialTab?: string } = {}
+) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   if (!canAccessAdminRoute(user, '/client-model-config')) {
@@ -45,7 +47,9 @@ export function ClientModelConfigPage() {
   }
   return (
     <ClientModelConfigEditor
-      key={user?.id}
+      key={`${user?.id}:${props.initialModel ?? ''}:${props.initialTab ?? ''}`}
+      initialModel={props.initialModel}
+      initialTab={props.initialTab}
       readOnly={!hasPermission(user, 'client_model_config', 'write')}
       canEditCapacities={(user?.role ?? 0) >= ROLE.SUPER_ADMIN}
     />
@@ -53,15 +57,19 @@ export function ClientModelConfigPage() {
 }
 
 function ClientModelConfigEditor(props: {
+  initialModel?: string
+  initialTab?: string
   readOnly: boolean
   canEditCapacities: boolean
 }) {
   const { t } = useTranslation()
-  const [tab, setTab] = useState('preferences')
+  const [tab, setTab] = useState(
+    props.initialModel ? 'unified' : (props.initialTab ?? 'preferences')
+  )
   const [configDirty, setConfigDirty] = useState(false)
   const [mediaDirty, setMediaDirty] = useState(false)
   const [presentationDirty, setPresentationDirty] = useState(false)
-  const [capacityDirty, setCapacityDirty] = useState(false)
+  const [unifiedDirty, setUnifiedDirty] = useState(false)
   const [actions, setActions] = useState<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<HTMLSpanElement | null>(null)
   const config = useQuery({
@@ -80,6 +88,7 @@ function ClientModelConfigEditor(props: {
     <SettingsPageProvider
       actionsContainer={actions}
       titleStatusContainer={status}
+      suppressSectionHeader={false}
     >
       <SectionPageLayout stackActionsOnMobile>
         <SectionPageLayout.Title>
@@ -99,7 +108,7 @@ function ClientModelConfigEditor(props: {
         <SectionPageLayout.Content>
           <FormNavigationGuard
             when={
-              configDirty || presentationDirty || mediaDirty || capacityDirty
+              configDirty || presentationDirty || mediaDirty || unifiedDirty
             }
           />
           <Tabs
@@ -107,11 +116,22 @@ function ClientModelConfigEditor(props: {
             onValueChange={(value) => setTab(String(value))}
             className='mx-auto max-w-5xl min-w-0 gap-4'
           >
-            {config.data && <ClientDefaultsSummary config={config.data} />}
+            {config.data && tab !== 'unified' && (
+              <ClientDefaultsSummary config={config.data} />
+            )}
             <TabsList
-              className='grid h-auto w-full grid-cols-2 group-data-horizontal/tabs:h-auto sm:flex sm:flex-wrap'
+              variant='line'
+              className='grid h-auto w-full grid-cols-2 justify-start gap-x-4 gap-y-2 border-b pb-2 group-data-horizontal/tabs:h-auto sm:flex sm:flex-wrap'
               aria-label={t('Client model settings')}
             >
+              {props.canEditCapacities && (
+                <TabsTrigger
+                  value='unified'
+                  className='h-auto whitespace-normal'
+                >
+                  {t('Models, prices and parameters')}
+                </TabsTrigger>
+              )}
               <TabsTrigger
                 value='preferences'
                 className='h-auto whitespace-normal'
@@ -121,14 +141,6 @@ function ClientModelConfigEditor(props: {
               <TabsTrigger value='media' className='h-auto whitespace-normal'>
                 {t('Image and video defaults')}
               </TabsTrigger>
-              {props.canEditCapacities && (
-                <TabsTrigger
-                  value='capacity'
-                  className='h-auto whitespace-normal'
-                >
-                  {t('Context and output limits')}
-                </TabsTrigger>
-              )}
               <TabsTrigger
                 value='presentation'
                 className='h-auto whitespace-normal'
@@ -136,6 +148,15 @@ function ClientModelConfigEditor(props: {
                 {t('Descriptions and badges')}
               </TabsTrigger>
             </TabsList>
+            {props.canEditCapacities && (
+              <TabsContent value='unified' keepMounted>
+                <UnifiedModelSection
+                  initialModel={props.initialModel}
+                  active={tab === 'unified'}
+                  onDirtyChange={setUnifiedDirty}
+                />
+              </TabsContent>
+            )}
             <TabsContent value='preferences' keepMounted>
               {pending && (
                 <LoadingState
@@ -189,15 +210,6 @@ function ClientModelConfigEditor(props: {
                 }}
               />
             </TabsContent>
-            {props.canEditCapacities && (
-              <TabsContent value='capacity' keepMounted>
-                <ClientModelCapacitySection
-                  models={catalog.data ?? []}
-                  active={tab === 'capacity'}
-                  onDirtyChange={setCapacityDirty}
-                />
-              </TabsContent>
-            )}
           </Tabs>
         </SectionPageLayout.Content>
       </SectionPageLayout>

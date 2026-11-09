@@ -410,11 +410,16 @@ func ListModels(c *gin.Context, modelType int) {
 				publicModels = append(publicModels, entry)
 			}
 		}
-		c.JSON(200, gin.H{
-			"success": true,
-			"data":    publicModels,
-			"object":  "list",
-		})
+		projected, revision, err := projectUnifiedModelCatalog(c, publicModels, "id", ownerGroups)
+		if err != nil {
+			c.JSON(503, gin.H{"error": gin.H{"code": "model_config_unavailable", "message": "Model configuration is unavailable"}})
+			return
+		}
+		response := gin.H{"success": true, "data": projected, "object": "list"}
+		if revision != "" {
+			response["model_config_revision"] = revision
+		}
+		c.JSON(200, response)
 	}
 }
 

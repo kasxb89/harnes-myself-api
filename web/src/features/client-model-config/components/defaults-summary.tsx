@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
-import { SettingsCard } from '@/features/system-settings/components/settings-card'
+import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { getModelDisplayName } from '@/lib/model-display-name'
 
 import { getClientMediaDefaults } from '../api'
@@ -36,7 +36,7 @@ export function ClientDefaultsSummary(props: { config: ClientModelConfig }) {
   })
   return (
     <section aria-label={t('Saved platform defaults')}>
-      <SettingsCard
+      <SettingsSection
         title={t('Saved platform defaults')}
         description={t(
           'These are saved platform settings, not the current form draft or each user’s personal selections.'
@@ -108,7 +108,7 @@ export function ClientDefaultsSummary(props: { config: ClientModelConfig }) {
             'Explicit user choices and saved personal preferences take priority. Existing conversations and accepted generation tasks keep their original model. Unavailable saved media choices require re-selection.'
           )}
         </p>
-      </SettingsCard>
+      </SettingsSection>
     </section>
   )
 }

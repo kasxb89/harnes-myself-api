@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/tidwall/sjson"
 )
 
 type RouteType string
@@ -371,6 +372,64 @@ type ProtocolRequestContext struct {
 	// tables or request shaping by model must use it over Model.
 	UpstreamModel string `json:"upstreamModel,omitempty"`
 	Stream        bool   `json:"stream"`
+}
+
+// WithNativeBody gives an immutable decoder the declared model in its local
+// body while retaining the public alias as Model and the routing identity. The
+// incoming HTTP body and every other member remain unchanged. Decoded task
+// state then carries this same canonical body through validation and polling.
+func (p ProtocolRequestContext) WithNativeBody() (ProtocolRequestContext, error) {
+	if p.UpstreamModel == "" || p.UpstreamModel == p.Model {
+		return p, nil
+	}
+	body, ok := p.Body.(map[string]any)
+	if !ok {
+		return p, nil
+	}
+	copy := maps.Clone(body)
+	if body["kind"] == string(BodyJSON) {
+		value, ok := body["value"].(map[string]any)
+		if !ok {
+			return p, nil
+		}
+		if declared, exists := value["model"]; exists {
+			if declared != p.Model {
+				return p, fmt.Errorf("request model differs from the public alias")
+			}
+			value = maps.Clone(value)
+			value["model"] = p.UpstreamModel
+			copy["value"] = value
+			if len(p.BodyText) > 0 {
+				var err error
+				p.BodyText, err = sjson.SetBytes(p.BodyText, "model", p.UpstreamModel)
+				if err != nil {
+					return p, err
+				}
+			}
+		}
+	} else if fields, ok := body["fields"].(map[string][]string); ok {
+		if values := fields["model"]; len(values) > 0 {
+			if len(values) != 1 || values[0] != p.Model {
+				return p, fmt.Errorf("request model differs from the public alias")
+			}
+			fields = maps.Clone(fields)
+			fields["model"] = []string{p.UpstreamModel}
+			copy["fields"] = fields
+		}
+	}
+	p.Body = copy
+	return p, nil
+}
+
+// DecodeValueFor runs a mapped alias against the plugin's declared protocol.
+// The host restores the public model on the validated intent; protocol render
+// contexts and stored routing/billing identities keep the original alias.
+func (p ProtocolRequestContext) DecodeValueFor(meta Meta) map[string]any {
+	value := p.JSValueFor(meta)
+	if p.UpstreamModel != "" {
+		value["model"] = p.UpstreamModel
+	}
+	return value
 }
 
 func (p ProtocolRequestContext) JSValue() map[string]any {

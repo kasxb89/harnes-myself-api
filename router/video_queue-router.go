@@ -77,6 +77,9 @@ func SetVideoQueueRouter(router *gin.Engine) {
 		}
 		request.RemoteAddr = net.JoinHostPort(dispatch.Item.ClientIP, "0")
 		request.Header.Set("Content-Type", "application/json")
+		if dispatch.Item.ModelConfigVersion != "" {
+			request.Header.Set(service.ModelConfigurationHeader, dispatch.Item.ModelConfigVersion)
+		}
 		// The existing token is read only for this dispatch and is never written
 		// to the queue, response, logs, new files or another HTTP connection.
 		request.Header.Set("Authorization", "Bearer "+token.Key)

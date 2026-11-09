@@ -249,6 +249,9 @@ func taskCatalogPreflightRejection(c *gin.Context, info *relaycommon.RelayInfo, 
 // 构建/发送/解析上游请求 → 提交后计费调整(AdjustBillingOnSubmit)。
 // 共享控制器编排负责未落库退款、最终额度预留、落库和结算。
 func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmitResult, taskErr *dto.TaskError) {
+	if configErr := service.CaptureModelConfiguration(c, info.OriginModelName); configErr != nil {
+		return nil, service.TaskErrorFromAPIError(configErr)
+	}
 	c.Set(taskCatalogRejectionKey, nil)
 	info.InitChannelMeta(c)
 	if !codebloom.PubliclyAvailable(info.OriginModelName) {
@@ -380,6 +383,28 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 		}
 	}
 
+	var configuredFacts map[string]any
+	if service.CapturedModelConfigurationVersion(c) != "" {
+		if provider, ok := adaptor.(channel.TaskValidatedUsageFactsProvider); ok {
+			var factErr error
+			configuredFacts, factErr = provider.ExtractUsageFactsValidated(c, info)
+			if factErr != nil {
+				return nil, service.TaskErrorWrapperLocal(factErr, "plugin_usage_invalid", http.StatusBadRequest)
+			}
+		}
+	}
+	canonicalRequest, _ := c.Get("task_request")
+	releaseConfiguration, configErr := service.LockModelConfiguration(c, modelName, canonicalRequest, configuredFacts)
+	if configErr != nil {
+		return nil, service.TaskErrorFromAPIError(configErr)
+	}
+	configurationLocked := true
+	defer func() {
+		if configurationLocked {
+			releaseConfiguration()
+		}
+	}()
+
 	// 4. 价格计算：基础模型价格
 	info.OriginModelName = modelName
 	var priceData types.PriceData
@@ -407,14 +432,16 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 				return nil, service.TaskErrorWrapper(fmt.Errorf("task model %s pricing is not configured for plugin %s", modelName, pluginKey), "model_price_error", http.StatusBadRequest)
 			}
 		}
-		var facts map[string]any
-		if validatedProvider, ok := adaptor.(channel.TaskValidatedUsageFactsProvider); ok {
-			facts, err = validatedProvider.ExtractUsageFactsValidated(c, info)
-			if err != nil {
-				return nil, service.TaskErrorWrapperLocal(err, "plugin_usage_invalid", http.StatusBadRequest)
+		facts := configuredFacts
+		if facts == nil {
+			if validatedProvider, ok := adaptor.(channel.TaskValidatedUsageFactsProvider); ok {
+				facts, err = validatedProvider.ExtractUsageFactsValidated(c, info)
+				if err != nil {
+					return nil, service.TaskErrorWrapperLocal(err, "plugin_usage_invalid", http.StatusBadRequest)
+				}
+			} else {
+				facts = provider.ExtractUsageFacts(c, info)
 			}
-		} else {
-			facts = provider.ExtractUsageFacts(c, info)
 		}
 		billingTime := info.StartTime
 		if billingTime.IsZero() {
@@ -468,6 +495,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 		noteTaskQuotaClamp(info, clamp)
 	}
 
+	c.Set("model_configuration_billing_started", true)
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
@@ -483,6 +511,8 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 		return nil, taskErr
 	}
 
+	releaseConfiguration()
+	configurationLocked = false
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {

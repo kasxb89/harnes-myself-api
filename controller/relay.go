@@ -155,6 +155,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
+	if newAPIError = service.CaptureModelConfiguration(c, relayInfo.OriginModelName); newAPIError != nil {
+		return
+	}
 	if newAPIError = service.ClampModelCapacityRequest(c, relayInfo); newAPIError != nil {
 		if code := newAPIError.GetErrorCode(); code == "model_not_available" || code == "model_route_unavailable" {
 			service.MarkTextModelUnavailableBeforeSubmit(c, relayInfo.OriginModelName)
@@ -1215,6 +1218,9 @@ func presentTaskSubmission(c *gin.Context, outcome *taskSubmissionOutcome) {
 }
 
 func respondTaskSubmissionError(c *gin.Context, taskErr *taskdto.TaskError) {
+	if respondModelConfigurationUnsent(c, taskErr.StatusCode, taskErr.Code, taskErr.Message) {
+		return
+	}
 	service.RecordRequestPolicyTermination(c, taskSubmissionAPIError(taskErr))
 	service.RecordRelayError(c, taskSubmissionAPIError(taskErr), nil)
 	newTaskPluginSubmitDiagnostics(c).presentError(taskErr)

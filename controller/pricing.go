@@ -113,16 +113,29 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	c.JSON(200, gin.H{
+	rows := make([]any, len(pricing))
+	for i, row := range pricing {
+		rows[i] = row
+	}
+	projected, revision, err := projectUnifiedModelCatalog(c, rows, "model_name", capacityGroups)
+	if err != nil {
+		c.JSON(503, gin.H{"error": gin.H{"code": "model_config_unavailable", "message": "Model configuration is unavailable"}})
+		return
+	}
+	response := gin.H{
 		"success":            true,
-		"data":               pricing,
+		"data":               projected,
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
-	})
+	}
+	if revision != "" {
+		response["model_config_revision"] = revision
+	}
+	c.JSON(200, response)
 }
 
 func ResetModelRatio(c *gin.Context) {

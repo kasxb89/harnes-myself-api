@@ -190,6 +190,8 @@ func readCapacityCatalogState(tx *gorm.DB, locked bool) (capacityCatalogState, e
 // PatchModelCapacity updates only explicitly selected routes. Other route JSON
 // and unknown extension fields retain their bytes and their original evidence.
 func PatchModelCapacity(patch ModelCapacityPatch) (ModelCapacityCatalog, error) {
+	modelConfigurationMu.Lock()
+	defer modelConfigurationMu.Unlock()
 	if len(patch.Revision) != 64 || len(patch.Routes) == 0 || len(patch.Routes) > 10000 {
 		return ModelCapacityCatalog{}, errors.New("Invalid model capacity changes")
 	}

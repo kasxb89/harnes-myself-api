@@ -24,6 +24,16 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - JavaScript task plugins live in `plugins/tasks/`, run through `pkg/jsplugin/`, and integrate with host task polling and settlement.
 - `web/` is the React frontend (see `web/AGENTS.md`); `electron/` is the desktop wrapper.
 
+## Unified model configuration
+
+- Model setup has one editor under `/client-model-config?tab=unified`. Legacy model-price and financial-cost actions navigate there; pricebook remains a read view. Preserve independent group ratios, tool charges and public-ratio visibility controls.
+- Use the dedicated root-only `model_catalog` draft/publish APIs. Publish with revision and exact route CAS through existing pricing transaction machinery. Never rebuild all abilities or reactivate unrelated disabled models/channels.
+- Keep each model's context window and maximum output as a verified pair, with source evidence. Unknown native limits stay unknown; a platform default is not a vendor maximum.
+- Dynamic media schemas may restrict supported parameters and combinations but cannot introduce transport, auth, recovery or concurrency claims. A new protocol still requires a supported adapter.
+- Existing billing options/expressions and task snapshots remain authoritative. Do not fill a failed price read with zeros. Catalog retail rows are base CNY per complete specification, calculated locally through the current native meter and billing engine; unavailable calculations remain unavailable.
+- New clients may send `X-Yunshu-Model-Config-Version`. Stale/invalid configuration is non-retryable; only a proved pre-admission rejection carries `X-Yunshu-Model-Config-Result: rejected-before-billing`. Never replay accepted or uncertain tasks after configuration changes. Keep original operation/task IDs, send fences and financial snapshots for recovery.
+- Preserve legacy clients without the optional header. Configuration rollback publishes future-request settings, never restores databases or rewrites previous billing/cost evidence.
+
 ## Internationalization (i18n)
 
 ### Backend (`i18n/`)

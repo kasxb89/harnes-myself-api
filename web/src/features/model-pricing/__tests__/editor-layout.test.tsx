@@ -18,6 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterContextProvider,
+} from '@tanstack/react-router'
+import {
   cleanup,
   render,
   screen,
@@ -25,11 +31,9 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { afterEach, expect, it, vi } from 'vitest'
 
-import { SettingsPageProvider } from '@/features/system-settings/components/settings-page-context'
 import { ModelPricingEditorPanel } from '@/features/system-settings/models/model-pricing-sheet'
 import { ModelRatioForm } from '@/features/system-settings/models/model-ratio-form'
 import { api } from '@/lib/api'
@@ -289,108 +293,63 @@ function PricingFormFixture(props: {
     PluginBillingExpr: '{}',
     ExposeRatioEnabled: false,
   }
-  const [actionsContainer, setActionsContainer] =
-    useState<HTMLDivElement | null>(null)
   const form = useForm({ defaultValues: values })
   return (
-    <>
-      <header>
-        <div ref={setActionsContainer} />
-      </header>
-      <SettingsPageProvider actionsContainer={actionsContainer}>
-        <ModelRatioForm
-          form={form}
-          savedValues={values}
-          variant={props.variant}
-          onSave={props.onSave}
-          onReset={() => undefined}
-          isSaving={false}
-          isResetting={false}
-        />
-      </SettingsPageProvider>
-    </>
+    <ModelRatioForm
+      form={form}
+      savedValues={values}
+      variant={props.variant}
+      onSave={props.onSave}
+      onReset={() => undefined}
+      isSaving={false}
+      isResetting={false}
+    />
   )
 }
 
 it.each(['default', 'unset'] as const)(
-  'keeps the %s pricing workspace shrinkable and saves from its fixed action bar',
+  'routes the %s legacy price page to the sole model editor without exposing another tariff form',
   async (variant) => {
-    const user = userEvent.setup()
     const save = vi.fn(async () => undefined)
-    vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-      data: {
-        success: true,
-        data: url === '/api/channel/models_enabled' ? ['example-model'] : [],
-        vendors: [],
-      },
-    }))
-    localStorage.removeItem('model-ratio-column-visibility')
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
+    const get = vi.spyOn(api, 'get')
+    const router = createRouter({
+      routeTree: createRootRoute(),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
     })
-    clients.push(client)
     render(
-      <QueryClientProvider client={client}>
+      <RouterContextProvider router={router}>
         <PricingFormFixture variant={variant} onSave={save} />
-      </QueryClientProvider>
+      </RouterContextProvider>
     )
-    const workspace = screen.getByRole('region', { name: 'Model prices' })
-    expect(workspace).toHaveClass(
-      'flex-1',
-      'min-h-0',
-      'grid-rows-[minmax(0,1fr)]'
-    )
-    await waitFor(() => expect(client.isFetching()).toBe(0))
+    expect(
+      screen.getByRole('link', { name: 'Open unified model configuration' })
+    ).toHaveAttribute('href', '/client-model-config?tab=unified')
+    expect(screen.queryByRole('textbox', { name: 'Fixed price' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reset prices' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Switch to JSON' })).toBeNull()
+    expect(get).not.toHaveBeenCalled()
     if (variant === 'default') {
       const toggle = screen.getByRole('switch', { name: 'Expose ratio API' })
-      expect(screen.getByRole('banner')).toContainElement(toggle)
-      const help = within(screen.getByRole('banner')).getByRole('button', {
-        name: 'Learn more',
-      })
-      await user.click(help)
-      expect(screen.getByRole('dialog')).toHaveTextContent(
-        'Allow clients to query configured prices via `/api/ratio`.'
-      )
-      expect(toggle).not.toBeChecked()
-      await user.keyboard('{Escape}')
-      await waitFor(() =>
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      )
-      expect(help).toHaveFocus()
+      const user = userEvent.setup()
       expect(toggle).toHaveAccessibleDescription(
         'Allow clients to query configured prices via `/api/ratio`.'
       )
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
       await user.click(toggle)
-      expect(toggle).toBeChecked()
-      await user.click(screen.getByRole('button', { name: 'Switch to JSON' }))
-      expect(
-        screen.getAllByRole('switch', { name: 'Expose ratio API' })
-      ).toHaveLength(1)
-      expect(
-        screen.getByRole('switch', { name: 'Expose ratio API' })
-      ).toBeChecked()
-      await user.click(screen.getByRole('button', { name: 'Switch to Visual' }))
+      await user.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(save).toHaveBeenCalledOnce())
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ExposeRatioEnabled: true,
+          ModelPrice: '{"example-model":0.1}',
+        }),
+        expect.anything()
+      )
     } else {
       expect(
         screen.queryByRole('switch', { name: 'Expose ratio API' })
-      ).not.toBeInTheDocument()
+      ).toBeNull()
+      expect(save).not.toHaveBeenCalled()
     }
-    await user.click(await screen.findByRole('button', { name: 'Edit' }))
-    await user.click(
-      screen.getByRole('tab', { name: 'Per-request (deprecated)' })
-    )
-    const price = screen.getByRole('textbox', { name: 'Fixed price' })
-    await user.clear(price)
-    await user.type(price, '0.25')
-    const region = screen.getByRole('region', { name: 'Edit model pricing' })
-    const button = screen.getByRole('button', { name: 'Save model prices' })
-    expect(region).not.toContainElement(button)
-    expect(button.parentElement?.parentElement).toHaveClass('shrink-0')
-    await user.click(button)
-    await waitFor(() => expect(save).toHaveBeenCalledOnce())
-    expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ ExposeRatioEnabled: variant === 'default' }),
-      undefined
-    )
   }
 )

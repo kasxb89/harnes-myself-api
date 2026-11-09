@@ -29,7 +29,7 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { FormDirtyIndicator } from '@/features/system-settings/components/form-dirty-indicator'
 import { FormNavigationGuard } from '@/features/system-settings/components/form-navigation-guard'
-import { SettingsCard } from '@/features/system-settings/components/settings-card'
+import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { getClientModelPresentation, saveClientModelPresentation } from '../api'
@@ -62,7 +62,7 @@ export function ClientModelPresentationSection(
     queryFn: getClientModelPresentation,
   })
   return (
-    <SettingsCard
+    <SettingsSection
       title={t('Model descriptions and badges')}
       description={t(
         'Edit the plain-text description and single badge for each exact model ID. These settings are saved separately from model defaults and order.'
@@ -85,7 +85,7 @@ export function ClientModelPresentationSection(
           presentation={presentation.data}
         />
       )}
-    </SettingsCard>
+    </SettingsSection>
   )
 }
 

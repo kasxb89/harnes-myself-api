@@ -33,34 +33,35 @@ var ErrVideoQueueState = errors.New("video queue dispatch state is unconfirmed")
 // allocated before dispatch and never changed, even after an unsent capacity
 // refusal. A crash after dispatch is never permission to repeat a provider POST.
 type VideoQueueItem struct {
-	ID               int64  `json:"-" gorm:"primaryKey"`
-	QueueID          string `json:"id" gorm:"type:varchar(64);uniqueIndex"`
-	UserID           int    `json:"-" gorm:"uniqueIndex:idx_video_queue_operation,priority:1;index;index:idx_video_queue_user_created,priority:1"`
-	TokenID          int    `json:"-"`
-	TokenFingerprint string `json:"-" gorm:"type:varchar(64)"`
-	OperationID      string `json:"operation_id" gorm:"type:varchar(128)"`
-	OperationHash    string `json:"-" gorm:"type:varchar(64);uniqueIndex:idx_video_queue_operation,priority:2"`
-	BodySHA256       string `json:"-" gorm:"type:varchar(64)"`
-	RequestBody      string `json:"-" gorm:"type:text"`
-	ClientIP         string `json:"-" gorm:"type:varchar(64)"`
-	ClientSource     string `json:"-" gorm:"type:varchar(16)"`
-	Model            string `json:"model" gorm:"type:varchar(191)"`
-	Count            int    `json:"count"`
-	DurationSeconds  int    `json:"duration_seconds"`
-	TaskID           string `json:"task_id" gorm:"type:varchar(191);uniqueIndex"`
-	State            string `json:"state" gorm:"type:varchar(24);index"`
-	SubmissionState  string `json:"submission_state" gorm:"type:varchar(24)"`
-	ErrorCode        string `json:"error_code,omitempty" gorm:"type:varchar(128)"`
-	FailureCode      string `json:"failure_code,omitempty" gorm:"-"`
-	FailureReason    string `json:"failure_reason,omitempty" gorm:"-"`
-	AttemptID        string `json:"-" gorm:"type:varchar(64)"`
-	BoundTask        bool   `json:"-"`
-	SendFenced       bool   `json:"-"`
-	Attempts         int    `json:"-"`
-	NextAttemptAt    int64  `json:"-" gorm:"index"`
-	CreatedAt        int64  `json:"created_at" gorm:"index;index:idx_video_queue_user_created,priority:2"`
-	UpdatedAt        int64  `json:"updated_at"`
-	DispatchAt       int64  `json:"-"`
+	ModelConfigVersion string `json:"model_config_version,omitempty" gorm:"type:varchar(64)"`
+	ID                 int64  `json:"-" gorm:"primaryKey"`
+	QueueID            string `json:"id" gorm:"type:varchar(64);uniqueIndex"`
+	UserID             int    `json:"-" gorm:"uniqueIndex:idx_video_queue_operation,priority:1;index;index:idx_video_queue_user_created,priority:1"`
+	TokenID            int    `json:"-"`
+	TokenFingerprint   string `json:"-" gorm:"type:varchar(64)"`
+	OperationID        string `json:"operation_id" gorm:"type:varchar(128)"`
+	OperationHash      string `json:"-" gorm:"type:varchar(64);uniqueIndex:idx_video_queue_operation,priority:2"`
+	BodySHA256         string `json:"-" gorm:"type:varchar(64)"`
+	RequestBody        string `json:"-" gorm:"type:text"`
+	ClientIP           string `json:"-" gorm:"type:varchar(64)"`
+	ClientSource       string `json:"-" gorm:"type:varchar(16)"`
+	Model              string `json:"model" gorm:"type:varchar(191)"`
+	Count              int    `json:"count"`
+	DurationSeconds    int    `json:"duration_seconds"`
+	TaskID             string `json:"task_id" gorm:"type:varchar(191);uniqueIndex"`
+	State              string `json:"state" gorm:"type:varchar(24);index"`
+	SubmissionState    string `json:"submission_state" gorm:"type:varchar(24)"`
+	ErrorCode          string `json:"error_code,omitempty" gorm:"type:varchar(128)"`
+	FailureCode        string `json:"failure_code,omitempty" gorm:"-"`
+	FailureReason      string `json:"failure_reason,omitempty" gorm:"-"`
+	AttemptID          string `json:"-" gorm:"type:varchar(64)"`
+	BoundTask          bool   `json:"-"`
+	SendFenced         bool   `json:"-"`
+	Attempts           int    `json:"-"`
+	NextAttemptAt      int64  `json:"-" gorm:"index"`
+	CreatedAt          int64  `json:"created_at" gorm:"index;index:idx_video_queue_user_created,priority:2"`
+	UpdatedAt          int64  `json:"updated_at"`
+	DispatchAt         int64  `json:"-"`
 }
 
 // A single row serializes bounded enqueue and fair claiming across processes.

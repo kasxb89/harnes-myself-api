@@ -133,6 +133,8 @@ type ModelPricingEditorPanelProps = Omit<
   className?: string
   embedded?: boolean
   scrollHeader?: ReactNode
+  initialProvider?: string
+  providerOnly?: boolean
 }
 
 export type ModelPricingEditorPanelHandle = {
@@ -200,6 +202,8 @@ export const ModelPricingEditorPanel = forwardRef<
     onDirtyChange,
     embedded = false,
     scrollHeader,
+    initialProvider,
+    providerOnly,
   },
   ref
 ) {
@@ -862,12 +866,21 @@ export const ModelPricingEditorPanel = forwardRef<
             aria-label={
               isEditMode ? t('Edit model pricing') : t('Add model pricing')
             }
-            className='@container/pricing-editor min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-6'
+            className={cn(
+              '@container/pricing-editor min-h-0 flex-1 overflow-y-auto overscroll-contain',
+              embedded ? 'p-0' : 'p-4 pb-6'
+            )}
           >
             {scrollHeader && (
               <div className='mb-4 space-y-3'>{scrollHeader}</div>
             )}
-            <div className='grid min-w-0 items-start gap-4 @min-[960px]/pricing-editor:grid-cols-[minmax(0,1fr)_260px]'>
+            <div
+              className={cn(
+                'grid min-w-0 items-start gap-4',
+                !providerOnly &&
+                  '@min-[960px]/pricing-editor:grid-cols-[minmax(0,1fr)_260px]'
+              )}
+            >
               <FieldGroup className='min-w-0'>
                 {warnings.length > 0 && (
                   <Alert variant='destructive'>
@@ -910,6 +923,8 @@ export const ModelPricingEditorPanel = forwardRef<
                 <PricingCurrencySelector siteCurrency={siteCurrency} />
 
                 <TaskPluginPricingEditor
+                  initialProvider={initialProvider}
+                  hideDefault={providerOnly}
                   key={`${editorReloadToken}:${watchedValues.name}`}
                   variants={pluginVariants ?? []}
                   expressions={pluginExpressions}
@@ -1144,44 +1159,46 @@ export const ModelPricingEditorPanel = forwardRef<
                 </TaskPluginPricingEditor>
               </FieldGroup>
 
-              <aside
-                aria-label={t('Preview')}
-                className='bg-muted/20 min-w-0 rounded-lg border @min-[960px]/pricing-editor:sticky @min-[960px]/pricing-editor:top-0'
-              >
-                <div className='border-b px-3 py-2'>
-                  <div className='text-sm font-medium'>{t('Preview')}</div>
-                </div>
-                <div className='divide-y'>
-                  {pricingMode === 'per-token' && !effectivePreview && (
-                    <p
-                      className='text-muted-foreground px-3 py-2 text-xs'
-                      role='status'
-                    >
-                      {pricePreview.isError
-                        ? t('Failed to load model pricing')
-                        : t('Loading...')}
-                    </p>
-                  )}
-                  {(pricingMode !== 'per-token' || effectivePreview) &&
-                    previewRows.map((row) => (
-                      <div key={row.key} className='grid gap-1 px-3 py-2.5'>
-                        <span className='text-muted-foreground text-xs'>
-                          {row.label}
-                        </span>
-                        <span
-                          className={cn(
-                            'min-w-0 text-sm',
-                            row.multiline
-                              ? 'font-mono text-xs leading-5 break-words whitespace-pre-wrap'
-                              : 'truncate'
-                          )}
-                        >
-                          {row.value}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              </aside>
+              {!providerOnly && (
+                <aside
+                  aria-label={t('Preview')}
+                  className='bg-muted/20 min-w-0 rounded-lg border @min-[960px]/pricing-editor:sticky @min-[960px]/pricing-editor:top-0'
+                >
+                  <div className='border-b px-3 py-2'>
+                    <div className='text-sm font-medium'>{t('Preview')}</div>
+                  </div>
+                  <div className='divide-y'>
+                    {pricingMode === 'per-token' && !effectivePreview && (
+                      <p
+                        className='text-muted-foreground px-3 py-2 text-xs'
+                        role='status'
+                      >
+                        {pricePreview.isError
+                          ? t('Failed to load model pricing')
+                          : t('Loading...')}
+                      </p>
+                    )}
+                    {(pricingMode !== 'per-token' || effectivePreview) &&
+                      previewRows.map((row) => (
+                        <div key={row.key} className='grid gap-1 px-3 py-2.5'>
+                          <span className='text-muted-foreground text-xs'>
+                            {row.label}
+                          </span>
+                          <span
+                            className={cn(
+                              'min-w-0 text-sm',
+                              row.multiline
+                                ? 'font-mono text-xs leading-5 break-words whitespace-pre-wrap'
+                                : 'truncate'
+                            )}
+                          >
+                            {row.value}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </aside>
+              )}
             </div>
           </div>
           {showActions && (

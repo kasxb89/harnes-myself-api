@@ -22,6 +22,8 @@ import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 
+import { UnifiedModelForm } from '@/features/client-model-config/components/unified-model-form'
+import type { UnifiedModelDefinition } from '@/features/client-model-config/unified-api'
 import type {
   ModelPricingConfig,
   ModelPricingPluginVariant,
@@ -41,6 +43,118 @@ import {
 import { TaskPluginPricingEditor } from '../task-plugin-pricing-editor'
 
 let client: QueryClient | undefined
+
+it('loads the configured provider price and preserves its exact bytes when only model metadata changes', async () => {
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+  const expression = 'tier("video", u("seconds") * 0.0410959)'
+  const pricing = {
+    'billing_setting.plugin_billing_expr': { hailuo: expression },
+    ModelRatio: 0,
+  }
+  const usage = {
+    seconds: {
+      type: 'number' as const,
+      unit: 'second',
+      description: 'Video unit price',
+    },
+  }
+  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data:
+        url === '/api/option/model_pricing'
+          ? {
+              entries: [
+                {
+                  model_name: 'MiniMax-H3',
+                  version: 'original-price',
+                  configured: pricing,
+                  effective: pricing,
+                  usage_schema: usage,
+                  plugin_variants: [
+                    {
+                      plugin_key: 'hailuo',
+                      plugin_name: 'Hailuo Video',
+                      configured: expression,
+                      effective: expression,
+                      compatible: true,
+                      usage_schema: usage,
+                    },
+                  ],
+                },
+              ],
+              options: {},
+              empty_version: 'empty',
+            }
+          : [],
+      vendors: [],
+    },
+  }))
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { effective: {} } },
+  })
+  const definition: UnifiedModelDefinition = {
+    model_name: 'MiniMax-H3',
+    kind: 'video',
+    enabled: true,
+    display_name: 'Original H3',
+    source: 'Verified fixture price source',
+    routes: [
+      {
+        channel_id: 790,
+        group: 'default',
+        upstream_model: 'MiniMax-H3',
+        enabled: true,
+      },
+    ],
+    pricing,
+  }
+  const save = vi.fn().mockResolvedValue(undefined)
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={client}>
+      <UnifiedModelForm
+        entry={{
+          model_name: 'MiniMax-H3',
+          base_version: 'original',
+          definition,
+        }}
+        channels={[
+          {
+            id: 790,
+            name: 'Existing H3',
+            status: 1,
+            type: 35,
+            groups: ['default'],
+          },
+        ]}
+        pending={false}
+        onSave={save}
+        onDirtyChange={() => undefined}
+      />
+    </QueryClientProvider>
+  )
+  expect(
+    await screen.findByRole('tab', { name: 'Hailuo Video' })
+  ).toHaveAttribute('aria-selected', 'true')
+  expect(screen.queryByRole('tab', { name: 'Default' })).toBeNull()
+  expect(screen.queryByRole('complementary', { name: 'Preview' })).toBeNull()
+  const user = userEvent.setup()
+  await user.clear(screen.getByRole('textbox', { name: 'Display name' }))
+  await user.type(
+    screen.getByRole('textbox', { name: 'Display name' }),
+    'Updated H3 label'
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+  expect(save.mock.calls[0][0].pricing).toEqual(pricing)
+  expect(save.mock.calls[0][0].pricing).not.toHaveProperty(
+    'billing_setting.billing_expr'
+  )
+  expect(save.mock.calls[0][0].pricing).not.toHaveProperty('ModelPrice')
+})
 
 afterEach(() => {
   client?.clear()

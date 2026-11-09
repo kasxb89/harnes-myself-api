@@ -142,7 +142,14 @@ func EnqueueVideo(c *gin.Context) {
 			"submission_state": "not_submitted", "retryable": false, "resubmittable": true, "charged": false, "reserved": false})
 		return
 	}
+	releaseConfiguration, configErr := service.LockModelConfiguration(c, modelName, value)
+	if configErr != nil {
+		c.JSON(configErr.StatusCode, gin.H{"error": configErr.ToOpenAIError(), "accepted": false, "submission_state": "not_submitted", "retryable": false, "resubmittable": false, "charged": false, "reserved": false})
+		return
+	}
+	item.ModelConfigVersion = service.CapturedModelConfigurationVersion(c)
 	result, created, err := model.EnqueueVideo(c.Request.Context(), item)
+	releaseConfiguration()
 	switch {
 	case errors.Is(err, model.ErrVideoQueueConflict):
 		videoQueueError(c, 409, "video_queue_operation_conflict")
@@ -313,6 +320,7 @@ func CancelVideoQueue(c *gin.Context) {
 
 func writeVideoQueueItem(c *gin.Context, status int, item *model.VideoQueueItem) {
 	c.Header("Cache-Control", "private, no-store")
+	c.Header(service.ModelConfigurationHeader, item.ModelConfigVersion)
 	c.Header("Retry-After", "15")
 	c.Header("Location", "/v1/video/queue/"+item.QueueID)
 	c.JSON(status, gin.H{"schema_version": 1, "object": "video_queue_item", "data": item, "accepted": true, "cancelable": item.State == model.VideoQueueQueued && !item.SendFenced && !item.BoundTask, "observation_timed_out": item.State == model.VideoQueueDispatching && time.Now().Unix()-item.DispatchAt > 90, "recovery": gin.H{"method": "GET", "path": "/v1/video/queue/" + item.QueueID}})

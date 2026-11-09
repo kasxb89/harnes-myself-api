@@ -45,6 +45,8 @@ import { SettingsSwitchField } from '../components/settings-form-layout'
 import { TaskUsagePricingEditor } from './task-usage-pricing-editor'
 
 type TaskPluginPricingEditorProps = {
+  initialProvider?: string
+  hideDefault?: boolean
   variants: ModelPricingPluginVariant[]
   expressions: Record<string, string>
   onChange: Dispatch<SetStateAction<Record<string, string>>>
@@ -57,7 +59,7 @@ type TaskPluginPricingEditorProps = {
 export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
   const { t } = useTranslation()
   const id = useId()
-  const [selected, setSelected] = useState('__model__')
+  const [selected, setSelected] = useState(props.initialProvider ?? '__model__')
   const usesExpression = props.modelBillingMode !== 'ratio'
   const incompatible = props.variants.filter((variant) => {
     if (
@@ -86,7 +88,9 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
         aria-label={t('Provider')}
         className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'
       >
-        <TabsTrigger value='__model__'>{t('Default')}</TabsTrigger>
+        {!props.hideDefault && (
+          <TabsTrigger value='__model__'>{t('Default')}</TabsTrigger>
+        )}
         {props.variants.map((variant) => (
           <TabsTrigger
             key={variant.plugin_key}
@@ -107,38 +111,40 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
           </TabsTrigger>
         ))}
       </TabsList>
-      <TabsContent value='__model__' keepMounted className='space-y-3'>
-        {incompatible.length > 0 && (
-          <Alert>
-            <AlertDescription>
-              <p>
-                {t(
-                  'The model-level expression cannot be evaluated by: {{plugins}}',
-                  {
-                    plugins: incompatible
-                      .map((variant) => variant.plugin_name)
-                      .join(', '),
-                  }
-                )}
-              </p>
-              <div className='flex flex-wrap gap-1'>
-                {incompatible.map((variant) => (
-                  <Button
-                    key={variant.plugin_key}
-                    type='button'
-                    variant='link'
-                    size='sm'
-                    onClick={() => setSelected(variant.plugin_key)}
-                  >
-                    {variant.plugin_name}
-                  </Button>
-                ))}
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-        {props.children}
-      </TabsContent>
+      {!props.hideDefault && (
+        <TabsContent value='__model__' keepMounted className='space-y-3'>
+          {incompatible.length > 0 && (
+            <Alert>
+              <AlertDescription>
+                <p>
+                  {t(
+                    'The model-level expression cannot be evaluated by: {{plugins}}',
+                    {
+                      plugins: incompatible
+                        .map((variant) => variant.plugin_name)
+                        .join(', '),
+                    }
+                  )}
+                </p>
+                <div className='flex flex-wrap gap-1'>
+                  {incompatible.map((variant) => (
+                    <Button
+                      key={variant.plugin_key}
+                      type='button'
+                      variant='link'
+                      size='sm'
+                      onClick={() => setSelected(variant.plugin_key)}
+                    >
+                      {variant.plugin_name}
+                    </Button>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {props.children}
+        </TabsContent>
+      )}
       {props.variants.map((variant) => {
         const key = variant.plugin_key
         const separate = Object.hasOwn(props.expressions, key)
@@ -208,6 +214,7 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
             <SettingsSwitchField
               controlId={`${id}-${key}`}
               checked={separate}
+              disabled={Boolean(props.hideDefault)}
               label={t('Set separately for this provider')}
               description={!separate ? inheritDescription : undefined}
               onCheckedChange={(checked) =>

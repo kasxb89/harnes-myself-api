@@ -47,7 +47,8 @@ func TaskExecutionSnapshotFromContext(ctx *gin.Context) *model.TaskExecutionSnap
 		return nil
 	}
 	snapshot := &model.TaskExecutionSnapshot{
-		RequestID: ctx.GetString(common.RequestIdKey),
+		RequestID:          ctx.GetString(common.RequestIdKey),
+		ModelConfigVersion: CapturedModelConfigurationVersion(ctx),
 	}
 	if ctx.Request != nil && ctx.Request.Method == http.MethodPost && ctx.GetString(taskClientSourceContextKey) == "desktop" {
 		snapshot.ClientSource = "desktop"

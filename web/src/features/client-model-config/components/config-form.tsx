@@ -37,8 +37,8 @@ import {
 } from '@/components/ui/form'
 import { FormDirtyIndicator } from '@/features/system-settings/components/form-dirty-indicator'
 import { FormNavigationGuard } from '@/features/system-settings/components/form-navigation-guard'
-import { SettingsCard } from '@/features/system-settings/components/settings-card'
 import { SettingsPageFormActions } from '@/features/system-settings/components/settings-page-context'
+import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { saveClientModelConfig } from '../api'
@@ -181,7 +181,7 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
             </AlertDescription>
           </Alert>
         )}
-        <SettingsCard
+        <SettingsSection
           title={t('Default chat model')}
           description={t(
             'Used when a user has not chosen a chat model. If unavailable to that user, the client chooses an available model.'
@@ -218,8 +218,8 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
               />
             </Field>
           </FieldGroup>
-        </SettingsCard>
-        <SettingsCard
+        </SettingsSection>
+        <SettingsSection
           title={t('Client model order')}
           description={t(
             'Enter sort numbers directly. Smaller numbers come first; blank models follow in catalog order. Equal numbers use catalog order.'
@@ -244,7 +244,7 @@ export function ClientModelConfigForm(props: ConfigFormProps) {
               </FormItem>
             )}
           />
-        </SettingsCard>
+        </SettingsSection>
       </form>
     </Form>
   )

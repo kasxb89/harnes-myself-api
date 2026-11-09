@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -38,7 +39,7 @@ import { LoadingState } from '@/components/loading-state'
 import { LobeIconField } from '@/components/lobe-icon-field'
 import { TagInput } from '@/components/tag-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import {
   Form,
@@ -63,7 +64,6 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { ModelPricingPanel } from '@/features/model-pricing/model-pricing-panel'
 import {
   requireServerSuccess,
   createServerError,
@@ -663,19 +663,19 @@ export function ModelMutateDrawer(props: {
                 </div>
               )}
               {(savedModel.name_rule === 0 || pricingName) && (
-                <ModelPricingPanel
-                  onDirtyChange={setPricingDirty}
-                  key={
-                    savedModel.name_rule === 0
-                      ? savedModel.model_name
-                      : pricingName
-                  }
-                  modelName={
-                    savedModel.name_rule === 0
-                      ? savedModel.model_name
-                      : pricingName
-                  }
-                />
+                <Link
+                  className={buttonVariants()}
+                  to='/client-model-config'
+                  search={{
+                    tab: 'unified',
+                    model:
+                      savedModel.name_rule === 0
+                        ? savedModel.model_name
+                        : pricingName,
+                  }}
+                >
+                  {t('Open unified model configuration')}
+                </Link>
               )}
             </div>
           )}

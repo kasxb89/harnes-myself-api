@@ -388,7 +388,7 @@ export function RatioSettingsCard({
           toast.info(t('No model price changes to save'))
           return
         }
-        await savePricing.mutateAsync(changes)
+        if (changes.length) await savePricing.mutateAsync(changes)
         if (visibilityChanged) {
           await updateOption.mutateAsync({
             key: 'ExposeRatioEnabled',

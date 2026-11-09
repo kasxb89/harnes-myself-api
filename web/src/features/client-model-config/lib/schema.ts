@@ -22,6 +22,58 @@ import type { ClientModelConfig, ClientModelOption } from '../types'
 
 export const MAX_CLIENT_MODEL_ORDER = 256
 
+const unifiedRequired = 'Complete the required model fields before saving'
+const unifiedCapacity = z
+  .union([z.number().int().positive(), z.nan()])
+  .optional()
+export const unifiedModelFormSchema = z
+  .object({
+    display_name: z.string().trim().min(1, unifiedRequired).max(200),
+    kind: z.enum(['text', 'image', 'video']),
+    enabled: z.boolean(),
+    source: z.string().trim().min(1, unifiedRequired).max(512),
+    routes: z
+      .array(
+        z.object({
+          channel_id: z.number().int().positive(),
+          group: z.string().trim().min(1, unifiedRequired).max(64),
+          upstream_model: z.string().trim().min(1, unifiedRequired).max(255),
+          enabled: z.boolean(),
+        })
+      )
+      .max(128),
+    context_window: unifiedCapacity,
+    max_output_tokens: unifiedCapacity,
+    budget_field: z.string().optional(),
+    parameter_json: z.string(),
+    cost_json: z.string(),
+  })
+  .superRefine((value, context) => {
+    if (value.kind !== 'text' || !value.enabled) return
+    for (const key of ['context_window', 'max_output_tokens'] as const) {
+      if (!Number.isFinite(value[key])) {
+        context.addIssue({
+          code: 'custom',
+          path: [key],
+          message: unifiedRequired,
+        })
+      }
+    }
+    if (
+      value.context_window !== undefined &&
+      value.max_output_tokens !== undefined &&
+      value.max_output_tokens > value.context_window
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['max_output_tokens'],
+        message: 'Maximum output tokens cannot exceed the context window',
+      })
+    }
+  })
+
+export type UnifiedModelFormValues = z.infer<typeof unifiedModelFormSchema>
+
 const modelIdSchema = z
   .string()
   .refine((value) => new TextEncoder().encode(value).length <= 255, {

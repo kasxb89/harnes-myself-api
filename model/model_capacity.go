@@ -109,6 +109,8 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 // Save retains previously declared fields/routes: omission is not revocation.
 // Existing channel/ability switches remain the authority for availability.
 func SaveModelCapacityConfig(cfg ModelCapacityConfig) error {
+	modelConfigurationMu.Lock()
+	defer modelConfigurationMu.Unlock()
 	modelCapacityMutationMu.Lock()
 	defer modelCapacityMutationMu.Unlock()
 	if err := validateModelCapacityConfig(cfg); err != nil {

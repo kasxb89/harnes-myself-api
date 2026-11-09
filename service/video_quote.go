@@ -80,6 +80,9 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 			return nil, invalid
 		}
 	}
+	if apiErr := CaptureModelConfiguration(c, request.Model); apiErr != nil {
+		return nil, &types.VideoQuoteError{Code: string(apiErr.GetErrorCode()), Message: apiErr.Error(), StatusCode: apiErr.StatusCode}
+	}
 	generation := jsplugin.DefaultRegistry.Generation()
 	pricing, err := snapshotVideoQuotePricing(c, request.Model, generation)
 	if err != nil || len(pricing.Candidates) == 0 {
@@ -119,7 +122,7 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 					return nil, unavailable
 				}
 				for key := range segment.Parameters {
-					if !slices.Contains([]string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "n", "context_ir_enabled", "fast_mode"}, key) {
+					if !slices.Contains([]string{"model", "prompt", "seconds", "duration", "size", "resolution", "ratio", "aspect_ratio", "metadata", "content", "metaso_content", "metaso_resolution", "metaso_ratio", "images", "image", "reference_image", "reference_video", "video_reference", "n", "context_ir_enabled", "fast_mode"}, key) {
 						return nil, invalid
 					}
 				}
@@ -149,11 +152,18 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 					Body: parsedBody},
 				Protocol: "openai_video", Operation: "create", Model: request.Model, UpstreamModel: candidate.Model,
 			}
-			decoded, decodeErr := candidate.Plugin.Engine.CallPath(hookContext, "protocols", []string{"openai_video", "decodeRequest"}, protocol.JSValueFor(candidate.Plugin.Meta))
+			protocol, err = protocol.WithNativeBody()
+			if err != nil {
+				return nil, invalid
+			}
+			decoded, decodeErr := candidate.Plugin.Engine.CallPath(hookContext, "protocols", []string{"openai_video", "decodeRequest"}, protocol.DecodeValueFor(candidate.Plugin.Meta))
 			if decodeErr != nil {
 				return nil, unavailable
 			}
 			intent, ok := decoded.(map[string]any)
+			if ok && intent["model"] == candidate.Model {
+				intent["model"] = request.Model
+			}
 			if !ok || intent["kind"] != "submit" || intent["model"] != request.Model {
 				return nil, unavailable
 			}
@@ -184,6 +194,11 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 			if factsErr != nil || !factsOK || validateVideoQuoteFacts(facts, schema) != nil {
 				return nil, unavailable
 			}
+			releaseConfiguration, configErr := LockModelConfiguration(c, request.Model, body, facts)
+			if configErr != nil {
+				return nil, &types.VideoQuoteError{Code: string(configErr.GetErrorCode()), Message: configErr.Error(), StatusCode: configErr.StatusCode}
+			}
+			releaseConfiguration()
 			if long, _ := facts["long_video"].(bool); long && candidate.PluginKey == "hailuo" && !billingexpr.UsedUsageKeys(candidate.Expr)["long_video"] {
 				return nil, unavailable
 			}
@@ -256,6 +271,12 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 		return nil, unavailable
 	}
 	response.QuoteID = common.GenerateHMAC("video-quote-estimate-v1:" + response.PricingRevision + ":" + strconv.FormatInt(response.CreatedAt, 10))
+	releaseConfiguration, configErr := LockModelConfiguration(c, request.Model, nil)
+	if configErr != nil {
+		return nil, &types.VideoQuoteError{Code: string(configErr.GetErrorCode()), Message: configErr.Error(), StatusCode: configErr.StatusCode}
+	}
+	response.ModelConfigVersion = CapturedModelConfigurationVersion(c)
+	releaseConfiguration()
 	return response, nil
 }
 
@@ -368,7 +389,22 @@ func snapshotVideoQuotePricing(c *gin.Context, requestedModel string, generation
 		// The normal create path decodes once before channel mapping and
 		// again afterwards. A cross-model alias may have different accepted
 		// durations on those two passes, so this estimate fails closed.
-		if !declared || endpointModel != requestedModel || mapped != requestedModel {
+		managedAlias := false
+		if !declared {
+			records, readErr := model.CurrentPublishedModelConfigurations()
+			if readErr != nil {
+				return pricing, readErr
+			}
+			record, managed := records[requestedModel]
+			if managed && record.Definition.Kind == "video" && record.Definition.Enabled {
+				if alias, ok := model.ResolveTaskModelAlias(generation, requestedModel); ok && alias.Declared == mapped {
+					endpointModel = mapped
+					declared = true
+					managedAlias = true
+				}
+			}
+		}
+		if !declared || !managedAlias && (endpointModel != requestedModel || mapped != requestedModel) {
 			return pricing, fmt.Errorf("video endpoint model is not declared")
 		}
 		bindings := generation.LookupEndpointCandidates(http.MethodPost, "/v1/videos", endpointModel)
