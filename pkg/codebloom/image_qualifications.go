@@ -104,7 +104,8 @@ func withImageQualification(m Model) Model {
 			m.CapabilityStatus["complete_generation_contract"] = "verified"
 			m.CapabilityStatus["billable_usage"] = "verified"
 			if liveImages[m.ID].EditImageSHA256 != "" {
-				m.CapabilityStatus["image_to_image"] = "verified"
+				m.CapabilityStatus["reference_image_input"] = "verified"
+				m.CapabilityStatus["image_edit"] = "verified"
 			}
 		}
 	}

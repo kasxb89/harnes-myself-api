@@ -208,7 +208,9 @@ func TestImageEvidenceNeverExpandsNameIntoParameters(t *testing.T) {
 	assert.Equal(t, "approved_image_cost_plus_0_10", chat.RetailPricingStatus)
 	assert.NotContains(t, chat.PendingReasons, "retail_price_pending")
 	assert.True(t, chat.ActivationReady, "this exact route has separate live generation, billing, decode and retained-handler proofs")
-	assert.False(t, m.ActivationReady, "a different image's known price and synthetic handler fixture cannot qualify its route")
+	assert.True(t, m.ActivationReady, "this exact route has its own paid generation, editing, meter and retained-handler proofs")
+	assert.Equal(t, "verified", m.CapabilityStatus["reference_image_input"])
+	assert.Equal(t, "verified", m.CapabilityStatus["image_edit"])
 }
 
 func TestSnapshotCopiesCannotMutateLaterRequests(t *testing.T) {
@@ -231,11 +233,12 @@ func TestSnapshotCopiesCannotMutateLaterRequests(t *testing.T) {
 	m, ok := Lookup("ys-gpt-image-2k")
 	require.True(t, ok)
 	m.ObservedOutput.Width = 2048
-	m.CapabilityStatus["image_edit"] = "verified"
+	originalEdit := m.CapabilityStatus["image_edit"]
+	m.CapabilityStatus["image_edit"] = "tampered"
 	again, ok := Lookup(m.ID)
 	require.True(t, ok)
 	assert.Equal(t, 1024, again.ObservedOutput.Width)
-	assert.Equal(t, "unverified", again.CapabilityStatus["image_edit"])
+	assert.Equal(t, originalEdit, again.CapabilityStatus["image_edit"])
 }
 
 func TestInvalidCatalogFailsClosed(t *testing.T) {

@@ -32,6 +32,7 @@ func TestImageQualificationRequiresExactRouteAndEveryProof(t *testing.T) {
 		"legacy id":             func(p *imageQualification) { p.ID = "ys-1.0" },
 		"text is not image":     func(p *imageQualification) { p.ID = "ys-gpt-6.1-sol"; p.UpstreamID = "gpt-6.1-sol" },
 		"wrong declared size":   func(p *imageQualification) { p.Width = 2048 },
+		"incomplete edit proof": func(p *imageQualification) { p.EditImageSHA256 = strings.Repeat("a", 64) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			proof := valid
@@ -60,6 +61,8 @@ func TestQualifiedImageCannotMutateSnapshotOrActivateText(t *testing.T) {
 	assert.True(t, PubliclyAvailable(proof.ID))
 	assert.Nil(t, image.CashCostCNY)
 	assert.Equal(t, "account_credit_snapshot", image.CostBasis)
+	assert.Equal(t, "unverified", image.CapabilityStatus["image_edit"], "generation proof does not qualify reference input")
+	assert.NotContains(t, ImageEditModels(), proof.ID)
 	image.CapabilityStatus["billable_usage"] = "tampered"
 	copy, _ := Lookup(proof.ID)
 	assert.Equal(t, "verified", copy.CapabilityStatus["billable_usage"])
