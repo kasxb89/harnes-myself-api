@@ -61,7 +61,7 @@ func TestTextReselectionHTTPReceiptAndBillingBoundary(t *testing.T) {
 				f.engine.Use(func(c *gin.Context) { service.RequestPolicy(c).SessionMode = "strict"; c.Next() })
 			}
 			SetRouter(f.engine, WebAssets{})
-			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"gpt-4o":0.001}`))
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"gpt-4o":0.001,"gpt-4o-mini":0.0005}`))
 			model.RefreshPricing()
 			fallback := operation_setting.GetModelFallbackSetting()
 			oldFallback := *fallback
@@ -70,6 +70,9 @@ func TestTextReselectionHTTPReceiptAndBillingBoundary(t *testing.T) {
 			if tc.mode != "" && tc.mode != "cancelled" && tc.mode != "legacy" && tc.mode != "strict" && tc.mode != "unknown-version" {
 				base := "https://text-reselection.fixture"
 				channel := &model.Channel{Id: 1600, Type: constant.ChannelTypeOpenAI, Name: "Local text fixture", Key: "synthetic-provider-key", Status: common.ChannelStatusEnabled, Models: tc.model, Group: "default", BaseURL: &base}
+				if tc.model == "gpt-4o" {
+					channel.Models += ",gpt-4o-mini"
+				}
 				require.NoError(t, channel.Insert())
 				model.InitChannelCache()
 			}
