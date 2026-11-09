@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,13 +24,17 @@ func abortWithOpenAiMessage(c *gin.Context, statusCode int, message string, code
 		Message:    message,
 		StatusCode: statusCode,
 	}) {
-		c.JSON(statusCode, gin.H{
+		body := gin.H{
 			"error": gin.H{
 				"message": common.MessageWithRequestId(message, c.GetString(common.RequestIdKey)),
 				"type":    "new_api_error",
 				"code":    codeStr,
 			},
-		})
+		}
+		if receipt := service.TextModelReselection(c); receipt != nil {
+			body["text_reselection"] = receipt
+		}
+		c.JSON(statusCode, body)
 	}
 	c.Abort()
 	logger.LogError(c.Request.Context(), common.LogText("user %d | %s", userId, message))

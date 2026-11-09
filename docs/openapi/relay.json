@@ -192,7 +192,20 @@
         "tags": [
           "OpenAI格式(Chat)"
         ],
-        "parameters": [],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Yunshu-Text-Reselection",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "Opt into one upstream attempt for this HTTP request. Disables hidden same-model retries and server cross-model fallback. An initial local model-unavailable rejection before any upstream send or billing reservation can include text_reselection. Missing or invalid receipts never authorize resubmission. Requests without this header keep the existing policy."
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -220,7 +233,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/ChatTextErrorResponse"
                 }
               }
             },
@@ -236,6 +249,23 @@
               }
             },
             "headers": {}
+          },
+          "503": {
+            "description": "Model or route unavailable. Only a complete host-owned text_reselection receipt proves no upstream attempt or billing reservation. A plain 503 does not.",
+            "headers": {
+              "X-Oneapi-Request-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTextErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4594,6 +4624,75 @@
             "type": "integer"
           }
         }
+      },
+      "TextReselectionReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Host-owned proof for an initial POST /v1/chat/completions rejection only. Require the trusted configured gateway, exact requested model and request_id matching the X-Oneapi-Request-Id response header. This is absent for provider errors, timeout, cancellation, partial output, quota, permissions, pins, strict sessions and other protocols. A client may reselect at most once within the original human request, and must select a compatible account-authorized model.",
+        "required": [
+          "schema_version",
+          "model",
+          "request_id",
+          "submission_state",
+          "upstream_submitted",
+          "billing_reserved",
+          "reason"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "submission_state": {
+            "type": "string",
+            "enum": [
+              "not_submitted"
+            ]
+          },
+          "upstream_submitted": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "billing_reserved": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "model_unavailable"
+            ]
+          }
+        }
+      },
+      "ChatTextErrorResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ErrorResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "text_reselection": {
+                "$ref": "#/components/schemas/TextReselectionReceipt"
+              }
+            }
+          }
+        ]
       }
     },
     "responses": {},

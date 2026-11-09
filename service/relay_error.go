@@ -110,6 +110,9 @@ func DecideRelayRetry(c *gin.Context, err *types.NewAPIError, retryTimes int) Po
 // @param total - the number of candidates the request may try.
 // @returns true when the next candidate should be attempted.
 func DecideModelFallback(c *gin.Context, err *types.NewAPIError, candidate int, total int) bool {
+	if SingleTextAttempt(c) {
+		return false
+	}
 	if err == nil || candidate >= total || c.Request.Context().Err() != nil {
 		return false
 	}

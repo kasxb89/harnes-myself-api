@@ -113,9 +113,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 					"error": newAPIError.ToClaudeError(),
 				})
 			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
+				body := gin.H{
 					"error": newAPIError.ToOpenAIError(),
-				})
+				}
+				if receipt := service.TextModelReselection(c); receipt != nil {
+					body["text_reselection"] = receipt
+				}
+				c.JSON(newAPIError.StatusCode, body)
 			}
 		}
 	}()
@@ -152,6 +156,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}()
 
 	if newAPIError = service.ClampModelCapacityRequest(c, relayInfo); newAPIError != nil {
+		if code := newAPIError.GetErrorCode(); code == "model_not_available" || code == "model_route_unavailable" {
+			service.MarkTextModelUnavailableBeforeSubmit(c, relayInfo.OriginModelName)
+		}
 		return
 	}
 	if newAPIError = relay.PrepareRequestBilling(c, relayInfo); newAPIError != nil {
@@ -263,6 +270,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		decision := service.DecideRelayRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry())
+		if service.SingleTextAttempt(c) {
+			decision = service.PolicyDecision{Action: "stop", Reason: "single_text_attempt", Source: "request"}
+		}
 		service.RecordPolicyFailure(c, channel.Id, newAPIError, decision)
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError, relayInfo)
 
