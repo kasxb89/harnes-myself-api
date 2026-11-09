@@ -276,6 +276,7 @@ func TestPricingVideoDisplayNamesPreserveModelIDs(t *testing.T) {
 		expected[id] = id
 		insertPricingEndpointAbility(t, 502, id)
 	}
+	expected["MiniMax-H3"] = "mt-MiniMax-H3"
 	InitChannelCache()
 	pricing := GetPricing()
 	candidates, err := ListClientModelCandidates()

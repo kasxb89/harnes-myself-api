@@ -78,7 +78,7 @@ func TestConfiguredModelPricebookDatabase(t *testing.T) {
 		require.True(t, envelope.Success)
 		assert.Contains(t, response.Body.String(), "registry-only-model")
 		assert.Contains(t, response.Body.String(), "ycapi-minimax-h3")
-		require.Len(t, envelope.Data.Rows, 104)
+		require.Len(t, envelope.Data.Rows, 109)
 		row := envelope.Data.Rows[0]
 		assert.Equal(t, "MiniMax-H3", row.ModelName)
 		assert.Equal(t, "metaso.cn", row.UpstreamHost)
@@ -118,18 +118,24 @@ func TestConfiguredModelPricebookDatabase(t *testing.T) {
 				assert.Nil(t, entry.Pricing, "unapproved retail must not use runtime fallback prices")
 				assert.Nil(t, entry.CostRule, "account-credit quote is not an active cash-cost rule")
 				require.NotNil(t, entry.ApprovedQuote)
-				assert.Equal(t, candidate.Name, entry.ApprovedQuote.Name)
+				assert.Equal(t, "qq-"+candidate.UpstreamID, entry.ApprovedQuote.Name)
 				assert.Equal(t, "account_credit_snapshot", entry.ApprovedQuote.Basis)
 				assert.Equal(t, "CNY_ACCOUNT_CREDIT", entry.ApprovedQuote.Currency)
 				require.NotEmpty(t, entry.ApprovedQuote.Prices)
+				if entry.ModelName == "ys-gpt-image-2.5" {
+					require.Len(t, entry.ApprovedQuote.Prices, 1)
+					assert.Equal(t, 0.075, entry.ApprovedQuote.Prices[0].ProcurementCNY)
+					require.NotNil(t, entry.ApprovedQuote.Prices[0].RetailCNY)
+					assert.Equal(t, 0.175, *entry.ApprovedQuote.Prices[0].RetailCNY)
+				}
 				for _, price := range entry.ApprovedQuote.Prices {
 					require.NotNil(t, price.RetailCNY, "the approved markup must cover every cost tier")
 					assert.Greater(t, *price.RetailCNY, price.ProcurementCNY)
 				}
 			}
 		}
-		assert.Equal(t, 37, codebloomCandidates)
-		assert.Equal(t, 100, approved)
+		assert.Equal(t, 42, codebloomCandidates, "38 current candidates and four retained historical quotes")
+		assert.Equal(t, 105, approved)
 		for _, secret := range []string{"secret-channel-key", "secret-url-password", "secret-query", "secret-old-key", "secret-new-key"} {
 			assert.NotContains(t, response.Body.String(), secret)
 		}
