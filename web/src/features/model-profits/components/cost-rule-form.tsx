@@ -49,13 +49,15 @@ type CostInputName = Exclude<
 export function CostRuleForm(props: {
   onSave: (rule: CostRule) => Promise<void>
   saving: boolean
+  modelName?: string
+  channelId?: number
 }) {
   const { t } = useTranslation()
   const form = useForm<CostRuleFormValues>({
     resolver: zodResolver(costRuleSchema),
     defaultValues: {
-      channel_id: '',
-      model_name: '',
+      channel_id: props.channelId ? String(props.channelId) : '',
+      model_name: props.modelName ?? '',
       effective_from: shanghaiDateTime(),
       effective_until: '',
       kind: 'request',

@@ -30,6 +30,7 @@ import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import { CostRulesTable } from '@/features/client-model-config/components/cost-rules-table'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import { evaluateBillingExpression } from '@/features/pricing/lib/billing-expression/runtime'
 import { tryParseTaskVisualConfig } from '@/features/pricing/lib/task-expr'
@@ -49,6 +50,11 @@ import {
 
 import { previewModelPricing } from '../api'
 import { convertExpressionCurrency } from '../expression-currency'
+import {
+  readExpressionPriceFields,
+  replaceExpressionPrice,
+} from '../expression-price-fields'
+import { ExpressionPriceTable } from '../expression-price-table'
 
 const clients: QueryClient[] = []
 
@@ -98,7 +104,8 @@ it('reads preview prices and billing metadata from the common data envelope', as
 function renderEditor(
   data: Partial<ModelRatioData> = {},
   usageSchema?: BillingUsageSchema,
-  currencyOverride?: { label: string; symbol: string; exchangeRate: number }
+  currencyOverride?: { label: string; symbol: string; exchangeRate: number },
+  tableOnly?: boolean
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -120,6 +127,7 @@ function renderEditor(
         }}
         usageSchema={usageSchema}
         currencyOverride={currencyOverride}
+        tableOnly={tableOnly}
         onDirtyChange={dirty}
       />
     </QueryClientProvider>
@@ -1208,3 +1216,178 @@ it('blocks an incomplete CNY expression from being committed', async () => {
     )
   ).toBeVisible()
 })
+
+it('edits H3 CNY cells without resetting long-video, free-reference or other resolution prices', () => {
+  const source =
+    '(u("long_video") ? 2 : 1) * (u("resolution") == "768P" ? tier("768P", u("seconds") * 0.04 + u("input_video_seconds") * (0.09 / 7.3) + max(u("input_images") - 5, 0) * (0.05 / 7.3)) : tier("1080P", u("seconds") * 0.08))'
+  const schema: BillingUsageSchema = {
+    seconds: { type: 'number', unit: 'second', description: 'Generated video' },
+    input_video_seconds: {
+      type: 'number',
+      unit: 'second',
+      description: 'Reference video',
+    },
+    input_images: {
+      type: 'number',
+      unit: 'count',
+      description: 'Reference images',
+    },
+    long_video: { type: 'boolean', description: 'Long video' },
+    resolution: { enum: ['768P', '1080P'] },
+  }
+  const change = vi.fn()
+  render(
+    <ExpressionPriceTable
+      expression={source}
+      usageSchema={schema}
+      currency={{ label: 'CNY', symbol: '¥', exchangeRate: 7.3 }}
+      onChange={change}
+    />
+  )
+  const table = screen.getByRole('table', { name: 'CNY prices' })
+  expect(
+    screen.queryByRole('textbox', { name: /Billing expression/ })
+  ).toBeNull()
+  expect(
+    screen.getByText('First 5 units are free; only the excess is charged.')
+  ).toBeVisible()
+  expect(change).not.toHaveBeenCalled()
+  const price = within(table).getByRole('textbox', {
+    name: /768P.*Generated video/,
+  })
+  expect(price).toHaveValue('0.292')
+  fireEvent.change(price, { target: { value: '0.3' } })
+  const next = change.mock.calls[0][0]
+  expect(next).toContain('max(u("input_images") - 5, 0)')
+  expect(next).toContain('u("long_video") ? 2 : 1')
+  expect(next).toContain('u("seconds") * 0.08')
+  const result = evaluateBillingExpression(next, {
+    usage: {
+      long_video: true,
+      resolution: '768P',
+      seconds: 30,
+      input_video_seconds: 2,
+      input_images: 6,
+    },
+  })
+  expect(result.status).toBe('success')
+  if (result.status === 'success') {
+    expect(result.cost * 7.3).toBeCloseTo(2 * (30 * 0.3 + 2 * 0.09 + 0.05), 9)
+  }
+})
+
+it('uses table edits for token and fixed amounts while preserving conditions and per-call semantics', () => {
+  for (const source of [
+    'len < 32000 ? tier("short", p * 2 + c * 4) : tier("long", p * 4 + c * 8)',
+    'tier("image", fixed(2)) * (header("priority") == "high" ? 3 : 1)',
+  ]) {
+    const fields = readExpressionPriceFields(source)
+    expect(fields).not.toBeNull()
+    if (!fields) throw new Error('Expected complete price fields')
+    const next = replaceExpressionPrice(source, fields[0], 3)
+    expect(next).not.toBeNull()
+    const result = evaluateBillingExpression(next ?? '', {
+      tokens: { p: 1, c: 2, len: 10 },
+      request: { headers: { priority: 'high' } },
+    })
+    if (source.includes('fixed')) {
+      expect(result).toMatchObject({
+        status: 'success',
+        billingUnit: 'request',
+        fixedPrice: 3,
+        cost: 9_000_000,
+      })
+    } else expect(result).toMatchObject({ status: 'success', cost: 11 })
+  }
+})
+
+it('keeps unsupported nonlinear prices intact and blocks empty CNY cells instead of treating them as free', () => {
+  const change = vi.fn()
+  const view = render(
+    <ExpressionPriceTable
+      expression='tier("x", p * c)'
+      currency={{ label: 'CNY', symbol: '¥', exchangeRate: 7 }}
+      onChange={change}
+    />
+  )
+  expect(screen.queryByRole('table')).toBeNull()
+  expect(
+    screen.getByText(
+      'These prices cannot yet be edited in the table. Existing prices are preserved.'
+    )
+  ).toBeVisible()
+  view.rerender(
+    <ExpressionPriceTable
+      expression='tier("base", p * 2)'
+      currency={{ label: 'CNY', symbol: '¥', exchangeRate: 7 }}
+      onChange={change}
+    />
+  )
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } })
+  expect(screen.getByRole('textbox')).toHaveValue('')
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'Enter a price before saving'
+  )
+  expect(change).not.toHaveBeenCalled()
+})
+
+it('edits CNY procurement cells without changing their route, effective date, allowances or sibling costs', () => {
+  const rules = [
+    {
+      channel_id: 16,
+      model_name: 'H3',
+      kind: 'h3_video',
+      effective_from: 1794182400,
+      source: 'retained evidence',
+      resolution_costs_cny: { '768P': 0.09, '1080P': 0.14 },
+      extra_image_cost_cny: 0.05,
+      free_input_images: 5,
+      long_video_multiplier: 2,
+    },
+  ]
+  const change = vi.fn()
+  render(
+    <CostRulesTable
+      modelName='H3'
+      value={JSON.stringify(rules)}
+      onChange={change}
+    />
+  )
+  expect(
+    screen.queryByRole('textbox', { name: 'Procurement cost rules' })
+  ).toBeNull()
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Procurement cost #16 · 768P' }),
+    { target: { value: '0.1' } }
+  )
+  expect(JSON.parse(change.mock.calls[0][0])).toEqual([
+    { ...rules[0], resolution_costs_cny: { '768P': 0.1, '1080P': 0.14 } },
+  ])
+})
+
+it.each(['per-token', 'per-request'] as const)(
+  'edits legacy %s pricing as CNY table cells without converting billing modes',
+  async (billingMode) => {
+    const editor = renderEditor(
+      billingMode === 'per-request'
+        ? { billingMode, price: '1' }
+        : { billingMode },
+      undefined,
+      { label: 'CNY', symbol: '¥', exchangeRate: 7 },
+      true
+    )
+    const table = screen.getByRole('table', {
+      name:
+        billingMode === 'per-token' ? 'CNY token prices' : 'CNY request prices',
+    })
+    expect(screen.queryByRole('combobox', { name: 'Editor mode' })).toBeNull()
+    const input = within(table).getByRole('textbox', {
+      name: billingMode === 'per-token' ? 'Input price' : 'Fixed price',
+    })
+    fireEvent.change(input, { target: { value: '21' } })
+    const saved = await commit(editor.ref)
+    expect(saved?.billingMode).toBe(billingMode)
+    if (billingMode === 'per-token') expect(saved?.ratio).toBe('1.5')
+    else expect(saved?.price).toBe('3')
+  }
+)

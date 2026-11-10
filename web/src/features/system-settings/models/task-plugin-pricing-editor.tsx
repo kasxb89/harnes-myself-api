@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { ModelPricingPluginVariant } from '@/features/model-pricing/api'
 import type { PricingCurrency } from '@/features/model-pricing/currency'
+import { ExpressionPriceTable } from '@/features/model-pricing/expression-price-table'
 import {
   combineBillingExpr,
   splitBillingExprAndRequestRules,
@@ -45,6 +46,8 @@ import { SettingsSwitchField } from '../components/settings-form-layout'
 import { TaskUsagePricingEditor } from './task-usage-pricing-editor'
 
 type TaskPluginPricingEditorProps = {
+  tableOnly?: boolean
+  onDraftChange?: () => void
   convertExpressions?: boolean
   initialProvider?: string
   hideDefault?: boolean
@@ -164,9 +167,11 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
               </Alert>
               {separate && (
                 <>
-                  <code className='bg-muted/30 block max-h-40 overflow-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap'>
-                    {props.expressions[key]}
-                  </code>
+                  {!props.tableOnly && (
+                    <code className='bg-muted/30 block max-h-40 overflow-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap'>
+                      {props.expressions[key]}
+                    </code>
+                  )}
                   <Button
                     type='button'
                     variant='outline'
@@ -250,7 +255,18 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
                 </AlertDescription>
               </Alert>
             )}
-            {separate ? (
+            {separate && props.tableOnly && (
+              <ExpressionPriceTable
+                expression={expression}
+                onDraftChange={props.onDraftChange}
+                currency={props.currency}
+                usageSchema={variant.usage_schema}
+                onChange={(value) =>
+                  props.onChange((current) => ({ ...current, [key]: value }))
+                }
+              />
+            )}
+            {separate && !props.tableOnly && (
               <TaskUsagePricingEditor
                 currency={props.currency}
                 convertExpressions={props.convertExpressions}
@@ -279,12 +295,20 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
                   }))
                 }
               />
-            ) : (
-              usesExpression && (
-                <code className='bg-muted/30 block max-h-40 overflow-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap'>
-                  {expression}
-                </code>
-              )
+            )}
+            {!separate && usesExpression && props.tableOnly && (
+              <ExpressionPriceTable
+                expression={expression}
+                currency={props.currency}
+                usageSchema={variant.usage_schema}
+                readOnly
+                onChange={() => {}}
+              />
+            )}
+            {!separate && usesExpression && !props.tableOnly && (
+              <code className='bg-muted/30 block max-h-40 overflow-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap'>
+                {expression}
+              </code>
             )}
           </TabsContent>
         )

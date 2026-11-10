@@ -49,6 +49,7 @@ import type {
   UnifiedModelEntry,
   UnifiedModelSnapshot,
 } from '../unified-api'
+import { CostRulesTable } from './cost-rules-table'
 
 export function UnifiedModelForm(props: {
   entry: UnifiedModelEntry
@@ -58,6 +59,7 @@ export function UnifiedModelForm(props: {
   onDirtyChange: (dirty: boolean) => void
 }) {
   const { t } = useTranslation()
+  const containerRef = useRef<HTMLDivElement>(null)
   const cache = useQueryClient()
   const status = useQuery(statusQueryOptions)
   const rawRate = status.data?.usd_exchange_rate
@@ -106,6 +108,17 @@ export function UnifiedModelForm(props: {
   const persist = form.handleSubmit(async (values) => {
     form.clearErrors('root')
     try {
+      if (
+        containerRef.current?.querySelector(
+          '[aria-invalid="true"], [data-billing-invalid="true"]'
+        )
+      ) {
+        throw new Error(
+          t(
+            'Complete invalid price fields before saving. Existing prices are preserved.'
+          )
+        )
+      }
       if (priceDirty) {
         const latest = await cache.fetchQuery({
           ...statusQueryOptions,
@@ -186,6 +199,7 @@ export function UnifiedModelForm(props: {
 
   return (
     <div
+      ref={containerRef}
       className='space-y-8 [&>section]:border-t [&>section]:pt-6'
       aria-busy={props.pending}
     >
@@ -470,6 +484,7 @@ export function UnifiedModelForm(props: {
             ref={editor}
             embedded
             currencyOverride={cnyCurrency}
+            tableOnly
             editData={initialPrice}
             usageSchema={pricingEntry?.usage_schema}
             pluginVariants={pricingEntry?.plugin_variants}
@@ -495,8 +510,9 @@ export function UnifiedModelForm(props: {
           control={form.control}
           name='cost_json'
           render={({ field }) => (
-            <JsonCodeEditor
-              ariaLabel={t('Procurement cost rules')}
+            <CostRulesTable
+              modelName={definition.model_name}
+              channelId={form.watch('routes')[0]?.channel_id}
               value={field.value}
               onChange={field.onChange}
               disabled={props.pending}

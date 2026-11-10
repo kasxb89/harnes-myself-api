@@ -20,6 +20,7 @@ import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { InputGroup, InputGroupAddon } from '@/components/ui/input-group'
+import { TableCell, TableRow } from '@/components/ui/table'
 import {
   USD_PRICING_CURRENCY,
   type PricingCurrency,
@@ -75,6 +76,7 @@ export function PriceLane(props: {
   enabled: boolean
   disabled?: boolean
   compact?: boolean
+  tableRow?: boolean
   disabledReason?: string
   onEnabledChange: (checked: boolean) => void
   onChange: (value: string) => void
@@ -82,6 +84,35 @@ export function PriceLane(props: {
   const { t } = useTranslation()
   const controlId = useId()
   const effectiveDisabled = props.disabled || !props.enabled
+
+  if (props.tableRow) {
+    return (
+      <TableRow>
+        <TableCell className='min-w-44 whitespace-normal'>
+          <SettingsSwitchField
+            controlId={controlId}
+            checked={props.enabled}
+            disabled={props.disabled}
+            onCheckedChange={props.onEnabledChange}
+            label={props.title}
+            description={props.disabledReason || props.description}
+            aria-label={props.title}
+          />
+        </TableCell>
+        <TableCell className='min-w-44'>
+          <PriceInput
+            currency={props.currency}
+            aria-label={props.title}
+            aria-describedby={`${controlId}-description`}
+            value={props.value}
+            placeholder={props.placeholder}
+            disabled={effectiveDisabled}
+            onChange={props.onChange}
+          />
+        </TableCell>
+      </TableRow>
+    )
+  }
 
   return (
     <SettingsControlGroup

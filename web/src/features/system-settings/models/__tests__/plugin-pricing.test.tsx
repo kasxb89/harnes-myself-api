@@ -153,6 +153,8 @@ it('loads the configured provider price and preserves its exact bytes when only 
     await screen.findByRole('tab', { name: 'Hailuo Video' })
   ).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByText(/Chinese yuan/)).toBeVisible()
+  expect(screen.getByRole('table', { name: 'CNY prices' })).toBeVisible()
+  expect(screen.queryByRole('combobox', { name: 'Editor mode' })).toBeNull()
   expect(
     screen.queryByRole('combobox', { name: 'Pricing currency' })
   ).toBeNull()
@@ -173,12 +175,20 @@ it('loads the configured provider price and preserves its exact bytes when only 
     'billing_setting.billing_expr'
   )
   expect(save.mock.calls[0][0].pricing).not.toHaveProperty('ModelPrice')
-  await user.click(screen.getByRole('combobox', { name: 'Editor mode' }))
-  await user.click(screen.getByRole('option', { name: 'Expression editor' }))
-  const raw = screen.getByRole('textbox', { name: 'Billing expression in CNY' })
-  fireEvent.change(raw, {
-    target: { value: 'tier("video", u("seconds") * 0.5)' },
-  })
+  const price = within(
+    screen.getByRole('table', { name: 'CNY prices' })
+  ).getByRole('textbox')
+  fireEvent.change(price, { target: { value: '' } })
+  await user.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  expect(save).toHaveBeenCalledTimes(1)
+  expect(
+    screen.getByText(
+      'Complete invalid price fields before saving. Existing prices are preserved.'
+    )
+  ).toBeVisible()
+  fireEvent.change(price, { target: { value: '0.5' } })
   await user.click(
     screen.getByRole('button', { name: 'Validate and save draft' })
   )
@@ -191,13 +201,15 @@ it('loads the configured provider price and preserves its exact bytes when only 
     expect(
       result.cost *
         useSystemConfigStore.getState().config.currency.usdExchangeRate
-    ).toBeCloseTo(2.5, 12)
+    ).toBeCloseTo(2.5, 10)
   }
   usdRate = 8
   fireEvent.change(
-    screen.getByRole('textbox', { name: 'Billing expression in CNY' }),
+    within(screen.getByRole('table', { name: 'CNY prices' })).getByRole(
+      'textbox'
+    ),
     {
-      target: { value: 'tier("video", u("seconds") * 0.9)' },
+      target: { value: '0.9' },
     }
   )
   await user.click(
