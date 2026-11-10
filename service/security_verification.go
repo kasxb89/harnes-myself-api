@@ -201,7 +201,7 @@ func BindVerificationOperation(operation VerificationOperation) (VerificationBin
 		normalized = context
 	case VerificationScopeAdminPhoneGrant:
 		var context PhoneLoginGrantContext
-		if len(fields) != 2 || common.Unmarshal(operation.Context, &context) != nil || !common.IsManualLoginPhone(context.PhoneE164) || !slices.Contains([]string{"issue", "revoke"}, context.Action) {
+		if len(fields) != 2 || common.Unmarshal(operation.Context, &context) != nil || !common.IsManualLoginPhone(context.PhoneE164) || !slices.Contains([]string{"issue", "issue_fixed", "revoke"}, context.Action) {
 			return VerificationBinding{}, ErrVerificationContextInvalid
 		}
 		normalized = context

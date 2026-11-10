@@ -14,18 +14,23 @@ import (
 // Only a purpose-bound, peppered bcrypt digest is persisted. Issuing a new
 // grant invalidates the previous code for this phone, not its sessions.
 type PhoneLoginGrant struct {
-	PhoneE164 string `json:"phone_e164" gorm:"primaryKey;type:varchar(32)"`
-	GrantID   string `json:"-" gorm:"type:varchar(64);not null"`
-	CodeHash  string `json:"-" gorm:"type:varchar(128);not null"`
-	IssuedBy  int    `json:"issued_by"`
-	IssuedAt  int64  `json:"issued_at"`
-	ExpiresAt int64  `json:"expires_at"`
-	UsedAt    int64  `json:"used_at"`
-	RevokedAt int64  `json:"revoked_at"`
-	Attempts  int    `json:"attempts"`
+	PhoneE164   string `json:"phone_e164" gorm:"primaryKey;type:varchar(32)"`
+	GrantID     string `json:"-" gorm:"type:varchar(64);not null"`
+	CodeHash    string `json:"-" gorm:"type:varchar(128);not null"`
+	IssuedBy    int    `json:"issued_by"`
+	IssuedAt    int64  `json:"issued_at"`
+	ExpiresAt   int64  `json:"expires_at"`
+	UsedAt      int64  `json:"used_at"`
+	RevokedAt   int64  `json:"revoked_at"`
+	Attempts    int    `json:"attempts"`
+	CodeKind    string `json:"code_kind" gorm:"type:varchar(32)"`
+	LockedUntil int64  `json:"locked_until"`
 }
 
 const PhoneLoginGrantTTL = 10 * time.Minute
+const PhoneLoginFixedCodeKind = "fixed"
+const PhoneLoginFixedCodeLength = 16
+const PhoneLoginFixedCodeLock = 15 * time.Minute
 
 // Public dummy bcrypt digest; never an account credential. Rejected or unknown
 // numbers still perform the same work instead of exposing grant existence.
@@ -34,10 +39,22 @@ const phoneGrantDummyHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJ
 var ErrPhoneGrantNotAllowed = errors.New("manual phone login is restricted to ordinary international accounts")
 
 func IssuePhoneLoginGrant(phone string, identity AuthSessionIdentity) (*PhoneLoginGrant, string, error) {
+	return issuePhoneLoginGrant(phone, identity, false)
+}
+
+func IssueFixedPhoneLoginGrant(phone string, identity AuthSessionIdentity) (*PhoneLoginGrant, string, error) {
+	return issuePhoneLoginGrant(phone, identity, true)
+}
+
+func issuePhoneLoginGrant(phone string, identity AuthSessionIdentity, fixed bool) (*PhoneLoginGrant, string, error) {
 	if !common.IsManualLoginPhone(phone) {
 		return nil, "", ErrPhoneGrantNotAllowed
 	}
-	code, err := common.GenerateNumericVerificationCode(6)
+	length := 6
+	if fixed {
+		length = PhoneLoginFixedCodeLength
+	}
+	code, err := common.GenerateNumericVerificationCode(length)
 	if err != nil {
 		return nil, "", err
 	}
@@ -51,6 +68,10 @@ func IssuePhoneLoginGrant(phone string, identity AuthSessionIdentity) (*PhoneLog
 	}
 	now := time.Now()
 	grant := PhoneLoginGrant{PhoneE164: phone, GrantID: id, CodeHash: digest, IssuedBy: identity.UserID, IssuedAt: now.Unix(), ExpiresAt: now.Add(PhoneLoginGrantTTL).Unix()}
+	if fixed {
+		grant.CodeKind = PhoneLoginFixedCodeKind
+		grant.ExpiresAt = 0
+	}
 	err = WithPhoneAuthTransaction(phone, func(tx *gorm.DB) error {
 		if err := validatePhoneGrantOperator(tx, identity); err != nil {
 			return err
@@ -76,9 +97,10 @@ func RevokePhoneLoginGrant(phone string, identity AuthSessionIdentity) error {
 	})
 }
 
-// consumePhoneLoginGrant runs under the same per-phone database guard as the
-// challenge and session transaction. Attempts cannot reset with a new challenge.
-func consumePhoneLoginGrant(tx *gorm.DB, phone, code string) (bool, error) {
+// verifyPhoneLoginGrant runs under the same per-phone database guard as the
+// challenge and session transaction. Fixed credentials are reusable; each
+// challenge and exchange receipt remains separately one-use and time-limited.
+func verifyPhoneLoginGrant(tx *gorm.DB, phone, code string) (bool, error) {
 	var grant PhoneLoginGrant
 	err := tx.Where("phone_e164 = ?", phone).First(&grant).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -88,13 +110,27 @@ func consumePhoneLoginGrant(tx *gorm.DB, phone, code string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if grant.RevokedAt != 0 || grant.UsedAt != 0 || grant.ExpiresAt <= time.Now().Unix() || grant.Attempts >= phoneCodeAttemptLimit {
+	now := time.Now().Unix()
+	fixed := grant.CodeKind == PhoneLoginFixedCodeKind
+	if grant.RevokedAt != 0 || (!fixed && (grant.UsedAt != 0 || grant.ExpiresAt <= now || grant.Attempts >= phoneCodeAttemptLimit)) || (fixed && grant.LockedUntil > now) {
 		common.ValidatePasswordAndHash(phoneAuthHash("manual-code", phone+":"+code), phoneGrantDummyHash)
 		return false, nil
 	}
 	valid := common.ValidatePasswordAndHash(phoneAuthHash("manual-code", phone+":"+grant.GrantID+":"+code), grant.CodeHash)
+	if fixed && grant.LockedUntil != 0 {
+		// An elapsed lock permits another bounded attempt window without
+		// involving the operator or generating a different fixed code.
+		grant.Attempts = 0
+		grant.LockedUntil = 0
+	}
 	updates := map[string]any{"attempts": grant.Attempts + 1}
+	if fixed {
+		updates["locked_until"] = grant.LockedUntil
+	}
 	if !valid {
+		if fixed && grant.Attempts+1 >= phoneCodeAttemptLimit {
+			updates["locked_until"] = time.Now().Add(PhoneLoginFixedCodeLock).Unix()
+		}
 		return false, tx.Model(&grant).Updates(updates).Error
 	}
 	if err := manualPhoneAccountAllowed(tx, phone); err != nil {
@@ -105,6 +141,9 @@ func consumePhoneLoginGrant(tx *gorm.DB, phone, code string) (bool, error) {
 	}
 
 	updates["used_at"] = time.Now().Unix()
+	if fixed {
+		updates["attempts"] = 0
+	}
 	return true, tx.Model(&grant).Updates(updates).Error
 }
 

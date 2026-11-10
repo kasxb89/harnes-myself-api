@@ -30,7 +30,9 @@ import { PhoneLoginGrantsSection } from '../phone-login-grants-section'
 const grant = {
   phone_e164: '+60123456789',
   issued_at: 1,
-  expires_at: Math.floor(Date.now() / 1000) + 600,
+  expires_at: 0,
+  code_kind: 'fixed',
+  locked_until: 0,
   used_at: 0,
   revoked_at: 0,
   attempts: 0,
@@ -66,7 +68,7 @@ async function fixture(items = [grant]) {
           success: true,
           data: {
             proof_token: 'test-step-up-proof',
-            expires_at: grant.expires_at,
+            expires_at: Math.floor(Date.now() / 1000) + 600,
             scope: 'admin.user.phone_grant',
             method: 'password',
           },
@@ -77,7 +79,10 @@ async function fixture(items = [grant]) {
     return {
       data: {
         success: true,
-        data: request.action === 'issue' ? { grant, code: '482961' } : null,
+        data:
+          request.action === 'issue_fixed'
+            ? { grant, code: '4829617350248106' }
+            : null,
       },
     }
   })
@@ -108,6 +113,14 @@ async function verify(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('Overseas phone whitelist', () => {
+  it('keeps a used fixed code enabled without an expiry or another operator request', async () => {
+    await fixture([{ ...grant, used_at: 123 }])
+    expect(await screen.findByText('Fixed code enabled')).toBeVisible()
+    expect(screen.getByText('Until reset or disabled')).toBeVisible()
+    expect(screen.queryByText('Used')).not.toBeInTheDocument()
+    expect(screen.queryByText('Expired')).not.toBeInTheDocument()
+  })
+
   it('rejects domestic and wildcard numbers before issuance', async () => {
     const { user, post } = await fixture([])
     const input = screen.getByLabelText('International phone number')
@@ -115,7 +128,9 @@ describe('Overseas phone whitelist', () => {
       await user.clear(input)
       await user.type(input, value)
       await user.click(
-        screen.getByRole('button', { name: 'Generate private login code' })
+        screen.getByRole('button', {
+          name: 'Add phone and generate fixed code',
+        })
       )
       expect(
         await screen.findByText(
@@ -134,22 +149,22 @@ describe('Overseas phone whitelist', () => {
       grant.phone_e164
     )
     await user.click(
-      screen.getByRole('button', { name: 'Generate private login code' })
+      screen.getByRole('button', { name: 'Add phone and generate fixed code' })
     )
     expect(post).not.toHaveBeenCalled()
     await verify(user)
-    expect(await screen.findByText('482961')).toBeVisible()
+    expect(await screen.findByText('4829617350248106')).toBeVisible()
     expect(post).toHaveBeenCalledWith(
       '/api/verify',
       expect.objectContaining({
         scope: 'admin.user.phone_grant',
-        context: { phone_e164: grant.phone_e164, action: 'issue' },
+        context: { phone_e164: grant.phone_e164, action: 'issue_fixed' },
       }),
       expect.anything()
     )
     expect(post).toHaveBeenCalledWith(
       '/api/option/phone_login_grants',
-      { phone_e164: grant.phone_e164, action: 'issue' },
+      { phone_e164: grant.phone_e164, action: 'issue_fixed' },
       expect.objectContaining({
         headers: { 'X-Security-Proof': 'test-step-up-proof' },
       })
@@ -159,13 +174,18 @@ describe('Overseas phone whitelist', () => {
     ).toBeVisible()
     expect(storage).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Dismiss' }))
-    expect(screen.queryByText('482961')).not.toBeInTheDocument()
+    expect(screen.queryByText('4829617350248106')).not.toBeInTheDocument()
   })
 
   it('cancelling operator verification sends no grant request', async () => {
     const { user, post } = await fixture()
     await user.click(
-      await screen.findByRole('button', { name: 'New login code' })
+      await screen.findByRole('button', { name: 'Reset fixed code' })
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Continue',
+      })
     )
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
@@ -192,7 +212,7 @@ describe('Overseas phone whitelist', () => {
         })
       )
     )
-    expect(screen.queryByText('482961')).not.toBeInTheDocument()
+    expect(screen.queryByText('4829617350248106')).not.toBeInTheDocument()
   })
 
   it('failed issuance exposes no code and does not automatically retry', async () => {
@@ -204,7 +224,7 @@ describe('Overseas phone whitelist', () => {
             success: true,
             data: {
               proof_token: 'test-step-up-proof',
-              expires_at: grant.expires_at,
+              expires_at: Math.floor(Date.now() / 1000) + 600,
               scope: 'admin.user.phone_grant',
               method: 'password',
             },
@@ -214,13 +234,22 @@ describe('Overseas phone whitelist', () => {
       return { data: { success: false, message: 'Please try again later.' } }
     })
     await user.click(
-      await screen.findByRole('button', { name: 'New login code' })
+      await screen.findByRole('button', { name: 'Reset fixed code' })
+    )
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Continue',
+      })
     )
     await verify(user)
+    const retryDialog = await screen.findByRole('alertdialog')
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'New login code' })
+        within(retryDialog).getByRole('button', { name: 'Continue' })
       ).toBeEnabled()
+    )
+    await user.click(
+      within(retryDialog).getByRole('button', { name: 'Cancel' })
     )
     expect(
       post.mock.calls.filter(

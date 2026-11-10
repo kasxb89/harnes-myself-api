@@ -145,6 +145,179 @@ func manualPhoneOperator(t *testing.T, db *gorm.DB) (service.AuthIdentity, strin
 	return identity, bundle.AccessToken
 }
 
+func fixedPhoneRequest(t *testing.T, db *gorm.DB, phone, code string) phoneLoginRequest {
+	t.Helper()
+	// Advance only challenge creation time instead of sleeping through a real
+	// request cooldown. Code expiry, account state and attempts are untouched.
+	require.NoError(t, db.Model(&model.AuthFlow{}).Where("purpose = ?", "phone_challenge").Update("created_at", time.Now().Add(-time.Minute)).Error)
+	_, challenge := phoneAuthRequest(t, SendPhoneLoginCode, phoneChallengeRequest{PhoneE164: phone, ContractVersion: 2, IdempotencyKey: uuid.NewString()})
+	require.True(t, challenge.Success)
+	return phoneLoginRequest{PhoneE164: phone, Code: code, ChallengeID: challenge.Data.ChallengeID, ContractVersion: 2, IdempotencyKey: uuid.NewString()}
+}
+
+func TestPhoneFixedCodeReusableWithoutOperatorOrNewCredential(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	identity, _ := manualPhoneOperator(t, db)
+	phone := "+60123456789"
+	grant, code, err := model.IssueFixedPhoneLoginGrant(phone, identity)
+	require.NoError(t, err)
+	require.Len(t, code, 16)
+	assert.Equal(t, "fixed", grant.CodeKind)
+	assert.Zero(t, grant.ExpiresAt)
+	phoneCodeSender = func(string, string) error { t.Fatal("fixed-code login must not send SMS"); return nil }
+	request := fixedPhoneRequest(t, db, phone, code)
+	require.NoError(t, db.Model(&model.AuthFlow{}).Where("purpose = ?", "phone_challenge").Update("expires_at", time.Now().Add(-time.Minute)).Error)
+	_, expiredRequest := phoneAuthRequest(t, PhoneLogin, request)
+	assert.False(t, expiredRequest.Success, "a fixed code does not make a stale challenge replayable")
+	// A stored fixed code older than the former ten-minute limit remains usable.
+	require.NoError(t, db.Model(&model.PhoneLoginGrant{}).Where("phone_e164 = ?", phone).Update("issued_at", time.Now().Add(-24*time.Hour).Unix()).Error)
+	var userID int
+	var firstToken string
+	// The sixth fresh login protects against accidentally applying the former
+	// five-SMS-in-five-hours budget to a request that never sends an SMS.
+	for range 6 {
+		request = fixedPhoneRequest(t, db, phone, code)
+		_, result := phoneAuthRequest(t, PhoneLogin, request)
+		require.True(t, result.Success)
+		if firstToken == "" {
+			firstToken = result.Data.AccessToken
+		}
+		userID = result.Data.User.ID
+		_, replayed := phoneAuthRequest(t, PhoneLogin, request)
+		assert.Equal(t, result.Data.AccessToken, replayed.Data.AccessToken)
+		assert.Equal(t, result.Data.Session.SID, replayed.Data.Session.SID)
+	}
+	var stored model.PhoneLoginGrant
+	require.NoError(t, db.First(&stored, "phone_e164 = ?", phone).Error)
+	assert.Equal(t, grant.CodeHash, stored.CodeHash)
+	assert.Positive(t, stored.UsedAt, "fixed credentials retain last-use information")
+	assert.Zero(t, stored.ExpiresAt)
+	assert.Zero(t, stored.Attempts)
+	var sessions int64
+	require.NoError(t, db.Model(&model.UserSession{}).Where("user_id = ?", userID).Count(&sessions).Error)
+	assert.EqualValues(t, 6, sessions, "only deliberate fresh logins create sessions; lost-response recovery does not")
+	_, err = service.ParseAccessToken(firstToken)
+	assert.NoError(t, err, "later logins keep an earlier authorized session")
+	_, _, err = model.IssueFixedPhoneLoginGrant("+819012345678", identity)
+	require.NoError(t, err)
+	_, crossPhone := phoneAuthRequest(t, PhoneLogin, fixedPhoneRequest(t, db, "+819012345678", code))
+	assert.False(t, crossPhone.Success, "each phone has its own secret")
+}
+
+func TestPhoneFixedCodeTemporaryLockRotationAndDisable(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	identity, _ := manualPhoneOperator(t, db)
+	phone := "+819012345678"
+	_, code, err := model.IssueFixedPhoneLoginGrant(phone, identity)
+	require.NoError(t, err)
+	wrong := strings.Repeat("0", 16)
+	if code == wrong {
+		wrong = strings.Repeat("1", 16)
+	}
+	request := fixedPhoneRequest(t, db, phone, wrong)
+	for i := range 5 {
+		if i == 3 {
+			request = fixedPhoneRequest(t, db, phone, wrong)
+		}
+		request.IdempotencyKey = uuid.NewString()
+		_, result := phoneAuthRequest(t, PhoneLogin, request)
+		assert.False(t, result.Success)
+	}
+	var locked model.PhoneLoginGrant
+	require.NoError(t, db.First(&locked, "phone_e164 = ?", phone).Error)
+	assert.Equal(t, 5, locked.Attempts)
+	assert.Greater(t, locked.LockedUntil, time.Now().Unix())
+	_, blocked := phoneAuthRequest(t, PhoneLogin, fixedPhoneRequest(t, db, phone, code))
+	assert.False(t, blocked.Success)
+	require.NoError(t, db.Model(&model.PhoneLoginGrant{}).Where("phone_e164 = ?", phone).Update("locked_until", time.Now().Add(-time.Second).Unix()).Error)
+	_, restored := phoneAuthRequest(t, PhoneLogin, fixedPhoneRequest(t, db, phone, code))
+	require.True(t, restored.Success, "the original fixed code works after the temporary lock ends")
+	require.NoError(t, db.First(&locked, "phone_e164 = ?", phone).Error)
+	assert.Zero(t, locked.Attempts)
+	assert.Zero(t, locked.LockedUntil)
+	_, replacement, err := model.IssueFixedPhoneLoginGrant(phone, identity)
+	require.NoError(t, err)
+	request = fixedPhoneRequest(t, db, phone, code)
+	_, old := phoneAuthRequest(t, PhoneLogin, request)
+	assert.False(t, old.Success)
+	request.Code, request.IdempotencyKey = replacement, uuid.NewString()
+	_, updated := phoneAuthRequest(t, PhoneLogin, request)
+	require.True(t, updated.Success)
+	require.NoError(t, model.RevokePhoneLoginGrant(phone, identity))
+	_, revoked := phoneAuthRequest(t, PhoneLogin, fixedPhoneRequest(t, db, phone, replacement))
+	assert.False(t, revoked.Success)
+	_, err = service.ParseAccessToken(restored.Data.AccessToken)
+	assert.NoError(t, err, "reset and disable do not revoke an existing session")
+}
+
+func TestPhoneFixedCodeKeepsAccountAndTransactionGuards(t *testing.T) {
+	for _, scenario := range []string{"MFA", "disabled", "shadow administrator", "rollback"} {
+		t.Run(scenario, func(t *testing.T) {
+			db, _ := setupPhoneAuthRecovery(t)
+			identity, _ := manualPhoneOperator(t, db)
+			phone := "+12025550123"
+			_, code, err := model.IssueFixedPhoneLoginGrant(phone, identity)
+			require.NoError(t, err)
+			if scenario != "rollback" {
+				user := model.User{Username: phoneUsername(phone), PhoneE164: &phone, Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "fixed-existing-aff"}
+				if scenario == "disabled" {
+					user.Status = common.UserStatusDisabled
+				}
+				if scenario == "shadow administrator" {
+					user.Role = common.RoleAdminUser
+					user.PhoneE164 = nil
+				}
+				require.NoError(t, db.Create(&user).Error)
+				if scenario == "MFA" {
+					require.NoError(t, db.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
+				}
+			}
+			request := fixedPhoneRequest(t, db, phone, code)
+			if scenario == "rollback" {
+				phoneLoginSealer = func(*service.PhoneLoginResult, string) (string, error) {
+					return "", errors.New("fixed synthetic receipt failure")
+				}
+			}
+			_, result := phoneAuthRequest(t, PhoneLogin, request)
+			if scenario == "MFA" {
+				assert.True(t, result.Data.RequireVerification)
+			} else {
+				assert.False(t, result.Success)
+			}
+			assert.Empty(t, result.Data.AccessToken)
+			if scenario == "rollback" {
+				var stored model.PhoneLoginGrant
+				require.NoError(t, db.First(&stored, "phone_e164 = ?", phone).Error)
+				assert.Zero(t, stored.UsedAt)
+				phoneLoginSealer = service.SealPhoneLoginResult
+				_, retried := phoneAuthRequest(t, PhoneLogin, request)
+				assert.True(t, retried.Success, "an explicit original-key recovery commits after the business failure clears")
+			}
+		})
+	}
+}
+
+func TestPhoneFixedCodeMigrationPreservesTemporaryCredentials(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	identity, _ := manualPhoneOperator(t, db)
+	phone := "+60123456789"
+	old, code, err := model.IssuePhoneLoginGrant(phone, identity)
+	require.NoError(t, err)
+	for _, column := range []string{"code_kind", "locked_until"} {
+		require.NoError(t, db.Migrator().DropColumn(&model.PhoneLoginGrant{}, column))
+	}
+	require.NoError(t, db.AutoMigrate(&model.PhoneLoginGrant{}))
+	require.NoError(t, db.AutoMigrate(&model.PhoneLoginGrant{}))
+	var restored model.PhoneLoginGrant
+	require.NoError(t, db.First(&restored, "phone_e164 = ?", phone).Error)
+	assert.Equal(t, *old, restored)
+	request := fixedPhoneRequest(t, db, phone, code)
+	_, first := phoneAuthRequest(t, PhoneLogin, request)
+	require.True(t, first.Success, "old six-digit temporary code remains compatible")
+	_, second := phoneAuthRequest(t, PhoneLogin, fixedPhoneRequest(t, db, phone, code))
+	assert.False(t, second.Success, "old temporary credentials do not become permanent during migration")
+}
+
 func TestPhoneManualGrantRootAuthorizationAndSecretBoundary(t *testing.T) {
 	db, _ := setupPhoneAuthRecovery(t)
 	identity, token := manualPhoneOperator(t, db)
@@ -162,7 +335,7 @@ func TestPhoneManualGrantRootAuthorizationAndSecretBoundary(t *testing.T) {
 	group.GET("/phone_login_grants", ListPhoneLoginGrants)
 	group.POST("/phone_login_grants", middleware.SessionCookieOriginGuard(), ManagePhoneLoginGrant)
 	phone := "+60123456789"
-	operation := service.PhoneLoginGrantContext{PhoneE164: phone, Action: "issue"}
+	operation := service.PhoneLoginGrantContext{PhoneE164: phone, Action: "issue_fixed"}
 	context, err := common.Marshal(operation)
 	require.NoError(t, err)
 	binding, err := service.BindVerificationOperation(service.VerificationOperation{Scope: service.VerificationScopeAdminPhoneGrant, Context: context})
@@ -209,7 +382,7 @@ func TestPhoneManualGrantRootAuthorizationAndSecretBoundary(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &issued))
 	require.True(t, issued.Success)
-	require.Len(t, issued.Data.Code, 6)
+	require.Len(t, issued.Data.Code, 16)
 	assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
 	assert.Equal(t, http.StatusForbidden, do(http.MethodPost, token, "https://console.test", proof, operation).Code, "proof is one-use")
 	listed := do(http.MethodGet, token, "", "", nil)

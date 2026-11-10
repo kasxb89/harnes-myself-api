@@ -13,13 +13,15 @@ import (
 )
 
 const (
-	phoneChallengePurpose = "phone_challenge"
-	phoneExchangePurpose  = "phone_exchange"
-	phoneGuardPurpose     = "phone_guard"
-	PhoneSendCooldown     = time.Minute
-	PhoneSendWindow       = 5 * time.Hour
-	PhoneLoginReplayTTL   = 5 * time.Minute
-	phoneCodeAttemptLimit = 5
+	phoneChallengePurpose        = "phone_challenge"
+	phoneExchangePurpose         = "phone_exchange"
+	phoneGuardPurpose            = "phone_guard"
+	PhoneSendCooldown            = time.Minute
+	PhoneSendWindow              = 5 * time.Hour
+	PhoneLoginReplayTTL          = 5 * time.Minute
+	PhoneManualChallengeWindow   = 15 * time.Minute
+	PhoneManualChallengeCooldown = 10 * time.Second
+	phoneCodeAttemptLimit        = 5
 )
 
 var (
@@ -136,16 +138,22 @@ func reservePhoneChallenge(phone, key, code string, expiresAt time.Time, manual 
 			return err
 		}
 		now := time.Now()
+		window, cooldown, limit := PhoneSendWindow, PhoneSendCooldown, 5
+		if manual {
+			// Preparing a reusable-code login sends no SMS. Apply a short
+			// request budget instead of exhausting the five-SMS quota.
+			window, cooldown, limit = PhoneManualChallengeWindow, PhoneManualChallengeCooldown, 20
+		}
 		var prior []AuthFlow
-		if err := tx.Where("purpose = ? AND provider = ? AND created_at > ? AND intent IN ?", phoneChallengePurpose, provider, now.Add(-PhoneSendWindow), []string{"sending", "accepted", "unknown"}).Order("created_at DESC").Find(&prior).Error; err != nil {
+		if err := tx.Where("purpose = ? AND provider = ? AND created_at > ? AND intent IN ?", phoneChallengePurpose, provider, now.Add(-window), []string{"sending", "accepted", "unknown"}).Order("created_at DESC").Find(&prior).Error; err != nil {
 			return err
 		}
 		var retryAt time.Time
-		if len(prior) >= 5 {
-			retryAt = prior[len(prior)-1].CreatedAt.Add(PhoneSendWindow)
+		if len(prior) >= limit {
+			retryAt = prior[len(prior)-1].CreatedAt.Add(window)
 		}
 		for _, previous := range prior {
-			until := previous.CreatedAt.Add(PhoneSendCooldown)
+			until := previous.CreatedAt.Add(cooldown)
 			if previous.Intent == "sending" || previous.Intent == "unknown" {
 				until = previous.ExpiresAt
 			}
@@ -194,6 +202,9 @@ func FinishPhoneChallenge(phone, id, status string, retryAfterSeconds ...int) (*
 		switch status {
 		case "accepted":
 			challenge.ResendAt = flow.CreatedAt.Add(PhoneSendCooldown).Unix()
+			if challenge.ManualCode {
+				challenge.ResendAt = flow.CreatedAt.Add(PhoneManualChallengeCooldown).Unix()
+			}
 			// Only a provider-accepted replacement supersedes an older code.
 			// Definite not-sent failures keep the previous challenge usable.
 			if err := tx.Model(&AuthFlow{}).Where("purpose = ? AND provider = ? AND id < ? AND consumed_at IS NULL AND intent IN ? AND expires_at > ?", phoneChallengePurpose, flow.Provider, flow.Id, []string{"accepted", "unknown"}, time.Now()).Update("expires_at", time.Now()).Error; err != nil {
@@ -317,7 +328,7 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 		valid := hmac.Equal([]byte(challenge.CodeHash), []byte(phoneAuthHash("code", phone+":"+id+":"+code)))
 		if challenge.ManualCode {
 			var err error
-			valid, err = consumePhoneLoginGrant(tx, phone, code)
+			valid, err = verifyPhoneLoginGrant(tx, phone, code)
 			if err != nil {
 				return err
 			}

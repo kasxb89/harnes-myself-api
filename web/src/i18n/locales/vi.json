@@ -9041,6 +9041,15 @@
     "Shown once. Send privately before {{time}}; a new code invalidates the previous one.": "Shown once. Send privately before {{time}}; a new code invalidates the previous one.",
     "The current code for {{phone}} will stop working. Existing signed-in sessions are kept.": "The current code for {{phone}} will stop working. Existing signed-in sessions are kept.",
     "Issued a private overseas login code for {{phone_e164}}": "Issued a private overseas login code for {{phone_e164}}",
-    "Revoked the overseas login code for {{phone_e164}}": "Revoked the overseas login code for {{phone_e164}}"
+    "Revoked the overseas login code for {{phone_e164}}": "Revoked the overseas login code for {{phone_e164}}",
+    "Add phone and generate fixed code": "Add phone and generate fixed code",
+    "Approve an exact international phone number and send its fixed private code once on WeChat. The same code can be used for future sign-ins until you reset or disable it. Mainland SMS and existing sessions are unchanged.": "Approve an exact international phone number and send its fixed private code once on WeChat. The same code can be used for future sign-ins until you reset or disable it. Mainland SMS and existing sessions are unchanged.",
+    "Confirm {{phone}} belongs to your WeChat contact. Generating a fixed code replaces the previous code; existing sessions are kept.": "Confirm {{phone}} belongs to your WeChat contact. Generating a fixed code replaces the previous code; existing sessions are kept.",
+    "Fixed code enabled": "Fixed code enabled",
+    "Reset fixed code": "Reset fixed code",
+    "Resetting the code for {{phone}} invalidates the old code. Send the replacement to the user on WeChat; existing signed-in sessions are kept.": "Resetting the code for {{phone}} invalidates the old code. Send the replacement to the user on WeChat; existing signed-in sessions are kept.",
+    "Shown once. Send this fixed code privately and ask the user to keep it. It remains valid until reset or disabled.": "Shown once. Send this fixed code privately and ask the user to keep it. It remains valid until reset or disabled.",
+    "Temporarily locked": "Temporarily locked",
+    "Until reset or disabled": "Until reset or disabled"
   }
 }

@@ -36,7 +36,7 @@ func ManagePhoneLoginGrant(c *gin.Context) {
 	setAuthNoStore(c)
 	var request service.PhoneLoginGrantContext
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4<<10)
-	if common.DecodeJson(c.Request.Body, &request) != nil || !common.IsManualLoginPhone(request.PhoneE164) || (request.Action != "issue" && request.Action != "revoke") {
+	if common.DecodeJson(c.Request.Body, &request) != nil || !common.IsManualLoginPhone(request.PhoneE164) || (request.Action != "issue" && request.Action != "issue_fixed" && request.Action != "revoke") {
 		common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("Invalid parameters"))
 		return
 	}
@@ -53,7 +53,14 @@ func ManagePhoneLoginGrant(c *gin.Context) {
 		common.ApiSuccess(c, nil)
 		return
 	}
-	grant, code, err := model.IssuePhoneLoginGrant(request.PhoneE164, authorization.AuthSessionIdentity)
+	var grant *model.PhoneLoginGrant
+	var code string
+	var err error
+	if request.Action == "issue_fixed" {
+		grant, code, err = model.IssueFixedPhoneLoginGrant(request.PhoneE164, authorization.AuthSessionIdentity)
+	} else {
+		grant, code, err = model.IssuePhoneLoginGrant(request.PhoneE164, authorization.AuthSessionIdentity)
+	}
 	if errors.Is(err, model.ErrPhoneGrantNotAllowed) {
 		common.ApiErrorStatus(c, http.StatusForbidden, common.NewMessage("Manual phone login is restricted to ordinary international accounts"))
 		return
@@ -64,6 +71,6 @@ func ManagePhoneLoginGrant(c *gin.Context) {
 	}
 	// Deliberately returned only by this root-only, step-up protected issuance.
 	// Generic admin audit stores the route/action, never the response body.
-	recordManageAudit(c, "phone_login_grant.issue", map[string]any{"phone_e164": request.PhoneE164, "expires_at": grant.ExpiresAt})
+	recordManageAudit(c, "phone_login_grant.issue", map[string]any{"phone_e164": request.PhoneE164, "expires_at": grant.ExpiresAt, "code_kind": grant.CodeKind})
 	common.ApiSuccess(c, gin.H{"grant": grant, "code": code})
 }

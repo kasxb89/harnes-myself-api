@@ -43,6 +43,7 @@ type phoneLoginRequest struct {
 // comes from the client CSPRNG; short counters and empty legacy keys are refused.
 var phoneIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22,128}$`)
 var phoneOTPPattern = regexp.MustCompile(`^[0-9]{6}$`)
+var phoneManualCodePattern = regexp.MustCompile(`^(?:[0-9]{6}|[0-9]{16})$`)
 var phoneCodeSender = deliverPhoneCode
 var phoneLoginSealer = service.SealPhoneLoginResult
 
@@ -222,7 +223,11 @@ func PhoneLogin(c *gin.Context) {
 	}
 	request.Code = strings.TrimSpace(request.Code)
 	legacy := request.ChallengeID == "" && request.IdempotencyKey == "" && (request.ContractVersion == 0 || request.ContractVersion == 1)
-	if !phoneE164Pattern.MatchString(phone) || !phoneOTPPattern.MatchString(request.Code) || !legacy && (len(request.ChallengeID) != 64 || !phoneIdempotencyKeyPattern.MatchString(request.IdempotencyKey) || request.ContractVersion != 0 && request.ContractVersion != 2) {
+	validCode := phoneOTPPattern.MatchString(request.Code)
+	if common.IsManualLoginPhone(phone) {
+		validCode = phoneManualCodePattern.MatchString(request.Code)
+	}
+	if !phoneE164Pattern.MatchString(phone) || !validCode || !legacy && (len(request.ChallengeID) != 64 || !phoneIdempotencyKeyPattern.MatchString(request.IdempotencyKey) || request.ContractVersion != 0 && request.ContractVersion != 2) {
 		phoneAuthError(c, http.StatusBadRequest, "PHONE_INVALID_PARAMETERS", "Invalid parameters", 0, nil)
 		return
 	}

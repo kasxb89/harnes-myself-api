@@ -54,7 +54,10 @@ export type AdminUserManageAction = 'disable' | 'enable' | 'promote' | 'demote'
 export type VerificationOperation =
   | {
       scope: 'admin.user.phone_grant'
-      context: { phone_e164: string; action: 'issue' | 'revoke' }
+      context: {
+        phone_e164: string
+        action: 'issue' | 'issue_fixed' | 'revoke'
+      }
     }
   | { scope: 'channel.key.read'; context: { channel_id: number } }
   | {

@@ -61,6 +61,8 @@ type Grant = {
   used_at: number
   revoked_at: number
   attempts: number
+  code_kind?: string
+  locked_until?: number
 }
 type IssuedCode = { grant: Grant; code: string }
 const queryKey = ['phone-login-grants']
@@ -84,6 +86,7 @@ export function PhoneLoginGrantsSection() {
   const verification = useSecureVerification()
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 })
   const [issued, setIssued] = useState<IssuedCode | null>(null)
+  const [resetTarget, setResetTarget] = useState<Grant | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<Grant | null>(null)
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -113,7 +116,7 @@ export function PhoneLoginGrantsSection() {
     onPaginationChange: setPagination,
   })
   useEffect(() => {
-    if (!issued) return
+    if (!issued || issued.grant.code_kind === 'fixed') return
     const timeout = window.setTimeout(
       () => setIssued(null),
       Math.max(0, issued.grant.expires_at * 1000 - Date.now())
@@ -124,7 +127,7 @@ export function PhoneLoginGrantsSection() {
     retry: false,
     mutationFn: async (request: {
       phone_e164: string
-      action: 'issue' | 'revoke'
+      action: 'issue_fixed' | 'revoke'
     }) => {
       setIssued(null)
       const proof = await verification.requestVerification({
@@ -132,7 +135,7 @@ export function PhoneLoginGrantsSection() {
         context: request,
         title: t('Verify manual phone access'),
         description: t(
-          'Confirm the phone number {{phone}} belongs to the person you will contact on WeChat.',
+          'Confirm {{phone}} belongs to your WeChat contact. Generating a fixed code replaces the previous code; existing sessions are kept.',
           { phone: request.phone_e164 }
         ),
       })
@@ -143,8 +146,9 @@ export function PhoneLoginGrantsSection() {
           headers: { 'X-Security-Proof': proof.proof_token },
         })
       )
-      if (request.action === 'issue' && data) setIssued(data)
+      if (request.action === 'issue_fixed' && data) setIssued(data)
       setRevokeTarget(null)
+      setResetTarget(null)
       setPagination((value) => ({ ...value, pageIndex: 0 }))
       await client.invalidateQueries({ queryKey })
     },
@@ -152,6 +156,12 @@ export function PhoneLoginGrantsSection() {
   })
   const status = (grant: Grant) => {
     if (grant.revoked_at) return t('Revoked')
+    if (grant.code_kind === 'fixed') {
+      if (grant.locked_until && grant.locked_until * 1000 > Date.now()) {
+        return t('Temporarily locked')
+      }
+      return t('Fixed code enabled')
+    }
     if (grant.used_at) return t('Used')
     if (grant.attempts >= 5) return t('Login code locked')
     if (grant.expires_at * 1000 <= Date.now()) return t('Expired')
@@ -162,14 +172,14 @@ export function PhoneLoginGrantsSection() {
     <SettingsSection title={t('Overseas phone whitelist')}>
       <p className='text-muted-foreground max-w-prose text-sm'>
         {t(
-          'Approve an exact international phone number, then send its private login code to the user on WeChat. Each code is valid for 10 minutes and one login. Mainland SMS and existing sessions are unchanged.'
+          'Approve an exact international phone number and send its fixed private code once on WeChat. The same code can be used for future sign-ins until you reset or disable it. Mainland SMS and existing sessions are unchanged.'
         )}
       </p>
       <Form {...form}>
         <form
           className='flex flex-col gap-3 sm:flex-row sm:items-start'
           onSubmit={form.handleSubmit((value) =>
-            manage.mutate({ phone_e164: value.phone, action: 'issue' })
+            manage.mutate({ phone_e164: value.phone, action: 'issue_fixed' })
           )}
         >
           <FormField
@@ -192,7 +202,7 @@ export function PhoneLoginGrantsSection() {
             )}
           />
           <Button className='sm:mt-6' type='submit' disabled={manage.isPending}>
-            {t('Generate private login code')}
+            {t('Add phone and generate fixed code')}
           </Button>
         </form>
       </Form>
@@ -206,8 +216,7 @@ export function PhoneLoginGrantsSection() {
             <p className='font-mono text-2xl tracking-widest'>{issued.code}</p>
             <p className='text-muted-foreground text-sm'>
               {t(
-                'Shown once. Send privately before {{time}}; a new code invalidates the previous one.',
-                { time: formatTimestamp(issued.grant.expires_at) }
+                'Shown once. Send this fixed code privately and ask the user to keep it. It remains valid until reset or disabled.'
               )}
             </p>
           </div>
@@ -243,8 +252,11 @@ export function PhoneLoginGrantsSection() {
               { id: 'status', header: t('Status'), cell: status },
               {
                 id: 'expiry',
-                header: t('Expires at'),
-                cell: (grant) => formatTimestamp(grant.expires_at),
+                header: t('Validity'),
+                cell: (grant) =>
+                  grant.code_kind === 'fixed'
+                    ? t('Until reset or disabled')
+                    : formatTimestamp(grant.expires_at),
               },
               {
                 id: 'actions',
@@ -255,14 +267,9 @@ export function PhoneLoginGrantsSection() {
                       size='sm'
                       variant='outline'
                       disabled={manage.isPending}
-                      onClick={() =>
-                        manage.mutate({
-                          phone_e164: grant.phone_e164,
-                          action: 'issue',
-                        })
-                      }
+                      onClick={() => setResetTarget(grant)}
                     >
-                      {t('New login code')}
+                      {t('Reset fixed code')}
                     </Button>
                     <Button
                       size='sm'
@@ -280,6 +287,26 @@ export function PhoneLoginGrantsSection() {
           <DataTablePagination table={table} compact />
         </>
       )}
+      <ConfirmDialog
+        open={Boolean(resetTarget) && !verification.isActive}
+        onOpenChange={(open) => {
+          if (!open && !manage.isPending) setResetTarget(null)
+        }}
+        title={t('Reset fixed code')}
+        desc={t(
+          'Resetting the code for {{phone}} invalidates the old code. Send the replacement to the user on WeChat; existing signed-in sessions are kept.',
+          { phone: resetTarget?.phone_e164 }
+        )}
+        isLoading={manage.isPending}
+        handleConfirm={() => {
+          if (resetTarget) {
+            manage.mutate({
+              phone_e164: resetTarget.phone_e164,
+              action: 'issue_fixed',
+            })
+          }
+        }}
+      />
       <ConfirmDialog
         open={Boolean(revokeTarget) && !verification.isActive}
         onOpenChange={(open) => {

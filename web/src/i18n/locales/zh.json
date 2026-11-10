@@ -9041,6 +9041,15 @@
     "Shown once. Send privately before {{time}}; a new code invalidates the previous one.": "仅本次显示，请在 {{time}} 前私下发送。生成新码后旧码立即失效。",
     "The current code for {{phone}} will stop working. Existing signed-in sessions are kept.": "{{phone}} 当前的登录码将立即失效，已有登录会话保留。",
     "Issued a private overseas login code for {{phone_e164}}": "已为 {{phone_e164}} 生成专属海外登录码",
-    "Revoked the overseas login code for {{phone_e164}}": "已撤销 {{phone_e164}} 的海外登录码"
+    "Revoked the overseas login code for {{phone_e164}}": "已撤销 {{phone_e164}} 的海外登录码",
+    "Add phone and generate fixed code": "添加号码并生成固定码",
+    "Approve an exact international phone number and send its fixed private code once on WeChat. The same code can be used for future sign-ins until you reset or disable it. Mainland SMS and existing sessions are unchanged.": "审核具体海外手机号，将该号码的固定私有码通过微信发给本人一次。以后可反复用同一码登录，只有后台重置或停用才失效。国内短信及已有登录状态保持不变。",
+    "Confirm {{phone}} belongs to your WeChat contact. Generating a fixed code replaces the previous code; existing sessions are kept.": "请确认 {{phone}} 属于你微信联系的本人。生成固定码将替换该号码的旧码，已有登录状态保留。",
+    "Fixed code enabled": "固定码已启用",
+    "Reset fixed code": "重置固定码",
+    "Resetting the code for {{phone}} invalidates the old code. Send the replacement to the user on WeChat; existing signed-in sessions are kept.": "重置 {{phone}} 的固定码后，旧码立即失效。请通过微信将新码发给本人，已有登录状态保留。",
+    "Shown once. Send this fixed code privately and ask the user to keep it. It remains valid until reset or disabled.": "仅本次显示。请通过微信私下发送固定码，并提醒用户自行保管；在后台重置或停用前一直有效。",
+    "Temporarily locked": "暂时锁定",
+    "Until reset or disabled": "长期有效，重置或停用后失效"
   }
 }
