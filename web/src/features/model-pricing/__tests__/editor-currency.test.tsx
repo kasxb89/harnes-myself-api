@@ -30,6 +30,7 @@ import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import { evaluateBillingExpression } from '@/features/pricing/lib/billing-expression/runtime'
 import { tryParseTaskVisualConfig } from '@/features/pricing/lib/task-expr'
 import { tryParseVisualConfig } from '@/features/pricing/lib/tier-expr'
@@ -47,6 +48,7 @@ import {
 } from '@/stores/system-config-store'
 
 import { previewModelPricing } from '../api'
+import { convertExpressionCurrency } from '../expression-currency'
 
 const clients: QueryClient[] = []
 
@@ -95,7 +97,8 @@ it('reads preview prices and billing metadata from the common data envelope', as
 
 function renderEditor(
   data: Partial<ModelRatioData> = {},
-  usageSchema?: BillingUsageSchema
+  usageSchema?: BillingUsageSchema,
+  currencyOverride?: { label: string; symbol: string; exchangeRate: number }
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -116,6 +119,7 @@ function renderEditor(
           ...entry,
         }}
         usageSchema={usageSchema}
+        currencyOverride={currencyOverride}
         onDirtyChange={dirty}
       />
     </QueryClientProvider>
@@ -1034,4 +1038,173 @@ it('preserves time billing on direct save and blocks incomplete local conditions
     billingExpr: expression.replace('>= 9', '>= 10'),
     requestRuleExpr,
   })
+})
+
+it('locks the unified editor to CNY despite a persisted USD preference and saves entered CNY in the original unit', async () => {
+  const editor = renderEditor(
+    { price: '1', billingMode: 'per-request' },
+    undefined,
+    { label: 'CNY', symbol: '¥', exchangeRate: 7 }
+  )
+  expect(screen.getByText(/Chinese yuan/)).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Pricing currency' })
+  ).toBeNull()
+  const price = screen.getByRole('textbox', { name: 'Fixed price' })
+  expect(price).toHaveValue('7')
+  expect((await editor.ref.current?.commitDraft())?.price).toBe('1')
+  fireEvent.change(price, { target: { value: '21' } })
+  expect((await editor.ref.current?.commitDraft())?.price).toBe('3')
+  expect(usePricingPreferencesStore.getState().currency).toBe('USD')
+})
+
+it('edits a raw request amount in CNY while preserving fixed billing and request multipliers', async () => {
+  const editor = renderEditor(
+    {
+      billingMode: 'tiered_expr',
+      billingExpr:
+        'tier("base", fixed(2)) * (header("priority") == "high" ? 3 : 1)',
+    },
+    undefined,
+    { label: 'CNY', symbol: '¥', exchangeRate: 7 }
+  )
+  await userEvent
+    .setup()
+    .click(screen.getByRole('combobox', { name: 'Editor mode' }))
+  await userEvent
+    .setup()
+    .click(screen.getByRole('option', { name: 'Expression editor' }))
+  const raw = screen.getByRole('textbox', { name: 'Billing expression in CNY' })
+  expect(raw).toHaveValue(
+    'tier("base", fixed(14)) * (header("priority") == "high" ? 3 : 1)'
+  )
+  fireEvent.change(raw, {
+    target: {
+      value: 'tier("base", fixed(21)) * (header("priority") == "high" ? 3 : 1)',
+    },
+  })
+  const saved = await editor.ref.current?.commitDraft()
+  expect(saved).not.toBeNull()
+  if (!saved?.billingExpr) {
+    throw new Error('Expected a saved billing expression')
+  }
+  const result = evaluateBillingExpression(
+    combineBillingExpr(saved.billingExpr, saved.requestRuleExpr ?? ''),
+    {
+      request: { headers: { priority: 'high' } },
+    }
+  )
+  expect(result).toMatchObject({
+    status: 'success',
+    cost: 9_000_000,
+    billingUnit: 'request',
+    fixedPrice: 3,
+  })
+})
+
+it('disables fixed CNY price edits for an invalid rate instead of showing a USD fallback', async () => {
+  const editor = renderEditor(
+    { price: '1', billingMode: 'per-request' },
+    undefined,
+    { label: 'CNY', symbol: '¥', exchangeRate: 0 }
+  )
+  expect(
+    screen.getByText(
+      'The CNY exchange rate is unavailable. Existing prices are preserved; price editing is disabled.'
+    )
+  ).toBeVisible()
+  expect(screen.queryByRole('textbox', { name: 'Fixed price' })).toBeNull()
+  expect(await editor.ref.current?.commitDraft()).toBeNull()
+})
+
+it('converts H3 money coefficients but preserves its free-image threshold, long-video multiplier and actual amounts', () => {
+  const source =
+    '(u("long_video") ? 2 : 1) * (u("resolution") == "768P" ? tier("768P", u("seconds") * 0.04 + u("input_video_seconds") * (0.09 / 7.3) + max(u("input_images") - 5, 0) * (0.05 / 7.3)) : tier("1080P", u("seconds") * 0.08))'
+  const cny = convertExpressionCurrency(source, 7.3)
+  if (cny === null) throw new Error('Expected CNY expression')
+  expect(cny).toContain('u("long_video") ? 2 : 1')
+  expect(cny).toContain('max(u("input_images") - 5, 0)')
+  expect(cny).toContain('"768P"')
+  expect(cny).not.toContain('99999999999')
+  for (const usage of [
+    {
+      long_video: false,
+      resolution: '768P',
+      seconds: 15,
+      input_video_seconds: 2,
+      input_images: 5,
+    },
+    {
+      long_video: true,
+      resolution: '768P',
+      seconds: 30,
+      input_video_seconds: 2,
+      input_images: 6,
+    },
+    {
+      long_video: true,
+      resolution: '1080P',
+      seconds: 30,
+      input_video_seconds: 0,
+      input_images: 0,
+    },
+  ]) {
+    const usd = evaluateBillingExpression(source, { usage })
+    const displayed = evaluateBillingExpression(cny, { usage })
+    const saved = evaluateBillingExpression(
+      convertExpressionCurrency(cny, 1 / 7.3) ?? '',
+      { usage }
+    )
+    expect(usd.status).toBe('success')
+    expect(displayed.status).toBe('success')
+    expect(saved.status).toBe('success')
+    if (
+      usd.status === 'success' &&
+      displayed.status === 'success' &&
+      saved.status === 'success'
+    ) {
+      expect(displayed.cost).toBeCloseTo(usd.cost * 7.3, 12)
+      expect(saved.cost).toBeCloseTo(usd.cost, 12)
+      expect(saved.matchedTier).toBe(usd.matchedTier)
+    }
+  }
+})
+
+it.each([
+  'tier("integer", 1 / 7)',
+  'tier("rounded", ceil(p / 2))',
+  'len < 32000 ? tier("short", p * 2 + c * 4) : tier("long", p * 4 + c * 8)',
+])('keeps evaluation semantics when presenting %s in CNY', (source) => {
+  const context = { tokens: { p: 3, c: 4, len: 10 } }
+  const before = evaluateBillingExpression(source, context)
+  const after = evaluateBillingExpression(
+    convertExpressionCurrency(source, 7) ?? '',
+    context
+  )
+  expect(before.status).toBe('success')
+  expect(after.status).toBe('success')
+  if (before.status === 'success' && after.status === 'success') {
+    expect(after.cost).toBeCloseTo(before.cost * 7, 12)
+  }
+})
+
+it('blocks an incomplete CNY expression from being committed', async () => {
+  const editor = renderEditor(
+    { billingMode: 'tiered_expr', billingExpr: 'tier("base", fixed(2))' },
+    undefined,
+    { label: 'CNY', symbol: '¥', exchangeRate: 7 }
+  )
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('combobox', { name: 'Editor mode' }))
+  await user.click(screen.getByRole('option', { name: 'Expression editor' }))
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Billing expression in CNY' }),
+    { target: { value: 'tier(' } }
+  )
+  expect(await editor.ref.current?.commitDraft()).toBeNull()
+  expect(
+    screen.getByText(
+      'This expression cannot be converted safely. Existing prices are preserved; correct the expression before saving.'
+    )
+  ).toBeVisible()
 })

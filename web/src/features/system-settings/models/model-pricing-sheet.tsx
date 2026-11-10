@@ -34,6 +34,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { sideDrawerContentClassName } from '@/components/drawer-layout'
+import { ErrorState } from '@/components/error-state'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -70,6 +71,7 @@ import {
   getSitePricingCurrency,
   isValidPricingCurrency,
   USD_PRICING_CURRENCY,
+  type PricingCurrency,
 } from '@/features/model-pricing/currency'
 import { pricingFromDraft, pricingRow } from '@/features/model-pricing/pricing'
 import { PricingAmountInput } from '@/features/model-pricing/pricing-amount-input'
@@ -135,6 +137,7 @@ type ModelPricingEditorPanelProps = Omit<
   scrollHeader?: ReactNode
   initialProvider?: string
   providerOnly?: boolean
+  currencyOverride?: PricingCurrency
 }
 
 export type ModelPricingEditorPanelHandle = {
@@ -204,6 +207,7 @@ export const ModelPricingEditorPanel = forwardRef<
     scrollHeader,
     initialProvider,
     providerOnly,
+    currencyOverride,
   },
   ref
 ) {
@@ -217,9 +221,12 @@ export const ModelPricingEditorPanel = forwardRef<
     [currencyConfig]
   )
   const currency =
-    preference === 'site' && isValidPricingCurrency(siteCurrency)
+    currencyOverride ??
+    (preference === 'site' && isValidPricingCurrency(siteCurrency)
       ? siteCurrency
-      : USD_PRICING_CURRENCY
+      : USD_PRICING_CURRENCY)
+  const validCurrency =
+    !currencyOverride || isValidPricingCurrency(currencyOverride)
   const [pricingMode, setPricingMode] = useState<PricingMode>('tiered_expr')
   const [promptPrice, setPromptPrice] = useState('')
   const [lanePrices, setLanePrices] = useState<Record<LaneKey, string>>({
@@ -790,6 +797,7 @@ export const ModelPricingEditorPanel = forwardRef<
     ref,
     () => ({
       commitDraft: async () => {
+        if (!validCurrency) return null
         if (
           formElementRef.current?.querySelector('[data-billing-invalid="true"]')
         ) {
@@ -807,12 +815,13 @@ export const ModelPricingEditorPanel = forwardRef<
         return buildSubmitData(form.getValues())
       },
     }),
-    [form, validatePricingValues, buildSubmitData]
+    [form, validatePricingValues, buildSubmitData, validCurrency]
   )
 
   const expressionEditor = taskUsageSchema ? (
     <TaskUsagePricingEditor
       currency={currency}
+      convertExpressions={Boolean(currencyOverride)}
       key={`${editorReloadToken}:${watchedValues.name}`}
       billingExpr={resolvedBillingExpr}
       requestRuleExpr={requestRuleExpr}
@@ -824,6 +833,7 @@ export const ModelPricingEditorPanel = forwardRef<
   ) : (
     <TieredPricingEditor
       currency={currency}
+      convertExpressions={Boolean(currencyOverride)}
       key={editorReloadToken}
       modelName={watchedValues.name}
       billingExpr={billingExpr}
@@ -834,6 +844,16 @@ export const ModelPricingEditorPanel = forwardRef<
   )
 
   const showActions = Boolean(onSave)
+
+  if (!validCurrency) {
+    return (
+      <ErrorState
+        title={t(
+          'The CNY exchange rate is unavailable. Existing prices are preserved; price editing is disabled.'
+        )}
+      />
+    )
+  }
 
   return (
     <div
@@ -920,7 +940,24 @@ export const ModelPricingEditorPanel = forwardRef<
                   />
                 )}
 
-                <PricingCurrencySelector siteCurrency={siteCurrency} />
+                {currencyOverride ? (
+                  <div className='mb-4 space-y-1 text-sm'>
+                    <p className='font-medium'>
+                      {t('Pricing currency')}: {t('Chinese yuan (CNY)')}
+                    </p>
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        'Current exchange rate: 1 USD = {{rate}} {{currency}}',
+                        {
+                          rate: String(currency.exchangeRate),
+                          currency: currency.label,
+                        }
+                      )}
+                    </p>
+                  </div>
+                ) : (
+                  <PricingCurrencySelector siteCurrency={siteCurrency} />
+                )}
 
                 <TaskPluginPricingEditor
                   initialProvider={initialProvider}
@@ -937,6 +974,7 @@ export const ModelPricingEditorPanel = forwardRef<
                     pricingMode === 'tiered_expr' ? 'tiered_expr' : 'ratio'
                   }
                   currency={currency}
+                  convertExpressions={Boolean(currencyOverride)}
                 >
                   <Tabs
                     key={editorReloadToken}

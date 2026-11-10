@@ -45,6 +45,7 @@ import { SettingsSwitchField } from '../components/settings-form-layout'
 import { TaskUsagePricingEditor } from './task-usage-pricing-editor'
 
 type TaskPluginPricingEditorProps = {
+  convertExpressions?: boolean
   initialProvider?: string
   hideDefault?: boolean
   variants: ModelPricingPluginVariant[]
@@ -252,6 +253,7 @@ export function TaskPluginPricingEditor(props: TaskPluginPricingEditorProps) {
             {separate ? (
               <TaskUsagePricingEditor
                 currency={props.currency}
+                convertExpressions={props.convertExpressions}
                 billingExpr={split.billingExpr}
                 requestRuleExpr={split.requestRuleExpr}
                 usageSchema={variant.usage_schema}

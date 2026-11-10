@@ -42,6 +42,7 @@ import {
   type PricingCurrency,
 } from '@/features/model-pricing/currency'
 import { PricingAmountInput } from '@/features/model-pricing/pricing-amount-input'
+import { PricingExpressionInput } from '@/features/model-pricing/pricing-expression-input'
 import {
   combineBillingExpr,
   splitBillingExprAndRequestRules,
@@ -79,6 +80,7 @@ import { RequestSimulation } from './request-simulation'
 import { TaskPricingMatrix } from './task-pricing-matrix'
 
 type TaskUsagePricingEditorProps = {
+  convertExpressions?: boolean
   currency?: PricingCurrency
   billingExpr: string
   requestRuleExpr: string
@@ -472,10 +474,15 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
 
       <Alert>
         <AlertDescription className='text-xs'>
-          {t(
-            'Prices are in {{currency}}, with units shown below. Use USD when editing expressions directly.',
-            { currency: (props.currency ?? USD_PRICING_CURRENCY).label }
-          )}
+          {props.convertExpressions
+            ? t(
+                'Prices and expression amounts are in {{currency}}. Saving converts to the existing billing unit; unedited prices are preserved.',
+                { currency: (props.currency ?? USD_PRICING_CURRENCY).label }
+              )
+            : t(
+                'Prices are in {{currency}}, with units shown below. Use USD when editing expressions directly.',
+                { currency: (props.currency ?? USD_PRICING_CURRENCY).label }
+              )}
         </AlertDescription>
       </Alert>
 
@@ -664,15 +671,23 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                 ) : null}
               </AlertDescription>
             </Alert>
-            <Textarea
-              aria-label={t('Billing expression')}
-              value={rawExpr}
-              onChange={(event) => handleRawChange(event.target.value)}
-              placeholder='tier("base", u("seconds") * 0.4)'
-              rows={7}
-              className='font-mono text-xs'
-              spellCheck={false}
-            />
+            {props.convertExpressions ? (
+              <PricingExpressionInput
+                value={rawExpr}
+                currency={props.currency ?? USD_PRICING_CURRENCY}
+                onChange={handleRawChange}
+              />
+            ) : (
+              <Textarea
+                aria-label={t('Billing expression')}
+                value={rawExpr}
+                onChange={(event) => handleRawChange(event.target.value)}
+                placeholder='tier("base", u("seconds") * 0.4)'
+                rows={7}
+                className='font-mono text-xs'
+                spellCheck={false}
+              />
+            )}
             <TaskBillingPreview
               currency={props.currency}
               config={previewConfig}

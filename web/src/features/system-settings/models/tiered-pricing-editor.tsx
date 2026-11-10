@@ -54,6 +54,7 @@ import {
   USD_PRICING_CURRENCY,
   type PricingCurrency,
 } from '@/features/model-pricing/currency'
+import { PricingExpressionInput } from '@/features/model-pricing/pricing-expression-input'
 import { useBillingTime } from '@/features/pricing/hooks/use-billing-time'
 import {
   BILLING_EXTRA_VARS,
@@ -304,11 +305,18 @@ const PRESET_GROUPS: PresetGroup[] = [
 // ---------------------------------------------------------------------------
 
 type RawExprEditorProps = {
+  currency?: PricingCurrency
+  convertExpressions?: boolean
   exprString: string
   onChange: (value: string) => void
 }
 
-function RawExprEditor({ exprString, onChange }: RawExprEditorProps) {
+function RawExprEditor({
+  exprString,
+  onChange,
+  currency = USD_PRICING_CURRENCY,
+  convertExpressions,
+}: RawExprEditorProps) {
   const { t } = useTranslation()
   return (
     <div className='space-y-3'>
@@ -328,21 +336,35 @@ function RawExprEditor({ exprString, onChange }: RawExprEditorProps) {
             <code>has(source, text)</code>
           </div>
           <div>
-            {t(
-              'Use tier(name, fixed(amount)) for a USD price per request. Group and request multipliers still apply.'
-            )}
+            {convertExpressions
+              ? t(
+                  'Use tier(name, fixed(amount)) for a {{currency}} price per request. Group and request multipliers still apply.',
+                  { currency: currency.label }
+                )
+              : t(
+                  'Use tier(name, fixed(amount)) for a USD price per request. Group and request multipliers still apply.'
+                )}
           </div>
         </AlertDescription>
       </Alert>
-      <Textarea
-        aria-label={t('Billing expression')}
-        value={exprString}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder='tier("base", p * 3 + c * 15)'
-        rows={6}
-        className='font-mono text-xs'
-        spellCheck={false}
-      />
+      {convertExpressions ? (
+        <PricingExpressionInput
+          value={exprString}
+          currency={currency}
+          onChange={onChange}
+          rows={6}
+        />
+      ) : (
+        <Textarea
+          aria-label={t('Billing expression')}
+          value={exprString}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder='tier("base", p * 3 + c * 15)'
+          rows={6}
+          className='font-mono text-xs'
+          spellCheck={false}
+        />
+      )}
     </div>
   )
 }
@@ -973,19 +995,24 @@ len <= 128000
 Please generate a billing expression based on the model information and pricing requirements provided.`
 
 type LlmPromptHelperProps = {
+  currency?: PricingCurrency
   modelName?: string
 }
 
-function LlmPromptHelper({ modelName }: LlmPromptHelperProps) {
+function LlmPromptHelper({ modelName, currency }: LlmPromptHelperProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
 
   const prompt = useMemo(() => {
-    if (modelName) {
-      return `${LLM_PROMPT_TEMPLATE}\n\nCurrent model: ${modelName}`
-    }
-    return LLM_PROMPT_TEMPLATE
-  }, [modelName])
+    const template = currency
+      ? LLM_PROMPT_TEMPLATE.replaceAll('USD', currency.label).replaceAll(
+          '$',
+          currency.symbol
+        )
+      : LLM_PROMPT_TEMPLATE
+    if (modelName) return `${template}\n\nCurrent model: ${modelName}`
+    return template
+  }, [modelName, currency])
 
   const handleCopy = useCallback(async () => {
     try {
@@ -1042,6 +1069,7 @@ function LlmPromptHelper({ modelName }: LlmPromptHelperProps) {
 // ---------------------------------------------------------------------------
 
 export type TieredPricingEditorProps = {
+  convertExpressions?: boolean
   currency?: PricingCurrency
   modelName?: string
   billingExpr: string
@@ -1060,6 +1088,7 @@ function parseTierEditorDocument(source: string): VisualBillingDocument | null {
 
 export const TieredPricingEditor = memo(function TieredPricingEditor({
   currency = USD_PRICING_CURRENCY,
+  convertExpressions,
   modelName,
   billingExpr: currentExpr,
   requestRuleExpr: currentRequestRuleExpr,
@@ -1212,15 +1241,23 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
         </Field>
         {editorMode === 'raw' && (
           <div className='sm:pb-0.5'>
-            <LlmPromptHelper modelName={modelName} />
+            <LlmPromptHelper
+              modelName={modelName}
+              currency={convertExpressions ? currency : undefined}
+            />
           </div>
         )}
       </div>
 
       <p className='text-muted-foreground text-xs'>
-        {t(
-          'Raw expressions and presets use USD. Currency selection only converts visual price inputs and monetary previews.'
-        )}
+        {convertExpressions
+          ? t(
+              'Prices and expression amounts are in {{currency}}. Saving converts to the existing billing unit; unedited prices are preserved.',
+              { currency: currency.label }
+            )
+          : t(
+              'Raw expressions and presets use USD. Currency selection only converts visual price inputs and monetary previews.'
+            )}
       </p>
       <PresetSection applyPreset={applyPreset} />
 
@@ -1234,7 +1271,12 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
           />
         )}
         {editorMode === 'raw' && (
-          <RawExprEditor exprString={rawExpr} onChange={handleRawChange} />
+          <RawExprEditor
+            exprString={rawExpr}
+            onChange={handleRawChange}
+            currency={currency}
+            convertExpressions={convertExpressions}
+          />
         )}
         {invalidDraft && (
           <p role='alert' className='text-destructive text-sm'>

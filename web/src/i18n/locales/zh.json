@@ -8918,6 +8918,13 @@
     "Use the unified model configuration page to change this setting": "请通过统一模型配置页面修改此设置",
     "Use this model’s verified channel limits or an explicitly declared conservative platform limit. These values do not claim native maxima. Unknown limits remain blank.": "填写本型号已核实的渠道限制，或明确注明的保守平台限制。这些值不代表原厂最大容量；未知限制请留空。",
     "Maximum output tokens cannot exceed the context window": "最大输出 Token 不能超过上下文窗口",
-    "Open unified model configuration": "打开统一模型配置"
+    "Open unified model configuration": "打开统一模型配置",
+    "Chinese yuan (CNY)": "人民币（CNY）",
+    "Billing expression in {{currency}}": "{{currency}} 计费表达式",
+    "Prices and expression amounts are in {{currency}}. Saving converts to the existing billing unit; unedited prices are preserved.": "价格和公式金额均按 {{currency}} 填写，保存时自动换算为原计费单位；未修改的价格保持不变。",
+    "Use tier(name, fixed(amount)) for a {{currency}} price per request. Group and request multipliers still apply.": "每次请求的 {{currency}} 价格使用 tier(name, fixed(amount))，分组和请求倍率照常生效。",
+    "This expression cannot be converted safely. Existing prices are preserved; correct the expression before saving.": "当前公式无法安全换算，原价格保持不变。请修正公式后再保存。",
+    "The CNY exchange rate is unavailable. Existing prices are preserved; price editing is disabled.": "人民币汇率不可用，原价格保持不变，暂时不能编辑价格。",
+    "The exchange rate changed. Review the CNY prices before saving; existing prices are preserved.": "汇率已变更，请重新核对人民币价格后保存；原价格保持不变。"
   }
 }

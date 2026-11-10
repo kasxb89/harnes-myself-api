@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -31,9 +38,11 @@ import type {
 import { USD_PRICING_CURRENCY } from '@/features/model-pricing/currency'
 import { ModelPricingPanel } from '@/features/model-pricing/model-pricing-panel'
 import { pricingOptions } from '@/features/model-pricing/pricing'
+import { evaluateBillingExpression } from '@/features/pricing/lib/billing-expression/runtime'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 import { usePricingPreferencesStore } from '@/stores/pricing-preferences-store'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import {
   ModelPricingEditorPanel,
@@ -46,6 +55,7 @@ let client: QueryClient | undefined
 
 it('loads the configured provider price and preserves its exact bytes when only model metadata changes', async () => {
   useAuthStore.getState().auth.setUser({ id: 1, username: 'root', role: 100 })
+  let usdRate = 7
   const expression = 'tier("video", u("seconds") * 0.0410959)'
   const pricing = {
     'billing_setting.plugin_billing_expr': { hailuo: expression },
@@ -58,38 +68,43 @@ it('loads the configured provider price and preserves its exact bytes when only 
       description: 'Video unit price',
     },
   }
-  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: {
-      success: true,
-      data:
-        url === '/api/option/model_pricing'
-          ? {
-              entries: [
-                {
-                  model_name: 'MiniMax-H3',
-                  version: 'original-price',
-                  configured: pricing,
-                  effective: pricing,
-                  usage_schema: usage,
-                  plugin_variants: [
-                    {
-                      plugin_key: 'hailuo',
-                      plugin_name: 'Hailuo Video',
-                      configured: expression,
-                      effective: expression,
-                      compatible: true,
-                      usage_schema: usage,
-                    },
-                  ],
-                },
-              ],
-              options: {},
-              empty_version: 'empty',
-            }
-          : [],
-      vendors: [],
-    },
-  }))
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/status') {
+      return { data: { success: true, data: { usd_exchange_rate: usdRate } } }
+    }
+    return {
+      data: {
+        success: true,
+        data:
+          url === '/api/option/model_pricing'
+            ? {
+                entries: [
+                  {
+                    model_name: 'MiniMax-H3',
+                    version: 'original-price',
+                    configured: pricing,
+                    effective: pricing,
+                    usage_schema: usage,
+                    plugin_variants: [
+                      {
+                        plugin_key: 'hailuo',
+                        plugin_name: 'Hailuo Video',
+                        configured: expression,
+                        effective: expression,
+                        compatible: true,
+                        usage_schema: usage,
+                      },
+                    ],
+                  },
+                ],
+                options: {},
+                empty_version: 'empty',
+              }
+            : [],
+        vendors: [],
+      },
+    }
+  })
   vi.spyOn(api, 'post').mockResolvedValue({
     data: { success: true, data: { effective: {} } },
   })
@@ -137,6 +152,10 @@ it('loads the configured provider price and preserves its exact bytes when only 
   expect(
     await screen.findByRole('tab', { name: 'Hailuo Video' })
   ).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByText(/Chinese yuan/)).toBeVisible()
+  expect(
+    screen.queryByRole('combobox', { name: 'Pricing currency' })
+  ).toBeNull()
   expect(screen.queryByRole('tab', { name: 'Default' })).toBeNull()
   expect(screen.queryByRole('complementary', { name: 'Preview' })).toBeNull()
   const user = userEvent.setup()
@@ -154,6 +173,42 @@ it('loads the configured provider price and preserves its exact bytes when only 
     'billing_setting.billing_expr'
   )
   expect(save.mock.calls[0][0].pricing).not.toHaveProperty('ModelPrice')
+  await user.click(screen.getByRole('combobox', { name: 'Editor mode' }))
+  await user.click(screen.getByRole('option', { name: 'Expression editor' }))
+  const raw = screen.getByRole('textbox', { name: 'Billing expression in CNY' })
+  fireEvent.change(raw, {
+    target: { value: 'tier("video", u("seconds") * 0.5)' },
+  })
+  await user.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2))
+  const changed =
+    save.mock.calls[1][0].pricing['billing_setting.plugin_billing_expr'].hailuo
+  const result = evaluateBillingExpression(changed, { usage: { seconds: 5 } })
+  expect(result.status).toBe('success')
+  if (result.status === 'success') {
+    expect(
+      result.cost *
+        useSystemConfigStore.getState().config.currency.usdExchangeRate
+    ).toBeCloseTo(2.5, 12)
+  }
+  usdRate = 8
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Billing expression in CNY' }),
+    {
+      target: { value: 'tier("video", u("seconds") * 0.9)' },
+    }
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  expect(
+    await screen.findByText(
+      'The exchange rate changed. Review the CNY prices before saving; existing prices are preserved.'
+    )
+  ).toBeVisible()
+  expect(save).toHaveBeenCalledTimes(2)
 })
 
 afterEach(() => {

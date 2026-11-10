@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useFieldArray, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -37,6 +38,7 @@ import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
 } from '@/features/system-settings/models/model-pricing-sheet'
+import { statusQueryOptions } from '@/lib/status-query'
 
 import {
   unifiedModelFormSchema,
@@ -56,6 +58,17 @@ export function UnifiedModelForm(props: {
   onDirtyChange: (dirty: boolean) => void
 }) {
   const { t } = useTranslation()
+  const cache = useQueryClient()
+  const status = useQuery(statusQueryOptions)
+  const rawRate = status.data?.usd_exchange_rate
+  const rate =
+    typeof rawRate === 'number' || typeof rawRate === 'string'
+      ? Number(rawRate)
+      : Number.NaN
+  const cnyCurrency = useMemo(
+    () => ({ label: 'CNY', symbol: '¥', exchangeRate: rate }),
+    [rate]
+  )
   const definition = props.entry.draft?.definition ?? props.entry.definition
   const [priceDirty, setPriceDirty] = useState(false)
   const onDirtyChange = props.onDirtyChange
@@ -93,6 +106,24 @@ export function UnifiedModelForm(props: {
   const persist = form.handleSubmit(async (values) => {
     form.clearErrors('root')
     try {
+      if (priceDirty) {
+        const latest = await cache.fetchQuery({
+          ...statusQueryOptions,
+          staleTime: 0,
+        })
+        const currentRate = Number(latest?.usd_exchange_rate)
+        if (
+          !Number.isFinite(currentRate) ||
+          currentRate <= 0 ||
+          currentRate !== rate
+        ) {
+          throw new Error(
+            t(
+              'The exchange rate changed. Review the CNY prices before saving; existing prices are preserved.'
+            )
+          )
+        }
+      }
       const priceDraft = priceDirty ? await editor.current?.commitDraft() : null
       if (priceDirty && !priceDraft) return
       const parameters: unknown = values.parameter_json.trim()
@@ -427,17 +458,18 @@ export function UnifiedModelForm(props: {
       )}
       <section className='space-y-3' aria-label={t('User pricing')}>
         <h3 className='font-semibold'>{t('User pricing')}</h3>
-        {pricing.isPending ? <LoadingState /> : null}
+        {pricing.isPending || status.isPending ? <LoadingState /> : null}
         {pricing.isError && (
           <ErrorState
             title={t('Failed to load model pricing')}
             onRetry={() => void pricing.refetch()}
           />
         )}
-        {!pricing.isPending && !pricing.isError && (
+        {!pricing.isPending && !pricing.isError && !status.isPending && (
           <ModelPricingEditorPanel
             ref={editor}
             embedded
+            currencyOverride={cnyCurrency}
             editData={initialPrice}
             usageSchema={pricingEntry?.usage_schema}
             pluginVariants={pricingEntry?.plugin_variants}
