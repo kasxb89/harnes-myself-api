@@ -48,23 +48,25 @@ type ModelConfigurationRoute struct {
 	Group         string `json:"group"`
 	UpstreamModel string `json:"upstream_model"`
 	Enabled       bool   `json:"enabled"`
+	TextProtocol  string `json:"text_protocol,omitempty"`
 }
 
 // Pricing is the existing engine's complete editable draft. Parameters contain
 // generation controls only, never a transport or a second pricing language.
 type ModelConfiguration struct {
-	ModelName       string                    `json:"model_name"`
-	Kind            string                    `json:"kind"`
-	DisplayName     string                    `json:"display_name"`
-	Enabled         bool                      `json:"enabled"`
-	Routes          []ModelConfigurationRoute `json:"routes"`
-	ContextWindow   *int                      `json:"context_window,omitempty"`
-	MaxOutputTokens *int                      `json:"max_output_tokens,omitempty"`
-	BudgetField     string                    `json:"budget_field,omitempty"`
-	Parameters      map[string]any            `json:"parameters,omitempty"`
-	Pricing         PricingValues             `json:"pricing"`
-	CostRules       []ModelProfitCostRule     `json:"cost_rules,omitempty"`
-	Source          string                    `json:"source"`
+	ModelName          string                               `json:"model_name"`
+	Kind               string                               `json:"kind"`
+	DisplayName        string                               `json:"display_name"`
+	Enabled            bool                                 `json:"enabled"`
+	Routes             []ModelConfigurationRoute            `json:"routes"`
+	ContextWindow      *int                                 `json:"context_window,omitempty"`
+	MaxOutputTokens    *int                                 `json:"max_output_tokens,omitempty"`
+	BudgetField        string                               `json:"budget_field,omitempty"`
+	Parameters         map[string]any                       `json:"parameters,omitempty"`
+	Pricing            PricingValues                        `json:"pricing"`
+	CostRules          []ModelProfitCostRule                `json:"cost_rules,omitempty"`
+	OfficialReferences *ModelOfficialReferenceConfiguration `json:"official_references,omitempty"`
+	Source             string                               `json:"source"`
 }
 
 type PublishedModelConfiguration struct {
@@ -94,12 +96,13 @@ type ModelConfigurationDocument struct {
 }
 
 type ModelConfigurationEntry struct {
-	ModelName        string                       `json:"model_name"`
-	BaseVersion      string                       `json:"base_version"`
-	Definition       ModelConfiguration           `json:"definition"`
-	Published        *PublishedModelConfiguration `json:"published,omitempty"`
-	Draft            *ModelConfigurationDraft     `json:"draft,omitempty"`
-	LegacyParameters map[string]any               `json:"legacy_parameters,omitempty"`
+	ModelName               string                       `json:"model_name"`
+	BaseVersion             string                       `json:"base_version"`
+	Definition              ModelConfiguration           `json:"definition"`
+	Published               *PublishedModelConfiguration `json:"published,omitempty"`
+	Draft                   *ModelConfigurationDraft     `json:"draft,omitempty"`
+	LegacyParameters        map[string]any               `json:"legacy_parameters,omitempty"`
+	ReferenceSpecifications []ModelOfficialReferenceRow  `json:"reference_specifications,omitempty"`
 }
 
 type ModelConfigurationChannel struct {
@@ -169,6 +172,17 @@ func CurrentPublishedModelConfigurations() (map[string]PublishedModelConfigurati
 // engine values and relevant global multipliers. Drafts and cost evidence do
 // not leak into public data. The digest remains stable across process restarts.
 func ModelExecutionConfigurationVersion(name string, record PublishedModelConfiguration) string {
+	return ModelExecutionConfigurationVersions(map[string]PublishedModelConfiguration{name: record})[name]
+}
+
+// Capture the routing and pricing inputs once per catalog request. This avoids
+// per-model SQL and repeated JSON decoding without a stale cross-request cache.
+// Admission still captures a fresh version through the single-model wrapper.
+func ModelExecutionConfigurationVersions(records map[string]PublishedModelConfiguration) map[string]string {
+	versions := make(map[string]string, len(records))
+	if len(records) == 0 {
+		return versions
+	}
 	common.OptionMapRWMutex.RLock()
 	options := make(map[string]string)
 	for _, key := range append(append([]string{}, modelPricingOptionKeys...), ModelCapacityOptionKey, "GroupRatio", "GroupGroupRatio", "QuotaPerUnit", "USDExchangeRate", "DisplayInCurrencyEnabled", "group_ratio_setting.group_ratio", "group_ratio_setting.group_group_ratio", "console_setting.usd_exchange_rate") {
@@ -188,61 +202,85 @@ func ModelExecutionConfigurationVersion(name string, record PublishedModelConfig
 	}
 	var capacities ModelCapacityConfig
 	_ = common.UnmarshalJsonStr(options[ModelCapacityOptionKey], &capacities)
-	selected := make([]CapacityRoute, 0)
-	for _, route := range capacities.Routes {
-		if route.Model == name {
-			selected = append(selected, route)
-		}
-	}
 	delete(options, ModelCapacityOptionKey)
-	plugins := make(map[string]string)
-	generation := jsplugin.DefaultRegistry.Generation()
-	declaredModels := []string{name}
-	for _, route := range record.Definition.Routes {
-		declaredModels = append(declaredModels, route.UpstreamModel)
+	names := make([]string, 0, len(records))
+	for name := range records {
+		names = append(names, name)
 	}
-	for _, declared := range declaredModels {
-		for _, plugin := range generation.PluginsByModel(declared) {
-			plugins[plugin.Meta.Key] = plugin.Meta.Version + ":" + plugin.SourceHash
-		}
-	}
-	var abilities []Ability
-	var routeGraph []string
+	abilitiesByModel := make(map[string][]Ability)
+	channels := make(map[int]Channel)
 	if DB != nil {
-		if DB.Where("model = ?", name).Order(commonGroupCol+", channel_id").Find(&abilities).Error != nil {
-			return ""
+		var abilities []Ability
+		if DB.Where("model IN ?", names).Order(commonGroupCol+", channel_id").Find(&abilities).Error != nil {
+			return versions
 		}
+		ids := []int{}
 		for _, ability := range abilities {
-			var ch Channel
-			if DB.First(&ch, ability.ChannelId).Error == nil {
-				routeGraph = append(routeGraph, fmt.Sprintf("%s:%t:%d:%s", ability.Group, ability.Enabled, ch.Status, CapacityChannelConfigHash(&ch)))
+			abilitiesByModel[ability.Model] = append(abilitiesByModel[ability.Model], ability)
+			ids = append(ids, ability.ChannelId)
+		}
+		if len(ids) > 0 {
+			slices.Sort(ids)
+			ids = slices.Compact(ids)
+			var rows []Channel
+			if DB.Where("id IN ?", ids).Find(&rows).Error != nil {
+				return versions
+			}
+			for _, channel := range rows {
+				channels[channel.Id] = channel
 			}
 		}
 	}
-	return modelConfigurationDigest(struct {
-		Routes          []string
-		QuotaPerUnit    float64
-		USDExchangeRate float64
-		Currency        string
-		GroupRatio      string
-		GroupGroupRatio string
-		Version         string
-		Pricing         PricingValues
-		Capacities      []CapacityRoute
-		Globals         map[string]string
-		Plugins         map[string]string
-	}{routeGraph, common.QuotaPerUnit, operation_setting.USDExchangeRate, operation_setting.GetQuotaDisplayType(), ratio_setting.GroupRatio2JSONString(), ratio_setting.GroupGroupRatio2JSONString(), record.Version, effectiveModelPricing(pricing, name), selected, options, plugins})
+	for name, record := range records {
+		selected := make([]CapacityRoute, 0)
+		for _, route := range capacities.Routes {
+			if route.Model == name {
+				selected = append(selected, route)
+			}
+		}
+		plugins := make(map[string]string)
+		generation := jsplugin.DefaultRegistry.Generation()
+		declaredModels := []string{name}
+		for _, route := range record.Definition.Routes {
+			declaredModels = append(declaredModels, route.UpstreamModel)
+		}
+		for _, declared := range declaredModels {
+			for _, plugin := range generation.PluginsByModel(declared) {
+				plugins[plugin.Meta.Key] = plugin.Meta.Version + ":" + plugin.SourceHash
+			}
+		}
+		var routeGraph []string
+		for _, ability := range abilitiesByModel[name] {
+			if ch, ok := channels[ability.ChannelId]; ok {
+				routeGraph = append(routeGraph, fmt.Sprintf("%s:%t:%d:%s", ability.Group, ability.Enabled, ch.Status, CapacityChannelConfigHash(&ch)))
+			}
+		}
+		versions[name] = modelConfigurationDigest(struct {
+			Routes          []string
+			QuotaPerUnit    float64
+			USDExchangeRate float64
+			Currency        string
+			GroupRatio      string
+			GroupGroupRatio string
+			Version         string
+			Pricing         PricingValues
+			Capacities      []CapacityRoute
+			Globals         map[string]string
+			Plugins         map[string]string
+		}{routeGraph, common.QuotaPerUnit, operation_setting.USDExchangeRate, operation_setting.GetQuotaDisplayType(), ratio_setting.GroupRatio2JSONString(), ratio_setting.GroupGroupRatio2JSONString(), record.Version, effectiveModelPricing(pricing, name), selected, options, plugins})
+	}
+	return versions
+}
+
+func ModelConfigurationRevisionFromVersions(versions map[string]string) string {
+	if len(versions) == 0 {
+		return ""
+	}
+	return modelConfigurationDigest(versions)
 }
 
 func ModelConfigurationRevision(records map[string]PublishedModelConfiguration) string {
-	if len(records) == 0 {
-		return ""
-	}
-	versions := make(map[string]string, len(records))
-	for name, record := range records {
-		versions[name] = ModelExecutionConfigurationVersion(name, record)
-	}
-	return modelConfigurationDigest(versions)
+	return ModelConfigurationRevisionFromVersions(ModelExecutionConfigurationVersions(records))
 }
 
 func validateModelConfiguration(def ModelConfiguration, previous PricingValues) error {
@@ -256,6 +294,9 @@ func validateModelConfiguration(def ModelConfiguration, previous PricingValues) 
 		}
 	}
 	if err := validateModelPricing(def.ModelName, def.Pricing, previous, nativeModels...); err != nil {
+		return err
+	}
+	if err := validateOfficialReferenceConfiguration(def.Kind, def.OfficialReferences); err != nil {
 		return err
 	}
 	if def.Kind == "text" {
@@ -283,6 +324,18 @@ func validateModelConfiguration(def ModelConfiguration, previous PricingValues) 
 			return errors.New("Invalid or duplicate model route")
 		}
 		seen[key] = true
+		if route.TextProtocol != "" && (def.Kind != "text" || !slices.Contains([]string{"legacy", "openai", "ycapi_fixed_lane"}, route.TextProtocol)) {
+			return errors.New("Select a supported text route protocol")
+		}
+		if route.TextProtocol == "ycapi_fixed_lane" {
+			approved, ok := ycapi.Lookup(route.UpstreamModel)
+			if !ok {
+				approved, ok = ycapi.Lookup("ycapi-" + route.UpstreamModel)
+			}
+			if !ok || approved.Kind != "text" {
+				return errors.New("Select an integrated YCAPI fixed-lane text model")
+			}
+		}
 	}
 	if def.Enabled && !slices.ContainsFunc(def.Routes, func(route ModelConfigurationRoute) bool { return route.Enabled }) {
 		return errors.New("An enabled model requires an enabled route")
@@ -334,6 +387,7 @@ func currentModelConfigurationEntry(db *gorm.DB, name string, doc ModelConfigura
 	if err := db.Where("model = ?", name).Order(commonGroupCol + ", channel_id").Find(&abilities).Error; err != nil {
 		return entry, err
 	}
+	previousRoutes := entry.Definition.Routes
 	entry.Definition.Routes = []ModelConfigurationRoute{}
 	var routeEvidence []string
 	for _, ability := range abilities {
@@ -350,7 +404,14 @@ func currentModelConfigurationEntry(db *gorm.DB, name string, doc ModelConfigura
 		if upstream == "" {
 			upstream = name
 		}
-		entry.Definition.Routes = append(entry.Definition.Routes, ModelConfigurationRoute{ChannelID: channel.Id, Group: ability.Group, UpstreamModel: upstream, Enabled: ability.Enabled})
+		route := ModelConfigurationRoute{ChannelID: channel.Id, Group: ability.Group, UpstreamModel: upstream, Enabled: ability.Enabled}
+		for _, previous := range previousRoutes {
+			if previous.ChannelID == route.ChannelID && previous.Group == route.Group {
+				route.TextProtocol = previous.TextProtocol
+				break
+			}
+		}
+		entry.Definition.Routes = append(entry.Definition.Routes, route)
 		if entry.Published == nil && ability.Enabled && channel.Status == common.ChannelStatusEnabled {
 			entry.Definition.Enabled = true
 		}
@@ -431,6 +492,7 @@ func currentModelConfigurationEntry(db *gorm.DB, name string, doc ModelConfigura
 		}
 	}
 	entry.BaseVersion = modelConfigurationBaseVersion(entry.Definition, entry.Published, routeEvidence)
+	entry.ReferenceSpecifications = BuiltinModelOfficialReferenceRows(name)
 	return entry, nil
 }
 
@@ -538,6 +600,21 @@ func SaveModelConfigurationDraft(revision, baseVersion string, def ModelConfigur
 		if entry.BaseVersion != baseVersion {
 			return ErrModelConfigurationConflict
 		}
+		// Older administrators do not send the new optional display-evidence
+		// field. Omission preserves it; an explicit inherit/disabled selection
+		// is required to remove an override.
+		if def.OfficialReferences == nil {
+			if entry.Draft != nil {
+				def.OfficialReferences = entry.Draft.Definition.OfficialReferences
+			} else {
+				def.OfficialReferences = entry.Definition.OfficialReferences
+			}
+		}
+		previous := entry.Definition
+		if entry.Draft != nil {
+			previous = entry.Draft.Definition
+		}
+		inheritMissingTextRouteProtocols(&def, previous)
 		if err := validateModelConfiguration(def, entry.Definition.Pricing); err != nil {
 			return err
 		}
@@ -553,6 +630,22 @@ func SaveModelConfigurationDraft(revision, baseVersion string, def ModelConfigur
 		publishModelConfigurationCache(committed)
 	}
 	return err
+}
+
+// Omitted optional route fields from old dashboards preserve existing bindings.
+// An explicit legacy choice can restore the original selection policy.
+func inheritMissingTextRouteProtocols(def *ModelConfiguration, previous ModelConfiguration) {
+	for i := range def.Routes {
+		if def.Routes[i].TextProtocol != "" {
+			continue
+		}
+		for _, route := range previous.Routes {
+			if route.ChannelID == def.Routes[i].ChannelID && route.Group == def.Routes[i].Group {
+				def.Routes[i].TextProtocol = route.TextProtocol
+				break
+			}
+		}
+	}
 }
 
 func isModelConfigurationOption(key string) bool {

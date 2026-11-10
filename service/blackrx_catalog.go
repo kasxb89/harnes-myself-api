@@ -315,7 +315,7 @@ func FilterUnavailableCatalogModels(names []string, groups []string) []string {
 	}
 	var abilities []model.Ability
 	if model.DB.Where("enabled = ?", true).Find(&abilities).Error != nil {
-		return names
+		return nil
 	}
 	var channelIDs []int
 	for _, ability := range abilities {
@@ -325,7 +325,7 @@ func FilterUnavailableCatalogModels(names []string, groups []string) []string {
 	}
 	channels, err := model.BlackrxCatalogChannelSnapshots(context.Background(), channelIDs)
 	if err != nil {
-		return names
+		return nil
 	}
 	allowed := make(map[string]bool)
 	seen := make(map[string]bool)
@@ -342,7 +342,7 @@ func FilterUnavailableCatalogModels(names []string, groups []string) []string {
 	}
 	filtered := make([]string, 0, len(names))
 	for _, name := range names {
-		if !seen[name] || allowed[name] {
+		if seen[name] && allowed[name] {
 			filtered = append(filtered, name)
 		}
 	}

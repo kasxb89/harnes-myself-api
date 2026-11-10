@@ -114,7 +114,7 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+	if _, ok := service.YCAPITextModel(info); ok {
 		return strings.TrimRight(info.ChannelBaseUrl, "/") + "/api/v1/model-runtime/invoke", nil
 	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
@@ -259,7 +259,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+	if _, ok := service.YCAPITextModel(info); ok {
 		// The supplier translates the native model itself. Preserve its verified
 		// reasoning fields rather than applying model-family guesses here.
 		info.SetReasoningEffort(request.ReasoningEffort)
@@ -761,7 +761,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
-	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+	if approved, ok := service.YCAPITextModel(info); ok {
 		// Wrap after parameter overrides, including body passthrough, so neither
 		// path can bypass the fixed model/lane or the final output budget.
 		var request map[string]any

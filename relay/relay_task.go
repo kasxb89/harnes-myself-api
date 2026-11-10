@@ -460,6 +460,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 		priceData = types.PriceData{Quota: quota, QuotaToPreConsume: quota, GroupRatioInfo: groupRatioInfo}
 		info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{BillingTime: billingTime.Unix(), BillingMode: billing_setting.BillingModeTieredExpr, ModelName: modelName, ExprString: exprStr, ExprHash: billingexpr.ExprHashString(exprStr), GroupRatio: groupRatioInfo.GroupRatio, EstimatedQuotaBeforeGroup: cost * common.QuotaPerUnit, EstimatedQuotaAfterGroup: quota, EstimatedTier: trace.MatchedTier, QuotaPerUnit: common.QuotaPerUnit, ExprVersion: billingexpr.ExprVersion(exprStr), TaskUsageBilling: true, UsageFacts: facts}
 	} else {
+		if !model.ModelBillingConfigured(modelName) {
+			return nil, service.TaskErrorWrapperLocal(errors.New("The selected model has no configured billing tariff"), "model_price_error", http.StatusBadRequest)
+		}
 		priceData, err = helper.ModelPriceHelperPerCall(c, info)
 		if err != nil {
 			return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)

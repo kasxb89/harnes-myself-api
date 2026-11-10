@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 
@@ -182,86 +184,108 @@ func SaveModelCapacityConfig(cfg ModelCapacityConfig) error {
 }
 
 func ResolveModelCapacity(publicModel string, groups, candidateModels []string) (EffectiveModelCapacity, error) {
-	result := EffectiveModelCapacity{}
+	results, err := ResolveModelCapacities(map[string][]string{publicModel: candidateModels}, groups)
+	return results[publicModel], err
+}
+
+// Resolve an entire catalog against one fresh database view. No capacity or
+// credential-dependent routing evidence is cached between requests.
+func ResolveModelCapacities(models map[string][]string, groups []string) (map[string]EffectiveModelCapacity, error) {
+	results := make(map[string]EffectiveModelCapacity, len(models))
+	for name := range models {
+		results[name] = EffectiveModelCapacity{}
+	}
 	common.OptionMapRWMutex.RLock()
 	marker := common.OptionMap[ModelCapacityOptionKey]
 	common.OptionMapRWMutex.RUnlock()
-	if marker == "" {
-		return result, nil
+	if marker == "" || len(models) == 0 {
+		return results, nil
 	}
 	cfg, err := ReadModelCapacityConfig()
 	if err != nil {
-		return result, err
+		return nil, err
 	}
 	groupSet := map[string]bool{}
-	for _, g := range groups {
-		groupSet[g] = true
+	for _, group := range groups {
+		groupSet[group] = true
 	}
-	candidates := map[string]bool{}
-	for _, m := range candidateModels {
-		candidates[m] = true
-	}
-	for _, r := range cfg.Routes {
-		if r.Model == publicModel {
-			result.Managed = true
-		}
-	}
-	if !result.Managed {
-		return result, nil
-	}
-	var abilities []Ability
-	if err := DB.Where(commonGroupCol+" IN ? AND model IN ? AND enabled = ?", groups, candidateModels, true).Find(&abilities).Error; err != nil {
-		return result, err
-	}
-	var channels []Channel
-	ids := []int{}
-	for _, a := range abilities {
-		ids = append(ids, a.ChannelId)
-	}
-	if len(ids) == 0 {
-		return result, nil
-	}
-	if err := DB.Where("id IN ? AND status = ?", ids, common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
-		return result, err
-	}
-	active := map[int]string{}
-	for _, ch := range channels {
-		active[ch.Id] = CapacityChannelConfigHash(&ch)
-	}
-	for _, r := range cfg.Routes {
-		if r.Model != publicModel || !groupSet[r.Group] || !candidates[r.RouteModel] || active[r.ChannelID] == "" || active[r.ChannelID] != r.ChannelConfigHash {
-			continue
-		}
-		for _, a := range abilities {
-			if a.Group == r.Group && a.Model == r.RouteModel && a.ChannelId == r.ChannelID {
-				result.Routes = append(result.Routes, r)
-				if r.ContextWindow != nil && (result.ContextWindow == nil || *r.ContextWindow < *result.ContextWindow) {
-					result.ContextWindow = r.ContextWindow
+	candidates := make(map[string]map[string]bool, len(models))
+	wanted := map[string]bool{}
+	for _, route := range cfg.Routes {
+		if names, exists := models[route.Model]; exists {
+			results[route.Model] = EffectiveModelCapacity{Managed: true}
+			if candidates[route.Model] == nil {
+				candidates[route.Model] = map[string]bool{}
+				for _, name := range names {
+					candidates[route.Model][name] = true
+					wanted[name] = true
 				}
-				if r.MaxOutputTokens != nil && (result.MaxOutputTokens == nil || *r.MaxOutputTokens < *result.MaxOutputTokens) {
-					result.MaxOutputTokens = r.MaxOutputTokens
-				}
-				break
 			}
 		}
 	}
-	// Across auto groups, an unknown field must not inflate the declaration.
-	for _, r := range result.Routes {
-		if r.ContextWindow == nil {
-			result.ContextWindow = nil
-			break
+	if len(wanted) == 0 {
+		return results, nil
+	}
+	var abilities []Ability
+	if err := DB.Where(commonGroupCol+" IN ? AND model IN ? AND enabled = ?", groups, slices.Sorted(maps.Keys(wanted)), true).Find(&abilities).Error; err != nil {
+		return nil, err
+	}
+	ids := []int{}
+	type routeKey struct {
+		group, model string
+		channel      int
+	}
+	usable := map[routeKey]bool{}
+	for _, ability := range abilities {
+		ids = append(ids, ability.ChannelId)
+		usable[routeKey{ability.Group, ability.Model, ability.ChannelId}] = true
+	}
+	if len(ids) == 0 {
+		return results, nil
+	}
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	var channels []Channel
+	if err := DB.Where("id IN ? AND status = ?", ids, common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	active := map[int]string{}
+	for _, channel := range channels {
+		active[channel.Id] = CapacityChannelConfigHash(&channel)
+	}
+	for _, route := range cfg.Routes {
+		if !groupSet[route.Group] || !candidates[route.Model][route.RouteModel] || active[route.ChannelID] == "" || active[route.ChannelID] != route.ChannelConfigHash || !usable[routeKey{route.Group, route.RouteModel, route.ChannelID}] {
+			continue
 		}
-	}
-	for _, r := range result.Routes {
-		if r.MaxOutputTokens == nil {
-			result.MaxOutputTokens = nil
-			break
+		result := results[route.Model]
+		result.Routes = append(result.Routes, route)
+		if route.ContextWindow != nil && (result.ContextWindow == nil || *route.ContextWindow < *result.ContextWindow) {
+			result.ContextWindow = route.ContextWindow
 		}
+		if route.MaxOutputTokens != nil && (result.MaxOutputTokens == nil || *route.MaxOutputTokens < *result.MaxOutputTokens) {
+			result.MaxOutputTokens = route.MaxOutputTokens
+		}
+		results[route.Model] = result
 	}
-	if result.ContextWindow != nil && result.MaxOutputTokens != nil && *result.MaxOutputTokens > *result.ContextWindow {
-		result.MaxOutputTokens = common.GetPointer(*result.ContextWindow)
+	for name, result := range results {
+		for _, route := range result.Routes {
+			if route.ContextWindow == nil {
+				result.ContextWindow = nil
+				break
+			}
+		}
+		for _, route := range result.Routes {
+			if route.MaxOutputTokens == nil {
+				result.MaxOutputTokens = nil
+				break
+			}
+		}
+		if result.ContextWindow != nil && result.MaxOutputTokens != nil && *result.MaxOutputTokens > *result.ContextWindow {
+			result.MaxOutputTokens = common.GetPointer(*result.ContextWindow)
+		}
+		results[name] = result
 	}
-	return result, nil
+	return results, nil
 }
 
 // CapacityChannelConfigHash invalidates evidence when a channel is repointed,

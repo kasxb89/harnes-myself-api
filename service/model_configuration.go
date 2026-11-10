@@ -7,6 +7,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 )
@@ -14,6 +16,56 @@ import (
 const ModelConfigurationHeader = "X-Yunshu-Model-Config-Version"
 const ModelConfigurationResultHeader = "X-Yunshu-Model-Config-Result"
 const modelConfigurationCaptureKey = "model_configuration_capture"
+
+func CheckModelBillingConfiguration(c *gin.Context, name string) *types.NewAPIError {
+	if model.ModelBillingConfigured(name) {
+		return nil
+	}
+	return modelConfigurationRejection(c, "model_price_unavailable")
+}
+
+func BindCapturedTextRoutes(c *gin.Context, info *relaycommon.RelayInfo) {
+	info.TextRouteBindings = nil
+	value, exists := c.Get(modelConfigurationCaptureKey)
+	if !exists {
+		return
+	}
+	capture := value.(modelConfigurationCapture)
+	if capture.Record == nil || capture.Record.Definition.Kind != "text" {
+		return
+	}
+	info.TextRouteBindings = make([]relaycommon.TextRouteBinding, 0, len(capture.Record.Definition.Routes))
+	for _, route := range capture.Record.Definition.Routes {
+		if route.Enabled {
+			info.TextRouteBindings = append(info.TextRouteBindings, relaycommon.TextRouteBinding{ChannelID: route.ChannelID, Group: route.Group, UpstreamModel: route.UpstreamModel, Protocol: route.TextProtocol})
+		}
+	}
+}
+
+// An explicit binding chooses the existing host adapter, independently of the
+// stable public model ID. Legacy records retain their original prefix policy.
+// The captured routes survive configuration changes and channel retries.
+func YCAPITextModel(info *relaycommon.RelayInfo) (ycapi.Model, bool) {
+	if info.TextRouteBindings != nil {
+		for _, route := range info.TextRouteBindings {
+			if info.ChannelMeta == nil || route.ChannelID != info.ChannelId || info.UsingGroup != "" && info.UsingGroup != "auto" && route.Group != info.UsingGroup {
+				continue
+			}
+			switch route.Protocol {
+			case "openai":
+				return ycapi.Model{}, false
+			case "ycapi_fixed_lane":
+				entry, ok := ycapi.Lookup(route.UpstreamModel)
+				if !ok {
+					entry, ok = ycapi.Lookup("ycapi-" + route.UpstreamModel)
+				}
+				return entry, ok && entry.Kind == "text"
+			}
+		}
+	}
+	entry, ok := ycapi.Lookup(info.OriginModelName)
+	return entry, ok && entry.Kind == "text"
+}
 
 type modelConfigurationCapture struct {
 	Name, Version string

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/tidwall/sjson"
@@ -72,6 +73,10 @@ func PublishModelConfigurations(revision string, names []string, rollback string
 		}
 		capacityRaw = capacity.Value
 		for _, def := range definitions {
+			inheritMissingTextRouteProtocols(&def, doc.Published[def.ModelName].Definition)
+			if def.OfficialReferences == nil {
+				def.OfficialReferences = doc.Published[def.ModelName].Definition.OfficialReferences
+			}
 			if err := validateModelConfiguration(def, modelPricingValues(prices, def.ModelName)); err != nil {
 				return err
 			}
@@ -160,6 +165,9 @@ func applyModelConfigurationRoutes(tx *gorm.DB, def ModelConfiguration, raw stri
 		}
 		if !slices.Contains(channel.GetGroups(), route.Group) {
 			return raw, errors.New("Model route group is not configured on its channel")
+		}
+		if route.TextProtocol == "ycapi_fixed_lane" && channel.Type != constant.ChannelTypeOpenAI {
+			return raw, errors.New("YCAPI fixed-lane text requires an OpenAI channel adapter")
 		}
 		if def.Enabled && route.Enabled && channel.Status == common.ChannelStatusEnabled {
 			enabled = true

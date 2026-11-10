@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/codebloom"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -63,6 +64,7 @@ func resolveRequestPrice(c *gin.Context, info *relaycommon.RelayInfo) (func(), *
 	if configErr != nil {
 		return func() {}, configErr
 	}
+	service.BindCapturedTextRoutes(c, info)
 	if _, err := helper.ModelPriceHelper(c, info, tokens, meta); err != nil {
 		release()
 		return func() {}, types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
@@ -131,6 +133,9 @@ func ReprepareFallbackBilling(c *gin.Context, info *relaycommon.RelayInfo, model
 
 func checkModelBillingAvailability(c *gin.Context, name string) *types.NewAPIError {
 	if codebloom.PubliclyAvailable(name) {
+		if !model.ModelBillingConfigured(name) {
+			return service.CheckModelBillingConfiguration(c, name)
+		}
 		return nil
 	}
 	return types.WithOpenAIError(types.OpenAIError{Message: i18n.T(c, "The selected model is not available"), Type: "invalid_request_error", Code: "model_not_available"}, http.StatusBadRequest, types.ErrOptionWithSkipRetry())

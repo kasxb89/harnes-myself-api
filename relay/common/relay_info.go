@@ -80,6 +80,13 @@ type TokenCountMeta struct {
 	estimatePromptTokens int
 }
 
+// TextRouteBinding is host configuration captured before reservation. It is
+// neither a client-supplied override nor a field sent to a provider.
+type TextRouteBinding struct {
+	ChannelID                      int
+	Group, UpstreamModel, Protocol string
+}
+
 type RelayInfo struct {
 	TokenId           int
 	TokenKey          string
@@ -98,6 +105,7 @@ type RelayInfo struct {
 	UsePrice               bool
 	RelayMode              int
 	OriginModelName        string
+	TextRouteBindings      []TextRouteBinding
 	ResponseModel          *ResponseModel
 
 	// BillingModelName is the pricing identity for this request. It is kept

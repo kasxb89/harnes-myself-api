@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"errors"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -25,7 +27,16 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 		}
 	}
 	result := make([]any, 0, len(rows))
-	visible := map[string]model.PublishedModelConfiguration{}
+	versions := model.ModelExecutionConfigurationVersions(records)
+	names := make([]string, 0, len(records))
+	for name := range records {
+		names = append(names, name)
+	}
+	capacities, err := service.ModelCapacitiesForGroups(names, groups)
+	if err != nil {
+		return nil, "", err
+	}
+	visible := map[string]string{}
 	for _, raw := range rows {
 		encoded, err := common.Marshal(raw)
 		if err != nil {
@@ -73,10 +84,12 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 			row["parameters"] = parameters
 		}
 		if record.Definition.Kind == "text" {
-			capacity, err := service.ModelCapacityForGroups(name, groups)
-			if err != nil {
-				return nil, "", err
+			capacity := capacities[name]
+			if capacity.Managed && len(capacity.Routes) == 0 {
+				continue
 			}
+			delete(row, "context_window")
+			delete(row, "max_output_tokens")
 			if capacity.ContextWindow != nil {
 				row["context_window"] = *capacity.ContextWindow
 			}
@@ -88,14 +101,24 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 		// fields/usage expression above are authoritative; regenerate finite text-only
 		// specification rows with the same current engine instead of keeping stale tables.
 		delete(row, "retail_price_rows")
+		prices := unifiedTextReferenceRetailRows(record, currentPrices[name])
 		if parameters, ok := row["parameters"].(map[string]any); ok {
-			if prices := unifiedModelRetailRows(c.Request.Context(), name, record, parameters, groups); len(prices) > 0 {
-				row["retail_price_rows"] = prices
+			if record.Definition.Kind != "text" {
+				prices = unifiedModelRetailRows(c.Request.Context(), name, record, parameters, groups, versions[name])
 			}
 		}
-		row["model_config_version"] = model.ModelExecutionConfigurationVersion(name, record)
-		visible[name] = record
+		if len(prices) > 0 {
+			row["retail_price_rows"] = applyOfficialPriceReferences(name, record.Definition.Kind, record.Definition.OfficialReferences, prices)
+		}
+		if record.Definition.Kind != "text" && len(prices) == 0 {
+			continue
+		}
+		if versions[name] == "" {
+			return nil, "", errors.New("Model configuration routing snapshot is unavailable")
+		}
+		row["model_config_version"] = versions[name]
+		visible[name] = versions[name]
 		result = append(result, row)
 	}
-	return result, model.ModelConfigurationRevision(visible), nil
+	return result, model.ModelConfigurationRevisionFromVersions(visible), nil
 }

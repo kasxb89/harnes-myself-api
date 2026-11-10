@@ -39,6 +39,9 @@ export const unifiedModelFormSchema = z
           group: z.string().trim().min(1, unifiedRequired).max(64),
           upstream_model: z.string().trim().min(1, unifiedRequired).max(255),
           enabled: z.boolean(),
+          text_protocol: z
+            .enum(['', 'legacy', 'openai', 'ycapi_fixed_lane'])
+            .optional(),
         })
       )
       .max(128),

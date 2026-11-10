@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,15 @@ func TestModelCapacityDirectoryAndPersistence(t *testing.T) {
 	previous := operation_setting.SelfUseModeEnabled
 	operation_setting.SelfUseModeEnabled = true
 	t.Cleanup(func() { operation_setting.SelfUseModeEnabled = previous })
+	// This test exercises capacity, not the unpriced self-use fallback. A
+	// selectable model now needs an actual tariff, including an explicit zero.
+	previousRatios := ratio_setting.ModelRatio2JSONString()
+	ratios := ratio_setting.GetModelRatioCopy()
+	ratios["joint-small"] = 0.5
+	encodedRatios, err := common.Marshal(ratios)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(encodedRatios)))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousRatios)) })
 	previousMemory := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = false
 	t.Cleanup(func() { common.MemoryCacheEnabled = previousMemory })

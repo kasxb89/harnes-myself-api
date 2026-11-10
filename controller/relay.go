@@ -164,6 +164,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		return
 	}
+	if newAPIError = service.CheckModelBillingConfiguration(c, relayInfo.OriginModelName); newAPIError != nil {
+		service.MarkTextModelUnavailableBeforeSubmit(c, relayInfo.OriginModelName)
+		return
+	}
 	if newAPIError = relay.PrepareRequestBilling(c, relayInfo); newAPIError != nil {
 		return
 	}

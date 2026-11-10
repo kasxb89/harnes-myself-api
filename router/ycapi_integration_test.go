@@ -1059,6 +1059,14 @@ func TestYcapiEffectiveCapacityDirectoryAndWireDatabase(t *testing.T) {
 	require.NoError(t, f.db.Create(&model.Ability{Group: "vip", Model: modelID, ChannelId: channel.Id, Enabled: true}).Error)
 	legacyBase := "https://legacy.fixture"
 	require.NoError(t, (&model.Channel{Id: 8890, Type: constant.ChannelTypeOpenAI, Key: "synthetic-legacy", Name: "legacy without capacity", Models: "capacity-legacy,ys-1.0", Group: "default,vip", Status: common.ChannelStatusEnabled, BaseURL: &legacyBase}).Insert())
+	// Legacy capacity remains optional, while selectable billing is explicit.
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	legacyPrices := ratio_setting.GetModelPriceCopy()
+	legacyPrices["capacity-legacy"], legacyPrices["ys-1.0"] = 0.01, 0.01
+	encodedPrices, err := common.Marshal(legacyPrices)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(encodedPrices)))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(previousPrices)) })
 	candidates, err := codebloom.Models()
 	require.NoError(t, err)
 	var candidateIDs []string

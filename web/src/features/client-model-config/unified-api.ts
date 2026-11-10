@@ -28,6 +28,30 @@ export type UnifiedModelRoute = {
   group: string
   upstream_model: string
   enabled: boolean
+  text_protocol?: 'openai' | 'ycapi_fixed_lane' | 'legacy' | ''
+}
+export type OfficialPriceReference = {
+  schema_version: 1
+  official_cny: string
+  currency: 'CNY'
+  model: string
+  unit: string
+  source_url: string
+  checked_at: string
+  conditions: string
+  source_currency: 'CNY' | 'USD'
+  usd_cny?: string
+  official_total_cny?: string
+}
+export type OfficialReferenceRow = {
+  params: Record<string, string | number | boolean | null>
+  direction?: 'input' | 'output'
+  unit: string
+  official_reference?: OfficialPriceReference
+}
+export type OfficialReferenceConfiguration = {
+  mode: 'inherit' | 'override' | 'disabled'
+  rows?: OfficialReferenceRow[]
 }
 export type UnifiedModelDefinition = {
   model_name: string
@@ -41,6 +65,7 @@ export type UnifiedModelDefinition = {
   parameters?: Record<string, unknown>
   pricing: PricingValues
   cost_rules?: Record<string, unknown>[]
+  official_references?: OfficialReferenceConfiguration
   source: string
 }
 export type UnifiedModelEntry = {
@@ -48,6 +73,7 @@ export type UnifiedModelEntry = {
   base_version: string
   definition: UnifiedModelDefinition
   legacy_parameters?: Record<string, unknown>
+  reference_specifications?: OfficialReferenceRow[]
   published?: {
     version: string
     published_at: number

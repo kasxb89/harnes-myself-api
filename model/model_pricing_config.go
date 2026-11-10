@@ -25,6 +25,54 @@ import (
 // names. A missing key inherits the engine's default; an explicit zero is free.
 type PricingValues map[string]any
 
+// ModelBillingConfigured is shared by selectable catalogs and pre-admission
+// checks. An explicit zero is a configured free tariff; a missing tariff is
+// never interpreted as zero or accepted through the self-use fallback.
+func ModelBillingConfigured(name string) bool {
+	legacy := false
+	if price, exists := ratio_setting.GetModelPrice(name, false); exists {
+		legacy = price >= 0 && !math.IsNaN(price) && !math.IsInf(price, 0)
+	} else if ratio, _, _ := ratio_setting.GetModelRatio(name); ratio_setting.HasConfiguredModelRatio(ratio_setting.FormatMatchingModelName(name)) {
+		legacy = ratio >= 0 && !math.IsNaN(ratio) && !math.IsInf(ratio, 0)
+	}
+	generation := jsplugin.DefaultRegistry.Generation()
+	providers := generation.PluginsByModel(name)
+	native := ""
+	if target, ok := ResolveTaskModelAlias(generation, name); ok {
+		native = target.Declared
+		if provider, ok := generation.Get(target.PluginKey); ok && len(providers) == 0 {
+			providers = append(providers, provider)
+		}
+	}
+	for _, provider := range providers {
+		expr, configured := billing_setting.ResolveTaskBillingExpr(provider.Meta.Key, name, native)
+		usageModel := name
+		if native != "" {
+			usageModel = native
+		}
+		schema, _ := provider.Meta.UsageForModel(usageModel)
+		if configured {
+			if billing_setting.TaskExprCompatible(expr, schema) {
+				return true
+			}
+		} else if billing_setting.GetBillingMode(name) != billing_setting.BillingModeTieredExpr && legacy {
+			return true
+		}
+	}
+	if len(providers) > 0 {
+		return false
+	}
+	if billing_setting.GetBillingMode(name) == billing_setting.BillingModeTieredExpr {
+		expr, configured := billing_setting.GetBillingExpr(name)
+		if !configured || strings.TrimSpace(expr) == "" {
+			return false
+		}
+		_, err := billingexpr.CompileFromCache(expr)
+		return err == nil
+	}
+	return legacy
+}
+
 type ModelPricingChange struct {
 	ModelName       string        `json:"model_name"`
 	ExpectedVersion string        `json:"expected_version"`

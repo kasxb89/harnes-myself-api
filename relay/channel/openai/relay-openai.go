@@ -125,7 +125,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var streamFunctionCallNames []string
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" && data != "" && data != "[DONE]" {
+		if _, ok := service.YCAPITextModel(info); ok && data != "" && data != "[DONE]" {
 			clean, skip, err := ycapi.PublicChatStreamResponse([]byte(data), func(message string) string { return i18n.T(c, message) })
 			if err != nil {
 				sr.Error(fmt.Errorf("invalid upstream chat stream frame"))

@@ -33,6 +33,14 @@ func ModelCapacityForGroups(name string, groups []string) (model.EffectiveModelC
 	return model.ResolveModelCapacity(name, groups, append([]string{name}, operation_setting.GetModelFallbackCandidates(name)...))
 }
 
+func ModelCapacitiesForGroups(names []string, groups []string) (map[string]model.EffectiveModelCapacity, error) {
+	candidates := make(map[string][]string, len(names))
+	for _, name := range names {
+		candidates[name] = append([]string{name}, operation_setting.GetModelFallbackCandidates(name)...)
+	}
+	return model.ResolveModelCapacities(candidates, groups)
+}
+
 func CapacityAccountGroups(c *gin.Context) []string {
 	group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
@@ -79,13 +87,17 @@ func capacityError(c *gin.Context, code, message string) *types.NewAPIError {
 
 // Clamp before quota reservation. Unknown metadata leaves the old path alone.
 func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	BindCapturedTextRoutes(c, info)
 	if !codebloom.PubliclyAvailable(info.OriginModelName) {
 		return capacityError(c, "model_not_available", "The selected model is not available")
 	}
 	if candidate, ok := codebloom.Lookup(info.OriginModelName); ok && candidate.Kind != "text" {
 		return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	approved, catalogued := ycapi.Lookup(info.OriginModelName)
+	if candidate, ok := ycapi.Lookup(info.OriginModelName); ok && candidate.Kind != "text" {
+		return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	approved, catalogued := YCAPITextModel(info)
 	if ycapi.IsExcludedChatModel(info.OriginModelName) {
 		return capacityError(c, "model_not_available", "The selected model is not included in the current catalog")
 	}
@@ -330,7 +342,7 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 		return capacityError(c, "invalid_capacity_request", i18n.MsgCapacityJsonRequired)
 	}
 	var chatEnvelope map[string]any
-	if approved, ok := ycapi.Lookup(info.OriginModelName); ok && approved.Kind == "text" {
+	if approved, ok := YCAPITextModel(info); ok {
 		params, valid := object["params"].(map[string]any)
 		if !valid || object["model_id"] != approved.UpstreamID || object["modality"] != "chat" || object["lane_id"] != approved.Prices[0].LaneID {
 			return capacityError(c, "model_route_unavailable", "The outgoing request does not match its verified model route")

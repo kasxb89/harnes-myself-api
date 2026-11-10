@@ -22,7 +22,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -220,16 +219,6 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 func ListModels(c *gin.Context, modelType int) {
 	c.Header("Cache-Control", "private, no-store")
 	service.RefreshBlackrxCatalog(c.Request.Context())
-	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
-	if !acceptUnsetRatioModel {
-		userId := c.GetInt("id")
-		if userId > 0 {
-			userSettings, _ := model.GetUserSetting(userId, false)
-			if userSettings.AcceptUnsetRatioModel {
-				acceptUnsetRatioModel = true
-			}
-		}
-	}
 
 	userModelNames := make([]string, 0)
 	groups, err := getModelListGroups(c)
@@ -261,7 +250,7 @@ func ListModels(c *gin.Context, modelType int) {
 				continue
 			}
 		}
-		if !acceptUnsetRatioModel && !helper.HasModelBillingConfig(modelName) {
+		if !helper.HasModelBillingConfig(modelName) {
 			continue
 		}
 		userModelNames = append(userModelNames, modelName)
@@ -272,12 +261,13 @@ func ListModels(c *gin.Context, modelType int) {
 		ownerByModel = getPreferredModelOwners(userModelNames, ownerGroups)
 	}
 	userOpenAiModels := make([]dto.OpenAIModels, 0, len(userModelNames))
+	capacities, err := service.ModelCapacitiesForGroups(userModelNames, ownerGroups)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
+		return
+	}
 	for _, modelName := range userModelNames {
-		capacity, err := service.ModelCapacityForGroups(modelName, ownerGroups)
-		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
-			return
-		}
+		capacity := capacities[modelName]
 		if capacity.Managed && len(capacity.Routes) == 0 {
 			continue
 		}

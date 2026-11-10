@@ -59,11 +59,16 @@ func WithEffectiveTextCatalogCapacity(id string, parameters map[string]any, capa
 // shared across users, so neither its slice nor its parameter maps are edited.
 func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string) ([]model.Pricing, error) {
 	result := make([]model.Pricing, 0, len(pricing))
+	names := make([]string, 0, len(pricing))
 	for _, item := range pricing {
-		capacity, err := ModelCapacityForGroups(item.ModelName, groups)
-		if err != nil {
-			return nil, err
-		}
+		names = append(names, item.ModelName)
+	}
+	capacities, err := ModelCapacitiesForGroups(names, groups)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range pricing {
+		capacity := capacities[item.ModelName]
 		if capacity.Managed && len(capacity.Routes) == 0 {
 			continue
 		}

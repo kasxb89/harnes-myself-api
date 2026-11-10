@@ -50,6 +50,11 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.LOG_DB = db
 
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	// Directory fixtures declare real enabled channels, rather than relying on
+	// orphaned abilities being kept by the previous permissive display filter.
+	for _, id := range []int{1, 2} {
+		require.NoError(t, db.Create(&model.Channel{Id: id, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Name: "Model list fixture", Key: "synthetic-list-key", Group: "default,vip,unavailable"}).Error)
+	}
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -138,6 +143,22 @@ func withSelfUseModeEnabled(t *testing.T) {
 	operation_setting.SelfUseModeEnabled = true
 	t.Cleanup(func() {
 		operation_setting.SelfUseModeEnabled = original
+	})
+}
+
+func withModelListFixtureTariffs(t *testing.T, names ...string) {
+	t.Helper()
+	previous := ratio_setting.ModelPrice2JSONString()
+	prices := ratio_setting.GetModelPriceCopy()
+	for _, name := range names {
+		prices[name] = 0.01
+	}
+	encoded, err := common.Marshal(prices)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(encoded)))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(previous))
+		model.InvalidatePricingCache()
 	})
 }
 
@@ -326,6 +347,7 @@ func TestListModelsAppliesSavedDisplayNameWithoutChangingIdentity(t *testing.T) 
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.Option{}))
 	const id = "zz-editable-label"
+	withModelListFixtureTariffs(t, id)
 	require.NoError(t, db.Create(&model.User{Id: 1001, Username: "label-user", Password: "password", Group: "default", Status: common.UserStatusEnabled}).Error)
 	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: id, ChannelId: 1, Enabled: true}).Error)
 	common.OptionMapRWMutex.Lock()
@@ -367,6 +389,7 @@ func TestListModelsAppliesSavedDisplayNameWithoutChangingIdentity(t *testing.T) 
 
 func TestListModelsUsesAdvancedCustomEndpointTypesFromPricingCache(t *testing.T) {
 	withSelfUseModeEnabled(t)
+	withModelListFixtureTariffs(t, "gemini-3.5-flash")
 	db := setupModelListControllerTestDB(t)
 
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
@@ -476,6 +499,7 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 }
 
 func TestListModelsTokenLimitUsesResolvedCustomAutoGroups(t *testing.T) {
+	withModelListFixtureTariffs(t, "zz-vip-allowed", "zz-vip-denied", "zz-default-outside-snapshot")
 	withSelfUseModeEnabled(t)
 	originalMax := setting.GetMaxTokenAutoGroups()
 	originalUsableGroups := setting.UserUsableGroups2JSONString()

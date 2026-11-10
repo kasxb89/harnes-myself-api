@@ -47,9 +47,11 @@ import type {
   UnifiedModelDefinition,
   UnifiedModelEntry,
   UnifiedModelSnapshot,
+  OfficialReferenceConfiguration,
 } from '../unified-api'
 import { CostRulesTable } from './cost-rules-table'
 import { MediaParametersForm } from './media-parameters-form'
+import { OfficialReferencesForm } from './official-references-form'
 
 export function UnifiedModelForm(props: {
   entry: UnifiedModelEntry
@@ -73,6 +75,10 @@ export function UnifiedModelForm(props: {
   )
   const definition = props.entry.draft?.definition ?? props.entry.definition
   const [priceDirty, setPriceDirty] = useState(false)
+  const [officialReferences, setOfficialReferences] = useState<
+    OfficialReferenceConfiguration | undefined
+  >(definition.official_references)
+  const [referenceDirty, setReferenceDirty] = useState(false)
   const onDirtyChange = props.onDirtyChange
   const form = useForm<UnifiedModelFormValues>({
     resolver: zodResolver(unifiedModelFormSchema),
@@ -102,12 +108,23 @@ export function UnifiedModelForm(props: {
     [definition]
   )
   useEffect(
-    () => onDirtyChange(form.formState.isDirty || priceDirty),
-    [form.formState.isDirty, priceDirty, onDirtyChange]
+    () => onDirtyChange(form.formState.isDirty || priceDirty || referenceDirty),
+    [form.formState.isDirty, priceDirty, referenceDirty, onDirtyChange]
   )
   const persist = form.handleSubmit(async (values) => {
     form.clearErrors('root')
     try {
+      if (
+        containerRef.current?.querySelector(
+          '[data-official-reference-invalid="true"]'
+        )
+      ) {
+        throw new Error(
+          t(
+            'Complete the official price, public HTTPS source, and checked date before saving.'
+          )
+        )
+      }
       if (
         containerRef.current?.querySelector('[data-generation-invalid="true"]')
       ) {
@@ -183,6 +200,7 @@ export function UnifiedModelForm(props: {
         source: values.source,
         pricing: nextPricing,
         cost_rules: costs as Record<string, unknown>[],
+        official_references: officialReferences,
       }
       if (values.kind === 'text') {
         next.context_window = Number.isFinite(values.context_window)
@@ -354,6 +372,39 @@ export function UnifiedModelForm(props: {
                 {t('Remove route')}
               </Button>
             </div>
+            {kind === 'text' && (
+              <div className='space-y-2 sm:col-span-2'>
+                <Label htmlFor={`unified-protocol-${index}`}>
+                  {t('Text route protocol')}
+                </Label>
+                <Controller
+                  control={form.control}
+                  name={`routes.${index}.text_protocol`}
+                  render={({ field }) => (
+                    <ComboboxInput
+                      id={`unified-protocol-${index}`}
+                      value={field.value ?? ''}
+                      onValueChange={field.onChange}
+                      options={[
+                        {
+                          value: '',
+                          label: t('Preserve existing protocol selection'),
+                        },
+                        {
+                          value: 'legacy',
+                          label: t('Use original model-based protocol'),
+                        },
+                        { value: 'openai', label: t('OpenAI-compatible text') },
+                        {
+                          value: 'ycapi_fixed_lane',
+                          label: t('YCAPI integrated fixed-lane text'),
+                        },
+                      ]}
+                    />
+                  )}
+                />
+              </div>
+            )}
           </div>
         ))}
         <Button
@@ -500,6 +551,16 @@ export function UnifiedModelForm(props: {
           />
         )}
       </section>
+      <OfficialReferencesForm
+        value={officialReferences}
+        specifications={props.entry.reference_specifications ?? []}
+        modelName={definition.model_name}
+        disabled={props.pending}
+        onChange={(value) => {
+          setOfficialReferences(value)
+          setReferenceDirty(true)
+        }}
+      />
       <SettingsSection title={t('Procurement costs in CNY')}>
         <p className='text-muted-foreground text-sm'>
           {t(

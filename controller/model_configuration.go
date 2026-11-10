@@ -32,6 +32,7 @@ func GetModelConfiguration(c *gin.Context) {
 		modelConfigurationError(c, err)
 		return
 	}
+	populateOfficialReferenceSpecifications(&snapshot)
 	c.Header("Cache-Control", "private, no-store")
 	common.ApiSuccess(c, snapshot)
 }

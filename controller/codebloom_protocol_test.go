@@ -139,6 +139,17 @@ func TestCodeBloomPendingCatalogFenceDatabase(t *testing.T) {
 		"ys-grok-imagine-image":             "0.2125",
 		"ys-gemini-3.1-flash-image-preview": "0.25",
 	}
+	// The display snapshot is not proof of a configured charging tariff.
+	// Give these qualified synthetic routes explicit per-request prices.
+	previousPrices := ratio_setting.ModelPrice2JSONString()
+	configuredPrices := ratio_setting.GetModelPriceCopy()
+	for id := range retail {
+		configuredPrices[id] = 0.01
+	}
+	encodedPrices, err := common.Marshal(configuredPrices)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(encodedPrices)))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(previousPrices)) })
 	for id := range retail {
 		require.NoError(t, db.Create(&model.Ability{Group: "default", Model: id, ChannelId: channel.Id, Enabled: true}).Error)
 	}

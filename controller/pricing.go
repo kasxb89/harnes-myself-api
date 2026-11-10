@@ -72,7 +72,7 @@ func GetPricing(c *gin.Context) {
 	}
 	filteredPricing := make([]model.Pricing, 0, len(pricing))
 	for _, item := range pricing {
-		if available[item.ModelName] {
+		if available[item.ModelName] && model.ModelBillingConfigured(item.ModelName) {
 			filteredPricing = append(filteredPricing, item)
 		}
 	}

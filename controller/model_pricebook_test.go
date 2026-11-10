@@ -13,11 +13,57 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/codebloom"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm/clause"
 )
+
+func TestOfficialReferenceMediaInheritanceMatchesNativeSpecifications(t *testing.T) {
+	for _, tc := range []struct{ name, kind string }{{"ycapi-gemini-3-pro-image", "image"}, {"ycapi-minimax-h3", "video"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			inherited := model.BuiltinModelOfficialReferenceRows(tc.name)
+			require.NotEmpty(t, inherited)
+			matches := 0
+			for _, spec := range unifiedRetailSpecifications(ycapi.LegacyClientParameters(tc.name)) {
+				retail := []map[string]any{{"params": spec, "unit": "CNY / " + map[string]string{"image": "image", "video": "second"}[tc.kind], "retail_cny": "1"}}
+				projected := applyOfficialPriceReferences(tc.name, tc.kind, nil, retail)
+				if _, exists := projected[0]["official_reference"]; !exists {
+					continue
+				}
+				matches++
+				// A retail edit preserves the dated reference for this exact spec.
+				retail[0]["retail_cny"] = "2"
+				changed := applyOfficialPriceReferences(tc.name, tc.kind, nil, retail)
+				assert.Equal(t, projected[0]["official_reference"], changed[0]["official_reference"])
+				assert.Equal(t, "2", changed[0]["retail_cny"])
+				withdrawn := applyOfficialPriceReferences(tc.name, tc.kind, &model.ModelOfficialReferenceConfiguration{Mode: "disabled"}, changed)
+				assert.NotContains(t, withdrawn[0], "official_reference")
+				assert.Contains(t, changed[0], "official_reference", "projection does not mutate cached input rows")
+				bad := map[string]any{}
+				for key, value := range spec {
+					bad[key] = value
+				}
+				bad["resolution"] = "unreviewed-specification"
+				retail[0]["params"] = bad
+				assert.NotContains(t, applyOfficialPriceReferences(tc.name, tc.kind, nil, retail)[0], "official_reference")
+			}
+			require.Positive(t, matches, "at least one actual native specification must inherit its reviewed reference")
+		})
+	}
+}
+
+func TestOfficialReferenceLinearTextTariffsRejectContextAndFixedGuesses(t *testing.T) {
+	input, output, ok := linearTextTariff(`tier("base", p * 1.25 + c * 5 + cr * 0.1)`)
+	require.True(t, ok)
+	assert.Equal(t, "1.25", input.String())
+	assert.Equal(t, "5", output.String())
+	for _, expression := range []string{`p * c`, `len > 1000 ? tier("long", p*2+c*4) : tier("base", p+c)`, `tier("base", fixed(0.1))`, `p + c + 1`, `p * (1 / c)`, `p * header("x-price")`} {
+		_, _, ok := linearTextTariff(expression)
+		assert.False(t, ok, expression)
+	}
+}
 
 func TestConfiguredModelPricebookDatabase(t *testing.T) {
 	kind := os.Getenv("TEST_MODEL_PROFIT_DIALECT")

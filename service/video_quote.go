@@ -83,6 +83,9 @@ func QuoteVideo(c *gin.Context, request *types.VideoQuoteRequest) (*types.VideoQ
 	if apiErr := CaptureModelConfiguration(c, request.Model); apiErr != nil {
 		return nil, &types.VideoQuoteError{Code: string(apiErr.GetErrorCode()), Message: apiErr.Error(), StatusCode: apiErr.StatusCode}
 	}
+	if !model.ModelBillingConfigured(request.Model) {
+		return nil, unavailable
+	}
 	generation := jsplugin.DefaultRegistry.Generation()
 	pricing, err := snapshotVideoQuotePricing(c, request.Model, generation)
 	if err != nil || len(pricing.Candidates) == 0 {

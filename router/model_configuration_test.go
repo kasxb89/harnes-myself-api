@@ -652,6 +652,15 @@ func TestUnifiedModelConfigurationExistingH3AdmissionCompletesAfterChannelExtens
 	})
 	assert.Equal(t, 1, f.occupied(t))
 	assert.Equal(t, 1, f.posts)
+	// New-submission guards must never be applied to a previously accepted
+	// canonical task, even after its price and public route are withdrawn.
+	currentPrices := ratio_setting.GetModelPriceCopy()
+	delete(currentPrices, "MiniMax-H3")
+	missingPrice, err := common.Marshal(currentPrices)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(string(missingPrice)))
+	assert.False(t, model.ModelBillingConfigured("MiniMax-H3"))
+	require.NoError(t, f.db.Model(&model.Ability{}).Where("model = ?", "MiniMax-H3").Update("enabled", false).Error)
 	readable := unifiedRequest(t, f, "GET", "/v1/tasks/"+id, "", "")
 	require.Equal(t, 200, readable.Code, readable.Body.String())
 	records = append(records, unifiedHTTPFixture(t, f, "old-h3-readable-after-model-addition", readable))

@@ -38,18 +38,17 @@ var modelRetailCache = struct {
 // The caller holds the configuration read guard. These are the same ungrouped
 // CNY tariffs as the existing public retail rows, for text-only input. This path
 // can decode and meter a request; it has no credentials, submission or funding.
-func unifiedModelRetailRows(ctx context.Context, name string, record model.PublishedModelConfiguration, parameters map[string]any, groups []string) []map[string]any {
+func unifiedModelRetailRows(ctx context.Context, name string, record model.PublishedModelConfiguration, parameters map[string]any, groups []string, version string) []map[string]any {
 	if record.Definition.Kind != "image" && record.Definition.Kind != "video" {
 		return nil
 	}
-	version := model.ModelExecutionConfigurationVersion(name, record)
 	encoded, err := common.Marshal([]any{version, parameters, groups})
 	if err != nil || version == "" {
 		return nil
 	}
 	key := string(encoded)
 	modelRetailCache.Lock()
-	cached, exists := modelRetailCache.entries[name]
+	cached, exists := modelRetailCache.entries[key]
 	modelRetailCache.Unlock()
 	if exists && cached.version == key && time.Since(cached.at) < 15*time.Second {
 		return cached.rows
@@ -60,6 +59,7 @@ func unifiedModelRetailRows(ctx context.Context, name string, record model.Publi
 	for _, spec := range unifiedRetailSpecifications(parameters) {
 		var agreed string
 		valid, candidates := true, 0
+		allFree := true
 		for _, route := range record.Definition.Routes {
 			if !route.Enabled || len(groups) > 0 && !slices.Contains(groups, route.Group) {
 				continue
@@ -87,12 +87,13 @@ func unifiedModelRetailRows(ctx context.Context, name string, record model.Publi
 					continue
 				}
 				matched = true
-				price, ok := unifiedRetailSpecificationPrice(ctx, name, route.UpstreamModel, channel, plugin, protocol, path, binding.Operation.Name, spec, record.Definition.Kind)
+				price, free, ok := unifiedRetailSpecificationPrice(ctx, name, route.UpstreamModel, channel, plugin, protocol, path, binding.Operation.Name, spec, record.Definition.Kind)
 				if !ok || agreed != "" && agreed != price {
 					valid = false
 					break
 				}
 				agreed = price
+				allFree = allFree && free
 				candidates++
 			}
 			if !matched {
@@ -105,11 +106,20 @@ func unifiedModelRetailRows(ctx context.Context, name string, record model.Publi
 		if !valid || candidates == 0 {
 			continue
 		}
+		// A positive tariff rounded below one quota unit is not proof of a
+		// configured free model, and must not become a selectable zero price.
+		if agreed == "0" && !allFree {
+			continue
+		}
 		params := maps.Clone(spec)
 		if _, present := params["mode"]; !present {
 			params["mode"] = "text_to_" + record.Definition.Kind
 		}
-		rows = append(rows, map[string]any{"params": params, "unit": "CNY / " + map[string]string{"image": "image", "video": "second"}[record.Definition.Kind], "currency": "CNY", "retail_cny": agreed})
+		row := map[string]any{"params": params, "unit": "CNY / " + map[string]string{"image": "image", "video": "second"}[record.Definition.Kind], "currency": "CNY", "retail_cny": agreed}
+		if allFree {
+			row["is_free"] = true
+		}
+		rows = append(rows, row)
 	}
 	if ctx.Err() != nil {
 		return nil
@@ -118,31 +128,31 @@ func unifiedModelRetailRows(ctx context.Context, name string, record model.Publi
 	if len(modelRetailCache.entries) >= 512 {
 		clear(modelRetailCache.entries)
 	}
-	modelRetailCache.entries[name] = modelRetailCacheEntry{version: key, at: time.Now(), rows: rows}
+	modelRetailCache.entries[key] = modelRetailCacheEntry{version: key, at: time.Now(), rows: rows}
 	modelRetailCache.Unlock()
 	return rows
 }
 
-func unifiedRetailSpecificationPrice(ctx context.Context, name, native string, channel model.Channel, plugin *jsplugin.LoadedPlugin, protocol, path, operation string, spec map[string]any, kind string) (string, bool) {
+func unifiedRetailSpecificationPrice(ctx context.Context, name, native string, channel model.Channel, plugin *jsplugin.LoadedPlugin, protocol, path, operation string, spec map[string]any, kind string) (string, bool, bool) {
 	request := maps.Clone(spec)
 	request["model"] = name
 	request["prompt"] = "Generation tariff estimate"
 	pc := jsplugin.ProtocolRequestContext{RouteRequestContext: jsplugin.RouteRequestContext{Path: path, Method: "POST", Body: map[string]any{"kind": "json", "value": request}}, Model: name, UpstreamModel: native, Protocol: protocol, Operation: operation}
 	pc, err := pc.WithNativeBody()
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	decoded, err := plugin.Engine.CallPath(ctx, "protocols", []string{protocol, "decodeRequest"}, pc.DecodeValueFor(plugin.Meta))
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	intent, ok := decoded.(map[string]any)
 	if !ok || intent["kind"] != "submit" || intent["model"] != native {
-		return "", false
+		return "", false, false
 	}
 	body, ok := intent["requestBody"].(map[string]any)
 	if !ok {
-		return "", false
+		return "", false, false
 	}
 	meter := &gin.Context{Request: (&http.Request{Method: "POST", URL: &url.URL{Path: path}, Header: make(http.Header)}).WithContext(ctx)}
 	meter.Set("task_request", body)
@@ -152,7 +162,7 @@ func unifiedRetailSpecificationPrice(ctx context.Context, name, native string, c
 	adapter.Init(info)
 	facts, err := adapter.ExtractUsageFactsValidated(meter, info)
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	quantity := float64(1)
 	if kind == "video" {
@@ -164,48 +174,48 @@ func unifiedRetailSpecificationPrice(ctx context.Context, name, native string, c
 		}
 	}
 	if quantity <= 0 || math.IsNaN(quantity) || math.IsInf(quantity, 0) {
-		return "", false
+		return "", false, false
 	}
 	expression, configured := billing_setting.ResolveTaskBillingExpr(plugin.Meta.Key, name, native)
 	var usd float64
 	if configured {
 		if billingexpr.UsesFixedPricing(expression) {
-			return "", false
+			return "", false, false
 		}
 		var evalErr error
 		usd, _, evalErr = billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: facts, EvaluationTime: time.Now()})
 		if evalErr != nil {
-			return "", false
+			return "", false, false
 		}
 	} else {
 		if billing_setting.GetBillingMode(name) == billing_setting.BillingModeTieredExpr {
-			return "", false
+			return "", false, false
 		}
 		price, priced := ratio_setting.GetModelPrice(name, false)
 		if !priced {
-			return "", false
+			return "", false, false
 		}
 		ratios, err := adapter.EstimateBillingValidated(meter, info)
 		if err != nil {
-			return "", false
+			return "", false, false
 		}
 		// Nontrivial legacy quantity pricing needs the full host estimator.
 		// Do not advertise a fixed unit tariff from a partial calculation.
 		for _, ratio := range ratios {
 			if ratio != 1 {
-				return "", false
+				return "", false, false
 			}
 		}
 		usd = price
 	}
 	if usd < 0 || math.IsNaN(usd) || math.IsInf(usd, 0) || common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || operation_setting.USDExchangeRate <= 0 || math.IsNaN(operation_setting.USDExchangeRate) || math.IsInf(operation_setting.USDExchangeRate, 0) {
-		return "", false
+		return "", false, false
 	}
 	quota, clamp := common.QuotaRoundChecked(usd * common.QuotaPerUnit)
 	if clamp != nil {
-		return "", false
+		return "", false, false
 	}
-	return decimal.NewFromInt(int64(quota)).Div(decimal.NewFromFloat(common.QuotaPerUnit)).Mul(decimal.NewFromFloat(operation_setting.USDExchangeRate)).Div(decimal.NewFromFloat(quantity)).String(), true
+	return decimal.NewFromInt(int64(quota)).Div(decimal.NewFromFloat(common.QuotaPerUnit)).Mul(decimal.NewFromFloat(operation_setting.USDExchangeRate)).Div(decimal.NewFromFloat(quantity)).String(), usd == 0, true
 }
 
 // Expand only finite declared specification fields. The native decoder remains
