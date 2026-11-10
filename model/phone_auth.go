@@ -43,6 +43,7 @@ type PhoneChallenge struct {
 	CodeHash       string `json:"code_hash"`
 	Attempts       int    `json:"attempts"`
 	FailureCode    string `json:"failure_code,omitempty"`
+	ManualCode     bool   `json:"manual_code,omitempty"`
 }
 
 type phoneExchangePayload struct {
@@ -93,6 +94,14 @@ func WithPhoneAuthTransaction(phone string, action func(*gorm.DB) error) error {
 // ReservePhoneChallenge commits the code digest before dispatch. Once reserved,
 // the same dispatch key only reads state, even after a definite not-sent error.
 func ReservePhoneChallenge(phone, key, code string, expiresAt time.Time) (*PhoneChallenge, bool, error) {
+	return reservePhoneChallenge(phone, key, code, expiresAt, false)
+}
+
+func ReserveManualPhoneChallenge(phone, key string, expiresAt time.Time) (*PhoneChallenge, bool, error) {
+	return reservePhoneChallenge(phone, key, "", expiresAt, true)
+}
+
+func reservePhoneChallenge(phone, key, code string, expiresAt time.Time, manual bool) (*PhoneChallenge, bool, error) {
 	id := phoneChallengeID(key)
 	provider := phoneAuthHash("phone", phone)
 	binding := AuthFlow{TokenHash: phoneAuthHash("dispatch-key", key), Purpose: "phone_dispatch_binding", Provider: provider, ExpiresAt: time.Now().Add(PhoneSendWindow + PhoneLoginReplayTTL)}
@@ -148,6 +157,12 @@ func ReservePhoneChallenge(phone, key, code string, expiresAt time.Time) (*Phone
 			return &PhoneRateLimitError{RetryAfterSeconds: max(1, int(time.Until(retryAt).Seconds())+1)}
 		}
 		challenge = PhoneChallenge{ID: id, DeliveryStatus: "sending", ExpiresAt: expiresAt.Unix(), ResendAt: expiresAt.Unix(), CodeHash: phoneAuthHash("code", phone+":"+id+":"+code)}
+		if manual {
+			// Identical admission for approved and unknown international numbers.
+			// Verification checks the current grant under the same phone guard.
+			challenge.CodeHash = ""
+			challenge.ManualCode = true
+		}
 		encoded, err := common.Marshal(challenge)
 		if err != nil {
 			return err
@@ -299,7 +314,15 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 			return ErrPhoneCodeInvalid
 		}
 		payload := phoneExchangePayload{Fingerprint: fingerprint}
-		if !hmac.Equal([]byte(challenge.CodeHash), []byte(phoneAuthHash("code", phone+":"+id+":"+code))) {
+		valid := hmac.Equal([]byte(challenge.CodeHash), []byte(phoneAuthHash("code", phone+":"+id+":"+code)))
+		if challenge.ManualCode {
+			var err error
+			valid, err = consumePhoneLoginGrant(tx, phone, code)
+			if err != nil {
+				return err
+			}
+		}
+		if !valid {
 			challenge.Attempts++
 			encoded, err := common.Marshal(challenge)
 			if err != nil {

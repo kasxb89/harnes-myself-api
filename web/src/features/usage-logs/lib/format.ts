@@ -24,11 +24,11 @@ import {
   splitBillingExprAndRequestRules,
   type ParsedTier,
 } from '@/features/pricing/lib/billing-expr'
+import { formatLogQuota } from '@/lib/format'
 import { translateServerText } from '@/lib/server-error-message'
 
 import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
-import { formatLogQuota } from '@/lib/format'
 import { buildQuotaAuditOperation } from './quota-audit-operation'
 import { getLogTypeConfig } from './utils'
 
@@ -492,6 +492,10 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'user.oauth_unbind': 'Removed an OAuth binding for the user',
   // System settings
   'option.update': 'Updated system setting {{key}}',
+  'phone_login_grant.issue':
+    'Issued a private overseas login code for {{phone_e164}}',
+  'phone_login_grant.revoke':
+    'Revoked the overseas login code for {{phone_e164}}',
   'option.passkey_domains':
     'Updated Passkey domains: removed {{domains}}; affected {{known}}; unknown {{unknown}}',
   'option.passkey_domains_confirmed':

@@ -266,6 +266,8 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute.Use(middleware.RootAuth())
 		{
 			optionRoute.GET("/", controller.GetOptions)
+			optionRoute.GET("/phone_login_grants", middleware.DisableCache(), controller.ListPhoneLoginGrants)
+			optionRoute.POST("/phone_login_grants", middleware.SessionCookieOriginGuard(), middleware.UserCriticalRateLimit("phone-grants"), controller.ManagePhoneLoginGrant)
 			optionRoute.GET("/model_catalog", controller.GetModelConfiguration)
 			optionRoute.PUT("/model_catalog/draft", middleware.SessionCookieOriginGuard(), controller.SaveModelConfigurationDraft)
 			optionRoute.POST("/model_catalog/publish", middleware.SessionCookieOriginGuard(), controller.PublishModelConfiguration)

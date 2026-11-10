@@ -9021,6 +9021,26 @@
     "Configure at least one parameter in each combination.": "Configure at least one parameter in each combination.",
     "Set image and video options below. Published changes apply to future requests; existing tasks keep their original parameters.": "Set image and video options below. Published changes apply to future requests; existing tasks keep their original parameters.",
     "Adapter ratio for text generation: {{value}}": "Adapter ratio for text generation: {{value}}",
-    "Adapter ratio for reference media: {{value}}": "Adapter ratio for reference media: {{value}}"
+    "Adapter ratio for reference media: {{value}}": "Adapter ratio for reference media: {{value}}",
+    "Awaiting login": "Awaiting login",
+    "Copy login code": "Copy login code",
+    "Dismiss": "Dismiss",
+    "Enter the full international number including its country code, excluding +86.": "Enter the full international number including its country code, excluding +86.",
+    "Generate private login code": "Generate private login code",
+    "International phone number": "International phone number",
+    "Login code locked": "Login code locked",
+    "Manual phone login is restricted to ordinary international accounts": "Manual phone login is restricted to ordinary international accounts",
+    "New login code": "New login code",
+    "No overseas phone numbers approved yet.": "No overseas phone numbers approved yet.",
+    "Overseas phone whitelist": "Overseas phone whitelist",
+    "Revoke manual phone access": "Revoke manual phone access",
+    "Revoked": "Revoked",
+    "Verify manual phone access": "Verify manual phone access",
+    "Approve an exact international phone number, then send its private login code to the user on WeChat. Each code is valid for 10 minutes and one login. Mainland SMS and existing sessions are unchanged.": "Approve an exact international phone number, then send its private login code to the user on WeChat. Each code is valid for 10 minutes and one login. Mainland SMS and existing sessions are unchanged.",
+    "Confirm the phone number {{phone}} belongs to the person you will contact on WeChat.": "Confirm the phone number {{phone}} belongs to the person you will contact on WeChat.",
+    "Shown once. Send privately before {{time}}; a new code invalidates the previous one.": "Shown once. Send privately before {{time}}; a new code invalidates the previous one.",
+    "The current code for {{phone}} will stop working. Existing signed-in sessions are kept.": "The current code for {{phone}} will stop working. Existing signed-in sessions are kept.",
+    "Issued a private overseas login code for {{phone_e164}}": "Issued a private overseas login code for {{phone_e164}}",
+    "Revoked the overseas login code for {{phone_e164}}": "Revoked the overseas login code for {{phone_e164}}"
   }
 }

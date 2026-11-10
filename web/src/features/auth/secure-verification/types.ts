@@ -39,6 +39,7 @@ export type SecurityProofScope =
   | 'account.password.set'
   | 'account.password.change'
   | 'account.delete'
+  | 'admin.user.phone_grant'
   | 'admin.user.create'
   | 'admin.user.update'
   | 'admin.user.delete'
@@ -51,6 +52,10 @@ export type SecurityProofScope =
 export type AdminUserManageAction = 'disable' | 'enable' | 'promote' | 'demote'
 
 export type VerificationOperation =
+  | {
+      scope: 'admin.user.phone_grant'
+      context: { phone_e164: string; action: 'issue' | 'revoke' }
+    }
   | { scope: 'channel.key.read'; context: { channel_id: number } }
   | {
       scope: 'account.binding.bind'

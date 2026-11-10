@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -64,7 +65,8 @@ func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 		require.NoError(t, db.Raw("SELECT sqlite_version()").Scan(&version).Error)
 		t.Logf("database: sqlite %s", version)
 	} else {
-		db, dialect = openTaskDialectDatabase(t, models...)
+		db, _ = newAuditTestDatabase(t, string(dialect), os.Getenv("TEST_"+strings.ToUpper(string(dialect))+"_DSN"))
+		require.NoError(t, db.AutoMigrate(models...))
 	}
 	previousDB, previousLog := model.DB, model.LOG_DB
 	previousMain, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()
@@ -87,6 +89,10 @@ func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 		common.QuotaForNewUser, common.PhoneRegistrationBonusYuan = previousGlobal, previousBonus
 		common.UserSessionActiveLimit, common.UserSessionIssuanceLimit = previousLimit, previousIssuance
 	})
+	// The grant table does not exist in the old schema. Upgrade it twice
+	// without altering the existing account/flow tables.
+	models = append(models, &model.PhoneLoginGrant{})
+
 	// Repeated startup migration must preserve existing flow rows, users and
 	// their unique phone identity while adding the separate questionnaire table.
 	legacy := model.AuthFlow{TokenHash: strings.Repeat("a", 64), Purpose: model.AuthFlowPurposeOAuth, Provider: "existing-provider", Payload: "existing-state", ExpiresAt: time.Now().Add(time.Hour)}
@@ -126,6 +132,275 @@ func phoneTestChallenge(t *testing.T, phone string) (string, string) {
 	require.True(t, sent.Success)
 	require.NotEmpty(t, code)
 	return sent.Data.ChallengeID, code
+}
+
+func manualPhoneOperator(t *testing.T, db *gorm.DB) (service.AuthIdentity, string) {
+	t.Helper()
+	operator := createQuotaTestOperator(t, db, common.RoleRootUser)
+	require.NoError(t, model.PublishUserAuthCache(operator.Id))
+	bundle, err := service.CreateLoginSession(operator.Id, "password", "127.0.0.1", "manual-phone-test")
+	require.NoError(t, err)
+	identity, err := service.ParseAccessToken(bundle.AccessToken)
+	require.NoError(t, err)
+	return identity, bundle.AccessToken
+}
+
+func TestPhoneManualGrantRootAuthorizationAndSecretBoundary(t *testing.T) {
+	db, _ := setupPhoneAuthRecovery(t)
+	identity, token := manualPhoneOperator(t, db)
+	requiredScope, scopeListed := service.AccessTokenVerificationScope(service.VerificationScopeAdminPhoneGrant)
+	assert.True(t, scopeListed)
+	assert.Empty(t, requiredScope, "PATs cannot issue manual login credentials")
+	requirements, err := service.GetVerificationRequirements(identity, service.VerificationScopeAdminPhoneGrant)
+	require.NoError(t, err)
+	require.NotEmpty(t, requirements.Methods)
+	previousSecure := common.SessionCookieSecure
+	common.SessionCookieSecure = true
+	t.Cleanup(func() { common.SessionCookieSecure = previousSecure })
+	router := gin.New()
+	group := router.Group("/api/option", middleware.RootAuth())
+	group.GET("/phone_login_grants", ListPhoneLoginGrants)
+	group.POST("/phone_login_grants", middleware.SessionCookieOriginGuard(), ManagePhoneLoginGrant)
+	phone := "+60123456789"
+	operation := service.PhoneLoginGrantContext{PhoneE164: phone, Action: "issue"}
+	context, err := common.Marshal(operation)
+	require.NoError(t, err)
+	binding, err := service.BindVerificationOperation(service.VerificationOperation{Scope: service.VerificationScopeAdminPhoneGrant, Context: context})
+	require.NoError(t, err)
+	proof, _, err := service.IssueSecurityProof(identity, service.VerificationMethodPassword, binding)
+	require.NoError(t, err)
+	do := func(method, credential, origin, proofToken string, body any) *httptest.ResponseRecorder {
+		encoded, err := common.Marshal(body)
+		require.NoError(t, err)
+		request := httptest.NewRequest(method, "https://console.test/api/option/phone_login_grants", strings.NewReader(string(encoded)))
+		request.Header.Set("Content-Type", "application/json")
+		if credential != "" {
+			request.Header.Set("Authorization", "Bearer "+credential)
+		}
+		if origin != "" {
+			request.Header.Set("Origin", origin)
+		}
+		if proofToken != "" {
+			request.Header.Set("X-Security-Proof", proofToken)
+		}
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		return recorder
+	}
+	assert.Equal(t, http.StatusUnauthorized, do(http.MethodGet, "", "", "", nil).Code)
+	assert.Equal(t, http.StatusForbidden, do(http.MethodPost, token, "https://evil.test", proof, operation).Code)
+	assert.Equal(t, http.StatusForbidden, do(http.MethodPost, token, "https://console.test", "", operation).Code)
+	for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser} {
+		user := model.User{Username: fmt.Sprintf("manual-role-%d", role), Role: role, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: fmt.Sprintf("manual-role-%d-aff", role)}
+		require.NoError(t, db.Create(&user).Error)
+		require.NoError(t, model.PublishUserAuthCache(user.Id))
+		bundle, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "manual-role-test")
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusForbidden, do(http.MethodGet, bundle.AccessToken, "", "", nil).Code)
+		assert.Equal(t, http.StatusForbidden, do(http.MethodPost, bundle.AccessToken, "https://console.test", proof, operation).Code)
+	}
+	response := do(http.MethodPost, token, "https://console.test", proof, operation)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var issued struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Code string `json:"code"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &issued))
+	require.True(t, issued.Success)
+	require.Len(t, issued.Data.Code, 6)
+	assert.Contains(t, response.Header().Get("Cache-Control"), "no-store")
+	assert.Equal(t, http.StatusForbidden, do(http.MethodPost, token, "https://console.test", proof, operation).Code, "proof is one-use")
+	listed := do(http.MethodGet, token, "", "", nil)
+	assert.Equal(t, http.StatusOK, listed.Code)
+	assert.Contains(t, listed.Body.String(), phone)
+	assert.NotContains(t, listed.Body.String(), issued.Data.Code)
+	assert.NotContains(t, listed.Body.String(), "code_hash")
+	var audits []model.AuditLog
+	require.NoError(t, db.Find(&audits).Error)
+	require.NotEmpty(t, audits, "audit assertions require actual persisted entries")
+	encodedAudits, err := common.Marshal(audits)
+	require.NoError(t, err)
+	assert.Contains(t, string(encodedAudits), "phone_login_grant.issue")
+	assert.Contains(t, string(encodedAudits), phone)
+	assert.NotContains(t, string(encodedAudits), issued.Data.Code)
+	assert.NotContains(t, string(encodedAudits), proof)
+	assert.NotContains(t, string(encodedAudits), token)
+	// The protected flow cannot issue codes for domestic or privileged accounts.
+	_, _, err = model.IssuePhoneLoginGrant("+8613800138080", identity)
+	assert.ErrorIs(t, err, model.ErrPhoneGrantNotAllowed)
+	rootPhone := "+819012345678"
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", identity.UserID).Update("phone_e164", rootPhone).Error)
+	_, _, err = model.IssuePhoneLoginGrant(rootPhone, identity)
+	assert.ErrorIs(t, err, model.ErrPhoneGrantNotAllowed)
+}
+
+func TestPhoneManualInternationalLoginAndLegacyRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		phone   string
+		version int
+	}{{"+60123456789", 0}, {"+819012345678", 1}, {"+12025550123", 2}} {
+		t.Run(tc.phone, func(t *testing.T) {
+			db, _ := setupPhoneAuthRecovery(t)
+			identity, _ := manualPhoneOperator(t, db)
+			grant, code, err := model.IssuePhoneLoginGrant(tc.phone, identity)
+			require.NoError(t, err)
+			require.Regexp(t, `^[0-9]{6}$`, code)
+			require.NotContains(t, grant.CodeHash, code)
+			require.NoError(t, db.AutoMigrate(&model.PhoneLoginGrant{}))
+			require.NoError(t, db.AutoMigrate(&model.PhoneLoginGrant{}))
+			var preserved model.PhoneLoginGrant
+			require.NoError(t, db.First(&preserved, "phone_e164 = ?", tc.phone).Error)
+			assert.Equal(t, *grant, preserved, "repeated startup migration preserves active grants")
+			phoneCodeSender = func(string, string) error { t.Fatal("manual flow must never send SMS"); return nil }
+			send := map[string]any{"phone_e164": tc.phone, "contract_version": tc.version}
+			login := map[string]any{"phone_e164": tc.phone, "code": code, "contract_version": tc.version}
+			if tc.version == 2 {
+				send["idempotency_key"] = uuid.NewString()
+				login["idempotency_key"] = uuid.NewString()
+			}
+			raw, challenge := phoneAuthRequest(t, SendPhoneLoginCode, send)
+			require.True(t, challenge.Success)
+			assert.NotContains(t, raw.Body.String(), code)
+			assert.NotContains(t, raw.Body.String(), "dev_code")
+			assert.Contains(t, raw.Header().Get("Cache-Control"), "no-store")
+			if tc.version == 2 {
+				login["challenge_id"] = challenge.Data.ChallengeID
+			}
+			_, result := phoneAuthRequest(t, PhoneLogin, login)
+			require.True(t, result.Success)
+			assert.NotEmpty(t, result.Data.Session.SID)
+			assert.NotEmpty(t, result.Data.RelayKey)
+			_, repeated := phoneAuthRequest(t, PhoneLogin, login)
+			if tc.version == 2 {
+				assert.Equal(t, result.Data.AccessToken, repeated.Data.AccessToken)
+			} else {
+				assert.False(t, repeated.Success)
+			}
+			var stored model.PhoneLoginGrant
+			require.NoError(t, db.First(&stored, "phone_e164 = ?", tc.phone).Error)
+			assert.Positive(t, stored.UsedAt)
+			var count int64
+			require.NoError(t, db.Model(&model.UserSession{}).Where("user_id = ?", result.Data.User.ID).Count(&count).Error)
+			assert.EqualValues(t, 1, count)
+			_, _, err = model.IssuePhoneLoginGrant(tc.phone, identity)
+			require.NoError(t, err)
+			// Rotating or revoking a login code does not revoke an existing session.
+			require.NoError(t, model.RevokePhoneLoginGrant(tc.phone, identity))
+			_, err = service.ParseAccessToken(result.Data.AccessToken)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestPhoneManualGrantRestrictionsAndAtomicConsumption(t *testing.T) {
+	for _, scenario := range []string{"unknown", "wrong number", "expired", "revoked", "rotated", "five guesses across challenges", "downstream rollback", "concurrent login", "MFA", "privileged"} {
+		t.Run(scenario, func(t *testing.T) {
+			db, _ := setupPhoneAuthRecovery(t)
+			identity, _ := manualPhoneOperator(t, db)
+			phone := "+60123456789"
+			_, code, err := model.IssuePhoneLoginGrant(phone, identity)
+			require.NoError(t, err)
+			if scenario == "unknown" {
+				require.NoError(t, db.Where("phone_e164 = ?", phone).Delete(&model.PhoneLoginGrant{}).Error)
+			}
+			if scenario == "wrong number" {
+				phone = "+819012345678"
+			}
+			if scenario == "expired" {
+				require.NoError(t, db.Model(&model.PhoneLoginGrant{}).Where("phone_e164 = ?", phone).Update("expires_at", time.Now().Add(-time.Second).Unix()).Error)
+			}
+			if scenario == "revoked" {
+				require.NoError(t, model.RevokePhoneLoginGrant(phone, identity))
+			}
+			if scenario == "rotated" {
+				_, _, err = model.IssuePhoneLoginGrant(phone, identity)
+				require.NoError(t, err)
+			}
+			if scenario == "MFA" || scenario == "privileged" {
+				user := model.User{Username: "manual-existing", PhoneE164: &phone, Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "manual-existing-aff"}
+				if scenario == "privileged" {
+					user.Role = common.RoleAdminUser
+				}
+				require.NoError(t, db.Create(&user).Error)
+				if scenario == "MFA" {
+					require.NoError(t, db.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
+				}
+			}
+			phoneCodeSender = func(string, string) error { t.Fatal("manual flow sent SMS"); return nil }
+			_, challenge := phoneAuthRequest(t, SendPhoneLoginCode, phoneChallengeRequest{PhoneE164: phone, ContractVersion: 2, IdempotencyKey: uuid.NewString()})
+			require.True(t, challenge.Success, "approved and unknown numbers have the same neutral challenge response")
+			request := phoneLoginRequest{PhoneE164: phone, Code: code, ChallengeID: challenge.Data.ChallengeID, ContractVersion: 2, IdempotencyKey: uuid.NewString()}
+			if scenario == "five guesses across challenges" {
+				wrong := "000000"
+				if wrong == code {
+					wrong = "111111"
+				}
+
+				for i := range 5 {
+					if i == 2 {
+						require.NoError(t, db.Model(&model.AuthFlow{}).Where("purpose = ?", "phone_challenge").Update("created_at", time.Now().Add(-2*time.Minute)).Error)
+						ch, _, err := model.ReserveManualPhoneChallenge(phone, uuid.NewString(), time.Now().Add(time.Minute))
+						require.NoError(t, err)
+						_, err = model.FinishPhoneChallenge(phone, ch.ID, "accepted")
+						require.NoError(t, err)
+						request.ChallengeID = ch.ID
+					}
+					request.Code, request.IdempotencyKey = wrong, uuid.NewString()
+					_, result := phoneAuthRequest(t, PhoneLogin, request)
+					assert.False(t, result.Success)
+				}
+				require.NoError(t, db.Model(&model.AuthFlow{}).Where("purpose = ?", "phone_challenge").Update("created_at", time.Now().Add(-2*time.Minute)).Error)
+				ch, _, err := model.ReserveManualPhoneChallenge(phone, uuid.NewString(), time.Now().Add(time.Minute))
+				require.NoError(t, err)
+				_, err = model.FinishPhoneChallenge(phone, ch.ID, "accepted")
+				require.NoError(t, err)
+				request.ChallengeID = ch.ID
+
+				request.Code, request.IdempotencyKey = code, uuid.NewString()
+			}
+			if scenario == "downstream rollback" {
+				phoneLoginSealer = func(*service.PhoneLoginResult, string) (string, error) {
+					return "", errors.New("synthetic receipt failure")
+				}
+				_, rejected := phoneAuthRequest(t, PhoneLogin, request)
+				assert.False(t, rejected.Success)
+				var stored model.PhoneLoginGrant
+				require.NoError(t, db.First(&stored, "phone_e164 = ?", phone).Error)
+				assert.Zero(t, stored.UsedAt)
+				phoneLoginSealer = service.SealPhoneLoginResult
+				_, accepted := phoneAuthRequest(t, PhoneLogin, request)
+				assert.True(t, accepted.Success)
+				return
+			}
+			if scenario == "concurrent login" {
+				var successes atomic.Int32
+				var wg sync.WaitGroup
+				for range 2 {
+					wg.Go(func() {
+						copy := request
+						copy.IdempotencyKey = uuid.NewString()
+						_, result := phoneAuthRequest(t, PhoneLogin, copy)
+						if result.Success {
+							successes.Add(1)
+						}
+					})
+				}
+				wg.Wait()
+				assert.EqualValues(t, 1, successes.Load())
+				return
+			}
+			_, result := phoneAuthRequest(t, PhoneLogin, request)
+			if scenario == "MFA" {
+				assert.True(t, result.Data.RequireVerification)
+				assert.Empty(t, result.Data.AccessToken)
+			} else {
+				assert.False(t, result.Success)
+				assert.Empty(t, result.Data.AccessToken)
+			}
+		})
+	}
 }
 
 func TestPhoneChallengeResponseKeepsLegacyClientLoginCompatible(t *testing.T) {
@@ -333,7 +608,21 @@ func TestPhoneLoginDownstreamFailureAndResponseLoss(t *testing.T) {
 			assert.Equal(t, success.Data.AccessToken, again.Data.AccessToken)
 			assert.Equal(t, success.Data.Session.SID, again.Data.Session.SID)
 			assert.Equal(t, success.Data.RelayKey, again.Data.RelayKey)
-			assert.Equal(t, first.Header().Values("Set-Cookie"), replayed.Header().Values("Set-Cookie"))
+			firstCookies, replayCookies := first.Result().Cookies(), replayed.Result().Cookies()
+			require.Len(t, replayCookies, len(firstCookies))
+			for i, cookie := range firstCookies {
+				got := replayCookies[i]
+				assert.Equal(t, cookie.Name, got.Name)
+				assert.Equal(t, cookie.Value, got.Value)
+				assert.Equal(t, cookie.Path, got.Path)
+				assert.Equal(t, cookie.Domain, got.Domain)
+				assert.Equal(t, cookie.Expires, got.Expires)
+				assert.Equal(t, cookie.Secure, got.Secure)
+				assert.Equal(t, cookie.HttpOnly, got.HttpOnly)
+				assert.Equal(t, cookie.SameSite, got.SameSite)
+				assert.Positive(t, got.MaxAge)
+				assert.LessOrEqual(t, got.MaxAge, cookie.MaxAge)
+			}
 			var saved model.User
 			require.NoError(t, db.First(&saved, success.Data.User.ID).Error)
 			assert.Equal(t, 77+quotaFromYuan(10), saved.Quota)

@@ -130,7 +130,15 @@ func SendPhoneLoginCode(c *gin.Context) {
 	if common.PhoneSmsBypassAllows(phone) {
 		code = common.PhoneSmsDevCode
 	}
-	challenge, created, err := model.ReservePhoneChallenge(phone, request.IdempotencyKey, code, time.Now().Add(time.Duration(common.VerificationValidMinutes)*time.Minute))
+	manual := !strings.HasPrefix(phone, "+86")
+	expiresAt := time.Now().Add(time.Duration(common.VerificationValidMinutes) * time.Minute)
+	var challenge *model.PhoneChallenge
+	var created bool
+	if manual {
+		challenge, created, err = model.ReserveManualPhoneChallenge(phone, request.IdempotencyKey, expiresAt)
+	} else {
+		challenge, created, err = model.ReservePhoneChallenge(phone, request.IdempotencyKey, code, expiresAt)
+	}
 	if err != nil {
 		var limited *model.PhoneRateLimitError
 		switch {
@@ -146,7 +154,11 @@ func SendPhoneLoginCode(c *gin.Context) {
 	if created {
 		delivery := "accepted"
 		providerRetry := 0
-		if err := phoneCodeSender(phone, code); err != nil {
+		var deliveryError error
+		if !manual {
+			deliveryError = phoneCodeSender(phone, code)
+		}
+		if err := deliveryError; err != nil {
 			delivery = "unknown"
 			if errors.Is(err, common.ErrSmsNotConfigured) || errors.Is(err, common.ErrSmsRequest) || errors.Is(err, common.ErrSmsRejected) || errors.Is(err, common.ErrSmsThrottled) || errors.Is(err, common.ErrSmsUnavailable) {
 				delivery = "not_sent"
@@ -172,7 +184,7 @@ func SendPhoneLoginCode(c *gin.Context) {
 			// Keep their original response while the durable ID stays internal.
 			data = gin.H{"resend_after_seconds": data["resend_after_seconds"], "expires_in_minutes": common.VerificationValidMinutes}
 		}
-		if common.PhoneSmsBypassAllows(phone) {
+		if !manual && common.PhoneSmsBypassAllows(phone) {
 			data["dev_code"] = common.PhoneSmsDevCode
 		}
 		common.ApiSuccess(c, data)

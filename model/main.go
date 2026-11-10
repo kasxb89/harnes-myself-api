@@ -359,6 +359,7 @@ func migrateDB() error {
 		&ClientWorkloadObservation{},
 		&ClientWorkloadShot{},
 		&AuthFlow{},
+		&PhoneLoginGrant{},
 		&ExternalIdentityClaim{},
 		&PasskeyCredential{},
 		&Option{},

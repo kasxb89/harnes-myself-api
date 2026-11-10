@@ -36,6 +36,13 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - New clients may send `X-Yunshu-Model-Config-Version`. Stale/invalid configuration is non-retryable; only a proved pre-admission rejection carries `X-Yunshu-Model-Config-Result: rejected-before-billing`. Never replay accepted or uncertain tasks after configuration changes. Keep original operation/task IDs, send fences and financial snapshots for recovery.
 - Preserve legacy clients without the optional header. Configuration rollback publishes future-request settings, never restores databases or rewrites previous billing/cost evidence.
 
+## Overseas manual phone login
+
+- Manage exact non-+86 E.164 numbers only in System settings → Authentication → Overseas phone whitelist. This is independent of the development SMS bypass; never enable that bypass for customer login.
+- Only a root dashboard session with a fresh, action/phone-bound `admin.user.phone_grant` proof may issue or revoke a code. PAT issuance is explicitly denied. Do not issue credentials for administrative accounts or bypass existing MFA/account status checks.
+- Codes are server-generated, per-number, six-digit, ten-minute, one-use credentials delivered manually by the operator through verified WeChat contact. Return plaintext only in the protected issuance response, never anonymous challenge/list/audit/log/storage. Persist only purpose-bound, peppered bcrypt hashes.
+- Preserve per-phone transactional serialization, grant-wide five-attempt budget, v1/v2 challenge/exchange contracts, idempotent receipt recovery and existing sessions. A replacement invalidates the old code, not signed-in sessions; an unconsumed current challenge can use the replacement code. Unknown overseas numbers receive neutral challenges and cannot sign in.
+
 ## Internationalization (i18n)
 
 ### Backend (`i18n/`)

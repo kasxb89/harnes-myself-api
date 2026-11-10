@@ -2,6 +2,7 @@ package common
 
 import (
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -47,3 +48,10 @@ func PhoneSmsBypassAllows(phoneE164 string) bool {
 	}
 	return false
 }
+
+// IsManualLoginPhone accepts exact international numbers, never country wildcards.
+func IsManualLoginPhone(phone string) bool {
+	return manualLoginPhonePattern.MatchString(phone) && !strings.HasPrefix(phone, "+86")
+}
+
+var manualLoginPhonePattern = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)

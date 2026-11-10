@@ -228,7 +228,9 @@ func AccessTokenScopeGranted(scopes []string, scope string) bool {
 // scope a PAT needs to obtain its proof. An empty value means PATs can never
 // obtain it; scopes missing from this table are denied too.
 var accessTokenVerificationScopes = map[string]string{
-	VerificationScopeChannelKeyRead:        AccessTokenScopeOf(authz.ChannelSecretView),
+	VerificationScopeChannelKeyRead: AccessTokenScopeOf(authz.ChannelSecretView),
+	// Manual customer login credentials require the root dashboard session.
+	VerificationScopeAdminPhoneGrant:       "",
 	VerificationScopeAdminUserCreate:       "user:write",
 	VerificationScopeAdminUserUpdate:       "user:write",
 	VerificationScopeAdminUserDelete:       "user:write",

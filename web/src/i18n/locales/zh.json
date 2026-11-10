@@ -9021,6 +9021,26 @@
     "Configure at least one parameter in each combination.": "每组规格组合至少需要一个参数限制。",
     "Set image and video options below. Published changes apply to future requests; existing tasks keep their original parameters.": "在下方设置图片和视频参数。发布后仅用于新请求，已有任务继续使用受理时的原参数。",
     "Adapter ratio for text generation: {{value}}": "适配器文生图／视频默认比例：{{value}}",
-    "Adapter ratio for reference media: {{value}}": "适配器使用参考素材时的默认比例：{{value}}"
+    "Adapter ratio for reference media: {{value}}": "适配器使用参考素材时的默认比例：{{value}}",
+    "Awaiting login": "等待登录",
+    "Copy login code": "复制登录码",
+    "Dismiss": "收起登录码",
+    "Enter the full international number including its country code, excluding +86.": "请输入含国际区号的完整海外手机号，例如 +60、+81 或 +1；+86 使用原短信登录。",
+    "Generate private login code": "生成专属登录码",
+    "International phone number": "海外手机号（含国际区号）",
+    "Login code locked": "验证码已锁定",
+    "Manual phone login is restricted to ordinary international accounts": "人工登录码仅适用于普通用户的海外手机号",
+    "New login code": "重新发码",
+    "No overseas phone numbers approved yet.": "暂无海外手机号白名单，请先填写具体号码。",
+    "Overseas phone whitelist": "海外手机号白名单",
+    "Revoke manual phone access": "撤销白名单登录码",
+    "Revoked": "已撤销",
+    "Verify manual phone access": "验证身份后管理白名单",
+    "Approve an exact international phone number, then send its private login code to the user on WeChat. Each code is valid for 10 minutes and one login. Mainland SMS and existing sessions are unchanged.": "填写并审核具体海外手机号，生成专属登录码后通过微信发给本人。登录码10分钟内有效，仅可成功登录一次。国内短信和已有登录状态保持不变。",
+    "Confirm the phone number {{phone}} belongs to the person you will contact on WeChat.": "请确认 {{phone}} 属于你将通过微信联系的本人。",
+    "Shown once. Send privately before {{time}}; a new code invalidates the previous one.": "仅本次显示，请在 {{time}} 前私下发送。生成新码后旧码立即失效。",
+    "The current code for {{phone}} will stop working. Existing signed-in sessions are kept.": "{{phone}} 当前的登录码将立即失效，已有登录会话保留。",
+    "Issued a private overseas login code for {{phone_e164}}": "已为 {{phone_e164}} 生成专属海外登录码",
+    "Revoked the overseas login code for {{phone_e164}}": "已撤销 {{phone_e164}} 的海外登录码"
   }
 }

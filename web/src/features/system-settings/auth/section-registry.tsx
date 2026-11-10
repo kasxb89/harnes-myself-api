@@ -23,8 +23,14 @@ import { BotProtectionSection } from './bot-protection-section'
 import { CustomOAuthSection } from './custom-oauth/custom-oauth-section'
 import { OAuthSection } from './oauth-section'
 import { PasskeySection } from './passkey-section'
+import { PhoneLoginGrantsSection } from './phone-login-grants-section'
 
 const AUTH_SECTIONS = [
+  {
+    id: 'phone-whitelist',
+    titleKey: 'Overseas phone whitelist',
+    build: () => <PhoneLoginGrantsSection />,
+  },
   {
     id: 'basic-auth',
     titleKey: 'Basic Authentication',

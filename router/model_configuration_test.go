@@ -803,10 +803,14 @@ func TestUnifiedModelConfigurationPreview(t *testing.T) {
 	}
 	require.True(t, strings.HasPrefix(address, "127.0.0.1:"))
 	f := unifiedConfigurationFixture(t)
+	oldPhone := common.PhoneLoginEnabled
+	common.PhoneLoginEnabled = true
+	t.Cleanup(func() { common.PhoneLoginEnabled = oldPhone })
 	oldSetup, oldSecure := constant.Setup, common.SessionCookieSecure
 	constant.Setup, common.SessionCookieSecure = true, false
 	t.Cleanup(func() { constant.Setup, common.SessionCookieSecure = oldSetup, oldSecure })
-	require.NoError(t, f.db.AutoMigrate(&model.TwoFA{}, &model.PasskeyCredential{}, &model.AuthFlow{}))
+	require.NoError(t, f.db.AutoMigrate(&model.TwoFA{}, &model.PasskeyCredential{}, &model.AuthFlow{}, &model.PhoneLoginGrant{}, &model.UserOnboardingSurvey{}, &model.OnboardingSurveyConfigVersion{}, &model.OnboardingSurveyConfigState{}))
+	require.NoError(t, model.InitializeSurveyConfiguration())
 	hash, err := common.HashAccountPassword("LocalPreview-2026!39")
 	require.NoError(t, err)
 	require.NoError(t, f.db.Create(&model.User{Username: "unified-preview", Password: hash, AffCode: "uprev", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1}).Error)
