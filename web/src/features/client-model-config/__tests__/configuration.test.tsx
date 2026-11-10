@@ -32,6 +32,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -39,6 +40,16 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ClientModelConfigPage } from '..'
+import { MediaParametersForm } from '../components/media-parameters-form'
+import {
+  readMediaParameters,
+  nativeMediaFields,
+  mediaParameterErrors,
+  importMediaCombinations,
+  updateMediaField,
+  parameterSeed,
+  serializeMediaParameters,
+} from '../lib/media-parameters'
 import {
   clientModelConfigFormSchema,
   clientModelConfigSchema,
@@ -835,4 +846,279 @@ test('platform defaults summary shows saved values until a draft is successfully
       'No platform image model is set. Use the first model in the account image catalog.'
     )
   ).not.toBeInTheDocument()
+})
+
+const nativeMediaFixture = {
+  type: 'object',
+  properties: {
+    ratio: { type: 'string', enum: ['16:9', '9:16'], default: '16:9' },
+    seconds: { type: 'integer', minimum: 4, maximum: 30, default: 5 },
+    generate_audio: { type: 'boolean', default: false },
+  },
+  oneOf: [
+    {
+      properties: {
+        resolution: { enum: ['768P'] },
+        seconds: { minimum: 4, maximum: 30 },
+      },
+    },
+    {
+      properties: {
+        resolution: { enum: ['2K'] },
+        seconds: { minimum: 4, maximum: 15 },
+      },
+    },
+  ],
+  'x-reference-limits': { images: 9, videos: 3, audios: 3 },
+  'x-reference-frame-max-images': 2,
+  'x-client-concurrency': { max_parallelism: 4, atomic_admission: true },
+  'x-task-recovery': { durable: true },
+}
+
+function MediaFormHarness(props: {
+  initial?: string
+  native?: Record<string, unknown>
+  onChange: (value: string) => void
+  disabled?: boolean
+}) {
+  const [value, setValue] = useState(props.initial ?? '')
+  return (
+    <MediaParametersForm
+      value={value}
+      nativeSchema={props.native ?? nativeMediaFixture}
+      disabled={props.disabled}
+      onChange={(next) => {
+        setValue(next)
+        props.onChange(next)
+      }}
+    />
+  )
+}
+
+test('media form shows inherited values without JSON, mutating the adapter, or dirtying an unchanged draft', () => {
+  const original = JSON.stringify(nativeMediaFixture)
+  const change = vi.fn()
+  render(<MediaFormHarness onChange={change} />)
+  expect(
+    screen.queryByRole('textbox', { name: 'Generation parameter schema' })
+  ).toBeNull()
+  expect(
+    screen.getByRole('textbox', {
+      name: 'Maximum for Video duration (seconds)',
+    })
+  ).toHaveValue('30')
+  expect(
+    screen.getByRole('textbox', {
+      name: 'Maximum for Video duration (seconds)',
+    })
+  ).toBeDisabled()
+  expect(
+    screen.getByRole('table', { name: 'Generation specification combinations' })
+  ).toHaveTextContent('2K')
+  expect(
+    screen.getByRole('table', { name: 'Generation specification combinations' })
+  ).toHaveTextContent('4–15')
+  expect(change).not.toHaveBeenCalled()
+  expect(JSON.stringify(nativeMediaFixture)).toBe(original)
+})
+
+test('media form edits duration, reference count and audio defaults as controls without copying host declarations', async () => {
+  const change = vi.fn()
+  render(<MediaFormHarness onChange={change} />)
+  await selectOption('Settings for Video duration (seconds)', 'Customize')
+  fireEvent.change(
+    screen.getByRole('textbox', {
+      name: 'Maximum for Video duration (seconds)',
+    }),
+    { target: { value: '20' } }
+  )
+  await selectOption('Settings for Reference images', 'Customize')
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Maximum for Reference images' }),
+    { target: { value: '5' } }
+  )
+  await selectOption('Settings for Generate audio', 'Customize')
+  await selectOption('Default value for Generate audio', 'Yes')
+  const saved = JSON.parse(change.mock.lastCall?.[0] ?? '{}')
+  expect(saved.properties.seconds).toMatchObject({
+    type: 'integer',
+    minimum: 4,
+    maximum: 20,
+    default: 5,
+  })
+  expect(saved.properties.reference_images).toEqual({
+    type: 'array',
+    items: { type: 'string' },
+    maxItems: 5,
+  })
+  expect(saved.properties.generate_audio).toEqual({
+    type: 'boolean',
+    default: true,
+  })
+  expect(saved).not.toHaveProperty('oneOf')
+  expect(saved).not.toHaveProperty('x-client-concurrency')
+  expect(saved).not.toHaveProperty('x-task-recovery')
+  expect(saved.properties).not.toHaveProperty('ratio')
+})
+
+test('media form keeps unedited combinations and fields when a single allowed parameter value changes', async () => {
+  const initial = {
+    type: 'object',
+    properties: {
+      ratio: { type: 'string', enum: ['16:9', '9:16'], default: '16:9' },
+      seconds: { type: 'integer', minimum: 4, maximum: 30, default: 5 },
+      resolution: { type: 'string', enum: ['768P', '2K'] },
+    },
+    oneOf: [
+      {
+        properties: {
+          resolution: { type: 'string', const: '2K' },
+          seconds: { type: 'integer', maximum: 15 },
+        },
+      },
+    ],
+  }
+  const change = vi.fn()
+  render(
+    <MediaFormHarness initial={JSON.stringify(initial)} onChange={change} />
+  )
+  fireEvent.change(
+    within(
+      screen.getByRole('group', { name: 'General generation parameters' })
+    ).getByRole('textbox', {
+      name: 'Maximum for Video duration (seconds)',
+    }),
+    { target: { value: '25' } }
+  )
+  const saved = JSON.parse(change.mock.lastCall?.[0] ?? '{}')
+  expect(saved.oneOf).toEqual(initial.oneOf)
+  expect(saved.properties.ratio).toEqual(initial.properties.ratio)
+  expect(saved.properties.resolution).toEqual(initial.properties.resolution)
+  expect(saved.properties.seconds.maximum).toBe(25)
+})
+
+test('media combinations import native constraints with declared types and edit only the selected branch', async () => {
+  const change = vi.fn()
+  render(<MediaFormHarness onChange={change} />)
+  await selectOption('Specification combination settings', 'Customize')
+  await selectOption('Edit specification combination', 'Combination 2')
+  const combo = screen.getByRole('combobox', {
+    name: 'Edit specification combination',
+  })
+  expect(combo).toHaveValue('Combination 2')
+  const maxima = screen.getAllByRole('textbox', {
+    name: 'Maximum for Video duration (seconds)',
+  })
+  const maximum = maxima.at(-1)
+  if (!maximum) throw new Error('Expected a visible combination duration field')
+  fireEvent.change(maximum, { target: { value: '12' } })
+  const saved = JSON.parse(change.mock.lastCall?.[0] ?? '{}')
+  expect(saved.oneOf[0].properties.seconds.maximum).toBe(30)
+  expect(saved.oneOf[1].properties.seconds.maximum).toBe(12)
+  expect(saved.oneOf[1].properties.resolution).toEqual({
+    type: 'string',
+    enum: ['2K'],
+  })
+  expect(saved.properties.resolution).toEqual({ type: 'string' })
+})
+
+test('media form reports inverted limits and invalid defaults next to the parameter while retaining values', () => {
+  const source = JSON.stringify({
+    properties: {
+      seconds: { type: 'integer', minimum: 20, maximum: 10, default: 30 },
+    },
+  })
+  const change = vi.fn()
+  render(<MediaFormHarness initial={source} onChange={change} />)
+  expect(
+    screen
+      .getAllByRole('alert')
+      .some((alert) =>
+        alert.textContent?.includes('The minimum cannot exceed the maximum.')
+      )
+  ).toBe(true)
+  expect(
+    screen.getByRole('textbox', {
+      name: 'Minimum for Video duration (seconds)',
+    })
+  ).toHaveValue('20')
+  expect(change).not.toHaveBeenCalled()
+})
+
+test('media form pending state disables parameter and combination controls', () => {
+  render(<MediaFormHarness onChange={vi.fn()} disabled />)
+  expect(
+    screen.getByRole('combobox', { name: 'Settings for Aspect ratio' })
+  ).toBeDisabled()
+  expect(
+    screen.getByRole('combobox', { name: 'Specification combination settings' })
+  ).toBeDisabled()
+})
+
+test('media form preserves unsupported native combination restrictions and never replaces them with broad guesses', () => {
+  const native = readMediaParameters({
+    ...nativeMediaFixture,
+    oneOf: [
+      { properties: { seconds: { minimum: 4, maximum: 30, multipleOf: 2 } } },
+    ],
+  })
+  expect(native).not.toBeNull()
+  if (!native) throw new Error('Expected native declaration')
+  expect(importMediaCombinations({}, native)).toBeNull()
+  expect(nativeMediaFields(native).seconds).toMatchObject({
+    minimum: 4,
+    maximum: 30,
+  })
+  expect(
+    mediaParameterErrors({
+      properties: { seconds: { type: 'integer', minimum: 31, maximum: 30 } },
+    })
+  ).toContain('The minimum cannot exceed the maximum.')
+  expect(
+    serializeMediaParameters(updateMediaField({}, 'seconds', undefined))
+  ).toBe('')
+  expect(parameterSeed('reference_images')).toEqual({
+    type: 'array',
+    items: { type: 'string' },
+  })
+})
+
+test('image parameters select size and output format defaults while preserving count limits', async () => {
+  const initial = {
+    type: 'object',
+    properties: {
+      size: { type: 'string', enum: ['1K', '2K'], default: '1K' },
+      output_format: { type: 'string', enum: ['png', 'webp'], default: 'png' },
+      n: { type: 'integer', minimum: 1, maximum: 4, default: 1 },
+    },
+  }
+  const change = vi.fn()
+  render(
+    <MediaFormHarness
+      initial={JSON.stringify(initial)}
+      native={{}}
+      onChange={change}
+    />
+  )
+  await selectOption('Default value for Image size', '2K')
+  await selectOption('Default value for Output format', 'webp')
+  const saved = JSON.parse(change.mock.lastCall?.[0] ?? '{}')
+  expect(saved.properties.size.default).toBe('2K')
+  expect(saved.properties.output_format.default).toBe('webp')
+  expect(saved.properties.n).toEqual(initial.properties.n)
+})
+
+test('a newly declared parameter leaves unpublished native limits blank rather than guessing them', async () => {
+  const change = vi.fn()
+  render(<MediaFormHarness native={{}} onChange={change} />)
+  await selectOption('Add generation parameter', 'Image count (n)')
+  expect(
+    screen.getByRole('textbox', { name: 'Minimum for Image count' })
+  ).toHaveValue('')
+  expect(
+    screen.getByRole('textbox', { name: 'Maximum for Image count' })
+  ).toHaveValue('')
+  expect(JSON.parse(change.mock.lastCall?.[0] ?? '{}').properties.n).toEqual({
+    type: 'integer',
+  })
 })

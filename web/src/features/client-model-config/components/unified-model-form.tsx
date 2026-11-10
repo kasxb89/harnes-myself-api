@@ -23,7 +23,6 @@ import { Controller, useFieldArray, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
-import { JsonCodeEditor } from '@/components/json-code-editor'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
@@ -50,6 +49,7 @@ import type {
   UnifiedModelSnapshot,
 } from '../unified-api'
 import { CostRulesTable } from './cost-rules-table'
+import { MediaParametersForm } from './media-parameters-form'
 
 export function UnifiedModelForm(props: {
   entry: UnifiedModelEntry
@@ -108,6 +108,15 @@ export function UnifiedModelForm(props: {
   const persist = form.handleSubmit(async (values) => {
     form.clearErrors('root')
     try {
+      if (
+        containerRef.current?.querySelector('[data-generation-invalid="true"]')
+      ) {
+        throw new Error(
+          t(
+            'Correct invalid generation parameters before saving. Existing settings are preserved.'
+          )
+        )
+      }
       if (
         containerRef.current?.querySelector(
           '[aria-invalid="true"], [data-billing-invalid="true"]'
@@ -443,31 +452,22 @@ export function UnifiedModelForm(props: {
           <h3 className='font-semibold'>{t('Image and video parameters')}</h3>
           <p className='text-muted-foreground max-w-prose text-sm'>
             {t(
-              'Set resolution, duration, ratio, reference limits and valid combinations. Leave empty to inherit the adapter. New protocols require adapter support.'
+              'Set image and video options below. Published changes apply to future requests; existing tasks keep their original parameters.'
             )}
           </p>
           <Controller
             control={form.control}
             name='parameter_json'
             render={({ field }) => (
-              <JsonCodeEditor
-                ariaLabel={t('Generation parameter schema')}
+              <MediaParametersForm
+                key={definition.model_name}
                 value={field.value}
-                onChange={field.onChange}
+                nativeSchema={props.entry.legacy_parameters}
                 disabled={props.pending}
+                onChange={field.onChange}
               />
             )}
           />
-          {props.entry.legacy_parameters && (
-            <div className='space-y-2 text-sm'>
-              <h4 className='font-medium'>
-                {t('View current adapter parameters')}
-              </h4>
-              <pre className='bg-muted mt-2 max-h-64 overflow-auto rounded-lg p-3 text-xs'>
-                {JSON.stringify(props.entry.legacy_parameters, null, 2)}
-              </pre>
-            </div>
-          )}
         </section>
       )}
       <section className='space-y-3' aria-label={t('User pricing')}>

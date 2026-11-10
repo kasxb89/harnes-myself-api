@@ -122,6 +122,12 @@ it('loads the configured provider price and preserves its exact bytes when only 
         enabled: true,
       },
     ],
+    parameters: {
+      type: 'object',
+      properties: {
+        seconds: { type: 'integer', minimum: 4, maximum: 30, default: 5 },
+      },
+    },
     pricing,
   }
   const save = vi.fn().mockResolvedValue(undefined)
@@ -152,6 +158,9 @@ it('loads the configured provider price and preserves its exact bytes when only 
   expect(
     await screen.findByRole('tab', { name: 'Hailuo Video' })
   ).toHaveAttribute('aria-selected', 'true')
+  expect(
+    screen.queryByRole('textbox', { name: 'Generation parameter schema' })
+  ).toBeNull()
   expect(screen.getByText(/Chinese yuan/)).toBeVisible()
   expect(screen.getByRole('table', { name: 'CNY prices' })).toBeVisible()
   expect(screen.queryByRole('combobox', { name: 'Editor mode' })).toBeNull()
@@ -166,10 +175,22 @@ it('loads the configured provider price and preserves its exact bytes when only 
     screen.getByRole('textbox', { name: 'Display name' }),
     'Updated H3 label'
   )
+  fireEvent.change(
+    within(
+      screen.getByRole('group', { name: 'General generation parameters' })
+    ).getByRole('textbox', { name: 'Maximum for Video duration (seconds)' }),
+    { target: { value: '20' } }
+  )
   await user.click(
     screen.getByRole('button', { name: 'Validate and save draft' })
   )
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+  expect(save.mock.calls[0][0].parameters).toEqual({
+    type: 'object',
+    properties: {
+      seconds: { type: 'integer', minimum: 4, maximum: 20, default: 5 },
+    },
+  })
   expect(save.mock.calls[0][0].pricing).toEqual(pricing)
   expect(save.mock.calls[0][0].pricing).not.toHaveProperty(
     'billing_setting.billing_expr'
