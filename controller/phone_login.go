@@ -252,6 +252,11 @@ func PhoneLogin(c *gin.Context) {
 			if err != nil {
 				return "", 0, "", err
 			}
+			// Check the final authoritative account as well as grant preflight:
+			// a historical username may be adopted while resolving the phone.
+			if common.IsManualLoginPhone(phone) && user.Role != common.RoleCommonUser {
+				return "", 0, "", model.ErrPhoneGrantNotAllowed
+			}
 			if created {
 				createdUser = user
 			}

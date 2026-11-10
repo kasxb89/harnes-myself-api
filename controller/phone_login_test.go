@@ -295,7 +295,7 @@ func TestPhoneManualInternationalLoginAndLegacyRecovery(t *testing.T) {
 }
 
 func TestPhoneManualGrantRestrictionsAndAtomicConsumption(t *testing.T) {
-	for _, scenario := range []string{"unknown", "wrong number", "expired", "revoked", "rotated", "five guesses across challenges", "downstream rollback", "concurrent login", "MFA", "privileged"} {
+	for _, scenario := range []string{"unknown", "wrong number", "expired", "revoked", "rotated", "five guesses across challenges", "downstream rollback", "concurrent login", "MFA", "privileged", "legacy privileged", "bare privileged"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, _ := setupPhoneAuthRecovery(t)
 			identity, _ := manualPhoneOperator(t, db)
@@ -318,12 +318,24 @@ func TestPhoneManualGrantRestrictionsAndAtomicConsumption(t *testing.T) {
 				_, _, err = model.IssuePhoneLoginGrant(phone, identity)
 				require.NoError(t, err)
 			}
-			if scenario == "MFA" || scenario == "privileged" {
+			if scenario == "MFA" || scenario == "privileged" || scenario == "legacy privileged" || scenario == "bare privileged" {
 				user := model.User{Username: "manual-existing", PhoneE164: &phone, Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1, AffCode: "manual-existing-aff"}
-				if scenario == "privileged" {
+				if scenario == "legacy privileged" {
+					user.Username = phoneUsername(phone)
+					user.PhoneE164 = nil
+				}
+				if scenario == "bare privileged" {
+					bare := strings.TrimPrefix(phone, "+")
+					user.PhoneE164 = &bare
+				}
+				if scenario == "privileged" || scenario == "legacy privileged" || scenario == "bare privileged" {
 					user.Role = common.RoleAdminUser
 				}
 				require.NoError(t, db.Create(&user).Error)
+				if scenario != "MFA" {
+					_, _, err := model.IssuePhoneLoginGrant(phone, identity)
+					assert.ErrorIs(t, err, model.ErrPhoneGrantNotAllowed, "operator cannot issue a credential for any privileged legacy identity")
+				}
 				if scenario == "MFA" {
 					require.NoError(t, db.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
 				}

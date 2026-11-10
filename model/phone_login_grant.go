@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -54,14 +55,10 @@ func IssuePhoneLoginGrant(phone string, identity AuthSessionIdentity) (*PhoneLog
 		if err := validatePhoneGrantOperator(tx, identity); err != nil {
 			return err
 		}
-		var user User
-		err := lockForUpdate(tx).Where("phone_e164 = ?", phone).First(&user).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err := manualPhoneAccountAllowed(tx, phone); err != nil {
 			return err
 		}
-		if err == nil && user.Role != common.RoleCommonUser {
-			return ErrPhoneGrantNotAllowed
-		}
+
 		return tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "phone_e164"}}, UpdateAll: true}).Create(&grant).Error
 	})
 	if err != nil {
@@ -100,14 +97,13 @@ func consumePhoneLoginGrant(tx *gorm.DB, phone, code string) (bool, error) {
 	if !valid {
 		return false, tx.Model(&grant).Updates(updates).Error
 	}
-	var user User
-	err = lockForUpdate(tx).Where("phone_e164 = ?", phone).First(&user).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := manualPhoneAccountAllowed(tx, phone); err != nil {
+		if errors.Is(err, ErrPhoneGrantNotAllowed) {
+			return false, nil
+		}
 		return false, err
 	}
-	if err == nil && user.Role != common.RoleCommonUser {
-		return false, nil
-	}
+
 	updates["used_at"] = time.Now().Unix()
 	return true, tx.Model(&grant).Updates(updates).Error
 }
@@ -121,6 +117,27 @@ func validatePhoneGrantOperator(tx *gorm.DB, identity AuthSessionIdentity) error
 		return err
 	}
 	if user.Role != common.RoleRootUser {
+		return ErrPhoneGrantNotAllowed
+	}
+	return nil
+}
+
+// Match the existing phone-login adoption order, including historical bare
+// numbers and unbound shadow usernames; hold the account lock through login.
+func manualPhoneAccountAllowed(tx *gorm.DB, phone string) error {
+	digits := strings.TrimPrefix(phone, "+")
+	var user User
+	err := lockForUpdate(tx).Where("phone_e164 IN ?", []string{phone, digits}).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = lockForUpdate(tx).Where("username = ?", "ys"+digits).First(&user).Error
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if user.Role != common.RoleCommonUser {
 		return ErrPhoneGrantNotAllowed
 	}
 	return nil
