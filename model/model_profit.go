@@ -573,7 +573,16 @@ func modelProfitCost(rule ModelProfitCostRule, log Log, facts profitLogFacts) (f
 			return 0, false
 		}
 		p -= cr
-		cost = (p**rule.InputCostPerMillionCNY + cr**rule.CacheCostPerMillionCNY + c**rule.OutputCostPerMillionCNY) / 1000000
+		cacheCost := 0.0
+		if cr > 0 {
+			// A standard non-cache quote establishes no cache tariff. Preserve
+			// unknown cost for a cache hit instead of inventing a zero price.
+			if rule.CacheCostPerMillionCNY == nil {
+				return 0, false
+			}
+			cacheCost = cr * *rule.CacheCostPerMillionCNY
+		}
+		cost = (p**rule.InputCostPerMillionCNY + cacheCost + c**rule.OutputCostPerMillionCNY) / 1000000
 		if rule.DeepSeekPeakMultiplier != nil {
 			// matched_tier was frozen by the shared DeepSeek calendar when the
 			// gateway reserved the request. Completion time is not a substitute.

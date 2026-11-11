@@ -38,6 +38,30 @@ func TestTextQualificationRequiresVisionToolRoundtripAndBilling(t *testing.T) {
 	require.NoError(t, err)
 	_, err = loadTextQualifications(raw)
 	require.NoError(t, err)
+
+	// A private provider cc12h expression remains unsupported. A separately
+	// reviewed standard p/c sale may qualify the model without executing it.
+	standard := proof
+	standard.ID = "ys-gpt-6.1-sol"
+	standard.StandardPrices = map[string]standardTextPrice{
+		"input":  {Cost: "0.5", Retail: "3.42", Official: "14.6"},
+		"output": {Cost: "2.5", Retail: "17.1", Official: "73"},
+	}
+	raw, err = common.Marshal(textQualificationSnapshot{SchemaVersion: 1, ReviewedModelIDs: []string{standard.ID}, Models: []textQualification{standard}})
+	require.NoError(t, err)
+	_, err = loadTextQualifications(raw)
+	require.NoError(t, err)
+	for _, invalid := range []map[string]standardTextPrice{
+		{"input": {Cost: "0.5", Retail: "0.7", Official: "14.6"}, "output": standard.StandardPrices["output"]},
+		{"input": {Cost: "0.5", Retail: "3.42", Official: ""}, "output": standard.StandardPrices["output"]},
+		{"input": standard.StandardPrices["input"]},
+	} {
+		standard.StandardPrices = invalid
+		raw, err = common.Marshal(textQualificationSnapshot{SchemaVersion: 1, ReviewedModelIDs: []string{standard.ID}, Models: []textQualification{standard}})
+		require.NoError(t, err)
+		_, err = loadTextQualifications(raw)
+		require.Error(t, err)
+	}
 }
 
 func TestReviewedCandidatesStayIsolatedAndUnavailable(t *testing.T) {

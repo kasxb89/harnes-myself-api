@@ -158,7 +158,7 @@ func ValidateModelProfitCostRules(config ModelProfitCostRules) error {
 				}
 			}
 		case "token":
-			if rule.UnitCostCNY != nil || rule.ResolutionCostsCNY != nil || rule.InputCostPerMillionCNY == nil || rule.CacheCostPerMillionCNY == nil || rule.OutputCostPerMillionCNY == nil || (rule.DeepSeekPeakMultiplier != nil && (*rule.DeepSeekPeakMultiplier < 1 || *rule.DeepSeekPeakMultiplier > 100)) {
+			if rule.UnitCostCNY != nil || rule.ResolutionCostsCNY != nil || rule.InputCostPerMillionCNY == nil || rule.OutputCostPerMillionCNY == nil || (rule.DeepSeekPeakMultiplier != nil && (*rule.DeepSeekPeakMultiplier < 1 || *rule.DeepSeekPeakMultiplier > 100)) {
 				return ErrModelProfitParameters
 			}
 		default:

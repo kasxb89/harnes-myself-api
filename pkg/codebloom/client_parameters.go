@@ -33,13 +33,17 @@ func ClientParameters(id string) map[string]any {
 	}
 	if m.Kind == "text" {
 		if m.ActivationReady {
+			revision, checkedAt := "codebloom-live-20261102", "2026-11-02"
+			if m.CapabilityStatus["billable_usage_scope"] == "standard_short_context_input_output" {
+				revision, checkedAt = "codebloom-standard-20261110", m.CapabilityStatus["standard_checked_at"]
+			}
 			reasoning := "unverified"
 			mode := "unknown"
 			if m.ReasoningObserved {
 				reasoning, mode = "supported", "automatic"
 			}
 			return map[string]any{"type": "object", "properties": map[string]any{}, "x-model-kind": "text", "x-text-capabilities": map[string]any{
-				"schema_version": 2, "revision": "codebloom-live-20261102", "checked_at": "2026-11-02", "tools": true, "vision": true, "reasoning": m.ReasoningObserved, "stream": true,
+				"schema_version": 2, "revision": revision, "checked_at": checkedAt, "tools": true, "vision": true, "reasoning": m.ReasoningObserved, "stream": true,
 				"verification":     map[string]string{"tools": "supported", "vision": "supported", "reasoning": reasoning},
 				"input_modalities": []string{"text", "image"}, "reasoning_mode": mode,
 				"tools_config":            map[string]any{"protocol": "openai-chat", "roundtrip_verified": true, "verified_tool_choices": []string{"function", "none"}, "parallel_calls": "unverified"},
@@ -96,6 +100,19 @@ func ImageEditClientParameters(id string) map[string]any {
 // ClientPrices projects approved user prices only. Account credit procurement,
 // supplier multipliers and credentials never enter a client response.
 func ClientPrices(id string) []map[string]any {
+	if catalogError != nil || textQualificationError != nil || imageQualificationError != nil {
+		return nil
+	}
+	for _, proof := range liveText.Models {
+		if proof.ID != id || proof.StandardPrices == nil {
+			continue
+		}
+		rows := make([]map[string]any, 0, 2)
+		for _, direction := range []string{"input", "output"} {
+			rows = append(rows, map[string]any{"params": map[string]any{}, "direction": direction, "unit": "CNY / million tokens", "retail_cny": proof.StandardPrices[direction].Retail})
+		}
+		return rows
+	}
 	m, ok := Lookup(id)
 	if !ok {
 		return nil

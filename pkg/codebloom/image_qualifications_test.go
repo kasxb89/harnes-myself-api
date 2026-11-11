@@ -66,7 +66,7 @@ func TestQualifiedImageCannotMutateSnapshotOrActivateText(t *testing.T) {
 	image.CapabilityStatus["billable_usage"] = "tampered"
 	copy, _ := Lookup(proof.ID)
 	assert.Equal(t, "verified", copy.CapabilityStatus["billable_usage"])
-	assert.False(t, PubliclyAvailable("ys-gpt-6.1-sol"))
+	assert.False(t, PubliclyAvailable("ys-deepseek-v4-flash"))
 	assert.True(t, PubliclyAvailable("ys-1.0"))
 	imageQualificationError = errors.New("invalid live proof")
 	for _, candidate := range approved.Models {

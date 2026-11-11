@@ -3,10 +3,13 @@ package modelpricebook
 import (
 	_ "embed"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/codebloom"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 )
 
 // Kept separately from the active model catalog: displaying historical approved
@@ -42,6 +45,26 @@ func Snapshot() ([]Quote, error) {
 	if err := common.Unmarshal(approved, &snapshot); err != nil {
 		return nil, err
 	}
+	ycModels, err := ycapi.Models()
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range ycModels {
+		if candidate.Kind != "text" || len(candidate.Prices) == 0 || candidate.Prices[0].OfficialCheckedAt == "" {
+			continue
+		}
+		quote := Quote{ModelName: candidate.ID, Name: candidate.Name, Provider: "YCAPI", Basis: "approved_snapshot", CheckedAt: candidate.Prices[0].OfficialCheckedAt, RetailCheckedAt: candidate.Prices[0].OfficialCheckedAt, Source: candidate.Prices[0].OfficialSource, Currency: "CNY", Prices: []Price{}}
+		for _, price := range candidate.Prices {
+			retail := price.Retail.InexactFloat64()
+			quote.Prices = append(quote.Prices, Price{Params: price.Params, Direction: price.Direction, Unit: "CNY / million tokens", ProcurementCNY: price.Procurement.InexactFloat64(), RetailCNY: &retail, LaneID: price.LaneID})
+		}
+		i := slices.IndexFunc(snapshot.Quotes, func(q Quote) bool { return q.ModelName == candidate.ID })
+		if i >= 0 {
+			snapshot.Quotes[i] = quote
+		} else {
+			snapshot.Quotes = append(snapshot.Quotes, quote)
+		}
+	}
 	models, err := codebloom.Models()
 	if err != nil {
 		return nil, err
@@ -50,6 +73,21 @@ func Snapshot() ([]Quote, error) {
 		prices := make([]Price, 0, len(model.CostComponents))
 		for _, component := range model.CostComponents {
 			prices = append(prices, Price{Params: component.Params, Direction: component.Direction, Unit: component.Unit, ProcurementCNY: component.AccountCreditCNY, RetailCNY: component.RetailCNY})
+		}
+		if model.CapabilityStatus["billable_usage_scope"] == "standard_short_context_input_output" {
+			prices = nil
+			for _, retailRow := range codebloom.ClientPrices(model.ID) {
+				direction := retailRow["direction"].(string)
+				i := slices.IndexFunc(model.CostComponents, func(c codebloom.CostComponent) bool { return c.Direction == direction })
+				if i < 0 {
+					return nil, fmt.Errorf("missing reviewed standard cost")
+				}
+				retail, err := strconv.ParseFloat(retailRow["retail_cny"].(string), 64)
+				if err != nil {
+					return nil, err
+				}
+				prices = append(prices, Price{Params: map[string]any{}, Direction: direction, Unit: "CNY / million tokens", ProcurementCNY: model.CostComponents[i].AccountCreditCNY, RetailCNY: &retail})
+			}
 		}
 		conditions, err := common.Marshal(model.CostConditions)
 		if err != nil {

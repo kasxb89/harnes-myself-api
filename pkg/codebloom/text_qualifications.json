@@ -36,7 +36,8 @@
     "ys-gpt-5.6-terra",
     "ys-gpt-6-sol",
     "ys-gpt-6-astra",
-    "ys-gpt-5.6-sol"
+    "ys-gpt-5.6-sol",
+    "ys-minimax-m3"
   ],
   "models": [
     {
@@ -165,18 +166,6 @@
       }
     },
     {
-      "id": "ys-glm-5.3-flashx",
-      "checked_at": "2026-11-02",
-      "vision": "verified",
-      "tools": "verified",
-      "tool_roundtrip": "verified",
-      "billable_usage": "verified",
-      "reasoning_observed": false,
-      "request_sha256": "3a90ff0061636f5c3ce21d47ab81ed221d3bb58129147bc63dd96d6597b61a9a",
-      "response_sha256": "3c77d70f92f267896eb913f797fc3611789e1ebb10b68b6cb621ea07975d8f7d",
-      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
-    },
-    {
       "id": "ys-glm-5.3-flash",
       "checked_at": "2026-11-02",
       "vision": "verified",
@@ -299,18 +288,6 @@
       "reasoning_observed": true,
       "request_sha256": "cb1c9e13ebf2880a644a84d7b66d9ba8bec0170e842e64af0b5171fefef62ff7",
       "response_sha256": "b94b26656e1c9f4f5b7a3e31d574ce753dc93eb7604c42b58c441a0c5805b7ea",
-      "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
-    },
-    {
-      "id": "ys-deepseek-v4.1-flash-1017",
-      "checked_at": "2026-11-02",
-      "vision": "verified",
-      "tools": "verified",
-      "tool_roundtrip": "verified",
-      "billable_usage": "verified",
-      "reasoning_observed": false,
-      "request_sha256": "3dea411364d4e59ad513836e47c66136792273171f377067b41f02121f0d83b7",
-      "response_sha256": "af2b7aec8400e29592ae664012dea8556bbc26abd23c6848253731c80c7988ed",
       "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
     },
     {
@@ -598,6 +575,342 @@
       "request_sha256": "597640655239f08ea50049477808d66ed2370e1b62f25182b5af79c41b461f6d",
       "response_sha256": "23c0672645658688ef13d152c0ef057f3ed00f3f93775e063bbf63db2ad26bb8",
       "meter_evidence_sha256": "a4d715f1931a5ee54d627393d8682997808a7e49d794bad92fc9609a179ce9aa"
+    },
+    {
+      "id": "ys-deepseek-v4.1-flash-1017",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "648befc1eeb8f12abca7663e5e4ad8cd8c100f3a85c8af286333edccebd980fc",
+      "response_sha256": "4a8c2fb5e2a5eb2243680dd7ee5aba5313cdd8ed475bccf1d7e340d64e695303",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "0.5",
+          "retail_cny": "0.7",
+          "official_cny": "1"
+        },
+        "output": {
+          "cost_cny": "2",
+          "retail_cny": "2.8",
+          "official_cny": "4"
+        }
+      }
+    },
+    {
+      "id": "ys-glm-5.3-flashx",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "8b5a0f531a65ea4bc7985464c1f4a0c3dcd5415daa8ddf45731a1e560ef8a1ad",
+      "response_sha256": "c93ee45d2d479d2c7e3791aa43512e2046fae6e869dcd5b4d43ad50f6e803762",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "1",
+          "retail_cny": "1.4",
+          "official_cny": "2"
+        },
+        "output": {
+          "cost_cny": "3.5",
+          "retail_cny": "4.9",
+          "official_cny": "7"
+        }
+      }
+    },
+    {
+      "id": "ys-hy4",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "1069dfc465e03c6ceb1773359bb004d2146142c94e788e7a470f58afb9141e9a",
+      "response_sha256": "c8aca0f52a0602b112de8f2ed5870730013438c3a49cc77821a46fd1a5e3953c",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "3",
+          "retail_cny": "4.2",
+          "official_cny": "6"
+        },
+        "output": {
+          "cost_cny": "9",
+          "retail_cny": "12.6",
+          "official_cny": "18"
+        }
+      },
+      "additional_model": {
+        "id": "ys-hy4",
+        "name": "ys-hy4",
+        "upstream_id": "hy4",
+        "kind": "text",
+        "transport": "chat_completions",
+        "credential_env": "CODEBLOOM_CN_KEY",
+        "account_multiplier": 0.5,
+        "base_billing_expression": "tier(\"standard\", p * 6 + c * 18)",
+        "checked_at": "2026-11-10",
+        "currency": "CNY_ACCOUNT_CREDIT",
+        "cost_basis": "account_credit_snapshot",
+        "cash_cost_cny": null,
+        "retail_cny": null,
+        "retail_pricing_status": "approved_official_fold_plus_two_capped",
+        "retail_account_multiplier": null,
+        "retail_checked_at": "2026-11-11",
+        "activation_ready": false,
+        "pending_reasons": [
+          "cash_procurement_conversion_unknown"
+        ],
+        "capability_status": {},
+        "verified_request_options": {},
+        "context_window": null,
+        "max_output_tokens": null,
+        "cost_components": [
+          {
+            "params": {},
+            "direction": "input",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 3.0,
+            "retail_cny": 4.2
+          },
+          {
+            "params": {},
+            "direction": "output",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 9.0,
+            "retail_cny": 12.6
+          }
+        ],
+        "cost_conditions": {
+          "scope": "standard_short_context_input_output"
+        },
+        "cost_notes": [
+          "Account credit denomination; no cash purchase conversion claim. Other provider cache/long-context conditions are not qualified by this standard sale."
+        ]
+      }
+    },
+    {
+      "id": "ys-minimax-m3",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "5531221c01c23f85662f8d2e9322ae096c89c2df7e1ae95b02797ede58e2eb0d",
+      "response_sha256": "c439950c5454d8091290f100105489f6aac942c9080d821ce796a28e78d03ca4",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "1",
+          "retail_cny": "1.42",
+          "official_cny": "2.1"
+        },
+        "output": {
+          "cost_cny": "4",
+          "retail_cny": "5.68",
+          "official_cny": "8.4"
+        }
+      },
+      "additional_model": {
+        "id": "ys-minimax-m3",
+        "name": "ys-minimax-m3",
+        "upstream_id": "minimax-m3",
+        "kind": "text",
+        "transport": "chat_completions",
+        "credential_env": "CODEBLOOM_CN_KEY",
+        "account_multiplier": 0.5,
+        "base_billing_expression": "tier(\"standard\", p * 2 + c * 8)",
+        "checked_at": "2026-11-10",
+        "currency": "CNY_ACCOUNT_CREDIT",
+        "cost_basis": "account_credit_snapshot",
+        "cash_cost_cny": null,
+        "retail_cny": null,
+        "retail_pricing_status": "approved_official_fold_plus_two_capped",
+        "retail_account_multiplier": null,
+        "retail_checked_at": "2026-11-11",
+        "activation_ready": false,
+        "pending_reasons": [
+          "cash_procurement_conversion_unknown"
+        ],
+        "capability_status": {},
+        "verified_request_options": {},
+        "context_window": null,
+        "max_output_tokens": null,
+        "cost_components": [
+          {
+            "params": {},
+            "direction": "input",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 1.0,
+            "retail_cny": 1.42
+          },
+          {
+            "params": {},
+            "direction": "output",
+            "unit": "CNY / million tokens",
+            "account_credit_cny": 4.0,
+            "retail_cny": 5.68
+          }
+        ],
+        "cost_conditions": {
+          "scope": "standard_short_context_input_output"
+        },
+        "cost_notes": [
+          "Account credit denomination; no cash purchase conversion claim. Other provider cache/long-context conditions are not qualified by this standard sale."
+        ]
+      }
+    },
+    {
+      "id": "ys-qwen3.8-max",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "abef52f151f3de8d7061eec4df1b865155391ac98279ecec8631aa55dd145be4",
+      "response_sha256": "48a75e28e5151dae71b4597ed5606511adc112fa90750e393d56948097f3507d",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "6",
+          "retail_cny": "8.4",
+          "official_cny": "12"
+        },
+        "output": {
+          "cost_cny": "18",
+          "retail_cny": "25.2",
+          "official_cny": "36"
+        }
+      }
+    },
+    {
+      "id": "ys-gpt-5.6-sol",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "635cf9453c6e5e3af76abdf95ba7301ab8a8067cd3ad1936a5912bd7714938ed",
+      "response_sha256": "925df9dc52f1cc838b6843539f2622f4011fc57384a9d66fceadd7e88be5b75a",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "1.25",
+          "retail_cny": "7.09",
+          "official_cny": "29.2"
+        },
+        "output": {
+          "cost_cny": "7.5",
+          "retail_cny": "36.7",
+          "official_cny": "146"
+        }
+      }
+    },
+    {
+      "id": "ys-gpt-5.6-terra",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "636de14cd45533d3aa2b8df1f1ad3dd60d011e6d2e06bd06e6b28230799a857d",
+      "response_sha256": "c2a7b260169267aa4b4fb2dfbaa15ab49bf6a944f0b96faa61fca45253ba30b9",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "0.5",
+          "retail_cny": "3.42",
+          "official_cny": "14.6"
+        },
+        "output": {
+          "cost_cny": "3",
+          "retail_cny": "20.52",
+          "official_cny": "87.6"
+        }
+      }
+    },
+    {
+      "id": "ys-gpt-6-sol",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "911dfeb2b2be914b233c94e528e08d0e0e1b5bd772aaa03fdebf0b9865b8d557",
+      "response_sha256": "c1a0dc3bfe72af15efe765a184d556ca3ed4c437d0d55368816b61a5b88c65c9",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "0.5",
+          "retail_cny": "3.42",
+          "official_cny": "14.6"
+        },
+        "output": {
+          "cost_cny": "2.5",
+          "retail_cny": "17.1",
+          "official_cny": "73"
+        }
+      }
+    },
+    {
+      "id": "ys-gpt-6.1-sol",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": true,
+      "request_sha256": "f6939d92883aee5da590560acf2aa0c74b4985d3afb1cd068075aadd496aaa03",
+      "response_sha256": "9eaa7a627b53a0873af7aa99b85e06f83fe4455ef859aea4657dd8139d6c9247",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "0.5",
+          "retail_cny": "3.42",
+          "official_cny": "14.6"
+        },
+        "output": {
+          "cost_cny": "2.5",
+          "retail_cny": "17.1",
+          "official_cny": "73"
+        }
+      }
+    },
+    {
+      "id": "ys-gpt-6.1-terra",
+      "checked_at": "2026-11-10",
+      "vision": "verified",
+      "tools": "verified",
+      "tool_roundtrip": "verified",
+      "billable_usage": "verified",
+      "reasoning_observed": false,
+      "request_sha256": "4156153cb1744ad0fcc6931fc49f2d7777770b1c87732c72a3b17af29176e654",
+      "response_sha256": "c4b0380dfb83e1f4e067d9deca6e98da64fbc81d8ebe0bc5d5b90667c51aaa5d",
+      "meter_evidence_sha256": "b99998768226bd22d97d15dfe5964f4fd4354f3b5e02fac9fa3e1d47ad6ba5f3",
+      "standard_prices": {
+        "input": {
+          "cost_cny": "0.25",
+          "retail_cny": "1.71",
+          "official_cny": "7.3"
+        },
+        "output": {
+          "cost_cny": "1.25",
+          "retail_cny": "8.55",
+          "official_cny": "36.5"
+        }
+      }
     }
   ]
 }

@@ -8,11 +8,11 @@
       "lane_id": "claude-haiku-4-5@952:claude-kiro(满缓存)",
       "tools": true,
       "vision": true,
-      "reasoning": true,
+      "reasoning": false,
       "verification": {
         "tools": "supported",
         "vision": "supported",
-        "reasoning": "supported"
+        "reasoning": "unverified"
       },
       "input_modalities": [
         "text",
@@ -22,7 +22,8 @@
         "protocol": "openai-chat",
         "roundtrip_verified": true,
         "verified_tool_choices": [
-          "auto"
+          "function",
+          "none"
         ],
         "parallel_calls": "unverified"
       },
@@ -31,9 +32,7 @@
           "data_url"
         ],
         "verified_mime_types": [
-          "image/png",
-          "image/webp",
-          "image/jpeg"
+          "image/png"
         ],
         "billing": "input_tokens"
       },
@@ -53,12 +52,14 @@
         },
         "additionalProperties": false
       },
+      "reasoning_omit_behavior": "provider_default",
       "reasoning_control_mapping": {
         "enable_thinking_with_effort": true,
         "omit_effort_on_none": false
       },
-      "reasoning_omit_behavior": "provider_default",
-      "operational_status": "available"
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
     },
     {
       "model_id": "ycapi-claude-sonnet-4-6",
@@ -119,10 +120,10 @@
     },
     {
       "model_id": "ycapi-claude-sonnet-5",
-      "lane_id": "claude-sonnet-5@MEG:erzhe-w",
+      "lane_id": "claude-sonnet-5@TIA:claude-kiro",
       "tools": true,
       "vision": true,
-      "reasoning": true,
+      "reasoning": false,
       "verification": {
         "tools": "supported",
         "vision": "supported",
@@ -136,7 +137,8 @@
         "protocol": "openai-chat",
         "roundtrip_verified": true,
         "verified_tool_choices": [
-          "auto"
+          "function",
+          "none"
         ],
         "parallel_calls": "unverified"
       },
@@ -145,34 +147,21 @@
           "data_url"
         ],
         "verified_mime_types": [
-          "image/png",
-          "image/webp",
-          "image/jpeg"
+          "image/png"
         ],
         "billing": "input_tokens"
       },
-      "reasoning_mode": "configurable",
+      "reasoning_mode": "unknown",
       "reasoning_controls": {
         "type": "object",
-        "properties": {
-          "reasoning_effort": {
-            "type": "string",
-            "enum": [
-              "none",
-              "low",
-              "medium",
-              "high"
-            ]
-          }
-        },
+        "properties": {},
         "additionalProperties": false
       },
-      "reasoning_control_mapping": {
-        "enable_thinking_with_effort": true,
-        "omit_effort_on_none": false
-      },
       "reasoning_omit_behavior": "provider_default",
-      "operational_status": "available"
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
     },
     {
       "model_id": "ycapi-gemini-3.1-flash-lite",
@@ -562,14 +551,14 @@
     },
     {
       "model_id": "ycapi-gpt-5.5",
-      "lane_id": "gpt-5.5@OLX:codex-gpt-1",
+      "lane_id": "gpt-5.5@GEE:gptvip",
       "tools": true,
       "vision": true,
-      "reasoning": true,
+      "reasoning": false,
       "verification": {
         "tools": "supported",
         "vision": "supported",
-        "reasoning": "supported"
+        "reasoning": "unverified"
       },
       "input_modalities": [
         "text",
@@ -579,7 +568,8 @@
         "protocol": "openai-chat",
         "roundtrip_verified": true,
         "verified_tool_choices": [
-          "auto"
+          "function",
+          "none"
         ],
         "parallel_calls": "unverified"
       },
@@ -588,31 +578,21 @@
           "data_url"
         ],
         "verified_mime_types": [
-          "image/png",
-          "image/webp",
-          "image/jpeg"
+          "image/png"
         ],
         "billing": "input_tokens"
       },
-      "reasoning_mode": "configurable",
+      "reasoning_mode": "unknown",
       "reasoning_controls": {
         "type": "object",
-        "properties": {
-          "reasoning_effort": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ]
-          }
-        },
+        "properties": {},
         "additionalProperties": false
       },
-      "reasoning_control_mapping": {},
       "reasoning_omit_behavior": "provider_default",
-      "operational_status": "available"
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
     },
     {
       "model_id": "ycapi-gpt-5.6-luna",
@@ -724,14 +704,14 @@
     },
     {
       "model_id": "ycapi-gpt-5.6-terra",
-      "lane_id": "gpt-5.6-terra@TIA:gpt-特价",
+      "lane_id": "gpt-5.6-terra@OLX:codex-gpt-1",
       "tools": true,
       "vision": true,
       "reasoning": true,
       "verification": {
         "tools": "supported",
         "vision": "supported",
-        "reasoning": "unverified"
+        "reasoning": "supported"
       },
       "input_modalities": [
         "text",
@@ -741,7 +721,8 @@
         "protocol": "openai-chat",
         "roundtrip_verified": true,
         "verified_tool_choices": [
-          "auto"
+          "function",
+          "none"
         ],
         "parallel_calls": "unverified"
       },
@@ -750,31 +731,21 @@
           "data_url"
         ],
         "verified_mime_types": [
-          "image/png",
-          "image/webp",
-          "image/jpeg"
+          "image/png"
         ],
         "billing": "input_tokens"
       },
-      "reasoning_mode": "configurable",
+      "reasoning_mode": "automatic",
       "reasoning_controls": {
         "type": "object",
-        "properties": {
-          "reasoning_effort": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ]
-          }
-        },
+        "properties": {},
         "additionalProperties": false
       },
-      "reasoning_control_mapping": {},
       "reasoning_omit_behavior": "provider_default",
-      "operational_status": "available"
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
     },
     {
       "model_id": "ycapi-gpt-6-astra",
@@ -1054,7 +1025,8 @@
         "protocol": "openai-chat",
         "roundtrip_verified": true,
         "verified_tool_choices": [
-          "auto"
+          "function",
+          "none"
         ],
         "parallel_calls": "unverified"
       },
@@ -1063,9 +1035,7 @@
           "data_url"
         ],
         "verified_mime_types": [
-          "image/png",
-          "image/webp",
-          "image/jpeg"
+          "image/png"
         ],
         "billing": "input_tokens"
       },
@@ -1079,9 +1049,11 @@
         },
         "additionalProperties": false
       },
-      "reasoning_control_mapping": {},
       "reasoning_omit_behavior": "provider_default",
-      "operational_status": "available"
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
     },
     {
       "model_id": "ycapi-qwen3.8-flash",
@@ -1186,22 +1158,688 @@
       },
       "reasoning_omit_behavior": "provider_default",
       "operational_status": "available"
+    },
+    {
+      "model_id": "ycapi-claude-fable-5",
+      "lane_id": "claude-fable-5@VEC:default",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-claude-fable-5-1",
+      "lane_id": "claude-fable-5-1@OLX:claude-code-1",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-claude-haiku-5-5",
+      "lane_id": "claude-haiku-5-5@952:claude",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-claude-opus-4-6",
+      "lane_id": "claude-opus-4-6@TIA:claude-kiro",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-claude-opus-4-7",
+      "lane_id": "claude-opus-4-7@TIA:claude-kiro",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-claude-opus-4-8",
+      "lane_id": "claude-opus-4-8@TIA:claude-kiro",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-claude-opus-5",
+      "lane_id": "claude-opus-5@TIA:claude-kiro",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-gemini-3.7-flash",
+      "lane_id": "gemini-3.7-flash@OLX:anti-gemini-1",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-gemini-3.8-flash",
+      "lane_id": "gemini-3.8-flash@OLX:anti-gemini-1",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-glm-5.3-flash",
+      "lane_id": "glm-5.3-flash@952:BigModel",
+      "tools": true,
+      "vision": true,
+      "reasoning": true,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "supported"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "automatic",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-gpt-6-luna",
+      "lane_id": "gpt-6-luna@ROU:oai-enterprise",
+      "tools": true,
+      "vision": true,
+      "reasoning": true,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "supported"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "automatic",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-gpt-6.1-terra",
+      "lane_id": "gpt-6.1-terra@OLX:codex-gpt-1",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-kimi-k3",
+      "lane_id": "kimi-k3@CBY:default",
+      "tools": true,
+      "vision": true,
+      "reasoning": false,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "unverified"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "unknown",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-kimi-k3.1-pro",
+      "lane_id": "kimi-k3.1-pro@CBY:default",
+      "tools": true,
+      "vision": true,
+      "reasoning": true,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "supported"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "automatic",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
+    },
+    {
+      "model_id": "ycapi-minimax-m3.1-flash",
+      "lane_id": "minimax-m3.1-flash@VEC:default",
+      "tools": true,
+      "vision": true,
+      "reasoning": true,
+      "verification": {
+        "tools": "supported",
+        "vision": "supported",
+        "reasoning": "supported"
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "tools_config": {
+        "protocol": "openai-chat",
+        "roundtrip_verified": true,
+        "verified_tool_choices": [
+          "function",
+          "none"
+        ],
+        "parallel_calls": "unverified"
+      },
+      "vision_config": {
+        "verified_transports": [
+          "data_url"
+        ],
+        "verified_mime_types": [
+          "image/png"
+        ],
+        "billing": "input_tokens"
+      },
+      "reasoning_mode": "automatic",
+      "reasoning_controls": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "reasoning_omit_behavior": "provider_default",
+      "reasoning_control_mapping": {},
+      "operational_status": "available",
+      "checked_at": "2026-11-10",
+      "revision": "text30-native-20261110"
     }
   ],
   "excluded_model_ids": [
-    "ycapi-claude-fable-5",
-    "ycapi-claude-fable-5-1",
-    "ycapi-claude-opus-4-6",
-    "ycapi-claude-opus-4-7",
-    "ycapi-claude-opus-4-8",
-    "ycapi-claude-opus-5",
     "ycapi-claude-opus-5-5",
     "ycapi-claude-sonnet-5-5",
-    "ycapi-gemini-3.7-flash",
-    "ycapi-gemini-3.8-flash",
     "ycapi-glm-5.2",
     "ycapi-glm-5.3",
-    "ycapi-glm-5.3-flash",
     "ycapi-gpt-5.3-codex",
     "ycapi-gpt-5.4-nano",
     "ycapi-grok-4.5",

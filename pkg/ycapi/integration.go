@@ -153,7 +153,14 @@ func LegacyClientPrices(id string) []map[string]any {
 				"source_currency": p.OfficialOriginal.Currency,
 			}
 			if p.OfficialOriginal.Currency == "USD" && approved.OfficialUSDCNY.IsPositive() {
-				reference["usd_cny"] = approved.OfficialUSDCNY.String()
+				rate := approved.OfficialUSDCNY
+				if p.OfficialOriginal.USDCNY.IsPositive() {
+					rate = p.OfficialOriginal.USDCNY
+				}
+				reference["usd_cny"] = rate.String()
+			}
+			if p.OfficialCheckedAt != "" {
+				reference["checked_at"] = p.OfficialCheckedAt
 			}
 			if m.Kind == "video" || m.Kind == "image" {
 				reference["official_total_cny"] = p.OfficialTotal.String()

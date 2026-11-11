@@ -3,15 +3,19 @@ package router
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	"image/png"
 	"io"
 	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,9 +35,293 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Opt-in operator fixture uses the exact thirty reviewable production drafts,
+// actual dashboard authentication/CAS, relay adapters and disposable ledgers.
+// Provider traffic is synthetic unless an explicitly fenced loopback proxy is supplied.
+func TestQualifiedThirtyStandardTextHTTPPublicationAndSingleSettlement(t *testing.T) {
+	path := os.Getenv("TEST_TEXT30_DEFINITIONS")
+	if path == "" {
+		t.Skip("requires the explicitly authorized thirty-model definition file")
+	}
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var definitions []model.ModelConfiguration
+	require.NoError(t, common.Unmarshal(raw, &definitions))
+	require.Len(t, definitions, 30)
+	f := unifiedConfigurationFixture(t)
+	oldFX := operation_setting.USDExchangeRate
+	operation_setting.USDExchangeRate = 7.3
+	t.Cleanup(func() { operation_setting.USDExchangeRate = oldFX })
+	base := "https://text30.fixture"
+	for _, id := range []int{24, 48, 49} {
+		ch := model.Channel{Id: id, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Name: fmt.Sprintf("Text30 local %d", id), Models: fmt.Sprintf("preserved-channel-%d", id), Group: "default,product", Key: "synthetic-text30-key", BaseURL: &base}
+		require.NoError(t, ch.Insert())
+	}
+	root := model.User{Username: "text30-configuration-root", AffCode: "tx30root", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1}
+	require.NoError(t, f.db.Create(&root).Error)
+	login, err := service.CreateLoginSession(root.Id, "password", "127.0.0.1", "text30-local-proof")
+	require.NoError(t, err)
+	admin := func(method, path string, body any) model.ModelConfigurationSnapshot {
+		encoded, err := common.Marshal(body)
+		require.NoError(t, err)
+		req := httptest.NewRequest(method, path, bytes.NewReader(encoded))
+		req.Header.Set("Authorization", "Bearer "+login.AccessToken)
+		req.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		f.engine.ServeHTTP(response, req)
+		require.Equal(t, 200, response.Code, response.Body.String())
+		var result struct {
+			Success bool                             `json:"success"`
+			Data    model.ModelConfigurationSnapshot `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		require.True(t, result.Success, response.Body.String())
+		return result.Data
+	}
+	names := make([]string, 0, 30)
+	for _, def := range definitions {
+		current := admin("GET", "/api/option/model_catalog?model="+def.ModelName, nil)
+		require.Len(t, current.Entries, 1)
+		admin("PUT", "/api/option/model_catalog/draft?model="+def.ModelName, map[string]any{"revision": current.Revision, "base_version": current.Entries[0].BaseVersion, "definition": def})
+		names = append(names, def.ModelName)
+	}
+	before := unifiedRequest(t, f, "GET", "/v1/models", "", "")
+	for _, name := range names {
+		assert.NotContains(t, before.Body.String(), `"id":"`+name+`"`, "drafts are never live")
+	}
+	current := admin("GET", "/api/option/model_catalog", nil)
+	admin("POST", "/api/option/model_catalog/publish", map[string]any{"revision": current.Revision, "models": names})
+	published, err := model.CurrentPublishedModelConfigurations()
+	require.NoError(t, err)
+	directory := unifiedRequest(t, f, "GET", "/v1/models", "", "")
+	pricing := unifiedRequest(t, f, "GET", "/api/pricing", "", "")
+	require.Equal(t, 200, directory.Code, directory.Body.String())
+	require.Equal(t, 200, pricing.Code, pricing.Body.String())
+	var catalog struct {
+		Data []map[string]any `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(directory.Body.Bytes(), &catalog))
+	entries := map[string]map[string]any{}
+	for _, entry := range catalog.Data {
+		entries[entry["id"].(string)] = entry
+	}
+	cases := []map[string]any{}
+	for _, def := range definitions {
+		t.Run(def.ModelName, func(t *testing.T) {
+			entry := entries[def.ModelName]
+			require.NotNil(t, entry)
+			caps := entry["parameters"].(map[string]any)["x-text-capabilities"].(map[string]any)
+			assert.Equal(t, true, caps["vision"])
+			assert.Equal(t, true, caps["tools"])
+			assert.EqualValues(t, *def.ContextWindow, entry["context_window"])
+			assert.EqualValues(t, *def.MaxOutputTokens, entry["max_output_tokens"])
+			version := model.ModelExecutionConfigurationVersion(def.ModelName, published[def.ModelName])
+			if proxy := os.Getenv("TEST_TEXT30_PROVIDER_PROXY"); proxy != "" {
+				cases = append(cases, qualifiedThirtyLiveProbe(t, f, def, version, proxy))
+				return
+			}
+			posts := 0
+			var native map[string]any
+			service.GetHttpClient().Transport = imageUploadRoundTripper(func(request *http.Request) (*http.Response, error) {
+				require.Equal(t, "text30.fixture", request.URL.Host, "all real egress is forbidden")
+				require.Equal(t, "POST", request.Method)
+				posts++
+				require.NoError(t, common.DecodeJson(request.Body, &native))
+				if def.Routes[0].TextProtocol == "ycapi_fixed_lane" {
+					assert.Equal(t, "/api/v1/model-runtime/invoke", request.URL.Path)
+					assert.Equal(t, def.Routes[0].UpstreamModel, native["model_id"])
+					assert.NotEmpty(t, native["lane_id"])
+				} else {
+					assert.Equal(t, "/v1/chat/completions", request.URL.Path)
+					assert.Equal(t, def.Routes[0].UpstreamModel, native["model"])
+				}
+				body := `{"id":"text30-local","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"qualified local answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":100,"total_tokens":1100,"prompt_tokens_details":{"cached_tokens":0}}}`
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+			})
+			wallet, token := f.balance(t)
+			var logCount int64
+			require.NoError(t, f.logDB.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&logCount).Error)
+			payload, err := common.Marshal(map[string]any{"model": def.ModelName, "messages": []any{map[string]any{"role": "user", "content": "one local standard request"}}, "max_tokens": 256})
+			require.NoError(t, err)
+			stale := unifiedRequest(t, f, "POST", "/v1/chat/completions", string(payload), strings.Repeat("0", 64))
+			require.Equal(t, 400, stale.Code, stale.Body.String())
+			assert.Zero(t, posts)
+			afterWallet, afterToken := f.balance(t)
+			assert.Equal(t, wallet, afterWallet)
+			assert.Equal(t, token, afterToken)
+			response := unifiedRequest(t, f, "POST", "/v1/chat/completions", string(payload), version)
+			require.Equal(t, 200, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), "qualified local answer")
+			assert.Equal(t, 1, posts)
+			var consumption model.Log
+			require.NoError(t, f.logDB.Where("type = ? AND model_name = ?", model.LogTypeConsume, def.ModelName).Order("id DESC").First(&consumption).Error)
+			afterWallet, afterToken = f.balance(t)
+			assert.Equal(t, consumption.Quota, wallet-afterWallet)
+			assert.Equal(t, consumption.Quota, token-afterToken)
+			var afterCount int64
+			require.NoError(t, f.logDB.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&afterCount).Error)
+			assert.Equal(t, logCount+1, afterCount)
+			rows := entry["retail_price_rows"].([]any)
+			prices := map[string]decimal.Decimal{}
+			for _, item := range rows {
+				row := item.(map[string]any)
+				prices[row["direction"].(string)] = decimal.RequireFromString(row["retail_cny"].(string))
+			}
+			expected := prices["input"].Mul(decimal.NewFromInt(1000)).Add(prices["output"].Mul(decimal.NewFromInt(100))).Div(decimal.NewFromInt(1000000)).Div(decimal.RequireFromString("7.3")).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+			quota, clamp := common.QuotaRoundChecked(expected.InexactFloat64())
+			assert.Nil(t, clamp)
+			assert.Equal(t, quota, consumption.Quota, "one engine conversion, no supplier multiplier applied again")
+			cases = append(cases, map[string]any{"model": def.ModelName, "provider_posts": posts, "consume_logs": afterCount - logCount, "quota": consumption.Quota, "native_request": native, "body": response.Body.String(), "stale_status": stale.Code})
+		})
+	}
+	if output := os.Getenv("TEST_TEXT30_HTTP_OUTPUT"); output != "" && !t.Failed() {
+		scope := "Actual local Go authenticated HTTP and disposable ledgers; all provider traffic synthetic"
+		if os.Getenv("TEST_TEXT30_PROVIDER_PROXY") != "" {
+			scope = "Actual local Go and disposable ledgers, original supplier responses via one-send fenced proxy"
+		}
+		raw, err := common.Marshal(map[string]any{"scope": scope, "directory": common.RawMessage(directory.Body.Bytes()), "pricing": common.RawMessage(pricing.Body.Bytes()), "cases": cases})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(output, raw, 0600))
+	}
+}
+
+func qualifiedThirtyLiveProbe(t *testing.T, f *h3RouterFixture, def model.ModelConfiguration, version, proxy string) map[string]any {
+	t.Helper()
+	u, err := url.Parse(proxy)
+	require.NoError(t, err)
+	require.Equal(t, "http", u.Scheme)
+	require.Equal(t, "127.0.0.1", u.Hostname(), "the private qualification proxy must be loopback-only")
+	nonce, runID := os.Getenv("TEST_TEXT30_PROXY_NONCE"), os.Getenv("TEST_TEXT30_RUN_ID")
+	require.NotEmpty(t, nonce)
+	require.NotEmpty(t, runID)
+	previousTimeout, previousStreamingTimeout := service.GetHttpClient().Timeout, constant.StreamingTimeout
+	service.GetHttpClient().Timeout, constant.StreamingTimeout = 120*time.Second, 120
+	t.Cleanup(func() {
+		service.GetHttpClient().Timeout, constant.StreamingTimeout = previousTimeout, previousStreamingTimeout
+	})
+	client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 115 * time.Second}
+	t.Cleanup(client.CloseIdleConnections)
+	phase, posts := "vision_tool", 0
+	service.GetHttpClient().Transport = imageUploadRoundTripper(func(request *http.Request) (*http.Response, error) {
+		require.Equal(t, "text30.fixture", request.URL.Host)
+		posts++
+		body, err := io.ReadAll(io.LimitReader(request.Body, 2<<20))
+		require.NoError(t, err)
+		forward, err := http.NewRequestWithContext(request.Context(), "POST", proxy+"/invoke", bytes.NewReader(body))
+		require.NoError(t, err)
+		forward.Header.Set("Content-Type", "application/json")
+		forward.Header.Set("X-Text30-Nonce", nonce)
+		forward.Header.Set("X-Text30-Model", def.ModelName)
+		forward.Header.Set("X-Text30-Phase", phase)
+		return client.Do(forward)
+	})
+	img := image.NewNRGBA(image.Rect(0, 0, 128, 128))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.NRGBA{R: 237, G: 24, B: 19, A: 255}), image.Point{}, draw.Src)
+	var imageBytes bytes.Buffer
+	require.NoError(t, png.Encode(&imageBytes, img))
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(runID+def.ModelName)))
+	value, returned := "V"+digest[:12], "R"+digest[12:28]
+	tools := []any{map[string]any{"type": "function", "function": map[string]any{"name": "echo_probe", "description": "Return the provided value and observed image color", "parameters": map[string]any{"type": "object", "properties": map[string]any{"value": map[string]any{"type": "string"}, "color": map[string]any{"type": "string"}}, "required": []string{"value", "color"}, "additionalProperties": false}}}}
+	user := map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "Call echo_probe exactly once with value " + value + ". Set color to the dominant color you see in the attached image, as one lowercase English color word. Do not answer directly."}, map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(imageBytes.Bytes())}}}}
+	messages := []any{user}
+	results := []map[string]any{}
+	for _, step := range []string{"vision_tool", "tool_roundtrip"} {
+		phase = step
+		choice := any(map[string]any{"type": "function", "function": map[string]any{"name": "echo_probe"}})
+		if step == "tool_roundtrip" {
+			choice = "none"
+		}
+		payload, err := common.Marshal(map[string]any{"model": def.ModelName, "messages": messages, "tools": tools, "tool_choice": choice, "stream": true, "max_tokens": 1024, "stream_options": map[string]any{"include_usage": true}})
+		require.NoError(t, err)
+		wallet, token := f.balance(t)
+		beforePosts := posts
+		var count int64
+		require.NoError(t, f.logDB.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&count).Error)
+		req := httptest.NewRequest("POST", "/v1/chat/completions", bytes.NewReader(payload))
+		req.Header.Set("Authorization", "Bearer sk-h3routeradmin")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(service.ModelConfigurationHeader, version)
+		req.Header.Set("X-Yunshu-Text-Reselection", "1")
+		response := httptest.NewRecorder()
+		f.engine.ServeHTTP(response, req)
+		if output := os.Getenv("TEST_TEXT30_LIVE_EVIDENCE"); output != "" {
+			require.NoError(t, os.MkdirAll(output, 0700))
+			evidence, err := common.Marshal(map[string]any{"model": def.ModelName, "phase": step, "status": response.Code, "body": response.Body.String(), "gateway_transport_calls": posts - beforePosts, "scope": "original supplier bytes through actual Go; production and customer ledgers untouched"})
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(output, def.ModelName+"--"+step+".json"), evidence, 0600))
+		}
+		require.Equal(t, 200, response.Code, response.Body.String())
+		require.Equal(t, beforePosts+1, posts, "no hidden provider retry")
+		text, callID, function, arguments, done := "", "", "", "", false
+		for _, line := range strings.Split(response.Body.String(), "\n") {
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				done = true
+				continue
+			}
+			var frame struct {
+				Choices []struct {
+					Delta struct {
+						Content   string `json:"content"`
+						ToolCalls []struct {
+							ID       string `json:"id"`
+							Function struct {
+								Name      string `json:"name"`
+								Arguments string `json:"arguments"`
+							} `json:"function"`
+						} `json:"tool_calls"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			require.NoError(t, common.Unmarshal([]byte(data), &frame))
+			for _, c := range frame.Choices {
+				text += c.Delta.Content
+				for _, call := range c.Delta.ToolCalls {
+					callID += call.ID
+					function += call.Function.Name
+					arguments += call.Function.Arguments
+				}
+			}
+		}
+		require.True(t, done, "a completed public stream is required")
+		if step == "vision_tool" {
+			require.Equal(t, "echo_probe", function)
+			require.NotEmpty(t, callID)
+			var args map[string]string
+			require.NoError(t, common.Unmarshal([]byte(arguments), &args))
+			require.Equal(t, value, args["value"])
+			require.Equal(t, "red", strings.ToLower(strings.TrimSpace(args["color"])), "actual image understanding must survive the gateway")
+			var assistantContent any
+			if text != "" {
+				assistantContent = text
+			}
+			messages = append(messages, map[string]any{"role": "assistant", "content": assistantContent, "tool_calls": []any{map[string]any{"id": callID, "type": "function", "function": map[string]any{"name": function, "arguments": arguments}}}}, map[string]any{"role": "tool", "tool_call_id": callID, "content": returned}, map[string]any{"role": "user", "content": "Reply with exactly the tool result, with no other text."})
+		} else {
+			require.Contains(t, text, returned)
+			require.Empty(t, function)
+		}
+		var consumption model.Log
+		require.NoError(t, f.logDB.Where("type = ? AND model_name = ?", model.LogTypeConsume, def.ModelName).Order("id DESC").First(&consumption).Error)
+		afterWallet, afterToken := f.balance(t)
+		require.Equal(t, consumption.Quota, wallet-afterWallet)
+		require.Equal(t, consumption.Quota, token-afterToken)
+		var after int64
+		require.NoError(t, f.logDB.Model(&model.Log{}).Where("type = ?", model.LogTypeConsume).Count(&after).Error)
+		require.Equal(t, count+1, after)
+		require.Greater(t, consumption.PromptTokens, 0)
+		require.Greater(t, consumption.CompletionTokens, 0)
+		results = append(results, map[string]any{"phase": step, "provider_posts": posts - beforePosts, "consume_logs": after - count, "quota": consumption.Quota, "input_tokens": consumption.PromptTokens, "output_tokens": consumption.CompletionTokens, "body": response.Body.String()})
+	}
+	return map[string]any{"model": def.ModelName, "scope": "real supplier calls, isolated gateway user and ledger only; no customer or production billing", "steps": results}
+}
 
 func unifiedConfigurationFixture(t *testing.T) *h3RouterFixture {
 	t.Helper()

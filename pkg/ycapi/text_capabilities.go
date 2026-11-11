@@ -34,6 +34,8 @@ type ReasoningControlSchema struct {
 
 type TextCapability struct {
 	ModelID                 string                 `json:"model_id"`
+	CheckedAt               string                 `json:"checked_at,omitempty"`
+	Revision                string                 `json:"revision,omitempty"`
 	LaneID                  string                 `json:"lane_id"`
 	Tools                   bool                   `json:"tools"`
 	Vision                  bool                   `json:"vision"`
@@ -65,11 +67,11 @@ func loadTextCapabilities() (textCapabilitySnapshot, error) {
 	if err := common.Unmarshal(textCapabilityData, &snapshot); err != nil {
 		return snapshot, err
 	}
-	if snapshot.SchemaVersion != 2 || snapshot.Revision == "" || snapshot.CheckedAt == "" || len(snapshot.Models) != 22 {
+	if snapshot.SchemaVersion != 2 || snapshot.Revision == "" || snapshot.CheckedAt == "" || len(snapshot.Models) != 37 {
 		return snapshot, fmt.Errorf("invalid text capability snapshot")
 	}
 	seen := map[string]bool{}
-	if len(snapshot.ExcludedModelIDs) != 18 {
+	if len(snapshot.ExcludedModelIDs) != 9 {
 		return snapshot, fmt.Errorf("invalid excluded chat model selection")
 	}
 	for _, id := range snapshot.ExcludedModelIDs {
@@ -147,6 +149,12 @@ func PublicTextCapabilities(id string) map[string]any {
 		"reasoning_omit_behavior": c.ReasoningOmitBehavior, "operational_status": c.OperationalStatus,
 		"reasoning_control_mapping": maps.Clone(c.ReasoningControlMapping),
 		"operational_reason":        c.OperationalReason,
+	}
+	if c.CheckedAt != "" {
+		public["checked_at"] = c.CheckedAt
+	}
+	if c.Revision != "" {
+		public["revision"] = c.Revision
 	}
 	// A legacy preview byte guard is not a model input-token limit. The host
 	// projects verified context declarations and effective product output budgets.

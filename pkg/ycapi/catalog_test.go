@@ -148,7 +148,7 @@ func TestApprovedSaleRowsUseTheExistingQuotaConversion(t *testing.T) {
 			rows++
 		}
 	}
-	assert.Equal(t, 113, rows)
+	assert.Equal(t, 143, rows)
 }
 
 func TestApprovedCatalogPreviews(t *testing.T) {
@@ -171,8 +171,8 @@ func TestApprovedCatalogPreviews(t *testing.T) {
 			specs++
 		}
 	}
-	assert.Equal(t, map[string]int{"text": 22, "image": 8, "video": 10, "audio": 3}, counts)
-	assert.Equal(t, 88, specs)
+	assert.Equal(t, map[string]int{"text": 37, "image": 8, "video": 10, "audio": 3}, counts)
+	assert.Equal(t, 103, specs)
 }
 func TestPreviewUsesNativeClipTotalAndPinnedLane(t *testing.T) {
 	p, err := BuildPreview(PreviewRequest{ModelID: "ycapi-grok-imagine-video", SpecID: "ca70bc25c56f6312", Prompt: "Cup"})
@@ -394,7 +394,7 @@ func TestTextCapabilityFactsAndPublicCopyStaySeparate(t *testing.T) {
 			assert.IsType(t, false, mapping["omit_effort_on_none"], model.ModelID)
 		}
 	}
-	_, removedErr := LookupTextCapability("ycapi-claude-fable-5-1")
+	_, removedErr := LookupTextCapability("ycapi-claude-opus-5-5")
 	assert.Error(t, removedErr)
 	capability := PublicTextCapabilities("ycapi-claude-haiku-4-5")
 	assert.Equal(t, true, capability["tools"])

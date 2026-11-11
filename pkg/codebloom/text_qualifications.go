@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/shopspring/decimal"
 )
 
 // Text qualification supplements the dated procurement snapshot. Actual route
@@ -18,17 +19,27 @@ import (
 var textQualificationData []byte
 
 type textQualification struct {
-	ID                  string `json:"id"`
-	CheckedAt           string `json:"checked_at"`
-	Vision              string `json:"vision"`
-	Tools               string `json:"tools"`
-	ToolRoundtrip       string `json:"tool_roundtrip"`
-	BillableUsage       string `json:"billable_usage"`
-	ReasoningObserved   bool   `json:"reasoning_observed"`
-	RequestSHA256       string `json:"request_sha256"`
-	ResponseSHA256      string `json:"response_sha256"`
-	MeterEvidenceSHA256 string `json:"meter_evidence_sha256"`
-	AdditionalModel     *Model `json:"additional_model,omitempty"`
+	ID                  string                       `json:"id"`
+	CheckedAt           string                       `json:"checked_at"`
+	Vision              string                       `json:"vision"`
+	Tools               string                       `json:"tools"`
+	ToolRoundtrip       string                       `json:"tool_roundtrip"`
+	BillableUsage       string                       `json:"billable_usage"`
+	ReasoningObserved   bool                         `json:"reasoning_observed"`
+	RequestSHA256       string                       `json:"request_sha256"`
+	ResponseSHA256      string                       `json:"response_sha256"`
+	MeterEvidenceSHA256 string                       `json:"meter_evidence_sha256"`
+	AdditionalModel     *Model                       `json:"additional_model,omitempty"`
+	StandardPrices      map[string]standardTextPrice `json:"standard_prices,omitempty"`
+}
+
+// These are standard input/output prices, not a claim that the provider's
+// private cc12h variable is supported by the gateway billing engine. Runtime
+// configuration publishes a plain p/c expression and a short-context budget.
+type standardTextPrice struct {
+	Cost     string `json:"cost_cny"`
+	Retail   string `json:"retail_cny"`
+	Official string `json:"official_cny"`
 }
 
 type textQualificationSnapshot struct {
@@ -49,7 +60,7 @@ func loadTextQualifications(data []byte) (textQualificationSnapshot, error) {
 	}
 	seen := map[string]bool{}
 	for _, id := range snapshot.ReviewedModelIDs {
-		known := slices.ContainsFunc(approved.Models, func(m Model) bool { return m.ID == id && m.Kind == "text" }) || slices.ContainsFunc(approved.Excluded, func(m excludedModel) bool { return "ys-"+m.ID == id })
+		known := slices.ContainsFunc(approved.Models, func(m Model) bool { return m.ID == id && m.Kind == "text" }) || slices.ContainsFunc(approved.Excluded, func(m excludedModel) bool { return "ys-"+m.ID == id }) || slices.ContainsFunc(snapshot.Models, func(p textQualification) bool { return p.ID == id && p.AdditionalModel != nil })
 		if !strings.HasPrefix(id, "ys-") || len(id) > 128 || seen[id] || !known {
 			return snapshot, fmt.Errorf("invalid reviewed text identity")
 		}
@@ -67,21 +78,50 @@ func loadTextQualifications(data []byte) (textQualificationSnapshot, error) {
 				return snapshot, fmt.Errorf("missing text qualification evidence digest")
 			}
 		}
+		if proof.StandardPrices != nil {
+			if len(proof.StandardPrices) != 2 {
+				return snapshot, fmt.Errorf("standard pricing requires input and output")
+			}
+			for _, direction := range []string{"input", "output"} {
+				row, ok := proof.StandardPrices[direction]
+				cost, costErr := decimal.NewFromString(row.Cost)
+				retail, retailErr := decimal.NewFromString(row.Retail)
+				official, officialErr := decimal.NewFromString(row.Official)
+				if !ok || costErr != nil || retailErr != nil || officialErr != nil || !cost.IsPositive() || !official.IsPositive() || !retail.GreaterThan(cost) || !retail.Equal(decimal.Min(cost.Add(official.Mul(decimal.RequireFromString("0.2"))), official)) {
+					return snapshot, fmt.Errorf("standard pricing differs from the approved official-discount policy")
+				}
+			}
+		}
 		i := slices.IndexFunc(approved.Models, func(m Model) bool { return m.ID == proof.ID })
 		if i >= 0 {
-			if approved.Models[i].Kind != "text" || proof.AdditionalModel != nil || strings.Contains(approved.Models[i].BaseBillingExpression, "cc12h") {
+			if approved.Models[i].Kind != "text" || proof.AdditionalModel != nil || strings.Contains(approved.Models[i].BaseBillingExpression, "cc12h") && proof.StandardPrices == nil {
 				return snapshot, fmt.Errorf("text qualification conflicts with the reviewed price contract")
 			}
 			continue
 		}
 		m := proof.AdditionalModel
-		if m == nil || m.ID != proof.ID || m.ID != "ys-"+m.UpstreamID || m.Name != m.ID || m.Kind != "text" || m.Transport != "chat_completions" || m.CredentialEnv != "CODEBLOOM_CN_KEY" || m.AccountMultiplier != .5 || m.RetailAccountMultiplier == nil || *m.RetailAccountMultiplier != .7 || m.Currency != "CNY_ACCOUNT_CREDIT" || m.CostBasis != "account_credit_snapshot" || m.CashCostCNY != nil || m.BaseBillingExpression == "" || strings.Contains(m.BaseBillingExpression, "cc12h") || len(m.CostComponents) < 2 || m.CapabilityStatus == nil {
+		if m == nil || m.ID != proof.ID || m.ID != "ys-"+m.UpstreamID || m.Name != m.ID || m.Kind != "text" || m.Transport != "chat_completions" || m.CredentialEnv != "CODEBLOOM_CN_KEY" || m.AccountMultiplier != .5 || m.Currency != "CNY_ACCOUNT_CREDIT" || m.CostBasis != "account_credit_snapshot" || m.CashCostCNY != nil || m.BaseBillingExpression == "" || strings.Contains(m.BaseBillingExpression, "cc12h") || len(m.CostComponents) < 2 || m.CapabilityStatus == nil {
 			return snapshot, fmt.Errorf("invalid additional text procurement contract")
+		}
+		if proof.StandardPrices == nil && (m.RetailAccountMultiplier == nil || *m.RetailAccountMultiplier != .7) {
+			return snapshot, fmt.Errorf("additional text retail policy differs from the approved markup")
 		}
 		directions := map[string]bool{}
 		for _, cost := range m.CostComponents {
-			if !slices.Contains([]string{"input", "output", "cache_read", "cache_write", "cache_write_1h"}, cost.Direction) || directions[cost.Direction] || cost.Unit != "CNY / million tokens" || cost.Params == nil || cost.RetailCNY == nil || math.IsNaN(cost.AccountCreditCNY) || math.IsInf(cost.AccountCreditCNY, 0) || cost.AccountCreditCNY < 0 || math.IsNaN(*cost.RetailCNY) || math.IsInf(*cost.RetailCNY, 0) || math.Abs(*cost.RetailCNY-cost.AccountCreditCNY/.5*.7) > 1e-10 {
+			if !slices.Contains([]string{"input", "output", "cache_read", "cache_write", "cache_write_1h"}, cost.Direction) || directions[cost.Direction] || cost.Unit != "CNY / million tokens" || cost.Params == nil || cost.RetailCNY == nil || math.IsNaN(cost.AccountCreditCNY) || math.IsInf(cost.AccountCreditCNY, 0) || cost.AccountCreditCNY < 0 || math.IsNaN(*cost.RetailCNY) || math.IsInf(*cost.RetailCNY, 0) {
 				return snapshot, fmt.Errorf("additional text retail policy differs from the approved markup")
+			}
+			if proof.StandardPrices == nil {
+				if math.Abs(*cost.RetailCNY-cost.AccountCreditCNY/.5*.7) > 1e-10 {
+					return snapshot, fmt.Errorf("additional text retail policy differs from the approved markup")
+				}
+			} else {
+				price, ok := proof.StandardPrices[cost.Direction]
+				approvedCost, costErr := decimal.NewFromString(price.Cost)
+				approvedRetail, retailErr := decimal.NewFromString(price.Retail)
+				if !ok || len(m.CostComponents) != 2 || costErr != nil || retailErr != nil || !decimal.NewFromFloat(cost.AccountCreditCNY).Equal(approvedCost) || !decimal.NewFromFloat(*cost.RetailCNY).Equal(approvedRetail) {
+					return snapshot, fmt.Errorf("additional text standard price does not match its evidence")
+				}
 			}
 			directions[cost.Direction] = true
 		}
@@ -108,6 +148,10 @@ func withTextQualification(m Model) Model {
 		m.CapabilityStatus["billable_usage"] = "verified"
 		m.CapabilityStatus["complete_generation_contract"] = "verified"
 		m.ReasoningObserved = proof.ReasoningObserved
+		if proof.StandardPrices != nil {
+			m.CapabilityStatus["standard_checked_at"] = proof.CheckedAt
+			m.CapabilityStatus["billable_usage_scope"] = "standard_short_context_input_output"
+		}
 		return m
 	}
 	return m

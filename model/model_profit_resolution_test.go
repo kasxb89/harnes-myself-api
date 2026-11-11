@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"github.com/QuantumNous/new-api/common"
 	"math"
 	"strings"
 	"testing"
@@ -9,6 +10,23 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestStandardTokenCostDoesNotInventAnUnknownCacheTariff(t *testing.T) {
+	rule := ModelProfitCostRule{ChannelID: 24, ModelName: "qualified-standard-text", EffectiveFrom: 1, Kind: "token", InputCostPerMillionCNY: common.GetPointer(2.0), OutputCostPerMillionCNY: common.GetPointer(10.0), Source: "Verified standard non-cache quote"}
+	require.NoError(t, ValidateModelProfitCostRules(ModelProfitCostRules{SchemaVersion: 1, Rules: []ModelProfitCostRule{rule}}))
+	log := Log{PromptTokens: 1000, CompletionTokens: 100}
+	cost, known := modelProfitCost(rule, log, profitLogFacts{CacheTokens: common.GetPointer(0.0)})
+	assert.True(t, known)
+	assert.InDelta(t, .003, cost, 1e-12)
+	_, known = modelProfitCost(rule, log, profitLogFacts{CacheTokens: common.GetPointer(100.0)})
+	assert.False(t, known)
+	_, known = modelProfitCost(rule, log, profitLogFacts{})
+	assert.False(t, known)
+	rule.CacheCostPerMillionCNY = common.GetPointer(.2)
+	cost, known = modelProfitCost(rule, log, profitLogFacts{CacheTokens: common.GetPointer(100.0)})
+	assert.True(t, known)
+	assert.InDelta(t, .00282, cost, 1e-12)
+}
 
 func TestProfitImageResolutionRuleValidation(t *testing.T) {
 	for _, tc := range []struct {

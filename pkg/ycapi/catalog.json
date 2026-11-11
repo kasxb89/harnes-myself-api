@@ -1,13 +1,13 @@
 {
   "schema": 1,
-  "version": "ycapi-multimodal-verified-20261101-v1",
+  "version": "ycapi-multimodal-verified-20261101-v1-text30-20261111",
   "checkedAt": "2026-10-31",
-  "count": 43,
-  "priceRows": 113,
+  "count": 58,
+  "priceRows": 143,
   "mode": "local-preview",
   "generationEnabled": false,
-  "sourceModelHash": "5a2b0637d7ac16b3c579f86f5a8d5bfa055b8856fa2a68a230debcf975d944dc",
-  "sourcePriceHash": "996da810e15a83ea20730f95ba1c0f38e5e900bde83a9d209cfb71df2374329f",
+  "sourceModelHash": "3b6ce61de92232d575b8b88a49725e33a6f702fd07a629fa5f4e3617481e3100",
+  "sourcePriceHash": "f8c186170f8e1c631b2f1dcdeb0ccd03f44011afe55d9169578cfc37177d008e",
   "models": [
     {
       "id": "ycapi-claude-haiku-4-5",
@@ -52,54 +52,44 @@
       },
       "priceRows": [
         {
-          "category": "chat",
-          "direction": "input",
-          "laneId": "claude-haiku-4-5@952:claude-kiro(满缓存)",
           "modelId": "claude-haiku-4-5",
-          "name": "Claude Haiku 4.5",
-          "officialCny": 6.7138,
-          "officialConditions": "全球 Standard 普通按量、非缓存输入；无 Batch、缓存写入或美国限定部署加价。",
-          "officialOriginal": {
-            "amount": 1.0,
-            "currency": "USD"
-          },
-          "parameter": "非缓存文本输入",
+          "direction": "input",
           "params": {},
-          "procurementCny": 0.6222999999999999,
-          "procurementZhe": 0.9268968393458249,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 3.3306,
-          "retailZhe": 4.960826953439185,
+          "laneId": "claude-haiku-4-5@952:claude-kiro(满缓存)",
+          "procurementCny": "0.611275",
+          "retailCny": "2.071275",
+          "officialCny": "7.3",
+          "procurementTotalCny": "0.611275",
+          "retailTotalCny": "2.071275",
+          "officialTotalCny": "7.3",
+          "officialModel": "Claude Haiku 4.5",
           "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-          "unit": "CNY / million tokens",
-          "officialModel": "claude-haiku-4-5",
-          "comparisonMethod": "first standard pricing table, exact model link"
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         },
         {
-          "category": "chat",
-          "direction": "output",
-          "laneId": "claude-haiku-4-5@952:claude-kiro(满缓存)",
           "modelId": "claude-haiku-4-5",
-          "name": "Claude Haiku 4.5",
-          "officialCny": 33.569,
-          "officialConditions": "全球 Standard 普通按量、非缓存输入；无 Batch、缓存写入或美国限定部署加价。",
-          "officialOriginal": {
-            "amount": 5.0,
-            "currency": "USD"
-          },
-          "parameter": "文本输出（含计费推理）",
+          "direction": "output",
           "params": {},
-          "procurementCny": 3.1115,
-          "procurementZhe": 0.926896839345825,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 16.6528,
-          "retailZhe": 4.960767374661145,
+          "laneId": "claude-haiku-4-5@952:claude-kiro(满缓存)",
+          "procurementCny": "3.056375",
+          "retailCny": "10.356375",
+          "officialCny": "36.5",
+          "procurementTotalCny": "3.056375",
+          "retailTotalCny": "10.356375",
+          "officialTotalCny": "36.5",
+          "officialModel": "Claude Haiku 4.5",
           "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-          "unit": "CNY / million tokens",
-          "officialModel": "claude-haiku-4-5",
-          "comparisonMethod": "first standard pricing table, exact model link"
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         }
       ],
       "catalogBillingMode": "token_metered",
@@ -284,54 +274,44 @@
       },
       "priceRows": [
         {
-          "category": "chat",
-          "direction": "input",
-          "laneId": "claude-sonnet-5@MEG:erzhe-w",
           "modelId": "claude-sonnet-5",
-          "name": "Claude Sonnet 5",
-          "officialCny": 13.4276,
-          "officialConditions": "全球 Standard 普通按量、非缓存输入；无 Batch、缓存写入或美国限定部署加价。",
-          "officialOriginal": {
-            "amount": 2.0,
-            "currency": "USD"
-          },
-          "parameter": "非缓存文本输入",
+          "direction": "input",
           "params": {},
-          "procurementCny": 0.7111999999999999,
-          "procurementZhe": 0.5296553367690428,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 6.6611,
-          "retailZhe": 4.960752479966636,
+          "laneId": "claude-sonnet-5@TIA:claude-kiro",
+          "procurementCny": "1.57185",
+          "retailCny": "4.49185",
+          "officialCny": "14.6",
+          "procurementTotalCny": "1.57185",
+          "retailTotalCny": "4.49185",
+          "officialTotalCny": "14.6",
+          "officialModel": "Claude Sonnet 5",
           "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-          "unit": "CNY / million tokens",
-          "officialModel": "claude-sonnet-5",
-          "comparisonMethod": "first standard pricing table, exact model link"
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价；Sonnet 5官网脚注及长度条件以来源为准",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         },
         {
-          "category": "chat",
-          "direction": "output",
-          "laneId": "claude-sonnet-5@MEG:erzhe-w",
           "modelId": "claude-sonnet-5",
-          "name": "Claude Sonnet 5",
-          "officialCny": 67.138,
-          "officialConditions": "全球 Standard 普通按量、非缓存输入；无 Batch、缓存写入或美国限定部署加价。",
-          "officialOriginal": {
-            "amount": 10.0,
-            "currency": "USD"
-          },
-          "parameter": "文本输出（含计费推理）",
+          "direction": "output",
           "params": {},
-          "procurementCny": 2.8447999999999998,
-          "procurementZhe": 0.4237242694152343,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 33.3055,
-          "retailZhe": 4.960752479966636,
+          "laneId": "claude-sonnet-5@TIA:claude-kiro",
+          "procurementCny": "7.85925",
+          "retailCny": "22.45925",
+          "officialCny": "73",
+          "procurementTotalCny": "7.85925",
+          "retailTotalCny": "22.45925",
+          "officialTotalCny": "73",
+          "officialModel": "Claude Sonnet 5",
           "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-          "unit": "CNY / million tokens",
-          "officialModel": "claude-sonnet-5",
-          "comparisonMethod": "first standard pricing table, exact model link"
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价；Sonnet 5官网脚注及长度条件以来源为准",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         }
       ],
       "catalogBillingMode": "token_metered",
@@ -3039,54 +3019,44 @@
       },
       "priceRows": [
         {
-          "category": "chat",
-          "direction": "input",
-          "laneId": "gpt-5.5@OLX:codex-gpt-1",
           "modelId": "gpt-5.5",
-          "name": "GPT-5.5",
-          "officialCny": 33.569,
-          "officialConditions": "Standard 普通同步、短上下文、非缓存输入；5.6 Sol 使用当前公开优惠价。",
-          "officialOriginal": {
-            "amount": 5.0,
-            "currency": "USD"
-          },
-          "parameter": "非缓存文本输入",
+          "direction": "input",
           "params": {},
-          "procurementCny": 2.2228200399999998,
-          "procurementZhe": 0.6621645089219219,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 16.6528,
-          "retailZhe": 4.960767374661145,
-          "source": "https://developers.openai.com/api/docs/models/gpt-5.5",
-          "unit": "CNY / million tokens",
+          "laneId": "gpt-5.5@GEE:gptvip",
+          "procurementCny": "3.493",
+          "retailCny": "10.793",
+          "officialCny": "36.5",
+          "procurementTotalCny": "3.493",
+          "retailTotalCny": "10.793",
+          "officialTotalCny": "36.5",
           "officialModel": "gpt-5.5",
-          "comparisonMethod": "native model page standard input/output cards"
+          "source": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         },
         {
-          "category": "chat",
-          "direction": "output",
-          "laneId": "gpt-5.5@OLX:codex-gpt-1",
           "modelId": "gpt-5.5",
-          "name": "GPT-5.5",
-          "officialCny": 201.414,
-          "officialConditions": "Standard 普通同步、短上下文、非缓存输入；5.6 Sol 使用当前公开优惠价。",
-          "officialOriginal": {
-            "amount": 30.0,
-            "currency": "USD"
-          },
-          "parameter": "文本输出（含计费推理）",
+          "direction": "output",
           "params": {},
-          "procurementCny": 13.336920240000001,
-          "procurementZhe": 0.662164508921922,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 99.9165,
-          "retailZhe": 4.960752479966636,
-          "source": "https://developers.openai.com/api/docs/models/gpt-5.5",
-          "unit": "CNY / million tokens",
+          "laneId": "gpt-5.5@GEE:gptvip",
+          "procurementCny": "20.958",
+          "retailCny": "64.758",
+          "officialCny": "219",
+          "procurementTotalCny": "20.958",
+          "retailTotalCny": "64.758",
+          "officialTotalCny": "219",
           "officialModel": "gpt-5.5",
-          "comparisonMethod": "native model page standard input/output cards"
+          "source": "https://developers.openai.com/api/docs/models/gpt-5.5",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         }
       ],
       "catalogBillingMode": "token_metered",
@@ -3387,54 +3357,44 @@
       },
       "priceRows": [
         {
-          "category": "chat",
-          "direction": "input",
-          "laneId": "gpt-5.6-terra@TIA:gpt-特价",
           "modelId": "gpt-5.6-terra",
-          "name": "GPT-5.6 Terra",
-          "officialCny": 13.4276,
-          "officialConditions": "Standard 普通同步、短上下文、非缓存输入；5.6 Sol 使用当前公开优惠价。",
-          "officialOriginal": {
-            "amount": 2.0,
-            "currency": "USD"
-          },
-          "parameter": "非缓存文本输入",
+          "direction": "input",
           "params": {},
-          "procurementCny": 0.7111999999999999,
-          "procurementZhe": 0.5296553367690428,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 6.6611,
-          "retailZhe": 4.960752479966636,
-          "source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
-          "unit": "CNY / million tokens",
+          "laneId": "gpt-5.6-terra@OLX:codex-gpt-1",
+          "procurementCny": "1.09171969",
+          "retailCny": "4.01171969",
+          "officialCny": "14.6",
+          "procurementTotalCny": "1.09171969",
+          "retailTotalCny": "4.01171969",
+          "officialTotalCny": "14.6",
           "officialModel": "gpt-5.6-terra",
-          "comparisonMethod": "native model page standard input/output cards"
+          "source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         },
         {
-          "category": "chat",
-          "direction": "output",
-          "laneId": "gpt-5.6-terra@TIA:gpt-特价",
           "modelId": "gpt-5.6-terra",
-          "name": "GPT-5.6 Terra",
-          "officialCny": 80.5656,
-          "officialConditions": "Standard 普通同步、短上下文、非缓存输入；5.6 Sol 使用当前公开优惠价。",
-          "officialOriginal": {
-            "amount": 12.0,
-            "currency": "USD"
-          },
-          "parameter": "文本输出（含计费推理）",
+          "direction": "output",
           "params": {},
-          "procurementCny": 4.267200000000001,
-          "procurementZhe": 0.529655336769043,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 39.9666,
-          "retailZhe": 4.960752479966636,
-          "source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
-          "unit": "CNY / million tokens",
+          "laneId": "gpt-5.6-terra@OLX:codex-gpt-1",
+          "procurementCny": "6.55031811",
+          "retailCny": "24.07031811",
+          "officialCny": "87.6",
+          "procurementTotalCny": "6.55031811",
+          "retailTotalCny": "24.07031811",
+          "officialTotalCny": "87.6",
           "officialModel": "gpt-5.6-terra",
-          "comparisonMethod": "native model page standard input/output cards"
+          "source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
         }
       ],
       "catalogBillingMode": "token_metered",
@@ -5525,54 +5485,44 @@
       },
       "priceRows": [
         {
-          "category": "chat",
-          "direction": "input",
-          "laneId": "qwen3.6-plus@VST:zq-qwen",
           "modelId": "qwen3.6-plus",
-          "name": "通义千问 3.6 Plus",
-          "officialCny": 2.0,
-          "officialConditions": "国内北京普通按量；输入不超过 256K。",
-          "officialOriginal": {
-            "amount": 2.0,
-            "currency": "CNY"
-          },
-          "parameter": "非缓存文本输入",
+          "direction": "input",
           "params": {},
-          "procurementCny": 1.7779999999999998,
-          "procurementZhe": 8.889999999999999,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 1.889,
-          "retailZhe": 9.445,
-          "source": "https://help.aliyun.com/zh/model-studio/model-pricing",
-          "unit": "CNY / million tokens",
+          "laneId": "qwen3.6-plus@VST:zq-qwen",
+          "procurementCny": "1.7465",
+          "retailCny": "2",
+          "officialCny": "2",
+          "procurementTotalCny": "1.7465",
+          "retailTotalCny": "2",
+          "officialTotalCny": "2",
           "officialModel": "qwen3.6-plus",
-          "comparisonMethod": "same native model domestic/Global standard first applicable non-cache tier"
+          "source": "https://help.aliyun.com/zh/model-studio/model-pricing",
+          "officialConditions": "北京；输入≤256K；长段256K–1M为8/48；非Batch",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
         },
         {
-          "category": "chat",
-          "direction": "output",
-          "laneId": "qwen3.6-plus@VST:zq-qwen",
           "modelId": "qwen3.6-plus",
-          "name": "通义千问 3.6 Plus",
-          "officialCny": 12.0,
-          "officialConditions": "国内北京普通按量；输入不超过 256K。",
-          "officialOriginal": {
-            "amount": 12.0,
-            "currency": "CNY"
-          },
-          "parameter": "文本输出（含计费推理）",
+          "direction": "output",
           "params": {},
-          "procurementCny": 10.668,
-          "procurementZhe": 8.89,
-          "rateVerifiedAt": "2026-10-31",
-          "requiresPinnedLane": true,
-          "retailCny": 11.334,
-          "retailZhe": 9.445,
-          "source": "https://help.aliyun.com/zh/model-studio/model-pricing",
-          "unit": "CNY / million tokens",
+          "laneId": "qwen3.6-plus@VST:zq-qwen",
+          "procurementCny": "10.479",
+          "retailCny": "12",
+          "officialCny": "12",
+          "procurementTotalCny": "10.479",
+          "retailTotalCny": "12",
+          "officialTotalCny": "12",
           "officialModel": "qwen3.6-plus",
-          "comparisonMethod": "same native model domestic/Global standard first applicable non-cache tier"
+          "source": "https://help.aliyun.com/zh/model-studio/model-pricing",
+          "officialConditions": "北京；输入≤256K；长段256K–1M为8/48；非Batch",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
         }
       ],
       "catalogBillingMode": "token_metered",
@@ -7405,9 +7355,864 @@
           "nativeQuantity": 10
         }
       ]
+    },
+    {
+      "id": "ycapi-claude-fable-5",
+      "name": "CL Fable 5",
+      "upstreamModelId": "claude-fable-5",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-fable-5",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-fable-5@VEC:default",
+          "procurementCny": "8.7325",
+          "retailCny": "23.3325",
+          "officialCny": "73",
+          "procurementTotalCny": "8.7325",
+          "retailTotalCny": "23.3325",
+          "officialTotalCny": "73",
+          "officialModel": "Claude Fable 5",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-fable-5",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-fable-5@VEC:default",
+          "procurementCny": "43.6625",
+          "retailCny": "116.6625",
+          "officialCny": "365",
+          "procurementTotalCny": "43.6625",
+          "retailTotalCny": "116.6625",
+          "officialTotalCny": "365",
+          "officialModel": "Claude Fable 5",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-claude-fable-5-1",
+      "name": "CL Fable 5.1",
+      "upstreamModelId": "claude-fable-5-1",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-fable-5-1",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-fable-5-1@OLX:claude-code-1",
+          "procurementCny": "20.95793014",
+          "retailCny": "35.55793014",
+          "officialCny": "73",
+          "procurementTotalCny": "20.95793014",
+          "retailTotalCny": "35.55793014",
+          "officialTotalCny": "73",
+          "officialModel": "Claude Fable 5.1",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-fable-5-1",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-fable-5-1@OLX:claude-code-1",
+          "procurementCny": "104.7896507",
+          "retailCny": "177.7896507",
+          "officialCny": "365",
+          "procurementTotalCny": "104.7896507",
+          "retailTotalCny": "177.7896507",
+          "officialTotalCny": "365",
+          "officialModel": "Claude Fable 5.1",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-claude-haiku-5-5",
+      "name": "CL Haiku 5.5",
+      "upstreamModelId": "claude-haiku-5-5",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-haiku-5-5",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-haiku-5-5@952:claude",
+          "procurementCny": "0.2532425",
+          "retailCny": "0.3992425",
+          "officialCny": "0.73",
+          "procurementTotalCny": "0.2532425",
+          "retailTotalCny": "0.3992425",
+          "officialTotalCny": "0.73",
+          "officialModel": "Claude Haiku 5.5 (for prompts up to 100,000 tokens)",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价；输入≤100000 tokens；超过后$0.50/$2.50",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-haiku-5-5",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-haiku-5-5@952:claude",
+          "procurementCny": "1.2662125",
+          "retailCny": "1.9962125",
+          "officialCny": "3.65",
+          "procurementTotalCny": "1.2662125",
+          "retailTotalCny": "1.9962125",
+          "officialTotalCny": "3.65",
+          "officialModel": "Claude Haiku 5.5 (for prompts up to 100,000 tokens)",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价；输入≤100000 tokens；超过后$0.50/$2.50",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-claude-opus-4-6",
+      "name": "CL Opus 4.6",
+      "upstreamModelId": "claude-opus-4-6",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-opus-4-6",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-opus-4-6@TIA:claude-kiro",
+          "procurementCny": "2.61975",
+          "retailCny": "9.91975",
+          "officialCny": "36.5",
+          "procurementTotalCny": "2.61975",
+          "retailTotalCny": "9.91975",
+          "officialTotalCny": "36.5",
+          "officialModel": "Claude Opus 4.6",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-opus-4-6",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-opus-4-6@TIA:claude-kiro",
+          "procurementCny": "13.09875",
+          "retailCny": "49.59875",
+          "officialCny": "182.5",
+          "procurementTotalCny": "13.09875",
+          "retailTotalCny": "49.59875",
+          "officialTotalCny": "182.5",
+          "officialModel": "Claude Opus 4.6",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-claude-opus-4-7",
+      "name": "CL Opus 4.7",
+      "upstreamModelId": "claude-opus-4-7",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-opus-4-7",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-opus-4-7@TIA:claude-kiro",
+          "procurementCny": "2.55425625",
+          "retailCny": "9.85425625",
+          "officialCny": "36.5",
+          "procurementTotalCny": "2.55425625",
+          "retailTotalCny": "9.85425625",
+          "officialTotalCny": "36.5",
+          "officialModel": "Claude Opus 4.7",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-opus-4-7",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-opus-4-7@TIA:claude-kiro",
+          "procurementCny": "12.77128125",
+          "retailCny": "49.27128125",
+          "officialCny": "182.5",
+          "procurementTotalCny": "12.77128125",
+          "retailTotalCny": "49.27128125",
+          "officialTotalCny": "182.5",
+          "officialModel": "Claude Opus 4.7",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-claude-opus-4-8",
+      "name": "CL Opus 4.8",
+      "upstreamModelId": "claude-opus-4-8",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-opus-4-8",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-opus-4-8@TIA:claude-kiro",
+          "procurementCny": "2.61975",
+          "retailCny": "9.91975",
+          "officialCny": "36.5",
+          "procurementTotalCny": "2.61975",
+          "retailTotalCny": "9.91975",
+          "officialTotalCny": "36.5",
+          "officialModel": "Claude Opus 4.8",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-opus-4-8",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-opus-4-8@TIA:claude-kiro",
+          "procurementCny": "13.09875",
+          "retailCny": "49.59875",
+          "officialCny": "182.5",
+          "procurementTotalCny": "13.09875",
+          "retailTotalCny": "49.59875",
+          "officialTotalCny": "182.5",
+          "officialModel": "Claude Opus 4.8",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-claude-opus-5",
+      "name": "CL Opus 5",
+      "upstreamModelId": "claude-opus-5",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "claude-opus-5",
+          "direction": "input",
+          "params": {},
+          "laneId": "claude-opus-5@TIA:claude-kiro",
+          "procurementCny": "2.61975",
+          "retailCny": "9.91975",
+          "officialCny": "36.5",
+          "procurementTotalCny": "2.61975",
+          "retailTotalCny": "9.91975",
+          "officialTotalCny": "36.5",
+          "officialModel": "Claude Opus 5",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "claude-opus-5",
+          "direction": "output",
+          "params": {},
+          "laneId": "claude-opus-5@TIA:claude-kiro",
+          "procurementCny": "13.09875",
+          "retailCny": "49.59875",
+          "officialCny": "182.5",
+          "procurementTotalCny": "13.09875",
+          "retailTotalCny": "49.59875",
+          "officialTotalCny": "182.5",
+          "officialModel": "Claude Opus 5",
+          "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "officialConditions": "Base标准价；非Batch/优先/Fast；未命中缓存输入与普通输出，缓存另价",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-gemini-3.7-flash",
+      "name": "GM-3.7 Flash",
+      "upstreamModelId": "gemini-3.7-flash",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "gemini-3.7-flash",
+          "direction": "input",
+          "params": {},
+          "laneId": "gemini-3.7-flash@OLX:anti-gemini-1",
+          "procurementCny": "0.65494274",
+          "retailCny": "1.74994274",
+          "officialCny": "5.475",
+          "procurementTotalCny": "0.65494274",
+          "retailTotalCny": "1.74994274",
+          "officialTotalCny": "5.475",
+          "officialModel": "gemini-3.7-flash",
+          "source": "https://cloud.google.com/model-garden/pricing",
+          "officialConditions": "Google Cloud Global Standard当期优惠至2026-12-31（以月度返还额度实现）；之后$1.50/$7.50",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "gemini-3.7-flash",
+          "direction": "output",
+          "params": {},
+          "laneId": "gemini-3.7-flash@OLX:anti-gemini-1",
+          "procurementCny": "3.2747137",
+          "retailCny": "8.7497137",
+          "officialCny": "27.375",
+          "procurementTotalCny": "3.2747137",
+          "retailTotalCny": "8.7497137",
+          "officialTotalCny": "27.375",
+          "officialModel": "gemini-3.7-flash",
+          "source": "https://cloud.google.com/model-garden/pricing",
+          "officialConditions": "Google Cloud Global Standard当期优惠至2026-12-31（以月度返还额度实现）；之后$1.50/$7.50",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-gemini-3.8-flash",
+      "name": "GM-3.8 Flash",
+      "upstreamModelId": "gemini-3.8-flash",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "gemini-3.8-flash",
+          "direction": "input",
+          "params": {},
+          "laneId": "gemini-3.8-flash@OLX:anti-gemini-1",
+          "procurementCny": "0.65494274",
+          "retailCny": "1.74994274",
+          "officialCny": "5.475",
+          "procurementTotalCny": "0.65494274",
+          "retailTotalCny": "1.74994274",
+          "officialTotalCny": "5.475",
+          "officialModel": "gemini-3.8-flash",
+          "source": "https://ai.google.dev/gemini-api/docs/pricing",
+          "officialConditions": "Standard当期优惠至2026-12-31；2027-01-01起$1.50/$7.50",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "gemini-3.8-flash",
+          "direction": "output",
+          "params": {},
+          "laneId": "gemini-3.8-flash@OLX:anti-gemini-1",
+          "procurementCny": "3.2747137",
+          "retailCny": "8.7497137",
+          "officialCny": "27.375",
+          "procurementTotalCny": "3.2747137",
+          "retailTotalCny": "8.7497137",
+          "officialTotalCny": "27.375",
+          "officialModel": "gemini-3.8-flash",
+          "source": "https://ai.google.dev/gemini-api/docs/pricing",
+          "officialConditions": "Standard当期优惠至2026-12-31；2027-01-01起$1.50/$7.50",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-glm-5.3-flash",
+      "name": "GLM-5.3 Flash",
+      "upstreamModelId": "glm-5.3-flash",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "glm-5.3-flash",
+          "direction": "input",
+          "params": {},
+          "laneId": "glm-5.3-flash@952:BigModel",
+          "procurementCny": "0.41916",
+          "retailCny": "0.57916",
+          "officialCny": "0.8",
+          "procurementTotalCny": "0.41916",
+          "retailTotalCny": "0.57916",
+          "officialTotalCny": "0.8",
+          "officialModel": "glm-5.3-flash",
+          "source": "https://docs.bigmodel.cn/cn/guide/start/pricing",
+          "officialConditions": "标准未命中缓存文本；缓存单独计费",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "glm-5.3-flash",
+          "direction": "output",
+          "params": {},
+          "laneId": "glm-5.3-flash@952:BigModel",
+          "procurementCny": "1.46706",
+          "retailCny": "2.02706",
+          "officialCny": "2.8",
+          "procurementTotalCny": "1.46706",
+          "retailTotalCny": "2.02706",
+          "officialTotalCny": "2.8",
+          "officialModel": "glm-5.3-flash",
+          "source": "https://docs.bigmodel.cn/cn/guide/start/pricing",
+          "officialConditions": "标准未命中缓存文本；缓存单独计费",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-gpt-6-luna",
+      "name": "GT-6 Luna",
+      "upstreamModelId": "gpt-6-luna",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1050000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "gpt-6-luna",
+          "direction": "input",
+          "params": {},
+          "laneId": "gpt-6-luna@ROU:oai-enterprise",
+          "procurementCny": "0.06986",
+          "retailCny": "0.21586",
+          "officialCny": "0.73",
+          "procurementTotalCny": "0.06986",
+          "retailTotalCny": "0.21586",
+          "officialTotalCny": "0.73",
+          "officialModel": "gpt-6-luna",
+          "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "gpt-6-luna",
+          "direction": "output",
+          "params": {},
+          "laneId": "gpt-6-luna@ROU:oai-enterprise",
+          "procurementCny": "0.3493",
+          "retailCny": "1.0793",
+          "officialCny": "3.65",
+          "procurementTotalCny": "0.3493",
+          "retailTotalCny": "1.0793",
+          "officialTotalCny": "3.65",
+          "officialModel": "gpt-6-luna",
+          "source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-gpt-6.1-terra",
+      "name": "GT-6.1 Terra",
+      "upstreamModelId": "gpt-6.1-terra",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1050000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "gpt-6.1-terra",
+          "direction": "input",
+          "params": {},
+          "laneId": "gpt-6.1-terra@OLX:codex-gpt-1",
+          "procurementCny": "0.43668787",
+          "retailCny": "1.89668787",
+          "officialCny": "7.3",
+          "procurementTotalCny": "0.43668787",
+          "retailTotalCny": "1.89668787",
+          "officialTotalCny": "7.3",
+          "officialModel": "gpt-6.1-terra",
+          "source": "https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文；30分钟与12小时缓存写入另价，尚有后端接入资格门禁",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "gpt-6.1-terra",
+          "direction": "output",
+          "params": {},
+          "laneId": "gpt-6.1-terra@OLX:codex-gpt-1",
+          "procurementCny": "2.18343937",
+          "retailCny": "9.48343937",
+          "officialCny": "36.5",
+          "procurementTotalCny": "2.18343937",
+          "retailTotalCny": "9.48343937",
+          "officialTotalCny": "36.5",
+          "officialModel": "gpt-6.1-terra",
+          "source": "https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+          "officialConditions": "Standard全球服务；短上下文文本；不含缓存写入/命中、工具及地区附加费；本表取输入<272000 tokens；官方长上下文通常输入×2/输出×1.5，精确边界按原文；30分钟与12小时缓存写入另价，尚有后端接入资格门禁",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "USD",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-kimi-k3",
+      "name": "Kimi K3",
+      "upstreamModelId": "kimi-k3",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "kimi-k3",
+          "direction": "input",
+          "params": {},
+          "laneId": "kimi-k3@CBY:default",
+          "procurementCny": "10.479",
+          "retailCny": "14.479",
+          "officialCny": "20",
+          "procurementTotalCny": "10.479",
+          "retailTotalCny": "14.479",
+          "officialTotalCny": "20",
+          "officialModel": "kimi-k3",
+          "source": "https://platform.kimi.com/docs/pricing/chat",
+          "officialConditions": "原厂标准按量；未命中缓存文本，缓存命中/写入另计；非Batch/Highspeed",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "kimi-k3",
+          "direction": "output",
+          "params": {},
+          "laneId": "kimi-k3@CBY:default",
+          "procurementCny": "52.395",
+          "retailCny": "72.395",
+          "officialCny": "100",
+          "procurementTotalCny": "52.395",
+          "retailTotalCny": "72.395",
+          "officialTotalCny": "100",
+          "officialModel": "kimi-k3",
+          "source": "https://platform.kimi.com/docs/pricing/chat",
+          "officialConditions": "原厂标准按量；未命中缓存文本，缓存命中/写入另计；非Batch/Highspeed",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro",
+      "upstreamModelId": "kimi-k3.1-pro",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "kimi-k3.1-pro",
+          "direction": "input",
+          "params": {},
+          "laneId": "kimi-k3.1-pro@CBY:default",
+          "procurementCny": "3.056375",
+          "retailCny": "5.656375",
+          "officialCny": "13",
+          "procurementTotalCny": "3.056375",
+          "retailTotalCny": "5.656375",
+          "officialTotalCny": "13",
+          "officialModel": "kimi-k3.1-pro",
+          "source": "https://platform.kimi.com/docs/pricing/chat",
+          "officialConditions": "原厂标准按量；未命中缓存文本，缓存命中/写入另计；非Batch/Highspeed",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "kimi-k3.1-pro",
+          "direction": "output",
+          "params": {},
+          "laneId": "kimi-k3.1-pro@CBY:default",
+          "procurementCny": "17.8143",
+          "retailCny": "31.4143",
+          "officialCny": "68",
+          "procurementTotalCny": "17.8143",
+          "retailTotalCny": "31.4143",
+          "officialTotalCny": "68",
+          "officialModel": "kimi-k3.1-pro",
+          "source": "https://platform.kimi.com/docs/pricing/chat",
+          "officialConditions": "原厂标准按量；未命中缓存文本，缓存命中/写入另计；非Batch/Highspeed",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ycapi-minimax-m3.1-flash",
+      "name": "MiniMax-M3.1-Flash",
+      "upstreamModelId": "minimax-m3.1-flash",
+      "kind": "text",
+      "paramSchema": {},
+      "retailOffers": [
+        {
+          "id": "tokens",
+          "params": {}
+        }
+      ],
+      "contextWindow": 1000000,
+      "maxOutputTokens": 8192,
+      "priceRows": [
+        {
+          "modelId": "minimax-m3.1-flash",
+          "direction": "input",
+          "params": {},
+          "laneId": "minimax-m3.1-flash@VEC:default",
+          "procurementCny": "0.87325",
+          "retailCny": "1",
+          "officialCny": "1",
+          "procurementTotalCny": "0.87325",
+          "retailTotalCny": "1",
+          "officialTotalCny": "1",
+          "officialModel": "minimax-m3.1-flash",
+          "source": "https://platform.minimax.cn/docs/pricing/overview",
+          "officialConditions": "标准按量、未命中缓存文本；非优先服务",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        },
+        {
+          "modelId": "minimax-m3.1-flash",
+          "direction": "output",
+          "params": {},
+          "laneId": "minimax-m3.1-flash@VEC:default",
+          "procurementCny": "3.493",
+          "retailCny": "4",
+          "officialCny": "4",
+          "procurementTotalCny": "3.493",
+          "retailTotalCny": "4",
+          "officialTotalCny": "4",
+          "officialModel": "minimax-m3.1-flash",
+          "source": "https://platform.minimax.cn/docs/pricing/overview",
+          "officialConditions": "标准按量、未命中缓存文本；非优先服务",
+          "officialCheckedAt": "2026-11-11",
+          "officialOriginal": {
+            "currency": "CNY",
+            "usdCny": "7.3"
+          }
+        }
+      ]
     }
   ],
-  "sourceApprovalHash": "71461332ff89836476d3de3ecb77ca81a62bb3103f590cd1e91143f2d072f44d",
+  "sourceApprovalHash": "8f773c24446d26ccf1566e5b171430551df01fe5c171e54c85d5aca7e78def43",
   "officialUsdCny": 6.7138,
   "exclusions": [
     {
@@ -7432,5 +8237,12 @@
     }
   ],
   "sourceFullCatalogHash": "dcf086a12309edd8e54da84ec9eb255ef75d63b28e3ec9f4e484a2af4d693cef",
-  "sourceSelectionHash": "54ac395078bba5bd1b1996b0dcfe572b25e91698fc602f9cb77613c1c6df90c7"
+  "sourceSelectionHash": "54ac395078bba5bd1b1996b0dcfe572b25e91698fc602f9cb77613c1c6df90c7",
+  "supplementalQualification": {
+    "base_model_hash": "5a2b0637d7ac16b3c579f86f5a8d5bfa055b8856fa2a68a230debcf975d944dc",
+    "base_price_hash": "996da810e15a83ea20730f95ba1c0f38e5e900bde83a9d209cfb71df2374329f",
+    "scope_sha256": "8f773c24446d26ccf1566e5b171430551df01fe5c171e54c85d5aca7e78def43",
+    "native_audit_sha256": "f2ff737ec205ecb5e6b94993544097fa692012b5d86531a78eaf44376249e6fd",
+    "free_quote_sha256": "9d6127d8c8853d7917d391b9d2f7a1c96b83909ba9bbffd9556e0412e8e5c849"
+  }
 }

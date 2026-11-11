@@ -34,8 +34,10 @@ type PriceRow struct {
 	OfficialModel      string          `json:"officialModel"`
 	OfficialSource     string          `json:"source"`
 	OfficialConditions string          `json:"officialConditions"`
+	OfficialCheckedAt  string          `json:"officialCheckedAt,omitempty"`
 	OfficialOriginal   struct {
-		Currency string `json:"currency"`
+		Currency string          `json:"currency"`
+		USDCNY   decimal.Decimal `json:"usdCny,omitempty"`
 	} `json:"officialOriginal"`
 }
 type Offer struct {
@@ -74,7 +76,7 @@ func loadCatalog() (Catalog, error) {
 	if err := common.Unmarshal(catalogData, &c); err != nil {
 		return c, err
 	}
-	if c.Count != 43 || len(c.Models) != c.Count {
+	if c.Count != 58 || len(c.Models) != c.Count {
 		return c, fmt.Errorf("invalid YCAPI catalog size")
 	}
 	ids := map[string]bool{}
@@ -85,13 +87,13 @@ func loadCatalog() (Catalog, error) {
 		}
 		ids[m.ID] = true
 		for _, p := range m.Prices {
-			if p.ModelID != m.UpstreamID || p.LaneID == "" || p.Procurement.IsNegative() || !p.Procurement.LessThan(p.Retail) || !p.Retail.LessThan(p.Official) {
+			if p.ModelID != m.UpstreamID || p.LaneID == "" || p.Procurement.IsNegative() || !p.Procurement.LessThan(p.Retail) || p.Retail.GreaterThan(p.Official) {
 				return c, fmt.Errorf("invalid YCAPI retail price")
 			}
 			rows++
 		}
 	}
-	if rows != 113 {
+	if rows != 143 {
 		return c, fmt.Errorf("invalid YCAPI price count")
 	}
 	return c, nil
