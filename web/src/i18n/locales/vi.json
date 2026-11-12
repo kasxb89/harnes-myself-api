@@ -9075,6 +9075,9 @@
     "Preserve existing protocol selection": "Giữ lựa chọn giao thức hiện tại",
     "Use original model-based protocol": "Dùng quy tắc giao thức gốc của mô hình",
     "OpenAI-compatible text": "Văn bản tương thích OpenAI",
-    "YCAPI integrated fixed-lane text": "Văn bản YCAPI kênh cố định đã tích hợp"
+    "YCAPI integrated fixed-lane text": "Văn bản YCAPI kênh cố định đã tích hợp",
+    "Default output reservation": "Phần đầu ra dự trữ mặc định",
+    "Default output tokens cannot exceed maximum output tokens": "Phần đầu ra dự trữ không được vượt quá đầu ra tối đa",
+    "Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default.": "Yêu cầu thông thường dự trữ số token này. Câu trả lời dài được yêu cầu rõ ràng có thể dùng giới hạn tối đa. Để trống để giữ giá trị mặc định hiện tại."
   }
 }

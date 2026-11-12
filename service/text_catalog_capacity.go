@@ -10,6 +10,24 @@ import (
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 )
 
+// ModelLimitsVersionHeader opts catalogs into separate output ceilings and defaults.
+const ModelLimitsVersionHeader = "X-Yunshu-Model-Limits-Version"
+
+// CatalogModelCapacity keeps older clients on the safe default output budget.
+func CatalogModelCapacity(capacity model.EffectiveModelCapacity, separate bool) model.EffectiveModelCapacity {
+	if capacity.MaxOutputTokens == nil {
+		return capacity
+	}
+	if capacity.DefaultOutputTokens == nil {
+		capacity.DefaultOutputTokens = capacity.MaxOutputTokens
+	}
+	if !separate {
+		capacity.MaxOutputTokens = capacity.DefaultOutputTokens
+		capacity.DefaultOutputTokens = nil
+	}
+	return capacity
+}
+
 // WithEffectiveTextCatalogCapacity projects the same route limits used by the
 // relay into the YC schema, without changing a cached parameter map. The input
 // field is the total context's mathematical upper bound for old schema2 clients,
@@ -41,7 +59,11 @@ func WithEffectiveTextCatalogCapacity(id string, parameters map[string]any, capa
 	text["input_limit_source"] = "context_window_bound"
 	text["native_max_input_tokens"] = nil
 	text["max_output_tokens"] = *capacity.MaxOutputTokens
-	text["default_output_tokens"] = *capacity.MaxOutputTokens
+	outputDefault := capacity.DefaultOutputTokens
+	if outputDefault == nil {
+		outputDefault = capacity.MaxOutputTokens
+	}
+	text["default_output_tokens"] = *outputDefault
 	text["default_output_tokens_source"] = "gateway_policy"
 	text["fallback_output_tokens"] = fallbackOutput
 	text["fallback_output_tokens_source"] = "user_approved_product_budget"
@@ -57,7 +79,7 @@ func WithEffectiveTextCatalogCapacity(id string, parameters map[string]any, capa
 
 // ProjectPricingModelCapacities returns per-request values. model.GetPricing is
 // shared across users, so neither its slice nor its parameter maps are edited.
-func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string) ([]model.Pricing, error) {
+func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string, separateOutput bool) ([]model.Pricing, error) {
 	result := make([]model.Pricing, 0, len(pricing))
 	names := make([]string, 0, len(pricing))
 	for _, item := range pricing {
@@ -68,7 +90,7 @@ func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string) ([]
 		return nil, err
 	}
 	for _, item := range pricing {
-		capacity := capacities[item.ModelName]
+		capacity := CatalogModelCapacity(capacities[item.ModelName], separateOutput)
 		if capacity.Managed && len(capacity.Routes) == 0 {
 			continue
 		}
@@ -78,6 +100,7 @@ func ProjectPricingModelCapacities(pricing []model.Pricing, groups []string) ([]
 		if capacity.MaxOutputTokens != nil {
 			item.MaxOutputTokens = common.GetPointer(*capacity.MaxOutputTokens)
 		}
+		item.DefaultOutputTokens = capacity.DefaultOutputTokens
 		if approved, ok := ycapi.Lookup(item.ModelName); ok {
 			if approved.Kind == "text" {
 				item.Parameters, err = WithEffectiveTextCatalogCapacity(item.ModelName, item.Parameters, capacity)

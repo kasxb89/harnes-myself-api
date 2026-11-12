@@ -22,16 +22,17 @@ var modelCapacityMutationMu sync.Mutex
 // CapacityRoute is administrator evidence for one exact public ID and route.
 // Empty metadata never opts an existing model into capacity management.
 type CapacityRoute struct {
-	Model             string `json:"model"`
-	Group             string `json:"group"`
-	ChannelID         int    `json:"channel_id"`
-	RouteModel        string `json:"route_model"`
-	ContextWindow     *int   `json:"context_window,omitempty"`
-	MaxOutputTokens   *int   `json:"max_output_tokens,omitempty"`
-	BudgetField       string `json:"budget_field"`
-	Source            string `json:"source"`
-	VerifiedAt        string `json:"verified_at"`
-	ChannelConfigHash string `json:"channel_config_hash,omitempty"`
+	Model               string `json:"model"`
+	Group               string `json:"group"`
+	ChannelID           int    `json:"channel_id"`
+	RouteModel          string `json:"route_model"`
+	ContextWindow       *int   `json:"context_window,omitempty"`
+	MaxOutputTokens     *int   `json:"max_output_tokens,omitempty"`
+	DefaultOutputTokens *int   `json:"default_output_tokens,omitempty"`
+	BudgetField         string `json:"budget_field"`
+	Source              string `json:"source"`
+	VerifiedAt          string `json:"verified_at"`
+	ChannelConfigHash   string `json:"channel_config_hash,omitempty"`
 }
 
 type ModelCapacityConfig struct {
@@ -40,10 +41,11 @@ type ModelCapacityConfig struct {
 }
 
 type EffectiveModelCapacity struct {
-	Managed         bool
-	ContextWindow   *int
-	MaxOutputTokens *int
-	Routes          []CapacityRoute
+	Managed             bool
+	ContextWindow       *int
+	MaxOutputTokens     *int
+	DefaultOutputTokens *int
+	Routes              []CapacityRoute
 }
 
 func ReadModelCapacityConfig() (ModelCapacityConfig, error) {
@@ -85,7 +87,7 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 		if r.ContextWindow == nil && r.MaxOutputTokens == nil {
 			return errors.New("capacity route has no verified limits")
 		}
-		for _, n := range []*int{r.ContextWindow, r.MaxOutputTokens} {
+		for _, n := range []*int{r.ContextWindow, r.MaxOutputTokens, r.DefaultOutputTokens} {
 			if n != nil && (*n <= 0 || *n > math.MaxInt32) {
 				return errors.New("model capacity must be a positive int32")
 			}
@@ -95,6 +97,9 @@ func validateModelCapacityConfig(cfg ModelCapacityConfig) error {
 		}
 		if r.ContextWindow != nil && r.MaxOutputTokens != nil && *r.MaxOutputTokens > *r.ContextWindow {
 			return errors.New("output capacity exceeds context window")
+		}
+		if r.DefaultOutputTokens != nil && (r.MaxOutputTokens == nil || *r.DefaultOutputTokens > *r.MaxOutputTokens) {
+			return errors.New("Default output must not exceed maximum output tokens")
 		}
 		if r.Source == "" || len(r.Source) > 2048 || r.VerifiedAt == "" {
 			return errors.New("model capacity requires source and verification date")
@@ -150,6 +155,13 @@ func SaveModelCapacityConfig(cfg ModelCapacityConfig) error {
 					}
 					if r.MaxOutputTokens == nil {
 						r.MaxOutputTokens = prior.MaxOutputTokens
+					}
+					if r.DefaultOutputTokens == nil && prior.DefaultOutputTokens != nil {
+						value := *prior.DefaultOutputTokens
+						if r.MaxOutputTokens != nil {
+							value = min(value, *r.MaxOutputTokens)
+						}
+						r.DefaultOutputTokens = common.GetPointer(value)
 					}
 					found = true
 					break
@@ -265,6 +277,13 @@ func ResolveModelCapacities(models map[string][]string, groups []string) (map[st
 		if route.MaxOutputTokens != nil && (result.MaxOutputTokens == nil || *route.MaxOutputTokens < *result.MaxOutputTokens) {
 			result.MaxOutputTokens = route.MaxOutputTokens
 		}
+		outputDefault := route.DefaultOutputTokens
+		if outputDefault == nil {
+			outputDefault = route.MaxOutputTokens
+		}
+		if outputDefault != nil && (result.DefaultOutputTokens == nil || *outputDefault < *result.DefaultOutputTokens) {
+			result.DefaultOutputTokens = outputDefault
+		}
 		results[route.Model] = result
 	}
 	for name, result := range results {
@@ -282,6 +301,9 @@ func ResolveModelCapacities(models map[string][]string, groups []string) (map[st
 		}
 		if result.ContextWindow != nil && result.MaxOutputTokens != nil && *result.MaxOutputTokens > *result.ContextWindow {
 			result.MaxOutputTokens = common.GetPointer(*result.ContextWindow)
+		}
+		if result.DefaultOutputTokens != nil && result.MaxOutputTokens != nil && *result.DefaultOutputTokens > *result.MaxOutputTokens {
+			result.DefaultOutputTokens = result.MaxOutputTokens
 		}
 		results[name] = result
 	}

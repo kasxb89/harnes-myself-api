@@ -36,6 +36,8 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 }
 
 func GetPricing(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Writer.Header().Add("Vary", service.ModelLimitsVersionHeader)
 	service.RefreshBlackrxCatalog(c.Request.Context())
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
@@ -85,7 +87,7 @@ func GetPricing(c *gin.Context) {
 		capacityGroups = groups
 	}
 	var err error
-	pricing, err = service.ProjectPricingModelCapacities(pricing, capacityGroups)
+	pricing, err = service.ProjectPricingModelCapacities(pricing, capacityGroups, c.GetHeader(service.ModelLimitsVersionHeader) == "2")
 	if err != nil {
 		c.JSON(503, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})
 		return

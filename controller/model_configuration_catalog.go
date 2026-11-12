@@ -63,7 +63,7 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 			}
 			for key, value := range currentRow {
 				switch key {
-				case "parameters", "retail_price_rows", "context_window", "max_output_tokens", "display_name", "kind":
+				case "parameters", "retail_price_rows", "context_window", "max_output_tokens", "default_output_tokens", "display_name", "kind":
 					continue
 				}
 				row[key] = value
@@ -84,17 +84,21 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 			row["parameters"] = parameters
 		}
 		if record.Definition.Kind == "text" {
-			capacity := capacities[name]
+			capacity := service.CatalogModelCapacity(capacities[name], c.GetHeader(service.ModelLimitsVersionHeader) == "2")
 			if capacity.Managed && len(capacity.Routes) == 0 {
 				continue
 			}
 			delete(row, "context_window")
 			delete(row, "max_output_tokens")
+			delete(row, "default_output_tokens")
 			if capacity.ContextWindow != nil {
 				row["context_window"] = *capacity.ContextWindow
 			}
 			if capacity.MaxOutputTokens != nil {
 				row["max_output_tokens"] = *capacity.MaxOutputTokens
+			}
+			if capacity.DefaultOutputTokens != nil {
+				row["default_output_tokens"] = *capacity.DefaultOutputTokens
 			}
 		}
 		// Original supplier display tables are fixed snapshots. The editable engine

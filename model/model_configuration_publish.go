@@ -282,7 +282,7 @@ func applyModelConfigurationRoutes(tx *gorm.DB, def ModelConfiguration, raw stri
 	}
 	if def.Kind == "text" && def.ContextWindow != nil && def.MaxOutputTokens != nil {
 		for _, route := range def.Routes {
-			declaration := CapacityRoute{Model: def.ModelName, Group: route.Group, ChannelID: route.ChannelID, RouteModel: def.ModelName, ContextWindow: def.ContextWindow, MaxOutputTokens: def.MaxOutputTokens, BudgetField: def.BudgetField, Source: def.Source, VerifiedAt: time.Now().UTC().Format(time.RFC3339), ChannelConfigHash: hashes[route.ChannelID][1]}
+			declaration := CapacityRoute{Model: def.ModelName, Group: route.Group, ChannelID: route.ChannelID, RouteModel: def.ModelName, ContextWindow: def.ContextWindow, MaxOutputTokens: def.MaxOutputTokens, DefaultOutputTokens: def.DefaultOutputTokens, BudgetField: def.BudgetField, Source: def.Source, VerifiedAt: time.Now().UTC().Format(time.RFC3339), ChannelConfigHash: hashes[route.ChannelID][1]}
 			encoded, err := common.Marshal(declaration)
 			if err != nil {
 				return raw, err

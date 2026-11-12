@@ -9075,6 +9075,9 @@
     "Preserve existing protocol selection": "Conserver le protocole actuel",
     "Use original model-based protocol": "Utiliser les règles du modèle d’origine",
     "OpenAI-compatible text": "Texte compatible OpenAI",
-    "YCAPI integrated fixed-lane text": "Texte YCAPI intégré à canal fixe"
+    "YCAPI integrated fixed-lane text": "Texte YCAPI intégré à canal fixe",
+    "Default output reservation": "Réserve de sortie par défaut",
+    "Default output tokens cannot exceed maximum output tokens": "La réserve de sortie ne peut pas dépasser la sortie maximale",
+    "Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default.": "Les requêtes ordinaires réservent ce nombre de jetons. Une réponse explicitement plus longue peut utiliser le plafond maximal. Laisser vide conserve la valeur actuelle."
   }
 }

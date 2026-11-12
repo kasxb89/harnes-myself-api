@@ -212,6 +212,10 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 		return nil
 	}
 	n := uint(*limit)
+	defaultN := n
+	if caps.DefaultOutputTokens != nil {
+		defaultN = min(defaultN, uint(*caps.DefaultOutputTokens))
+	}
 	switch r := info.Request.(type) {
 	case *dto.GeneralOpenAIRequest:
 		if r.MaxTokens != nil && *r.MaxTokens == 0 || r.MaxCompletionTokens != nil && *r.MaxCompletionTokens == 0 {
@@ -224,7 +228,7 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 			r.MaxCompletionTokens = common.GetPointer(n)
 		}
 		if r.MaxTokens == nil && r.MaxCompletionTokens == nil {
-			r.MaxTokens = common.GetPointer(n)
+			r.MaxTokens = common.GetPointer(defaultN)
 		}
 		if r.MaxTokens != nil && r.MaxCompletionTokens != nil {
 			effective := min(*r.MaxTokens, *r.MaxCompletionTokens)
@@ -235,21 +239,30 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 		if r.MaxOutputTokens != nil && *r.MaxOutputTokens == 0 {
 			return capacityError(c, "invalid_output_budget", i18n.MsgCapacityOutputBudget)
 		}
-		if r.MaxOutputTokens == nil || *r.MaxOutputTokens > n {
+		if r.MaxOutputTokens == nil {
+			r.MaxOutputTokens = common.GetPointer(defaultN)
+		}
+		if *r.MaxOutputTokens > n {
 			r.MaxOutputTokens = common.GetPointer(n)
 		}
 	case *dto.ClaudeRequest:
 		if r.MaxTokens != nil && *r.MaxTokens == 0 {
 			return capacityError(c, "invalid_output_budget", i18n.MsgCapacityOutputBudget)
 		}
-		if r.MaxTokens == nil || *r.MaxTokens > n {
+		if r.MaxTokens == nil {
+			r.MaxTokens = common.GetPointer(defaultN)
+		}
+		if *r.MaxTokens > n {
 			r.MaxTokens = common.GetPointer(n)
 		}
 	case *dto.GeminiChatRequest:
 		if r.GenerationConfig.MaxOutputTokens != nil && *r.GenerationConfig.MaxOutputTokens == 0 {
 			return capacityError(c, "invalid_output_budget", i18n.MsgCapacityOutputBudget)
 		}
-		if r.GenerationConfig.MaxOutputTokens == nil || *r.GenerationConfig.MaxOutputTokens > n {
+		if r.GenerationConfig.MaxOutputTokens == nil {
+			r.GenerationConfig.MaxOutputTokens = common.GetPointer(defaultN)
+		}
+		if *r.GenerationConfig.MaxOutputTokens > n {
 			r.GenerationConfig.MaxOutputTokens = common.GetPointer(n)
 		}
 	}
@@ -383,10 +396,12 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 	}
 	if limit != nil {
 		effective := *limit
+		explicit := false
 		// Preserve an explicitly smaller caller/converted budget, including both
 		// Chat Completions spellings. Invalid values cannot be used as bypasses.
 		for _, field := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens"} {
 			if value, ok := object[field]; ok {
+				explicit = true
 				n, ok := value.(float64)
 				if !ok || n <= 0 || n != float64(int64(n)) {
 					return capacityError(c, "invalid_output_budget", i18n.MsgCapacityOutputBudget)
@@ -398,6 +413,7 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 		}
 		if gc, ok := object["generationConfig"].(map[string]any); ok {
 			if value, exists := gc["maxOutputTokens"]; exists {
+				explicit = true
 				n, ok := value.(float64)
 				if !ok || n <= 0 || n != float64(int64(n)) {
 					return capacityError(c, "invalid_output_budget", i18n.MsgCapacityOutputBudget)
@@ -405,6 +421,14 @@ func EnforceModelCapacityOutbound(c *gin.Context, req *http.Request, info *relay
 				if n < float64(effective) {
 					effective = int(n)
 				}
+			}
+		}
+		if !explicit {
+			if caps.DefaultOutputTokens != nil {
+				effective = min(effective, *caps.DefaultOutputTokens)
+			}
+			if route.DefaultOutputTokens != nil {
+				effective = min(effective, *route.DefaultOutputTokens)
 			}
 		}
 		for _, field := range []string{"max_tokens", "max_completion_tokens", "max_output_tokens", "generationConfig.maxOutputTokens", "generationConfig.max_output_tokens"} {

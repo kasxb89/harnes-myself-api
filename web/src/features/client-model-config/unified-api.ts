@@ -61,6 +61,7 @@ export type UnifiedModelDefinition = {
   routes: UnifiedModelRoute[]
   context_window?: number
   max_output_tokens?: number
+  default_output_tokens?: number
   budget_field?: string
   parameters?: Record<string, unknown>
   pricing: PricingValues

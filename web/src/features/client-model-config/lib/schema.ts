@@ -47,11 +47,26 @@ export const unifiedModelFormSchema = z
       .max(128),
     context_window: unifiedCapacity,
     max_output_tokens: unifiedCapacity,
+    default_output_tokens: unifiedCapacity,
     budget_field: z.string().optional(),
     parameter_json: z.string(),
     cost_json: z.string(),
   })
   .superRefine((value, context) => {
+    if (
+      value.kind === 'text' &&
+      Number.isFinite(value.default_output_tokens) &&
+      (value.max_output_tokens === undefined ||
+        !Number.isFinite(value.max_output_tokens) ||
+        (value.default_output_tokens !== undefined &&
+          value.default_output_tokens > value.max_output_tokens))
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['default_output_tokens'],
+        message: 'Default output tokens cannot exceed maximum output tokens',
+      })
+    }
     if (value.kind !== 'text' || !value.enabled) return
     for (const key of ['context_window', 'max_output_tokens'] as const) {
       if (!Number.isFinite(value[key])) {

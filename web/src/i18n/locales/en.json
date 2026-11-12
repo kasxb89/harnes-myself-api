@@ -9075,6 +9075,9 @@
     "Preserve existing protocol selection": "Preserve existing protocol selection",
     "Use original model-based protocol": "Use original model-based protocol",
     "OpenAI-compatible text": "OpenAI-compatible text",
-    "YCAPI integrated fixed-lane text": "YCAPI integrated fixed-lane text"
+    "YCAPI integrated fixed-lane text": "YCAPI integrated fixed-lane text",
+    "Default output reservation": "Default output reservation",
+    "Default output tokens cannot exceed maximum output tokens": "Default output tokens cannot exceed maximum output tokens",
+    "Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default.": "Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default."
   }
 }

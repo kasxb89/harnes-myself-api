@@ -29,6 +29,7 @@ type CapacityCatalogRoute struct {
 	RouteModel           string `json:"route_model"`
 	ContextWindow        *int   `json:"context_window,omitempty"`
 	MaxOutputTokens      *int   `json:"max_output_tokens,omitempty"`
+	DefaultOutputTokens  *int   `json:"default_output_tokens,omitempty"`
 	BudgetField          string `json:"budget_field"`
 	Source               string `json:"source"`
 	VerifiedAt           string `json:"verified_at"`
@@ -172,6 +173,7 @@ func readCapacityCatalogState(tx *gorm.DB, locked bool) (capacityCatalogState, e
 		row := CapacityCatalogRoute{Model: key.Model, Group: key.Group, ChannelID: key.ChannelID, ChannelName: channel.Name, RouteModel: key.RouteModel, BudgetField: "max_tokens", RequiresFullCapacity: requiresFullModelCapacity(key.Model)}
 		if prior, exists := configured[capacityRouteKey(key)]; exists {
 			row.ContextWindow, row.MaxOutputTokens = prior.ContextWindow, prior.MaxOutputTokens
+			row.DefaultOutputTokens = prior.DefaultOutputTokens
 			row.BudgetField, row.Source, row.VerifiedAt = prior.BudgetField, prior.Source, prior.VerifiedAt
 			row.Configured = true
 			row.Valid = prior.ChannelConfigHash == state.Hashes[channel.Id]
@@ -245,6 +247,13 @@ func PatchModelCapacity(patch ModelCapacityPatch) (ModelCapacityCatalog, error) 
 				}
 				if change.MaxOutputTokens == nil {
 					change.MaxOutputTokens = state.Config.Routes[index].MaxOutputTokens
+				}
+				if change.DefaultOutputTokens == nil && state.Config.Routes[index].DefaultOutputTokens != nil {
+					value := *state.Config.Routes[index].DefaultOutputTokens
+					if change.MaxOutputTokens != nil {
+						value = min(value, *change.MaxOutputTokens)
+					}
+					change.DefaultOutputTokens = common.GetPointer(value)
 				}
 				state.Config.Routes[index] = change
 			}

@@ -9075,6 +9075,9 @@
     "Preserve existing protocol selection": "保留現有協定選擇",
     "Use original model-based protocol": "沿用原模型協定規則",
     "OpenAI-compatible text": "OpenAI 相容文字協定",
-    "YCAPI integrated fixed-lane text": "YCAPI 已接入的固定通道文字協定"
+    "YCAPI integrated fixed-lane text": "YCAPI 已接入的固定通道文字協定",
+    "Default output reservation": "預設預留輸出",
+    "Default output tokens cannot exceed maximum output tokens": "預設預留輸出不能超過最大輸出",
+    "Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default.": "一般請求按此數量預留輸出；明確要求長回覆時可使用最大輸出。留空保留目前預設值。"
   }
 }

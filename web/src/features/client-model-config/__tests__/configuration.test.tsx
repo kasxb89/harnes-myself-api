@@ -41,6 +41,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { ClientModelConfigPage } from '..'
 import { MediaParametersForm } from '../components/media-parameters-form'
+import { UnifiedModelForm } from '../components/unified-model-form'
 import {
   readMediaParameters,
   nativeMediaFields,
@@ -56,6 +57,40 @@ import {
   unifiedModelFormSchema,
 } from '../lib/schema'
 import type { ClientModelConfig, ClientModelOption } from '../types'
+import type { UnifiedModelDefinition } from '../unified-api'
+
+test('unified editor accepts a smaller default reservation and rejects defaults above the hard output cap', () => {
+  const definition = {
+    display_name: 'Split output',
+    kind: 'text',
+    enabled: true,
+    source: 'Local capacity evidence',
+    routes: [],
+    parameter_json: '',
+    cost_json: '[]',
+    context_window: 1048576,
+    max_output_tokens: 1048576,
+  }
+  expect(
+    unifiedModelFormSchema.parse({
+      ...definition,
+      default_output_tokens: 131072,
+    }).default_output_tokens
+  ).toBe(131072)
+  expect(
+    unifiedModelFormSchema.safeParse({
+      ...definition,
+      default_output_tokens: 1048577,
+    }).success
+  ).toBe(false)
+  expect(
+    unifiedModelFormSchema.safeParse({
+      ...definition,
+      default_output_tokens: 0,
+    }).success
+  ).toBe(false)
+  expect(unifiedModelFormSchema.safeParse(definition).success).toBe(true)
+})
 
 test('unified editor keeps unknown limits blank and requires the correct context/output pair before enabling text', () => {
   const draft = {
@@ -132,6 +167,12 @@ beforeEach(() => {
     default_video_model: '',
   }
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/status') {
+      return { data: { success: true, data: { usd_exchange_rate: 7.3 } } }
+    }
+    if (url === '/api/option/model_pricing') {
+      return { data: { success: true, data: { entries: [] } } }
+    }
     if (url === '/api/client-model-config/media-defaults') {
       return { data: { success: true, data: mediaSaved } }
     }
@@ -160,6 +201,64 @@ beforeEach(() => {
 
 afterEach(() => {
   clients.splice(0).forEach((client) => client.clear())
+})
+
+test('unified form saves the default independently and blocks a reservation above the maximum', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  const definition: UnifiedModelDefinition = {
+    model_name: 'split-output',
+    display_name: 'Split output',
+    kind: 'text',
+    enabled: true,
+    source: 'Local synthetic output limits',
+    routes: [],
+    pricing: {},
+    context_window: 1048576,
+    max_output_tokens: 1048576,
+    default_output_tokens: 131072,
+  }
+  const save = vi.fn(async (_definition: UnifiedModelDefinition) => {})
+  render(
+    <QueryClientProvider client={client}>
+      <UnifiedModelForm
+        entry={{
+          model_name: definition.model_name,
+          base_version: 'fixture',
+          definition,
+        }}
+        channels={[]}
+        pending={false}
+        onSave={save}
+        onDirtyChange={vi.fn()}
+      />
+    </QueryClientProvider>
+  )
+  const reserve = screen.getByLabelText('Default output reservation')
+  expect(reserve).toHaveValue(131072)
+  fireEvent.change(reserve, { target: { value: '1048577' } })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  expect(
+    await screen.findByText(
+      'Default output tokens cannot exceed maximum output tokens'
+    )
+  ).toBeVisible()
+  expect(save).not.toHaveBeenCalled()
+  fireEvent.change(reserve, { target: { value: '65536' } })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0]).toMatchObject({
+    context_window: 1048576,
+    max_output_tokens: 1048576,
+    default_output_tokens: 65536,
+    pricing: {},
+  })
 })
 
 async function setup(): Promise<QueryClient> {

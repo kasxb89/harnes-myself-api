@@ -35,6 +35,7 @@ type Pricing struct {
 	Parameters             map[string]any                       `json:"parameters,omitempty"`
 	ContextWindow          *int                                 `json:"context_window,omitempty"`
 	MaxOutputTokens        *int                                 `json:"max_output_tokens,omitempty"`
+	DefaultOutputTokens    *int                                 `json:"default_output_tokens,omitempty"`
 	Description            string                               `json:"description,omitempty"`
 	Icon                   string                               `json:"icon,omitempty"`
 	Tags                   string                               `json:"tags,omitempty"`

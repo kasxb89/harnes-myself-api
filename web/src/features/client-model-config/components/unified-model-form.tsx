@@ -209,6 +209,11 @@ export function UnifiedModelForm(props: {
         next.max_output_tokens = Number.isFinite(values.max_output_tokens)
           ? values.max_output_tokens
           : undefined
+        next.default_output_tokens = Number.isFinite(
+          values.default_output_tokens
+        )
+          ? values.default_output_tokens
+          : undefined
         next.budget_field = values.budget_field || 'max_tokens'
       } else {
         next.parameters = parameters as Record<string, unknown> | undefined
@@ -471,6 +476,38 @@ export function UnifiedModelForm(props: {
               <FieldError>
                 {form.formState.errors.max_output_tokens?.message &&
                   t(form.formState.errors.max_output_tokens.message)}
+              </FieldError>
+            </div>
+            <div
+              className='space-y-2'
+              data-invalid={
+                Boolean(form.formState.errors.default_output_tokens) ||
+                undefined
+              }
+            >
+              <Label htmlFor='unified-default-output'>
+                {t('Default output reservation')}
+              </Label>
+              <Input
+                id='unified-default-output'
+                type='number'
+                min={1}
+                aria-invalid={Boolean(
+                  form.formState.errors.default_output_tokens
+                )}
+                {...form.register('default_output_tokens', {
+                  valueAsNumber: true,
+                  min: 1,
+                })}
+              />
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default.'
+                )}
+              </p>
+              <FieldError>
+                {form.formState.errors.default_output_tokens?.message &&
+                  t(form.formState.errors.default_output_tokens.message)}
               </FieldError>
             </div>
             <div className='space-y-2 sm:col-span-2'>

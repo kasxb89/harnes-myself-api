@@ -9075,6 +9075,9 @@
     "Preserve existing protocol selection": "現在のプロトコル設定を維持",
     "Use original model-based protocol": "元のモデル別ルールを使用",
     "OpenAI-compatible text": "OpenAI互換テキスト",
-    "YCAPI integrated fixed-lane text": "YCAPI統合済み固定経路テキスト"
+    "YCAPI integrated fixed-lane text": "YCAPI統合済み固定経路テキスト",
+    "Default output reservation": "既定の出力予約",
+    "Default output tokens cannot exceed maximum output tokens": "既定の出力予約は最大出力を超えられません",
+    "Reserve this many output tokens for ordinary requests. Explicit longer replies may use the maximum output. Leave blank to preserve the current default.": "通常のリクエストではこのトークン数を出力用に予約します。明示的に長い回答を指定した場合は最大出力まで使用できます。空欄では現在の既定値を保持します。"
   }
 }

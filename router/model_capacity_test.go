@@ -10,6 +10,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +29,124 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+func TestSeparateOutputDefaultCatalogAndSingleCharge(t *testing.T) {
+	captured := map[string]common.RawMessage{}
+	f := unifiedConfigurationFixture(t)
+	base := "https://output-budget.fixture"
+	require.NoError(t, (&model.Channel{Id: 1212, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Name: "Output budget fixture", Models: "split-output", Group: "default", Key: "synthetic-output-budget", BaseURL: &base}).Insert())
+	publishUnifiedFixture(t, "split-output", func(def *model.ModelConfiguration) {
+		def.ContextWindow = common.GetPointer(1048576)
+		def.MaxOutputTokens = common.GetPointer(1048576)
+		require.NoError(t, common.Unmarshal([]byte(`{"default_output_tokens":131072}`), def))
+	})
+	for _, path := range []string{"/v1/models", "/api/pricing"} {
+		for _, modern := range []bool{false, true} {
+			req := httptest.NewRequest("GET", path, nil)
+			req.Header.Set("Authorization", "Bearer sk-h3routeradmin")
+			if modern {
+				req.Header.Set("X-Yunshu-Model-Limits-Version", "2")
+			}
+			response := httptest.NewRecorder()
+			f.engine.ServeHTTP(response, req)
+			require.Equal(t, 200, response.Code, response.Body.String())
+			assert.Contains(t, response.Header().Get("Vary"), "X-Yunshu-Model-Limits-Version")
+			captured[fmt.Sprintf("%s:separate=%t", path, modern)] = append(common.RawMessage(nil), response.Body.Bytes()...)
+			var body struct {
+				Data []map[string]any `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			found := false
+			for _, row := range body.Data {
+				if row["id"] != "split-output" && row["model_name"] != "split-output" {
+					continue
+				}
+				found = true
+				assert.EqualValues(t, 1048576, row["context_window"])
+				if modern {
+					assert.EqualValues(t, 1048576, row["max_output_tokens"])
+					assert.EqualValues(t, 131072, row["default_output_tokens"])
+				} else {
+					assert.EqualValues(t, 131072, row["max_output_tokens"], "old clients must not reserve the entire context")
+				}
+			}
+			assert.True(t, found)
+		}
+	}
+	if output := os.Getenv("TEST_OUTPUT_BUDGET_CATALOG_CAPTURE"); output != "" {
+		raw, err := common.Marshal(captured)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(output, raw, 0600))
+	}
+	var budgets []float64
+	service.GetHttpClient().Transport = imageUploadRoundTripper(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "output-budget.fixture", req.URL.Host)
+		var body map[string]any
+		require.NoError(t, common.DecodeJson(req.Body, &body))
+		budgets = append(budgets, body["max_tokens"].(float64))
+		result := `{"id":"local-output","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(result)), Request: req}, nil
+	})
+	wallet, token := f.balance(t)
+	for _, output := range []string{"", `,"max_tokens":500000`} {
+		response := unifiedRequest(t, f, "POST", "/v1/chat/completions", `{"model":"split-output","messages":[{"role":"user","content":"hello"}]`+output+`}`, "")
+		require.Equal(t, 200, response.Code, response.Body.String())
+	}
+	assert.Equal(t, []float64{131072, 500000}, budgets, "default reserve is separate from the explicitly requested output ceiling")
+	finalWallet, finalToken := f.balance(t)
+	expectedCharge := common.QuotaFromFloat(0.02 * common.QuotaPerUnit)
+	assert.EqualValues(t, expectedCharge, wallet-finalWallet)
+	assert.EqualValues(t, expectedCharge, token-finalToken)
+	var consumes int64
+	require.NoError(t, f.logDB.Model(&model.Log{}).Where("model_name = ? AND type = ?", "split-output", model.LogTypeConsume).Count(&consumes).Error)
+	assert.EqualValues(t, 2, consumes, "one upstream call and one consume per accepted request")
+	configured, err := model.ReadModelCapacityConfig()
+	require.NoError(t, err)
+	index := -1
+	for i, route := range configured.Routes {
+		if route.Model == "split-output" {
+			index = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, index)
+	for _, invalid := range []int{0, 1048577} {
+		bad := configured
+		bad.Routes = append([]model.CapacityRoute(nil), configured.Routes...)
+		bad.Routes[index].DefaultOutputTokens = common.GetPointer(invalid)
+		require.Error(t, model.SaveModelCapacityConfig(bad))
+	}
+	readback, err := model.ReadModelCapacityConfig()
+	require.NoError(t, err)
+	assert.Equal(t, configured, readback, "invalid defaults must not change existing configuration")
+	published, err := model.CurrentPublishedModelConfigurations()
+	require.NoError(t, err)
+	beforeVersion := model.ModelExecutionConfigurationVersion("split-output", published["split-output"])
+	defaultOnly := configured
+	defaultOnly.Routes = append([]model.CapacityRoute(nil), configured.Routes...)
+	defaultOnly.Routes[index].DefaultOutputTokens = common.GetPointer(32768)
+	require.NoError(t, model.SaveModelCapacityConfig(defaultOnly))
+	assert.NotEqual(t, beforeVersion, model.ModelExecutionConfigurationVersion("split-output", published["split-output"]), "default-only changes invalidate prepared model versions")
+	require.NoError(t, model.SaveModelCapacityConfig(configured))
+	catalog, err := model.ReadModelCapacityCatalog()
+	require.NoError(t, err)
+	change := configured.Routes[index]
+	change.MaxOutputTokens, change.DefaultOutputTokens = common.GetPointer(65536), nil
+	_, err = model.PatchModelCapacity(model.ModelCapacityPatch{Revision: catalog.Revision, Routes: []model.CapacityRoute{change}})
+	require.NoError(t, err)
+	readback, err = model.ReadModelCapacityConfig()
+	require.NoError(t, err)
+	assert.EqualValues(t, 65536, *readback.Routes[index].DefaultOutputTokens, "old PATCH omission preserves the default within a smaller cap")
+	current, err := model.GetModelConfigurationSnapshot("split-output")
+	require.NoError(t, err)
+	oldDashboard := current.Entries[0].Definition
+	oldDashboard.DefaultOutputTokens = nil
+	require.NoError(t, model.SaveModelConfigurationDraft(current.Revision, current.Entries[0].BaseVersion, oldDashboard))
+	current, err = model.GetModelConfigurationSnapshot("split-output")
+	require.NoError(t, err)
+	require.NotNil(t, current.Entries[0].Draft)
+	assert.EqualValues(t, 65536, *current.Entries[0].Draft.Definition.DefaultOutputTokens, "old dashboard saves retain the separate default")
+}
 
 func TestModelCapacityDirectoryAndPersistence(t *testing.T) {
 	setupRelayRouterTestDB(t)
@@ -518,7 +637,7 @@ func TestModelCapacityAdminCatalogAndPatch(t *testing.T) {
 				parameters = codebloom.ClientParameters(name)
 			}
 			project := func() {
-				projected, err := service.ProjectPricingModelCapacities([]model.Pricing{{ModelName: name, Parameters: parameters}}, []string{"default"})
+				projected, err := service.ProjectPricingModelCapacities([]model.Pricing{{ModelName: name, Parameters: parameters}}, []string{"default"}, false)
 				require.NoError(t, err, "rejected partial changes must not interrupt the model directory projection")
 				require.Len(t, projected, 1)
 			}

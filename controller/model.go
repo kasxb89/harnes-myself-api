@@ -218,6 +218,7 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 
 func ListModels(c *gin.Context, modelType int) {
 	c.Header("Cache-Control", "private, no-store")
+	c.Writer.Header().Add("Vary", service.ModelLimitsVersionHeader)
 	service.RefreshBlackrxCatalog(c.Request.Context())
 
 	userModelNames := make([]string, 0)
@@ -267,13 +268,14 @@ func ListModels(c *gin.Context, modelType int) {
 		return
 	}
 	for _, modelName := range userModelNames {
-		capacity := capacities[modelName]
+		capacity := service.CatalogModelCapacity(capacities[modelName], c.GetHeader(service.ModelLimitsVersionHeader) == "2")
 		if capacity.Managed && len(capacity.Routes) == 0 {
 			continue
 		}
 		entry := buildOpenAIModel(modelName, ownerByModel)
 		entry.ContextWindow = capacity.ContextWindow
 		entry.MaxOutputTokens = capacity.MaxOutputTokens
+		entry.DefaultOutputTokens = capacity.DefaultOutputTokens
 		userOpenAiModels = append(userOpenAiModels, entry)
 	}
 
@@ -340,7 +342,7 @@ func ListModels(c *gin.Context, modelType int) {
 				value["display_name"] = presentation.DisplayName(entry.Id, approved.Name)
 				parameters, prices := model.YcapiRuntimeCatalog(pluginGeneration, entry.Id)
 				if approved.Kind == "text" {
-					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
+					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens, DefaultOutputTokens: entry.DefaultOutputTokens}
 					var err error
 					parameters, err = service.WithEffectiveTextCatalogCapacity(entry.Id, parameters, capacity)
 					if err != nil {
@@ -367,7 +369,7 @@ func ListModels(c *gin.Context, modelType int) {
 				value["kind"], value["display_name"] = candidate.Kind, presentation.DisplayName(entry.Id, model.ClientModelDisplayName(entry.Id))
 				parameters := model.CodeBloomRuntimeParameters(pluginGeneration, entry.Id)
 				if candidate.Kind == "text" {
-					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens}
+					capacity := model.EffectiveModelCapacity{ContextWindow: entry.ContextWindow, MaxOutputTokens: entry.MaxOutputTokens, DefaultOutputTokens: entry.DefaultOutputTokens}
 					parameters, err = service.WithEffectiveTextCatalogCapacity(entry.Id, parameters, capacity)
 					if err != nil {
 						c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_capacity_unavailable", "message": "Model capacity configuration is unavailable"}})

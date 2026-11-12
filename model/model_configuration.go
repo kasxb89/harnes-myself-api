@@ -54,19 +54,20 @@ type ModelConfigurationRoute struct {
 // Pricing is the existing engine's complete editable draft. Parameters contain
 // generation controls only, never a transport or a second pricing language.
 type ModelConfiguration struct {
-	ModelName          string                               `json:"model_name"`
-	Kind               string                               `json:"kind"`
-	DisplayName        string                               `json:"display_name"`
-	Enabled            bool                                 `json:"enabled"`
-	Routes             []ModelConfigurationRoute            `json:"routes"`
-	ContextWindow      *int                                 `json:"context_window,omitempty"`
-	MaxOutputTokens    *int                                 `json:"max_output_tokens,omitempty"`
-	BudgetField        string                               `json:"budget_field,omitempty"`
-	Parameters         map[string]any                       `json:"parameters,omitempty"`
-	Pricing            PricingValues                        `json:"pricing"`
-	CostRules          []ModelProfitCostRule                `json:"cost_rules,omitempty"`
-	OfficialReferences *ModelOfficialReferenceConfiguration `json:"official_references,omitempty"`
-	Source             string                               `json:"source"`
+	ModelName           string                               `json:"model_name"`
+	Kind                string                               `json:"kind"`
+	DisplayName         string                               `json:"display_name"`
+	Enabled             bool                                 `json:"enabled"`
+	Routes              []ModelConfigurationRoute            `json:"routes"`
+	ContextWindow       *int                                 `json:"context_window,omitempty"`
+	MaxOutputTokens     *int                                 `json:"max_output_tokens,omitempty"`
+	DefaultOutputTokens *int                                 `json:"default_output_tokens,omitempty"`
+	BudgetField         string                               `json:"budget_field,omitempty"`
+	Parameters          map[string]any                       `json:"parameters,omitempty"`
+	Pricing             PricingValues                        `json:"pricing"`
+	CostRules           []ModelProfitCostRule                `json:"cost_rules,omitempty"`
+	OfficialReferences  *ModelOfficialReferenceConfiguration `json:"official_references,omitempty"`
+	Source              string                               `json:"source"`
 }
 
 type PublishedModelConfiguration struct {
@@ -303,15 +304,15 @@ func validateModelConfiguration(def ModelConfiguration, previous PricingValues) 
 		if def.Parameters != nil {
 			return errors.New("Text models use context and output limits instead of generation parameters")
 		}
-		if def.Enabled || def.ContextWindow != nil || def.MaxOutputTokens != nil {
+		if def.Enabled || def.ContextWindow != nil || def.MaxOutputTokens != nil || def.DefaultOutputTokens != nil {
 			if def.ContextWindow == nil || def.MaxOutputTokens == nil {
 				return errors.New("Text models require context window and maximum output tokens")
 			}
-			if err := validateModelCapacityConfig(ModelCapacityConfig{Schema: 1, Routes: []CapacityRoute{{Model: def.ModelName, Group: "default", ChannelID: 1, RouteModel: def.ModelName, ContextWindow: def.ContextWindow, MaxOutputTokens: def.MaxOutputTokens, BudgetField: def.BudgetField, Source: def.Source, VerifiedAt: "administrator declaration"}}}); err != nil {
+			if err := validateModelCapacityConfig(ModelCapacityConfig{Schema: 1, Routes: []CapacityRoute{{Model: def.ModelName, Group: "default", ChannelID: 1, RouteModel: def.ModelName, ContextWindow: def.ContextWindow, MaxOutputTokens: def.MaxOutputTokens, DefaultOutputTokens: def.DefaultOutputTokens, BudgetField: def.BudgetField, Source: def.Source, VerifiedAt: "administrator declaration"}}}); err != nil {
 				return err
 			}
 		}
-	} else if def.ContextWindow != nil || def.MaxOutputTokens != nil {
+	} else if def.ContextWindow != nil || def.MaxOutputTokens != nil || def.DefaultOutputTokens != nil {
 		return errors.New("Image and video models use generation parameters instead of token capacities")
 	}
 	if err := ValidateModelParameterSchema(def.Kind, def.Parameters); err != nil {
@@ -446,6 +447,7 @@ func currentModelConfigurationEntry(db *gorm.DB, name string, doc ModelConfigura
 	}
 	if entry.Definition.Kind == "text" {
 		entry.Definition.ContextWindow, entry.Definition.MaxOutputTokens = nil, nil
+		entry.Definition.DefaultOutputTokens = nil
 		var capacity Option
 		if db.Where(&Option{Key: ModelCapacityOptionKey}).Take(&capacity).Error == nil {
 			var cfg ModelCapacityConfig
@@ -464,9 +466,15 @@ func currentModelConfigurationEntry(db *gorm.DB, name string, doc ModelConfigura
 					if route.MaxOutputTokens != nil && (entry.Definition.MaxOutputTokens == nil || *route.MaxOutputTokens < *entry.Definition.MaxOutputTokens) {
 						entry.Definition.MaxOutputTokens = route.MaxOutputTokens
 					}
+					if route.DefaultOutputTokens != nil && (entry.Definition.DefaultOutputTokens == nil || *route.DefaultOutputTokens < *entry.Definition.DefaultOutputTokens) {
+						entry.Definition.DefaultOutputTokens = route.DefaultOutputTokens
+					}
 				}
 			}
 		}
+	}
+	if entry.Definition.DefaultOutputTokens != nil && entry.Definition.MaxOutputTokens != nil && *entry.Definition.DefaultOutputTokens > *entry.Definition.MaxOutputTokens {
+		entry.Definition.DefaultOutputTokens = entry.Definition.MaxOutputTokens
 	}
 	var costOption Option
 	if db.Where(&Option{Key: ModelProfitCostRulesKey}).Take(&costOption).Error == nil {
@@ -615,6 +623,13 @@ func SaveModelConfigurationDraft(revision, baseVersion string, def ModelConfigur
 			previous = entry.Draft.Definition
 		}
 		inheritMissingTextRouteProtocols(&def, previous)
+		if def.Kind == "text" && def.DefaultOutputTokens == nil && previous.DefaultOutputTokens != nil {
+			value := *previous.DefaultOutputTokens
+			if def.MaxOutputTokens != nil {
+				value = min(value, *def.MaxOutputTokens)
+			}
+			def.DefaultOutputTokens = common.GetPointer(value)
+		}
 		if err := validateModelConfiguration(def, entry.Definition.Pricing); err != nil {
 			return err
 		}
