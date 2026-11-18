@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// These generic role graphics and internal draft records are imported only by an explicit administrator action.
+// These decorative profile avatars and internal draft records are imported only by an explicit administrator action.
 //
 //go:embed demand_presets/catalog.json demand_presets/avatars/*.png
 var demandPresetFiles embed.FS

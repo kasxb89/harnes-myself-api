@@ -1,0 +1,2008 @@
+{
+  "schema_version": 1,
+  "description": "Decorative profile assets; fictional character portraits do not represent real staff or customers.",
+  "image_count": 200,
+  "download_date": "2026-11-18",
+  "items": [
+    {
+      "code": "YS-SVC-001",
+      "candidate_id": "H1766541976187134",
+      "source_url": "https://www.halfphoto.com/i/1766541976187134/asian_man_in_black_shirt_profile",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "b15bbae44bfda140cd62251f04de466810eba15086dd846e8c29bef67a2cfcd3",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-002",
+      "candidate_id": "H1766603541918945",
+      "source_url": "https://www.halfphoto.com/i/1766603541918945/asian_woman_with_long_hair_on_pink_background",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "3d0059fdbf884cb5a40a5e56cfafb907e7ca280f5b860219324fdc508b4e2815",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-003",
+      "candidate_id": "H1776637290278506",
+      "source_url": "https://www.halfphoto.com/i/1776637290278506/asian_man_in_plaid_shirt",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "259b9fb950ff211a826fe807f18cf93edea038e43e15e9093bf83cc3ebbf337d",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-004",
+      "candidate_id": "H1773488191298230",
+      "source_url": "https://www.halfphoto.com/i/1773488191298230/asian_woman_in_traditional_hanfu",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "a110fc345d0d799175eb4c91105c4a3fbbb38f7db5ff21372965d0670cf776a4",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-005",
+      "candidate_id": "H1769997842499821",
+      "source_url": "https://www.halfphoto.com/i/1769997842499821/anime_boy_in_leather_jacket_and_sunglasses",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "b418156d22f27a9edf87c10444012b6ea99f0b6737c1b242f61d7cfe15045882",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-006",
+      "candidate_id": "H1786572364620877",
+      "source_url": "https://www.halfphoto.com/i/1786572364620877/miao_woman_in_silver_headdress",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "8675cc681d5849a6613cd0e76dc4d932c9e3418d34898a5053f43b568c051eec",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-007",
+      "candidate_id": "H1784073444309158",
+      "source_url": "https://www.halfphoto.com/i/1784073444309158/smiling_young_asian_man_portrait",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "839892893db9eee921730347875a09321601359213dc768aa10614c53e65e777",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-008",
+      "candidate_id": "H1784764097772093",
+      "source_url": "https://www.halfphoto.com/i/1784764097772093/young_east_asian_girl_in_black_qipao",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "bfd8cb8f5b2c2d2f43774a00b5ebf613d4477fb74873ca638bc4ebb554126537",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-009",
+      "candidate_id": "H1785887657797125",
+      "source_url": "https://www.halfphoto.com/i/1785887657797125/young_asian_man_in_black_leather_jacket",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "015c0ebfcbbeb87136fa9e9cfd9be1881bec24b2512abee6e0e6121b68963e80",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-010",
+      "candidate_id": "H1773410080279593",
+      "source_url": "https://www.halfphoto.com/i/1773410080279593/asian_woman_in_blue_hanfu",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "b63eb7c7eed083cc1a9d6dd50dbc53457e2afa9d3797c92cfc47abd4e0b9af49",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-011",
+      "candidate_id": "U45",
+      "source_url": "https://unsplash.com/photos/-XA-fTYYfV0",
+      "author": "Alan Haverty",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "bd32e172cd5fa66a704616a09e08a259eb10a0bfc3a7e5be43420a7792aa1e13",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-012",
+      "candidate_id": "H1784671226300310",
+      "source_url": "https://www.halfphoto.com/i/1784671226300310/anime_boy_with_sunglasses",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "3268150ba41e1b148e96c0c7db1a80c054089583d9ec37dfb7a6524f9941178b",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-013",
+      "candidate_id": "U184",
+      "source_url": "https://unsplash.com/photos/yNGQ830uFB4",
+      "author": "Tim de Groot",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "7b757546438bcfa54e75c60ebdf78e27dc46c1c15527c1de725d5baa7aa0d703",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-014",
+      "candidate_id": "H1784658266703179",
+      "source_url": "https://www.halfphoto.com/i/1784658266703179/smiling_asian_woman_portrait",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "eefd7c0750e8b375835a96d8677f22de78d5ec5ddc4f5d89a382f4a5ab1964f1",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-015",
+      "candidate_id": "51439661",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Dawn-landscape-mountains-nature_(24244127561).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "c96c6aee19835f3d25ec0ca4941801ca5a48449146d062fc0a4c7e265a5fd6c0",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-016",
+      "candidate_id": "H1784808578830047",
+      "source_url": "https://www.halfphoto.com/i/1784808578830047/anime_man_with_red_rose",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "2e37fafc7fc9f56d7352155b3d476eac875af426923b18b7b7f25f8b0912cc76",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-017",
+      "candidate_id": "114902469",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_in_Guingamp_2.jpg",
+      "author": "Syced",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "44f9f912c7c40b0a82fa944fc1cd13cfa40548cb98ccad4d65f0f451a463beab",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-018",
+      "candidate_id": "H1773701887304659",
+      "source_url": "https://www.halfphoto.com/i/1773701887304659/asian_woman_in_traditional_qipao",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "443605be92601e0bc34a05a9e7ae4c9679b7ab8f5ac6f651c393ffb5923048e2",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-019",
+      "candidate_id": "40458332",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower,_white.jpg",
+      "author": "RebekkahN",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "f1a8c492053b02a006aba6306c2fdcd3a14ca50c5f34331bcbf83c4f48f65015",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-020",
+      "candidate_id": "U110",
+      "source_url": "https://unsplash.com/photos/D76DklsG-5U",
+      "author": "Kenneth Thewissen",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "1dc1a3fc1524b86cb004cac4b3dc76ca56ff4a303bbffdddc141d264e1c9eb5d",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-021",
+      "candidate_id": "H1784071816606149",
+      "source_url": "https://www.halfphoto.com/i/1784071816606149/asian_man_smiling_with_puppy",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "00b910940bb1529a31042edbb8513262ac7c4c0222e616baba6ec11a43da834c",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-022",
+      "candidate_id": "51439572",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-trees_(24300507896).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "51e4daf7ed738171f2f223246c7cfabc8f29da664d4ad67f33bc0c56c5f53850",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-023",
+      "candidate_id": "10272453",
+      "source_url": "https://commons.wikimedia.org/wiki/File:%27An_Autumn_Landscape%27,_painting_by_Shen_Chou.jpg",
+      "author": "Shen Zhou (Shen Chou)",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "f0d2d2cf4c09c7383d2e169473efc344defb56fa29092bb8908c2ff36d4f1aa0",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-024",
+      "candidate_id": "H1778255497923492",
+      "source_url": "https://www.halfphoto.com/i/1778255497923492/smiling_asian_woman_closeup_portrait",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "13eb0a273d9f3c0a57d90ae4a32d7e876a1089b2eaad2c775ef51187cfe79fbf",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-SVC-025",
+      "candidate_id": "U187",
+      "source_url": "https://unsplash.com/photos/oSf8ePoG9NU",
+      "author": "Andre Koch",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "ae2110c4b5cf351187b34d168f80b28296e0420e9fb2d0ea52f30a895402b984",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-026",
+      "candidate_id": "64217931",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_(37832977684).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "1dfecb216ac26bcb70cca75dce304ff165afe9e84431101770d7f0cd1919bd9a",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-027",
+      "candidate_id": "U38",
+      "source_url": "https://unsplash.com/photos/JabLtzJl8bc",
+      "author": "Allyson Souza",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "4658f7f9d5604f411a308025a11696e3690e5be0b39bb8b500a9f1ac45632e7b",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-028",
+      "candidate_id": "U58",
+      "source_url": "https://unsplash.com/photos/-kEr-QltARg",
+      "author": "Tony Naccarato",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "797bb042725b753722f0773b3c52c4b544349f5f1ead10dedb715e051bbcfb30",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-029",
+      "candidate_id": "150328398",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_-_June_2024.jpg",
+      "author": "Joshuaeze2000",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "d11edcc3ee95f78377b8cfcc0ecb55d49a4829ff5c20f9304dae33848bda21f9",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-030",
+      "candidate_id": "U61",
+      "source_url": "https://unsplash.com/photos/zMz14hsbpuU",
+      "author": "Alex",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "5bcb97c10c31f1d5c7e8c45be476be2cd4788db86411ae8be704fcf8e94d8eef",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-031",
+      "candidate_id": "U24",
+      "source_url": "https://unsplash.com/photos/cZhUxIQjILg",
+      "author": "Alejandro Escamilla",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "add1e42c90a8b77dadbdfb8fbf445f65c48966f26d1fc5f54a80a7d7adadc0dd",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-032",
+      "candidate_id": "U76",
+      "source_url": "https://unsplash.com/photos/OxzhYtL-00Y",
+      "author": "Alexander Shustov",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "768ac39734a0a6b82e5f63f61183198e8785f3f2958fad61857982dd664b88af",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-033",
+      "candidate_id": "U71",
+      "source_url": "https://unsplash.com/photos/IoIbdFdGCnQ",
+      "author": "Jon Eckert",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "577de70a057d406a031bae7cff384e612d065765c4732f3c9ea28d91cca34d8b",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-034",
+      "candidate_id": "U135",
+      "source_url": "https://unsplash.com/photos/o4H20aIIAt8",
+      "author": "Yuriy Khimanin",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3d7af8d3d1654daf63b71aa1adb981bfe21ff6ec7682622a3c84257e956ac7e5",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-035",
+      "candidate_id": "114921069",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_in_Guingamp_5.jpg",
+      "author": "Syced",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "eb01bfe22182b4d40be7dc45be1edfb6d68a49c4cc4d4250914704de92035dda",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-036",
+      "candidate_id": "U63",
+      "source_url": "https://unsplash.com/photos/ZJsseAxEcqM",
+      "author": "Justin Leibow",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "4f029b8754ed70e2de158f008095ec40d43b5c5aae13461f7f8060ac35dac1c6",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-037",
+      "candidate_id": "U62",
+      "source_url": "https://unsplash.com/photos/PzPbh-faPgU",
+      "author": "Daniel Genser",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "221c5e20989e25fe0012f4b1ad9d88d7abd24a1bb454c96ce42461b7b4faff5a",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-038",
+      "candidate_id": "U85",
+      "source_url": "https://unsplash.com/photos/xDrxJCdedcI",
+      "author": "Gozha Net",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "4c49660f5e21d0dd847d558342fd0bf21811948b97d9ea745bc41656560083a3",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-039",
+      "candidate_id": "U87",
+      "source_url": "https://unsplash.com/photos/o697BgRH_-M",
+      "author": "Barcelona",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "873f3a4bc198f33d5b57d86b5d48ba4e3edd6ad829dfe0e8bdf73767f1e572ef",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-040",
+      "candidate_id": "U92",
+      "source_url": "https://unsplash.com/photos/QxkBP3A9XmU",
+      "author": "Rafael Souza",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "634375ff5433d23b018cdeeacc225d0001fd6efdf044052710d047a050ddf468",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-041",
+      "candidate_id": "129766289",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_-_Flickr_-_Mathias_Appel.jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "e3c75e652d7f9b86c71216e093fffc0999b15634d9449ce7d9aa752ea5ce3536",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-042",
+      "candidate_id": "U132",
+      "source_url": "https://unsplash.com/photos/gq4kE8KRP8c",
+      "author": "Peter Besser",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "9a3144110bcc9867f16132eef6cf2ad21716449a163fed703e09b3ab1b4dcafd",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-043",
+      "candidate_id": "U102",
+      "source_url": "https://unsplash.com/photos/pJILiyPdrXI",
+      "author": "Ben Moore",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "5ed52ab45d7563fed7c3bbc164afe3d45ba5923c431d4e5731eab49ee7b58d24",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-044",
+      "candidate_id": "U168",
+      "source_url": "https://unsplash.com/photos/Xne1N4yZuOY",
+      "author": "Joeri Römer",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "df28770369b7112e87b7789adc4c1708eb3db2c571c48a97dfaafda19e42758a",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-045",
+      "candidate_id": "94415518",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower-729515.jpg",
+      "author": "Bessi",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "0bef9f30ce9b99cac3c36779dfc3dafbde296823792630ea7c67c255c4f5ea46",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-046",
+      "candidate_id": "44895748",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cats_and_all_about_them_BHL23766257.jpg",
+      "author": "Simpson, Frances.",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "c9b9a56145ea9f07fe5fb12940dc29191999bee65438f6bb1f05129d500203ac",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-047",
+      "candidate_id": "U159",
+      "source_url": "https://unsplash.com/photos/kxqvE41_07k",
+      "author": "Shyamanta Baruah",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "e8088ace2e950caaa714a82533df16b37c5b9d171f872b0bc1a514f34353dbd5",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-048",
+      "candidate_id": "U77",
+      "source_url": "https://unsplash.com/photos/j9nfqTi5T5o",
+      "author": "May Pamintuan",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "373b6f41444e01da669d0013cd6c67afac107731dc23a3f6e271da2ddbacd580",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-049",
+      "candidate_id": "U27",
+      "source_url": "https://unsplash.com/photos/iJnZwLBOB1I",
+      "author": "Yoni Kaplan-Nadel",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "422dae1a95e2bba8df9f90f223870304c3ebeac025ebd21c7bcef29e4854fad7",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-050",
+      "candidate_id": "51439493",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-nature-lake_(24326735085).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "4c9bc1aa4d7822dcce5d6d3307cbba63cc88fe505b7dc47749c6ed8a5e9ceb2c",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-051",
+      "candidate_id": "157620010",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Abstract_snow_landscape_painting_in_the_Dutch_dunes_by_Fons_Heijnsbroek,_painted_in_1989.jpg",
+      "author": "Fons Heijnsbroek",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "c48b0f88b50f7be7ff9fe72101a795fff5af21d44c7c35e0bdefcdb3d9ad7a0a",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-052",
+      "candidate_id": "U176",
+      "source_url": "https://unsplash.com/photos/WO4bxwzHRe8",
+      "author": "Good Free Photos",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "bcd0efff45a4a27aa3d6b9365087c4fa9aa4a256bb293ced3ba06fb54bd521ba",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-053",
+      "candidate_id": "6943334",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cherry_tree_blossom_2007_G1.JPG",
+      "author": "George Chernilevsky",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "dbc07b1bda963d5d33cde1f9ae7f8bd84e8fbd61ec6642bca11a006d6841e3ac",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-054",
+      "candidate_id": "U128",
+      "source_url": "https://unsplash.com/photos/hlnucYOsL-c",
+      "author": "Matteo Minelli",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "7f899be514ab27d8e5e76123231aee3897f6eab8f5871a49770dc58c23cca1ea",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-055",
+      "candidate_id": "U59",
+      "source_url": "https://unsplash.com/photos/algEQavPY4M",
+      "author": "Art Wave",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "58d1f81954819bcd13ac6d05b6eb5e6595b5b00a0286273ddb790a51a70a757f",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-056",
+      "candidate_id": "148535902",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Album_of_Landscape_Paintings_by_Hua_Yan,_18th_century,_long-term_loan_to_the_Honolulu_Museum_of_Art_a.jpg",
+      "author": "Hiart",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "54f98dbd45860ccdd453c91909959e15fdd453b71ac055163e1a0f95040bbfe3",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-057",
+      "candidate_id": "U120",
+      "source_url": "https://unsplash.com/photos/_DA3D5P71qs",
+      "author": "Guillaume",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "39984bd6d05185a94205d837ab820d0f17099de62077351c64c6b84c9e15797a",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-058",
+      "candidate_id": "U96",
+      "source_url": "https://unsplash.com/photos/CuFYW1c97w8",
+      "author": "Pawel Kadysz",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "dd099dc777594b5dab1db81b89e706c3a926f615373ecab1bb15c3813ed22480",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-059",
+      "candidate_id": "15104704",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cherry_tree_blossom_2011_G1.jpg",
+      "author": "George Chernilevsky",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "bc322e1d991472a4bc8e455a02e066afe9dbb71e80e03d0237957e49749f2831",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-060",
+      "candidate_id": "U83",
+      "source_url": "https://unsplash.com/photos/dYshDcTI1Js",
+      "author": "Julie Geiger",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "e172b0f9f956191353571ed6809f7287ec9b7fffb200211e4b0e258ed349e6c3",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-061",
+      "candidate_id": "18805108",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Chinese_-_Landscape_-_Walters_35101N.jpg",
+      "author": "\nAnonymous (China)Unknown author",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "68490cb56ebfd9c376e1107cac2b5e0dbd87c2b79385435750d17503c483f6bb",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-062",
+      "candidate_id": "180533237",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Black-eyed_Susan_in_a_flower_pot.jpg",
+      "author": "Sadeyedlady4u2",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "b65b8dd5bcb77933e989e35a2a12295b2f459947171d9a7447b72494993a6c4b",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-063",
+      "candidate_id": "U178",
+      "source_url": "https://unsplash.com/photos/JbeBraLha7U",
+      "author": "Thanun Buranapong",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "6fad4b207f58bbeea076ed07c0775573011c0322f7d283aa072d90646350ac34",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-064",
+      "candidate_id": "U79",
+      "source_url": "https://unsplash.com/photos/TIr6EwYMRUM",
+      "author": "Dorothy Lin",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "17e0ab0a67825b8cd428441eb219e7d28faf1a3fae01981a9b27342fec1ad809",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-065",
+      "candidate_id": "U112",
+      "source_url": "https://unsplash.com/photos/kmF_Aq8gkp0",
+      "author": "Zugr",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "d0dca4a22e172bb7db171e1a825b5944abc25c15082333857a8c5ebe8308a2d6",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-066",
+      "candidate_id": "U10",
+      "source_url": "https://unsplash.com/photos/6J--NXulQCs",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "89c4c639440b8c3382b504a789985c8e391fd1c71c164dff36705275a248372d",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-067",
+      "candidate_id": "U169",
+      "source_url": "https://unsplash.com/photos/BjelfpszQDw",
+      "author": "Noel Lopez",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "aa28c7944853f13d7314d045a3c7c9f2ea5fddbc3bf73faf958d556ca7c03581",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-068",
+      "candidate_id": "U140",
+      "source_url": "https://unsplash.com/photos/Acfgb7bc-Bc",
+      "author": "Kundan Ramisetti",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "452065128e24c48ccd6d0e0b07f14b6121e11c3329dad31af793459113f054a5",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-069",
+      "candidate_id": "U15",
+      "source_url": "https://unsplash.com/photos/NYDo21ssGao",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "ff81f117974a36abdf2c5db9d403748eb72748c9ff4e907a63b41da02aba25d6",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-070",
+      "candidate_id": "2825633",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Alluvial_fan,_Taklimakan_Desert,_XinJiang_Province,_China,_NASA,_ASTER.jpg",
+      "author": "NASA/GSFC/METI/ERSDAC/JAROS, and U.S./Japan ASTER Science Team",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "c4dd35f80edb9a8cc1dd461a061b6cb71a0d9d4a0c8f3fc808ae019b8d95ba90",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-071",
+      "candidate_id": "U99",
+      "source_url": "https://unsplash.com/photos/xyDQNmT6vSs",
+      "author": "Jon Toney",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "87f89953c60b882c24d18413ef28592a1b74a559edd97d4b6782ebc236f8a367",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-072",
+      "candidate_id": "U198",
+      "source_url": "https://unsplash.com/photos/FC9mIjVT-Yw",
+      "author": "Sylwia Bartyzel",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "2e84a51669ec878cc43f679b68d3168c143667b5703cb514d66ad2ecfbd0e13e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-073",
+      "candidate_id": "U28",
+      "source_url": "https://unsplash.com/photos/_WiFMBRT7Aw",
+      "author": "Jerry Adney",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "761d7b7ccb353e7f77dd75ed4e5348b91136ad6686fb38fa6aec54376cbdb13e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-074",
+      "candidate_id": "136657802",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_-_53009093280.jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "dbcbad6107c719e4aa4de954d15a9ed1ce754c1884bbf7cce1059d8cce058fa6",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-075",
+      "candidate_id": "177572157",
+      "source_url": "https://commons.wikimedia.org/wiki/File:2017-09-24-bee-on-flower-nature.jpg",
+      "author": "I13Robin",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "c6abdcad816c5bbe204e35ed9d556c17dc71841dcb6c9c3284cdb55d300cce57",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-076",
+      "candidate_id": "U194",
+      "source_url": "https://unsplash.com/photos/hVOv8me9ue8",
+      "author": "Aleksi Tappura",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "dffbb6538f0b8305e43c188e414b7d7af60fbaf67a07d24faac988852ddcd714",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-077",
+      "candidate_id": "U16",
+      "source_url": "https://unsplash.com/photos/gkT4FfgHO5o",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "4599056ad7779fe2223767a519059b3f544b237dd15ae1c59b968f2c3262b7f7",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-078",
+      "candidate_id": "U72",
+      "source_url": "https://unsplash.com/photos/Cs4QZdHrHt4",
+      "author": "Tyler Finck",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "b30b389a71e1fc1a1e978e78ac284f29437921079e2a268b8f7982030921ffb6",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-079",
+      "candidate_id": "U127",
+      "source_url": "https://unsplash.com/photos/rf-0DQu5M6Y",
+      "author": "Marcin Czerwinski",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "a0d5d25a4f39e1fe1093d512563f56885ab0e1939ad0179f99ce343cad998c04",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-080",
+      "candidate_id": "18805084",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Chinese_-_Landscape_-_Walters_35101H.jpg",
+      "author": "\nAnonymous (China)Unknown author",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "475c28ad0e067ab8741c207e41e321841eb2b80e432709a77a355cf81898a4e5",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-081",
+      "candidate_id": "U14",
+      "source_url": "https://unsplash.com/photos/IQ1kOQTJrOQ",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "0a2e2d7e775da4d1c7d22d63d5c19cafb71b6e6aebf5ae9614d04383d333f3bd",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-082",
+      "candidate_id": "143160037",
+      "source_url": "https://commons.wikimedia.org/wiki/File:A_butterfly_on_a_purple_flower.jpg",
+      "author": "SpessiG",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "207b41e229365fb9c277eb09260b689b13f5c49282138bed8e36d60f1828707c",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-083",
+      "candidate_id": "184752527",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Domestic_shorthair_cat_portrait_in_grass.jpg",
+      "author": "<a href=\"https://pixnio.com/media/grey-domestic-cat-nose-mouth-whiskers\">Photo</a> by <a href=\"https://pixnio.com/author/milim84\">Marko Milivojevic</a> on <a href=\"https://pixnio.com/\">Pixnio</a>",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "04b76d51e15e25426829cac46e341f04519eb04a763e9934d34ea6bce649dea4",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-084",
+      "candidate_id": "U118",
+      "source_url": "https://unsplash.com/photos/d-Cr8MEW5Uc",
+      "author": "Rick Waalders",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3a28f761b37cf33809900323e39d53c8ef5174935c05ff4ba8caf7ce41ab1ade",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-085",
+      "candidate_id": "U136",
+      "source_url": "https://unsplash.com/photos/2wugfiddtXw",
+      "author": "Marcin Czerwinski",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3ae5c12f107a06c9267be46e3365112f259a3c02325419b4532827ffbf3f422b",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-086",
+      "candidate_id": "U69",
+      "source_url": "https://unsplash.com/photos/SITaCHf7jjg",
+      "author": "Alexander Shustov",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "4299cd4d5b8ded1fd31505adb6c23cd0b4a5bda98d7ec5bd95c0cd6550a8b292",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-087",
+      "candidate_id": "U75",
+      "source_url": "https://unsplash.com/photos/1gBUXhf0PtA",
+      "author": "Jassy Onyae",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "f0221bd7f54c40f5ab09a9fdae1770390a7a3c2efd2cff816d3a1f05ee5635f0",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-088",
+      "candidate_id": "114899978",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_in_Guingamp.jpg",
+      "author": "Syced",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "6eeca7771a6ac1aac972d97a0ddf9558e95d93fd6078fe8cc620f9e9ff9fdf6c",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-089",
+      "candidate_id": "U19",
+      "source_url": "https://unsplash.com/photos/P7Lh0usGcuk",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "8b968de25a16f2837a332473928e8d702666ef0a610055626edb287a7e359a2e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-090",
+      "candidate_id": "U54",
+      "source_url": "https://unsplash.com/photos/d19by2PLaPc",
+      "author": "Nicholas Swanson",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "0335495f9cd12d67dea852efcf01e419b841ec1e6888cc827c3fb34f8d896e79",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-091",
+      "candidate_id": "U84",
+      "source_url": "https://unsplash.com/photos/63qfL0TciY8",
+      "author": "Johnny Lam",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "fe51db511e902195c594e240a92c6d26d6fc0fd6c324dfad50ccabc968720fe8",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-092",
+      "candidate_id": "156958245",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cherry_Blossom_in_Melbourne.jpg",
+      "author": "OneTrueKingLives",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "d358f8b922a7fa6d093c5b23816ca89c442b436595663a6a0ab6350f712881d9",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-093",
+      "candidate_id": "U172",
+      "source_url": "https://unsplash.com/photos/TQeX8khR54I",
+      "author": "Aleksi Tappura",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "aec6301a290368d174e572ec6b7d52682f1dead3bac93716b0ef012a89d27c3e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-094",
+      "candidate_id": "U185",
+      "source_url": "https://unsplash.com/photos/M_eB1UjE0do",
+      "author": "Tim de Groot",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "2d432a79ec8d96e038bab833acaa6dcfe44e03c4560eaa4e2056687a9c9474c8",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-095",
+      "candidate_id": "145015263",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Utah_Dunes_Landscape_-_West_Desert_District.jpg",
+      "author": "Bureau of Land Management - Utah/Bob Wick",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "1554374cb137af761c8ad183ccc4f065e67c2e2810f0dfc18bbdd829f43f36ce",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-096",
+      "candidate_id": "U49",
+      "source_url": "https://unsplash.com/photos/Qo51KwK1dKg",
+      "author": "Margaret Barley",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "d06c7025c80fa7d772c6b10a73165602527f3e1b33462558a0e4c7ece180d92c",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-SVC-097",
+      "candidate_id": "22883960",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Catopsilia_pomona_3_by_kadavoor.jpg",
+      "author": "\nJeevan Jose, Kerala, India",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "502489488444d6fe7db7ff8fcf2b7f77360f5fedc3ec7627bde01628b7087a49",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-098",
+      "candidate_id": "136658832",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_-_52673884103.jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "8f7a6387beeef0097cf3d84c57de4b63f60878cc0fb57a44ffbed9786f8cda67",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-099",
+      "candidate_id": "196460580",
+      "source_url": "https://commons.wikimedia.org/wiki/File:King_vulture_(Sarcoramphus_papa)_at_African_Lion_Safari,_Ontario,_Canada.jpg",
+      "author": "Salwa Farwaneh Dameh",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "d96f060eaa1f2c0cacf4ece4d83fd07fc83e38844ff8aa7f3b6a5e4c7f43a9bc",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-SVC-100",
+      "candidate_id": "U70",
+      "source_url": "https://unsplash.com/photos/OokBLPrkCNk",
+      "author": "Dorothy Lin",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "e99dce8550b1ff2457146eed90bfb060cd3bdacb299333158da2d1cb67799e65",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-001",
+      "candidate_id": "H1787363304426229",
+      "source_url": "https://www.halfphoto.com/i/1787363304426229/yellow_hoodie_anime_boy",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "4fe595e8e4e9ae02218c8d88ad8d20b8c46f7660e64f4ce253c37478e781edc1",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-002",
+      "candidate_id": "U68",
+      "source_url": "https://unsplash.com/photos/2SfRAWkinpU",
+      "author": "Cristian Moscoso",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "f053b07cd705c7e54efe8371f2928adf492ebeb35466221cfb7f8a948effadc9",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-003",
+      "candidate_id": "H1786142200681415",
+      "source_url": "https://www.halfphoto.com/i/1786142200681415/young_asian_man_adjusting_tie",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "63a0deab69c98ce0e9ff4b7c131b4c43e3e8d4da6a1a8f336bb28e8727790e3a",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-004",
+      "candidate_id": "U44",
+      "source_url": "https://unsplash.com/photos/R1E6x8U83Ho",
+      "author": "Christopher Sardegna",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "92f3797c6c1ff9846f41bce3b0f9306da187026d350a4d981f4faf126338be3e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-005",
+      "candidate_id": "H1786103114211535",
+      "source_url": "https://www.halfphoto.com/i/1786103114211535/young_asian_man_studying_at_desk",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "6dde575fc9f919fc06e3236696e5d0e3d7b4795e5c88063daa621d5aa8794998",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-006",
+      "candidate_id": "187242095",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Image_of_great_kiskadee_from_USFWS_2026.webp",
+      "author": "Lydia Hansen",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "c6e6d574ffbc01620657703c5637bba91680965d898a62cb387c58c6def73037",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-007",
+      "candidate_id": "H1784667806165331",
+      "source_url": "https://www.halfphoto.com/i/1784667806165331/smiling_asian_woman_portrait",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "7947a4366f5453043dcfb3ff958f7bc8395c8f387a28d93864102d6cb2c5c4df",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-008",
+      "candidate_id": "U47",
+      "source_url": "https://unsplash.com/photos/uDUiRS8YroY",
+      "author": "Christopher Sardegna",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3df490e69aed8b9b3de9e9197467cd29fab3f324b251bca2d56cc058e0acca44",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-009",
+      "candidate_id": "H1786666342803554",
+      "source_url": "https://www.halfphoto.com/i/1786666342803554/chinese_female_engineer_anime",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "15380e3bb6dc9cc258c38227d29934377923866f864ef5eedb03ab61701d3a89",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-010",
+      "candidate_id": "53822769",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_(31016983081).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "24e5eaa3877f3c02ca0c9ce29629a1b32aa1bc403c79be1299bf00e57b9a8a1b",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-011",
+      "candidate_id": "H1786363025916695",
+      "source_url": "https://www.halfphoto.com/i/1786363025916695/young_east_asian_woman_in_traditional_hanfu",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "cd41fac526b511476b38e10af22864d4a4ff02e25f769e5c767e7a77a8b76e4f",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-012",
+      "candidate_id": "U33",
+      "source_url": "https://unsplash.com/photos/LBI7cgq3pbM",
+      "author": "Alejandro Escamilla",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "016bcfcecbb91b5a010dd6aa0822c08034075b79282165748efec40f9a5c4b32",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-013",
+      "candidate_id": "H1773841478361076",
+      "source_url": "https://www.halfphoto.com/i/1773841478361076/asian_woman_in_embroidered_cheongsam",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "e28c3b4d7518c6c035f5873b036d4462b3f7ba9e137ab1fcf7f091f788b2c5a1",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-014",
+      "candidate_id": "U162",
+      "source_url": "https://unsplash.com/photos/SlGVAKyP20U",
+      "author": "Dillon McIntosh",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "355ce2c93f54b51c1dfc2d81f4b1314d988a80c2f860716939cfff9779d6985d",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-015",
+      "candidate_id": "H1772850247114909",
+      "source_url": "https://www.halfphoto.com/i/1772850247114909/asian_woman_in_traditional_hanfu",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "c69bed9a9f4bcf856b224e333b8e5aaa23e57b9c10f7d5e787abbb2285ae2525",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-016",
+      "candidate_id": "U90",
+      "source_url": "https://unsplash.com/photos/qVj3KuEikvg",
+      "author": "Rula Sibai",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "e1fe1b3ef0f6ff21845de36ea5d564093b6ba361574a4ffb50b6e45fe147c779",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-017",
+      "candidate_id": "H1773951509154041",
+      "source_url": "https://www.halfphoto.com/i/1773951509154041/asian_woman_in_hanfu",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "691a85f2897de9eb51c7669e856516147d18abddd9c51ca8cb8d3000333f0612",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-018",
+      "candidate_id": "U12",
+      "source_url": "https://unsplash.com/photos/I_9ILwtsl_k",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "057c066e3a0da97469342e696846ecde483d21214cb2da4aae1bc83b563a1ec2",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-019",
+      "candidate_id": "H1766845926417634",
+      "source_url": "https://www.halfphoto.com/i/1766845926417634/asian_girl_in_white_cheongsam",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "aeea291773dca910cdf66e9b6d81d3f774859f600b507b4fb8142a5d5092fb0b",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-020",
+      "candidate_id": "51440880",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-nature-trees_(24029434060).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "49cee88fbc94c216c814ee7998e1172c1210b7af32addf650b7de1f6c83fb9d8",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-021",
+      "candidate_id": "H1774226882279300",
+      "source_url": "https://www.halfphoto.com/i/1774226882279300/asian_woman_in_black_hanfu_leaning_on_railing",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "6c16ab609de8d2801c45ef8cc2b2542f343ed823675aa61f4eaf9cfdf69827c6",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-022",
+      "candidate_id": "44895715",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cats_and_all_about_them_BHL23766247.jpg",
+      "author": "Simpson, Frances.",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "54721c104dd7056e9484453737b08bc68c1fb9e3e23191c0843cff06377cb329",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-023",
+      "candidate_id": "H1771719760368979",
+      "source_url": "https://www.halfphoto.com/i/1771719760368979/asian_woman_in_blue_qipao",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "0ce4310ff7e22504e42904ea6a011dccfbbcc80419e6b916267825349376b63e",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-024",
+      "candidate_id": "U78",
+      "source_url": "https://unsplash.com/photos/CtkDsu4w-Rs",
+      "author": "Paul Evans",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "98fb2da33ec114d6e12f07fac8476df54fafe9e2a1e80de0f5a804ddb1d84912",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-025",
+      "candidate_id": "H1772638355675395",
+      "source_url": "https://www.halfphoto.com/i/1772638355675395/asian_woman_in_red_embroidered_jacket",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "b5ca87da9d3f639eb3a4195b10f4276c6929b2f0d1ef78c44ac996b866178e45",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-026",
+      "candidate_id": "U170",
+      "source_url": "https://unsplash.com/photos/LbS_k_c3BYA",
+      "author": "Noel Lopez",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "9cfaad2ed4c58e168a07cbc6e4fb51a1cd7e0bee1c9eca28ab593b29d769d9e9",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-027",
+      "candidate_id": "H1773533286589987",
+      "source_url": "https://www.halfphoto.com/i/1773533286589987/asian_woman_in_red_qipao_top",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "71cb39ee1cf8d57b3996e5c08a2f83924ad80e709ddc3702d68d5c2103be4920",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-028",
+      "candidate_id": "80152354",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Common_Blue-Sow-Thistle_in_a_patch_of_sunlight.jpg",
+      "author": "W.carter",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "1be7eb4cae484c4da98fa910728dc1c45db1bef70386ac5a31b3a4b854a859de",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-029",
+      "candidate_id": "H1766974217247313",
+      "source_url": "https://www.halfphoto.com/i/1766974217247313/asian_woman_in_brown_qipao",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "1c5a9f522adb0f17fb7c52cb6b5d92c7a6206ee434404aecf149b1e051c1eca5",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-030",
+      "candidate_id": "10271844",
+      "source_url": "https://commons.wikimedia.org/wiki/File:%27Landscape%27,_painting_by_Chai_Ta-k%27un.jpg",
+      "author": "\nChai Ta-k'un (active 1782-1804)",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "996950b2331f9f4fa1a0d5d2ac8237635ae25b11958871b5c917ed646fdd8783",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-031",
+      "candidate_id": "H1767615974392737",
+      "source_url": "https://www.halfphoto.com/i/1767615974392737/asian_woman_in_qipao_by_window",
+      "author": "Halfphoto (see individual source page)",
+      "license": "CC0",
+      "license_url": "https://www.halfphoto.com/license.php",
+      "avatar_sha256": "7bcb1a78b48e8664f71f7c115c8cf1fcba2ee238380785c229c82428558bf981",
+      "changes": "Cropped around the face and resized to 256px PNG."
+    },
+    {
+      "code": "YS-CUS-032",
+      "candidate_id": "U46",
+      "source_url": "https://unsplash.com/photos/Nzw3HHsNHYU",
+      "author": "Jeffrey Kam",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "e229cdbaae25acbc8b868552304dd55e0324c38394af00ef4d6ea6f26f0b00d3",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-033",
+      "candidate_id": "U114",
+      "source_url": "https://unsplash.com/photos/llYg8Ni43fc",
+      "author": "Brian Gonzalez",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "30c6f12daab30d9361f71f557eb55965b7895c62c157d364aae055d921808e92",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-034",
+      "candidate_id": "U98",
+      "source_url": "https://unsplash.com/photos/ThJIf6Q0b2s",
+      "author": "Laurice Solomon",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "327a29a00ee15c55106ed0f6e8202a1743ed21064cc8f172e8581744136d4890",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-035",
+      "candidate_id": "117648128",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Lake_Mountain_Landscape.jpg",
+      "author": "Bonnie Moreland",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "c3845b0dcef05fb5e0ec50fe1739e05dd32f0e05df8d53c89bbb97d241e76e39",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-036",
+      "candidate_id": "U101",
+      "source_url": "https://unsplash.com/photos/8lMhzUjD1Wk",
+      "author": "Christian Bardenhorst",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "c316eae9227dc983eafb501aa15dbfbf896267a547ed908a0cc6bd5a0a8d96f5",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-037",
+      "candidate_id": "147352880",
+      "source_url": "https://commons.wikimedia.org/wiki/File:A_quince_flower.jpg",
+      "author": "Spring's Flowers",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "2c1009c22b00e339d18a15a8f3fcc9d530e96cbc176d068bcdd18db3b156c602",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-038",
+      "candidate_id": "150328405",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_-_January_2024.jpg",
+      "author": "Joshuaeze2000",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "d367eb9d531a47fe11ba3dcbc78150326f38e46105e07042174ae6b1985e0813",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-039",
+      "candidate_id": "U67",
+      "source_url": "https://unsplash.com/photos/QbkGwv3xtmQ",
+      "author": "Rula Sibai",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "6a03a6f39cc11cbf8a6fe3d26c3647c2dfbf5f15a759573a2bf842962b189066",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-040",
+      "candidate_id": "U53",
+      "source_url": "https://unsplash.com/photos/6qORI5j_6n8",
+      "author": "J Duclos",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "ef4a19de3e377bf73402ebdd3ddb9da8161b0f033b5d592a52b44f1dd41aff9e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-041",
+      "candidate_id": "U151",
+      "source_url": "https://unsplash.com/photos/xPfj_Kdcal4",
+      "author": "Edoardo Loru",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "00e8bb1c5433bafb6261bc6e9c87d18866e8d2e1737ef6e5267247971e66bfe4",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-042",
+      "candidate_id": "100155755",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cherry_Blossom_in_Shatin.jpg",
+      "author": "方畢可",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "d92b74932dfd88ec6e7523a4d56de6c65bd30275d643e1bc580a108467e67b9d",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-043",
+      "candidate_id": "22945323",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Agave_Flower.jpg",
+      "author": "Wilfredor",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "672707a829a0d6fa064f06eb1006f95375973a1428291187dcf3e856eeb14aef",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-044",
+      "candidate_id": "U17",
+      "source_url": "https://unsplash.com/photos/Ven2CV8IJ5A",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "32d15a9498324b9b90f717f30451cb1288f3c4a1e0f4421116dd01eb58f157ee",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-045",
+      "candidate_id": "7414047",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape_painting_in_the_Chinese_style_by_Sh%C3%BBgetsu,_Honolulu_Academy_of_Arts.jpg",
+      "author": "Shūgetsu Tōkan",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "61fcc5d3f87b7d500ecacbe550575cb979f3846725d9f8e2669a3876da5d2d48",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-046",
+      "candidate_id": "U41",
+      "source_url": "https://unsplash.com/photos/fTKetYpEKNQ",
+      "author": "Nithya Ramanujam",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "84d3743174f63dba7cecd59e4dcf58c7360054884b8946351baa01adfff1fc79",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-047",
+      "candidate_id": "U108",
+      "source_url": "https://unsplash.com/photos/t1mqA3V3-7g",
+      "author": "Florian Klauer",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "5a5cc740d0ebf342baf5e6392677cf1e687816e3c3457e71495b8fc9d15f5f8e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-048",
+      "candidate_id": "U106",
+      "source_url": "https://unsplash.com/photos/YnfGtpt2gf4",
+      "author": "Arvee Marie",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "8ca77117c5a6786fda0841b65212742bb20a1e32893fa6c664a44faefac866e4",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-049",
+      "candidate_id": "U196",
+      "source_url": "https://unsplash.com/photos/mR_HR8NZwg8",
+      "author": "Dyaa Eldin Moustafa",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "0cc2667f208a3f11e09c23ab5b5ff04b42eba3e9b3bd2d35cbbbe2a58d400bc5",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-050",
+      "candidate_id": "60861108",
+      "source_url": "https://commons.wikimedia.org/wiki/File:A_landscape_with_water_in_the_foreground_and_mountains_in_the_distance_MET_DP836197.jpg",
+      "author": "Salvator Rosa",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "86eb28f1e4b955a78c9889b103c2af22b771c264cfeaede5b8d641180edb40ed",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-051",
+      "candidate_id": "46868967",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_(24774549282).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "90adf3c734963cfed6a5a0c9931c25fe7045ad763ae1b33910981ef440066ea7",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-052",
+      "candidate_id": "53194817",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_(24685085159).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "92d31a53ffc80d92805a039dce70cc09804da6d38519a93d0ee3f9a2b7eae9af",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-053",
+      "candidate_id": "U147",
+      "source_url": "https://unsplash.com/photos/OODWPtfXAF0",
+      "author": "Kundan Ramisetti",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "28b32b6a19fe582e368f3952a6fd7b2bb8abc134c0cb5deaa17c8260d6fc9b76",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-054",
+      "candidate_id": "U35",
+      "source_url": "https://unsplash.com/photos/znM0ujn2RUA",
+      "author": "Shane Colella",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "c9fd1d0db76329f6f5490c19066e7cd1fd697320ab0cfb1f097168ad2eea9836",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-055",
+      "candidate_id": "U43",
+      "source_url": "https://unsplash.com/photos/IoCWq07GaG4",
+      "author": "Oleg Chursin",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "0b83327afbd905a28fab9db0b0daf3ce7f841d35a0dd49dd99001fb7549c4b31",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-056",
+      "candidate_id": "114921060",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_in_Guingamp_4.jpg",
+      "author": "Syced",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "ecbc5e4a904ac4c09236ff53428860c9e9f535072ec380ea3b2f6553c858b432",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-057",
+      "candidate_id": "51439133",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Dawn-landscape-mountains-forest_(24031322510).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "47c1543b317ae513ffcd822c8778b0261d7a57f1978345538f3f39924c4af57f",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-058",
+      "candidate_id": "U93",
+      "source_url": "https://unsplash.com/photos/r1XwWjI4PyE",
+      "author": "Caroline Sada",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3268df41af481c56dfc38f9e6ea9bf269cf3a669fff95e347eb0a9a601bba663",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-059",
+      "candidate_id": "58376598",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cherry_blossom_buds_1_-_cropped.jpg",
+      "author": "W.carter",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "8d16e414c7abb012b3c9ba133ea7ce96ca93fc05def3d9abbce86f57d49d63ca",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-060",
+      "candidate_id": "U66",
+      "source_url": "https://unsplash.com/photos/agnhLQWqr1Q",
+      "author": "Nicholas Swanson",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "95e098f331619a75148aa64884abe24abbd41ac0e794a65bba4fbb483eb57df9",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-061",
+      "candidate_id": "U174",
+      "source_url": "https://unsplash.com/photos/YYegjUYIVeg",
+      "author": "Linh Nguyen",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "63a2b46ca16fdf4145dd5a1ae9d2fcb1e120960d20b23efdea8b48c729ddc74a",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-062",
+      "candidate_id": "U171",
+      "source_url": "https://unsplash.com/photos/cSe3oKQ03OQ",
+      "author": "Riley Briggs",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "a2a94876f868a267755133949cd184de1d50dc5f28e5b3b0af85da67b133fa6f",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-063",
+      "candidate_id": "U51",
+      "source_url": "https://unsplash.com/photos/knYQ6arClBE",
+      "author": "Ireneuilia",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "0a41e37fe4c8231c2903482eb38835758450c2cc4cd2d0e336c3dba7ab8842d2",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-064",
+      "candidate_id": "U179",
+      "source_url": "https://unsplash.com/photos/lp0IFw6YqZg",
+      "author": "Angelina Odemchuk",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "f46f1a9c4330151170670ed0942e9e4e953ef91aa154346c25f520e2774f3892",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-065",
+      "candidate_id": "167782387",
+      "source_url": "https://commons.wikimedia.org/wiki/File:A_flower_showered_in_rain.jpg",
+      "author": "DKDEVS",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "2b9c1b65b418f6bcba033742c76b060960283df6d27c5204687ebe9504b7a83e",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-066",
+      "candidate_id": "41107668",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape_mountains_snow_Phaistos.jpg",
+      "author": "Jebulon",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "ffdc53f91ef4a5f88e642c23d0acc29540fd4f0fed37eebce72e389a713ad1c8",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-067",
+      "candidate_id": "U100",
+      "source_url": "https://unsplash.com/photos/pwaaqfoMibI",
+      "author": "Tina Rataj",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3019cb1b11d4972e275d45c9c813f346ff1b29e22b7c061702cb5fde6da83d23",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-068",
+      "candidate_id": "51439606",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-nature-clouds_(24326664915).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "33fd0940df090c7249a399c189cafc21dfcca5349de72ecee51d8e5ed4d26a6c",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-069",
+      "candidate_id": "114127439",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_in_Segou.jpg",
+      "author": "Syced",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "582ed375a1bb72bd950edc8dede6748ed3e8b19a155c8303eeaa1bfe545ddc28",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-070",
+      "candidate_id": "U39",
+      "source_url": "https://unsplash.com/photos/pFqrYbhIAXs",
+      "author": "Luke Chesser",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "1a069b460259f34e7f46b84b7045a77ce7c7ee46c8d9c0c23ed8edfcb1f18f20",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-071",
+      "candidate_id": "U152",
+      "source_url": "https://unsplash.com/photos/tVIqMgGlAG0",
+      "author": "Steven Spassov",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "aacfa8ffff67018a786817e273aa35f538d11bb5b90a5ba7bcd86d0f53486adf",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-072",
+      "candidate_id": "U80",
+      "source_url": "https://unsplash.com/photos/Y2PYfopoz-k",
+      "author": "Sonja Langford",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "2a054448b0164783f24a826062f92afd8311097a01a363fd5a1e770832a80410",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-073",
+      "candidate_id": "U95",
+      "source_url": "https://unsplash.com/photos/87TJNWkepvI",
+      "author": "Kundan Ramisetti",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "c59ae175bde9327869ed87031e84b9b2960fd5dceff9ee44f19f756a6206233b",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-074",
+      "candidate_id": "107696548",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Flower_full_bloom_2.jpg",
+      "author": "Kurt Kaiser",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "020b51d11536a5c5e0ca6857a09d5d7303fd82b0be61e0792e0216bb53b9df0f",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-075",
+      "candidate_id": "U25",
+      "source_url": "https://unsplash.com/photos/Iuq0EL4EINY",
+      "author": "Alejandro Escamilla",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "c6083e6018a0275c54877ba8f29839569f0463a96c8c6edc5f2e6751dd32071f",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-076",
+      "candidate_id": "172567026",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Dutch_Summer-landscape_in_province_Groningen_in_1985,_ripe_grain_fields_near_the_village_Bourtange_-_gouache_painting_on_paper_by_artist_Fons_Heijnsbroek,_landscape_painting_in_The_Netherlands.tif",
+      "author": "Fons Heijnsbroek",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "2323afca4d729d3ab2d1b9b32c53462427760e4e9c5ca98a9c3b385a2d63e17f",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-077",
+      "candidate_id": "39647101",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape_mountains_Phaistos.jpg",
+      "author": "Jebulon",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "3bf7cd596b36b37b9044661e8a109c3a0829eed2d039bdf197388617a4b94c6f",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-078",
+      "candidate_id": "96511962",
+      "source_url": "https://commons.wikimedia.org/wiki/File:9658Yellow-eyed_cinnamon_and_white_cats_in_the_Philippines_portrait_32.jpg",
+      "author": "Judgefloro",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "2d553a0feae685551e07ea38eaa66c4aefed1c365bb36ec9e79fe3474e8fe085",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-079",
+      "candidate_id": "U29",
+      "source_url": "https://unsplash.com/photos/V0yAek6BgGk",
+      "author": "Go Wild",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "ff9969e92cabca1e860d7a71a6cad54d1bcae542d0802c2a1a8b3621f6c4dc2f",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-080",
+      "candidate_id": "69225652",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_(41113085514).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "9e18be7852199e6d225505db8ca36e283d15e09380276b366758c16db3f172e2",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-081",
+      "candidate_id": "U88",
+      "source_url": "https://unsplash.com/photos/muC_6gTMLR4",
+      "author": "Barcelona",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "b22beb88af0176d7f71dccaf69100067a6cdc45fba3ee4dea5e6d492d272e31b",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-082",
+      "candidate_id": "51439217",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-nature-rocks_(24300703366).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "c5737300760c7c5ede2da97105f88734f81d8ff47ca58abca99849c86c25e74d",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-083",
+      "candidate_id": "97251636",
+      "source_url": "https://commons.wikimedia.org/wiki/File:3129Black_and_white_cat_portraits_in_the_Philippines_07.jpg",
+      "author": "Judgefloro",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "ace61e979bae362d37b370ad228a78ee5dff62ba9ca94a180bcfe292a28c14f9",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-084",
+      "candidate_id": "U143",
+      "source_url": "https://unsplash.com/photos/6xqAK6oAeHA",
+      "author": "Steve Richey",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "f191cc4866c82855d8be7623b52814e306364ea19ffa821977513c3ac26037e7",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-085",
+      "candidate_id": "51439461",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-nature-hiking_(24300577396).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "3f5bddf58344f94084aac683566dc02061507695fecad9cb0d597e1b8b18c1e8",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-086",
+      "candidate_id": "159558077",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Fav_flower.jpg",
+      "author": "Fikiri-jenly",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "a047b22417920bdec350b81209733409ab03e00255afce24b90429abbfe1a3c4",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-087",
+      "candidate_id": "U166",
+      "source_url": "https://unsplash.com/photos/yD3PXDV7Sjc",
+      "author": "Romain Briaux",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "3084d3a24df1b4438df05c69885494be64a180b766f091ef9a7ae8d63d158a07",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-088",
+      "candidate_id": "U50",
+      "source_url": "https://unsplash.com/photos/L7MpmBGpM94",
+      "author": "Tyler Wanlass",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "a1d47a34fea3862dc4ee78b7ab157dc10809fde2010d325f543d94c7f904add9",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-089",
+      "candidate_id": "U167",
+      "source_url": "https://unsplash.com/photos/WqK_xV_hbug",
+      "author": "petradr",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "23606169b0355c61ffb34d677199981c5bb970b926388616f1edd413d08e85d2",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-090",
+      "candidate_id": "U74",
+      "source_url": "https://unsplash.com/photos/YhZbnxqtooM",
+      "author": "Isaak Dury",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "eb1574e635df50bb46efa803a533f2942a69266f66cac23b0eeeafc31505d509",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-091",
+      "candidate_id": "U11",
+      "source_url": "https://unsplash.com/photos/Cm7oKel-X2Q",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "1b9080c3f39529c0be83a088941fce51729c7e413ce1e3aa2b73b2056cef7338",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-092",
+      "candidate_id": "U37",
+      "source_url": "https://unsplash.com/photos/erTjj730fMk",
+      "author": "Austin Neill",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "0c28428bc7deea58723ebd5309c74370a8650a28321e7eea9f89ccd616afdcfa",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-093",
+      "candidate_id": "51440002",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Landscape-mountains-nature-rock_(24030753220).jpg",
+      "author": "www.Pixel.la Free Stock Photos",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "b59d519a8b98cda1421425931e2b8534b38141fa0e0a5b511afbb4b7fed689cf",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-094",
+      "candidate_id": "90363981",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Master_Tom_(BM_1952,0517.49).jpg",
+      "author": "\nPrint made by: W & J O Clerk\n\nPublished by: Orlando Hodgson",
+      "license": "Public domain",
+      "license_url": "https://commons.wikimedia.org/wiki/Commons:Licensing",
+      "avatar_sha256": "57c7a93e5c98222d4665a2e2d1570413833be0906249e40e820118715f3bc7b6",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-095",
+      "candidate_id": "U186",
+      "source_url": "https://unsplash.com/photos/2kc8bigeqEI",
+      "author": "Simon Pape",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "037d020ee6c667ceefb6075376a044e255fec85b0281ec4191485015fbdb077e",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-096",
+      "candidate_id": "65717918",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Red_Panda_(24715469267).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "ff72855ad258a9e66c9318e2821e3bb0a571077094019bc8d7c6f0e302f7fa40",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-097",
+      "candidate_id": "103436995",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Peacock_portrait._(8316435538).jpg",
+      "author": "Bernard Spragg. NZ from Christchurch, New Zealand",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "d19bd69e705fa495edb031e7fa879632dc39166a4effa62b41616f40ca24f4a1",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-098",
+      "candidate_id": "U18",
+      "source_url": "https://unsplash.com/photos/Ps2n0rShqaM",
+      "author": "Paul Jarvis",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "939bd736fa0fc81fe5afb68428b551ba33c0cd5df94a840c22c42da526ba6474",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    },
+    {
+      "code": "YS-CUS-099",
+      "candidate_id": "159494504",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Cherry_blossom_flower.jpg",
+      "author": "Hallo3800",
+      "license": "CC0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "avatar_sha256": "edce183668bba6517be035bc5b8c4e7136bda010f05bb359af11f4fd746e6cfe",
+      "changes": "Centered square crop and resize to 256x256 PNG; no image generation."
+    },
+    {
+      "code": "YS-CUS-100",
+      "candidate_id": "U130",
+      "source_url": "https://unsplash.com/photos/ywiAen4L4qA",
+      "author": "Ryan Jacques",
+      "license": "Unsplash License",
+      "license_url": "https://unsplash.com/license",
+      "avatar_sha256": "f72516ebe87b68e61f6506703d44082d65618cf4c8764e8898981be8720858b5",
+      "changes": "Square 256px thumbnail; final PNG encoding only."
+    }
+  ]
+}

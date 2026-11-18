@@ -92,7 +92,7 @@ export async function saveDirectoryProfile(
 export async function importDirectoryPreset() {
   const r = await api.post<Envelope>(
     '/api/demand-management/profile-presets',
-    { batch_code: 'yunshu-platform-services-customers-100x100-v2' },
+    { batch_code: 'yunshu-platform-services-customers-100x100-v3' },
     { timeout: 120000 }
   )
   return z

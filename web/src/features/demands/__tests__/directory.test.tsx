@@ -135,7 +135,7 @@ test('import requires explicit confirmation and sends one stable batch without c
   expect(post).toHaveBeenCalledTimes(1)
   expect(post.mock.calls[0]?.[0]).toBe('/api/demand-management/profile-presets')
   expect(post.mock.calls[0]?.[1]).toEqual({
-    batch_code: 'yunshu-platform-services-customers-100x100-v2',
+    batch_code: 'yunshu-platform-services-customers-100x100-v3',
   })
 })
 test('failed edit retains the typed profile and code stays immutable', async () => {
