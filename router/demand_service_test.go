@@ -463,6 +463,19 @@ func TestDemandDisabledEntryKeepsOriginalReplayRepliesAndUploads(t *testing.T) {
 	f.request(t, "owner", "POST", "/api/product/demands/"+first.Demand.ID+"/messages", service.DemandSend{ClientMessageID: "disabled-reply-001", Text: "Continue original"}, 200)
 	f.request(t, "owner", "POST", "/api/product/demands/uploads", service.DemandUploadCreate{ClientUploadID: "disabled-upload-001", Name: "image.png", MimeType: "image/png", SizeBytes: 64}, 200)
 	f.request(t, "other", "POST", "/api/product/demands/uploads", service.DemandUploadCreate{ClientUploadID: "disabled-upload-002", Name: "image.png", MimeType: "image/png", SizeBytes: 64}, 503)
+
+	detail := demandData[struct {
+		Demand service.DemandView `json:"demand"`
+	}](t, f.request(t, "owner", "GET", "/api/product/demands/"+first.Demand.ID, nil, 200))
+	current := detail.Demand
+	require.Greater(t, current.Revision, int64(0))
+	f.request(t, "owner", "GET", "/api/product/demands/"+first.Demand.ID+"/messages", nil, 200)
+	for _, action := range []string{"accept", "start", "deliver"} {
+		next := demandData[service.DemandActionResult](t, f.request(t, "engineer", "POST", "/api/engineer/demands/"+first.Demand.ID+"/actions", service.DemandAction{ClientActionID: "disabled-action-" + action, Action: action, Revision: current.Revision, Text: "Deliver original work while entry is closed"}, 200))
+		current = next.Demand
+	}
+	done := demandData[service.DemandActionResult](t, f.request(t, "owner", "POST", "/api/product/demands/"+first.Demand.ID+"/actions", service.DemandAction{ClientActionID: "disabled-accept-delivery", Action: "accept_delivery", Revision: current.Revision, DeliveryID: current.DeliveryID}, 200))
+	assert.Equal(t, "completed", done.Demand.Status)
 }
 
 func TestDemandSessionAndBusinessAuthorizationStaySeparate(t *testing.T) {
@@ -487,4 +500,55 @@ func TestDemandSessionAndBusinessAuthorizationStaySeparate(t *testing.T) {
 	assert.Equal(t, "busy", heartbeat.Engineer.Presence)
 	require.NoError(t, f.db.Model(&model.DemandEngineer{}).Where("id = ?", f.engineers["engineer"]).Update("enabled", false).Error)
 	f.request(t, "engineer", "GET", "/api/engineer/demands", nil, 403)
+}
+
+func TestDemandPublishedAvatarAccessRevokesWithoutDeletingOriginalWork(t *testing.T) {
+	f := newDemandFixture(t)
+	var imageData bytes.Buffer
+	require.NoError(t, png.Encode(&imageData, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	avatar := f.upload(t, "admin", "synthetic-avatar.png", "image/png", imageData.Bytes())
+	profiles := demandData[struct {
+		Items []service.DemandEngineerView `json:"items"`
+	}](t, f.request(t, "admin", "GET", "/api/demand-management/engineers", nil, 200))
+	var profile service.DemandEngineerView
+	for _, item := range profiles.Items {
+		if item.ID == f.engineers["engineer"] {
+			profile = item
+			break
+		}
+	}
+	require.NotEmpty(t, profile.ID)
+	profile.AvatarAttachmentID = avatar.ID
+	profile = demandData[service.DemandEngineerView](t, f.request(t, "admin", "PUT", "/api/demand-management/engineers/"+profile.ID, profile, 200))
+	original := f.create(t, "avatar-original-demand")
+	linkPath := "/api/product/demands/attachments/" + avatar.ID + "/link"
+	f.request(t, "", "POST", linkPath, map[string]string{"disposition": "inline"}, 401)
+	link := demandData[service.DemandAttachmentLink](t, f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 200))
+	u, err := url.Parse(link.URL)
+	require.NoError(t, err)
+	request := httptest.NewRequest("GET", u.RequestURI(), nil)
+	request.Header.Set("Range", "bytes=0-7")
+	response := httptest.NewRecorder()
+	f.engine.ServeHTTP(response, request)
+	require.Equal(t, 206, response.Code)
+	assert.Equal(t, imageData.Bytes()[:8], response.Body.Bytes())
+	profile.Published = false
+	profile = demandData[service.DemandEngineerView](t, f.request(t, "admin", "PUT", "/api/demand-management/engineers/"+profile.ID, profile, 200))
+	f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 404)
+	response = httptest.NewRecorder()
+	f.engine.ServeHTTP(response, httptest.NewRequest("GET", u.RequestURI(), nil))
+	assert.Equal(t, 404, response.Code, "an already-issued avatar URL must lose public-directory access immediately")
+	f.request(t, "engineer", "GET", "/api/engineer/demands/"+original.Demand.ID, nil, 200)
+	f.request(t, "admin", "POST", "/api/demand-management/attachments/"+avatar.ID+"/link", map[string]string{"disposition": "inline"}, 200)
+	profile.Published = true
+	profile = demandData[service.DemandEngineerView](t, f.request(t, "admin", "PUT", "/api/demand-management/engineers/"+profile.ID, profile, 200))
+	link = demandData[service.DemandAttachmentLink](t, f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 200))
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", profile.UserID).Update("status", common.UserStatusDisabled).Error)
+	f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 404)
+	u, err = url.Parse(link.URL)
+	require.NoError(t, err)
+	response = httptest.NewRecorder()
+	f.engine.ServeHTTP(response, httptest.NewRequest("GET", u.RequestURI(), nil))
+	assert.Equal(t, 404, response.Code, "disabled engineer account must revoke its published avatar")
+	f.request(t, "owner", "GET", "/api/product/demands/"+original.Demand.ID, nil, 200)
 }
