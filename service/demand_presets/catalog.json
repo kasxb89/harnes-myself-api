@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_id": "yunshu-platform-services-customers-100x100-v1",
+  "catalog_id": "yunshu-platform-services-customers-100x100-v2",
   "counts": {
     "service": 100,
     "customer": 100,
@@ -59,7 +59,7 @@
       "kind": "service",
       "display_name": "企业网站搭建",
       "category_code": "web",
-      "introduction": "可提交与企业介绍、产品展示与联系页面相关的需求，由平台评估后统一分配。",
+      "introduction": "搭建企业官网，集中展示公司介绍、产品服务和联系方式，兼顾电脑与手机浏览。",
       "skills": [
         "企业网站",
         "页面开发",
@@ -74,7 +74,7 @@
       "kind": "service",
       "display_name": "活动专题页面",
       "category_code": "web",
-      "introduction": "可提交与活动介绍、报名入口与专题页面相关的需求，由平台评估后统一分配。",
+      "introduction": "制作活动专题页，整合活动介绍、报名入口和宣传内容，让参与流程清晰顺畅。",
       "skills": [
         "专题页面",
         "活动报名",
@@ -89,7 +89,7 @@
       "kind": "service",
       "display_name": "预约与表单页面",
       "category_code": "web",
-      "introduction": "可提交与预约申请、信息收集与表单校验相关的需求，由平台评估后统一分配。",
+      "introduction": "搭建预约与信息收集页面，完善表单字段、填写校验和提交反馈。",
       "skills": [
         "在线表单",
         "预约流程",
@@ -104,7 +104,7 @@
       "kind": "service",
       "display_name": "商品展示页面",
       "category_code": "web",
-      "introduction": "可提交与商品列表、详情展示与筛选页面相关的需求，由平台评估后统一分配。",
+      "introduction": "制作商品列表和详情页，梳理图片、规格与卖点，加入分类筛选和展示交互。",
       "skills": [
         "商品页面",
         "列表筛选",
@@ -119,7 +119,7 @@
       "kind": "service",
       "display_name": "内容管理页面",
       "category_code": "web",
-      "introduction": "可提交与文章发布、内容分类与后台管理页面相关的需求，由平台评估后统一分配。",
+      "introduction": "开发内容管理页面，支持文章编辑、分类整理、发布管理和日常维护。",
       "skills": [
         "内容管理",
         "文章发布",
@@ -134,7 +134,7 @@
       "kind": "service",
       "display_name": "微信小程序开发",
       "category_code": "web",
-      "introduction": "可提交与小程序页面、业务表单与接口对接相关的需求，由平台评估后统一分配。",
+      "introduction": "开发微信小程序页面与业务功能，打通表单、数据接口和用户操作流程。",
       "skills": [
         "微信小程序",
         "业务表单",
@@ -149,7 +149,7 @@
       "kind": "service",
       "display_name": "移动网站适配",
       "category_code": "web",
-      "introduction": "可提交与手机浏览、触控操作与不同屏幕适配相关的需求，由平台评估后统一分配。",
+      "introduction": "调整网站在手机和平板上的布局，优化文字、图片、菜单与触控操作。",
       "skills": [
         "响应式布局",
         "移动网站",
@@ -164,7 +164,7 @@
       "kind": "service",
       "display_name": "网站交互调整",
       "category_code": "web",
-      "introduction": "可提交与导航、弹窗、菜单与页面交互调整相关的需求，由平台评估后统一分配。",
+      "introduction": "完善网站导航、弹窗、菜单和操作反馈，让页面交互更连贯、易用。",
       "skills": [
         "交互调整",
         "导航菜单",
@@ -179,7 +179,7 @@
       "kind": "service",
       "display_name": "网站无障碍适配",
       "category_code": "web",
-      "introduction": "可提交与键盘操作、焦点提示与可读性改进相关的需求，由平台评估后统一分配。",
+      "introduction": "改进键盘导航、焦点提示、文字对比度和语义结构，让网站更易访问和操作。",
       "skills": [
         "键盘操作",
         "无障碍",
@@ -194,7 +194,7 @@
       "kind": "service",
       "display_name": "网站性能排查",
       "category_code": "web",
-      "introduction": "可提交与网页加载、资源体积与交互卡顿排查相关的需求，由平台评估后统一分配。",
+      "introduction": "定位网页加载慢和交互卡顿的原因，优化资源加载、页面渲染与关键操作。",
       "skills": [
         "加载性能",
         "资源优化",
@@ -209,7 +209,7 @@
       "kind": "service",
       "display_name": "桌面软件功能开发",
       "category_code": "software",
-      "introduction": "可提交与桌面端业务功能、操作流程与界面开发相关的需求，由平台评估后统一分配。",
+      "introduction": "开发桌面软件的业务功能，梳理操作流程，完成界面与本地能力的衔接。",
       "skills": [
         "桌面软件",
         "业务功能",
@@ -224,7 +224,7 @@
       "kind": "service",
       "display_name": "客户端界面调整",
       "category_code": "software",
-      "introduction": "可提交与客户端布局、控件与页面状态调整相关的需求，由平台评估后统一分配。",
+      "introduction": "调整客户端页面布局、控件样式和加载状态，统一视觉与操作体验。",
       "skills": [
         "客户端界面",
         "控件布局",
@@ -239,7 +239,7 @@
       "kind": "service",
       "display_name": "跨平台兼容排查",
       "category_code": "software",
-      "introduction": "可提交与不同系统和架构下的客户端兼容问题相关的需求，由平台评估后统一分配。",
+      "introduction": "排查不同操作系统和芯片架构下的运行差异，定位兼容问题并制定修复方案。",
       "skills": [
         "跨平台",
         "系统兼容",
@@ -254,7 +254,7 @@
       "kind": "service",
       "display_name": "Electron 应用集成",
       "category_code": "software",
-      "introduction": "可提交与Electron 界面、原生窗口与本地能力集成相关的需求，由平台评估后统一分配。",
+      "introduction": "为 Electron 应用接入原生窗口、文件操作等本地能力，打通界面与系统功能。",
       "skills": [
         "Electron",
         "原生窗口",
@@ -269,7 +269,7 @@
       "kind": "service",
       "display_name": "窗口与托盘功能",
       "category_code": "software",
-      "introduction": "可提交与窗口管理、系统托盘与快捷操作相关的需求，由平台评估后统一分配。",
+      "introduction": "完善窗口管理、系统托盘和快捷操作，处理切换、退出与后台运行体验。",
       "skills": [
         "窗口管理",
         "系统托盘",
@@ -284,7 +284,7 @@
       "kind": "service",
       "display_name": "安装与升级流程",
       "category_code": "software",
-      "introduction": "可提交与安装路径、版本更新与升级流程问题相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理软件安装和升级流程，处理安装路径、版本检查及更新失败问题。",
       "skills": [
         "安装流程",
         "版本更新",
@@ -299,7 +299,7 @@
       "kind": "service",
       "display_name": "客户端状态恢复",
       "category_code": "software",
-      "introduction": "可提交与异常退出后的状态保存与恢复流程相关的需求，由平台评估后统一分配。",
+      "introduction": "完善异常退出后的状态保存与恢复，找回工作进度、草稿和未完成操作。",
       "skills": [
         "状态恢复",
         "本地保存",
@@ -314,7 +314,7 @@
       "kind": "service",
       "display_name": "文件导入与导出",
       "category_code": "software",
-      "introduction": "可提交与文件选择、格式校验与导入导出流程相关的需求，由平台评估后统一分配。",
+      "introduction": "开发文件导入导出功能，处理格式校验、数据转换和操作结果提示。",
       "skills": [
         "文件处理",
         "导入导出",
@@ -329,7 +329,7 @@
       "kind": "service",
       "display_name": "软件构建流程",
       "category_code": "software",
-      "introduction": "可提交与项目构建、依赖配置与产物生成流程相关的需求，由平台评估后统一分配。",
+      "introduction": "整理项目依赖与构建配置，排查编译问题，让开发和构建步骤清晰可复现。",
       "skills": [
         "项目构建",
         "依赖配置",
@@ -344,7 +344,7 @@
       "kind": "service",
       "display_name": "软件运行问题排查",
       "category_code": "software",
-      "introduction": "可提交与启动失败、界面无响应与运行日志排查相关的需求，由平台评估后统一分配。",
+      "introduction": "结合运行日志定位启动失败、无响应和异常退出，梳理复现步骤与修复方向。",
       "skills": [
         "启动排查",
         "运行日志",
@@ -359,7 +359,7 @@
       "kind": "service",
       "display_name": "业务接口开发",
       "category_code": "backend",
-      "introduction": "可提交与业务数据查询、提交与接口设计相关的需求，由平台评估后统一分配。",
+      "introduction": "设计并开发业务接口，明确请求参数、数据结构、校验规则和错误返回。",
       "skills": [
         "业务接口",
         "接口设计",
@@ -374,7 +374,7 @@
       "kind": "service",
       "display_name": "第三方接口对接",
       "category_code": "backend",
-      "introduction": "可提交与第三方服务接入、字段映射与联调相关的需求，由平台评估后统一分配。",
+      "introduction": "对接第三方服务接口，处理鉴权、字段映射与异常返回，完成业务联调。",
       "skills": [
         "接口对接",
         "字段映射",
@@ -389,7 +389,7 @@
       "kind": "service",
       "display_name": "登录与权限流程",
       "category_code": "backend",
-      "introduction": "可提交与账号登录、角色权限与会话流程相关的需求，由平台评估后统一分配。",
+      "introduction": "完善账号登录、角色权限和会话流程，明确访问边界及异常状态处理。",
       "skills": [
         "账号登录",
         "权限控制",
@@ -404,7 +404,7 @@
       "kind": "service",
       "display_name": "数据库结构调整",
       "category_code": "backend",
-      "introduction": "可提交与数据表结构、关联关系与迁移方案相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理数据库表结构和关联关系，设计字段调整、数据迁移与兼容方案。",
       "skills": [
         "数据表",
         "数据关联",
@@ -419,7 +419,7 @@
       "kind": "service",
       "display_name": "数据库查询优化",
       "category_code": "backend",
-      "introduction": "可提交与查询速度、索引与慢查询排查相关的需求，由平台评估后统一分配。",
+      "introduction": "分析慢查询与访问路径，调整索引和查询语句，改善数据读取效率。",
       "skills": [
         "查询优化",
         "数据库索引",
@@ -434,7 +434,7 @@
       "kind": "service",
       "display_name": "文件上传接口",
       "category_code": "backend",
-      "introduction": "可提交与文件上传、分片续传与访问授权相关的需求，由平台评估后统一分配。",
+      "introduction": "开发文件上传接口，支持分片、断点续传和访问授权，完善进度与失败反馈。",
       "skills": [
         "文件上传",
         "分片续传",
@@ -449,7 +449,7 @@
       "kind": "service",
       "display_name": "后台管理接口",
       "category_code": "backend",
-      "introduction": "可提交与管理列表、筛选、编辑与审计接口相关的需求，由平台评估后统一分配。",
+      "introduction": "开发后台管理接口，覆盖列表查询、条件筛选、资料编辑和操作审计。",
       "skills": [
         "管理后台",
         "列表筛选",
@@ -464,7 +464,7 @@
       "kind": "service",
       "display_name": "消息与通知接口",
       "category_code": "backend",
-      "introduction": "可提交与站内消息、通知投递与消息状态相关的需求，由平台评估后统一分配。",
+      "introduction": "搭建站内消息与通知接口，管理消息投递、已读状态和异常处理。",
       "skills": [
         "站内消息",
         "通知接口",
@@ -479,7 +479,7 @@
       "kind": "service",
       "display_name": "定时与后台任务",
       "category_code": "backend",
-      "introduction": "可提交与定时执行、任务队列与状态跟踪相关的需求，由平台评估后统一分配。",
+      "introduction": "实现定时执行和后台任务队列，完善任务状态、执行记录及失败处理。",
       "skills": [
         "定时任务",
         "后台任务",
@@ -494,7 +494,7 @@
       "kind": "service",
       "display_name": "接口错误排查",
       "category_code": "backend",
-      "introduction": "可提交与请求失败、错误分类与服务日志排查相关的需求，由平台评估后统一分配。",
+      "introduction": "追踪接口请求与服务日志，定位失败环节，整理错误分类和修复方案。",
       "skills": [
         "接口排查",
         "错误分类",
@@ -509,7 +509,7 @@
       "kind": "service",
       "display_name": "AI 对话功能集成",
       "category_code": "ai",
-      "introduction": "可提交与模型接口接入、对话界面与消息流程相关的需求，由平台评估后统一分配。",
+      "introduction": "将 AI 对话接入产品，串联模型请求、消息展示、流式回复和会话记录。",
       "skills": [
         "模型接入",
         "对话界面",
@@ -524,7 +524,7 @@
       "kind": "service",
       "display_name": "知识库检索应用",
       "category_code": "ai",
-      "introduction": "可提交与资料整理、检索流程与问答应用相关的需求，由平台评估后统一分配。",
+      "introduction": "整理业务资料并搭建知识库检索，让问答应用能够查找和引用相关内容。",
       "skills": [
         "知识库",
         "资料检索",
@@ -539,7 +539,7 @@
       "kind": "service",
       "display_name": "智能客服流程",
       "category_code": "ai",
-      "introduction": "可提交与客服知识、转人工与服务流程设计相关的需求，由平台评估后统一分配。",
+      "introduction": "设计智能客服服务流程，衔接知识问答、问题分类和人工接待。",
       "skills": [
         "智能客服",
         "转人工",
@@ -554,7 +554,7 @@
       "kind": "service",
       "display_name": "文档识别与整理",
       "category_code": "ai",
-      "introduction": "可提交与文档识别、内容提取与结构化整理相关的需求，由平台评估后统一分配。",
+      "introduction": "识别文档内容，提取关键字段，整理成便于检索和后续处理的结构化资料。",
       "skills": [
         "文档识别",
         "内容提取",
@@ -569,7 +569,7 @@
       "kind": "service",
       "display_name": "AI 工具调用集成",
       "category_code": "ai",
-      "introduction": "可提交与工具接口、参数传递与执行结果展示相关的需求，由平台评估后统一分配。",
+      "introduction": "为 AI 应用接入业务工具，完善参数校验、执行流程与结果展示。",
       "skills": [
         "工具调用",
         "参数适配",
@@ -584,7 +584,7 @@
       "kind": "service",
       "display_name": "模型参数适配",
       "category_code": "ai",
-      "introduction": "可提交与模型目录、上下文与输出参数适配相关的需求，由平台评估后统一分配。",
+      "introduction": "适配模型目录、上下文容量和输出参数，让产品界面与实际接口能力对应。",
       "skills": [
         "模型目录",
         "参数适配",
@@ -599,7 +599,7 @@
       "kind": "service",
       "display_name": "提示词工作流",
       "category_code": "ai",
-      "introduction": "可提交与固定任务提示词、输入规范与输出流程相关的需求，由平台评估后统一分配。",
+      "introduction": "围绕固定任务整理提示词、输入要求和输出格式，搭建可重复使用的工作流。",
       "skills": [
         "提示词",
         "固定流程",
@@ -614,7 +614,7 @@
       "kind": "service",
       "display_name": "AI 创作功能集成",
       "category_code": "ai",
-      "introduction": "可提交与图片视频生成接口、参数与任务状态相关的需求，由平台评估后统一分配。",
+      "introduction": "集成图片与视频生成能力，衔接参数选择、任务进度、结果获取和作品展示。",
       "skills": [
         "创作接口",
         "任务状态",
@@ -629,7 +629,7 @@
       "kind": "service",
       "display_name": "智能体业务流程",
       "category_code": "ai",
-      "introduction": "可提交与智能体角色、任务步骤与人工确认环节相关的需求，由平台评估后统一分配。",
+      "introduction": "设计智能体的业务角色与任务步骤，在关键操作中加入人工确认和结果检查。",
       "skills": [
         "智能体",
         "业务流程",
@@ -644,7 +644,7 @@
       "kind": "service",
       "display_name": "AI 应用问题排查",
       "category_code": "ai",
-      "introduction": "可提交与模型请求、工具执行与生成结果异常相关的需求，由平台评估后统一分配。",
+      "introduction": "排查模型请求、工具执行和生成结果异常，追踪任务状态与返回链路。",
       "skills": [
         "请求排查",
         "工具执行",
@@ -659,7 +659,7 @@
       "kind": "service",
       "display_name": "Word 文档排版",
       "category_code": "office",
-      "introduction": "可提交与Word 样式、目录、分页与文档排版相关的需求，由平台评估后统一分配。",
+      "introduction": "整理 Word 文档样式、标题层级、目录和分页，让长文档结构清楚、版面统一。",
       "skills": [
         "Word",
         "文档排版",
@@ -674,7 +674,7 @@
       "kind": "service",
       "display_name": "PDF 内容重排",
       "category_code": "office",
-      "introduction": "可提交与PDF 内容识别、结构整理与重新排版相关的需求，由平台评估后统一分配。",
+      "introduction": "提取 PDF 内容并重建章节结构，调整文字、表格和图片的版式。",
       "skills": [
         "PDF",
         "内容识别",
@@ -689,7 +689,7 @@
       "kind": "service",
       "display_name": "PPT 演示制作",
       "category_code": "office",
-      "introduction": "可提交与演示结构、页面排版与图表插入相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理演示逻辑，设计 PPT 页面、图表和视觉层级，突出每页的关键信息。",
       "skills": [
         "PPT",
         "演示排版",
@@ -704,7 +704,7 @@
       "kind": "service",
       "display_name": "Excel 表格整理",
       "category_code": "office",
-      "introduction": "可提交与表格清洗、字段规范与数据整理相关的需求，由平台评估后统一分配。",
+      "introduction": "清理 Excel 表格中的重复、空缺和不一致字段，统一格式与数据结构。",
       "skills": [
         "Excel",
         "表格整理",
@@ -719,7 +719,7 @@
       "kind": "service",
       "display_name": "Excel 公式与计算",
       "category_code": "office",
-      "introduction": "可提交与公式编写、计算逻辑与结果核对相关的需求，由平台评估后统一分配。",
+      "introduction": "编写和整理 Excel 公式，梳理计算逻辑，核对关键结果与边界情况。",
       "skills": [
         "Excel 公式",
         "计算逻辑",
@@ -734,7 +734,7 @@
       "kind": "service",
       "display_name": "办公模板制作",
       "category_code": "office",
-      "introduction": "可提交与常用文档、表格与演示模板相关的需求，由平台评估后统一分配。",
+      "introduction": "制作常用文档、表格和演示模板，统一格式，方便团队重复使用。",
       "skills": [
         "办公模板",
         "文档样式",
@@ -749,7 +749,7 @@
       "kind": "service",
       "display_name": "批量文档处理",
       "category_code": "office",
-      "introduction": "可提交与批量生成、格式转换与文件命名流程相关的需求，由平台评估后统一分配。",
+      "introduction": "批量生成或转换文档，统一文件命名、输出格式和整理规则。",
       "skills": [
         "批量处理",
         "格式转换",
@@ -764,7 +764,7 @@
       "kind": "service",
       "display_name": "扫描资料整理",
       "category_code": "office",
-      "introduction": "可提交与扫描页识别、文字校对与资料归档相关的需求，由平台评估后统一分配。",
+      "introduction": "识别扫描资料中的文字，完成校对、分页整理和分类归档。",
       "skills": [
         "扫描识别",
         "文字校对",
@@ -779,7 +779,7 @@
       "kind": "service",
       "display_name": "文档格式转换",
       "category_code": "office",
-      "introduction": "可提交与办公文件、PDF 与常见数据格式转换相关的需求，由平台评估后统一分配。",
+      "introduction": "转换办公文件、PDF 和常见数据格式，核对转换后的内容与排版。",
       "skills": [
         "格式转换",
         "办公文件",
@@ -794,7 +794,7 @@
       "kind": "service",
       "display_name": "办公流程衔接",
       "category_code": "office",
-      "introduction": "可提交与表单、文档、审批与归档步骤衔接相关的需求，由平台评估后统一分配。",
+      "introduction": "衔接表单收集、文档生成、审批与归档步骤，减少重复录入和人工搬运。",
       "skills": [
         "办公流程",
         "表单文档",
@@ -809,7 +809,7 @@
       "kind": "service",
       "display_name": "图片尺寸与裁切",
       "category_code": "media",
-      "introduction": "可提交与图片比例、尺寸调整与主体裁切相关的需求，由平台评估后统一分配。",
+      "introduction": "按展示场景调整图片尺寸与比例，裁切主体，统一输出规格。",
       "skills": [
         "图片尺寸",
         "比例调整",
@@ -824,7 +824,7 @@
       "kind": "service",
       "display_name": "图片文字与标注",
       "category_code": "media",
-      "introduction": "可提交与图片文字、说明标注与信息布局相关的需求，由平台评估后统一分配。",
+      "introduction": "为图片添加标题、说明和标注，梳理信息位置，保持文字清楚易读。",
       "skills": [
         "图片文字",
         "内容标注",
@@ -839,7 +839,7 @@
       "kind": "service",
       "display_name": "商品图片整理",
       "category_code": "media",
-      "introduction": "可提交与商品图片规格、命名与展示素材整理相关的需求，由平台评估后统一分配。",
+      "introduction": "整理商品图片的尺寸、命名和分类，准备统一的展示素材。",
       "skills": [
         "商品图片",
         "图片规格",
@@ -854,7 +854,7 @@
       "kind": "service",
       "display_name": "图片批量处理",
       "category_code": "media",
-      "introduction": "可提交与图片压缩、格式转换与批量命名相关的需求，由平台评估后统一分配。",
+      "introduction": "批量压缩图片、转换格式和调整命名，按统一规则输出素材。",
       "skills": [
         "图片压缩",
         "图片转换",
@@ -869,7 +869,7 @@
       "kind": "service",
       "display_name": "短视频剪辑流程",
       "category_code": "media",
-      "introduction": "可提交与片段剪辑、顺序整理与成片输出相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理短视频素材与片段顺序，完成剪辑、节奏调整和成片输出。",
       "skills": [
         "视频剪辑",
         "片段整理",
@@ -884,7 +884,7 @@
       "kind": "service",
       "display_name": "视频拼接与导出",
       "category_code": "media",
-      "introduction": "可提交与视频拼接、输出规格与导出问题相关的需求，由平台评估后统一分配。",
+      "introduction": "拼接多段视频，统一画幅、音轨和输出规格，处理导出异常。",
       "skills": [
         "视频拼接",
         "视频导出",
@@ -899,7 +899,7 @@
       "kind": "service",
       "display_name": "字幕与音轨整理",
       "category_code": "media",
-      "introduction": "可提交与字幕时间轴、音轨与画面衔接相关的需求，由平台评估后统一分配。",
+      "introduction": "整理字幕与音轨，校准时间轴，调整文字、声音和画面的衔接。",
       "skills": [
         "字幕",
         "音轨整理",
@@ -914,7 +914,7 @@
       "kind": "service",
       "display_name": "视频规格转换",
       "category_code": "media",
-      "introduction": "可提交与分辨率、画幅、编码与文件格式转换相关的需求，由平台评估后统一分配。",
+      "introduction": "转换视频分辨率、画幅、编码和文件格式，适配目标播放或上传场景。",
       "skills": [
         "视频规格",
         "编码转换",
@@ -929,7 +929,7 @@
       "kind": "service",
       "display_name": "媒体预览集成",
       "category_code": "media",
-      "introduction": "可提交与图片预览、视频播放与拖动控制相关的需求，由平台评估后统一分配。",
+      "introduction": "为产品集成图片预览与视频播放，完善缩放、拖动和加载反馈。",
       "skills": [
         "媒体预览",
         "视频播放",
@@ -944,7 +944,7 @@
       "kind": "service",
       "display_name": "素材归档与检索",
       "category_code": "media",
-      "introduction": "可提交与媒体分类、命名规则与素材检索相关的需求，由平台评估后统一分配。",
+      "introduction": "建立媒体素材的分类和命名规则，完善归档、筛选与检索方式。",
       "skills": [
         "素材分类",
         "命名规则",
@@ -959,7 +959,7 @@
       "kind": "service",
       "display_name": "数据清洗与规范",
       "category_code": "data",
-      "introduction": "可提交与字段清洗、重复记录与格式统一相关的需求，由平台评估后统一分配。",
+      "introduction": "清理数据中的异常格式、重复记录和空缺字段，统一可用的数据口径。",
       "skills": [
         "数据清洗",
         "去重",
@@ -974,7 +974,7 @@
       "kind": "service",
       "display_name": "数据合并与匹配",
       "category_code": "data",
-      "introduction": "可提交与多份数据合并、字段匹配与关联检查相关的需求，由平台评估后统一分配。",
+      "introduction": "合并多份数据，匹配关键字段，检查关联关系和未匹配记录。",
       "skills": [
         "数据合并",
         "字段匹配",
@@ -989,7 +989,7 @@
       "kind": "service",
       "display_name": "经营报表整理",
       "category_code": "data",
-      "introduction": "可提交与经营数据汇总、指标口径与报表结构相关的需求，由平台评估后统一分配。",
+      "introduction": "汇总经营数据，明确指标口径，整理便于查看与跟进的报表。",
       "skills": [
         "经营报表",
         "指标口径",
@@ -1004,7 +1004,7 @@
       "kind": "service",
       "display_name": "数据看板制作",
       "category_code": "data",
-      "introduction": "可提交与指标展示、筛选与可视化看板相关的需求，由平台评估后统一分配。",
+      "introduction": "制作数据看板，组织关键指标、筛选条件和图表，方便日常查看。",
       "skills": [
         "数据看板",
         "指标展示",
@@ -1019,7 +1019,7 @@
       "kind": "service",
       "display_name": "图表设计与展示",
       "category_code": "data",
-      "introduction": "可提交与图表类型、标注与数据表达相关的需求，由平台评估后统一分配。",
+      "introduction": "根据数据特点选择图表，调整标注、颜色和布局，让信息更容易读懂。",
       "skills": [
         "数据图表",
         "图表设计",
@@ -1034,7 +1034,7 @@
       "kind": "service",
       "display_name": "订单数据分析",
       "category_code": "data",
-      "introduction": "可提交与订单结构、状态分类与经营数据整理相关的需求，由平台评估后统一分配。",
+      "introduction": "整理订单状态、商品和客户维度，分析经营结构与变化情况。",
       "skills": [
         "订单数据",
         "状态分类",
@@ -1049,7 +1049,7 @@
       "kind": "service",
       "display_name": "数据质量检查",
       "category_code": "data",
-      "introduction": "可提交与缺失值、异常记录与统计口径检查相关的需求，由平台评估后统一分配。",
+      "introduction": "检查缺失值、异常记录和重复数据，核对统计口径与数据一致性。",
       "skills": [
         "数据质量",
         "异常检查",
@@ -1064,7 +1064,7 @@
       "kind": "service",
       "display_name": "数据导入与导出",
       "category_code": "data",
-      "introduction": "可提交与CSV、表格及数据库数据导入导出相关的需求，由平台评估后统一分配。",
+      "introduction": "完成 CSV、Excel 和数据库之间的数据导入导出，处理字段和格式映射。",
       "skills": [
         "CSV",
         "数据导入",
@@ -1079,7 +1079,7 @@
       "kind": "service",
       "display_name": "报表自动更新",
       "category_code": "data",
-      "introduction": "可提交与报表刷新、数据同步与定时汇总流程相关的需求，由平台评估后统一分配。",
+      "introduction": "搭建报表刷新与定时汇总流程，衔接数据同步和更新结果检查。",
       "skills": [
         "报表刷新",
         "数据同步",
@@ -1094,7 +1094,7 @@
       "kind": "service",
       "display_name": "数据分析流程",
       "category_code": "data",
-      "introduction": "可提交与分析问题拆解、计算步骤与结果说明相关的需求，由平台评估后统一分配。",
+      "introduction": "拆解业务分析问题，梳理计算步骤，并用清楚的图表和文字说明结果。",
       "skills": [
         "分析流程",
         "计算步骤",
@@ -1109,7 +1109,7 @@
       "kind": "service",
       "display_name": "网页操作自动化",
       "category_code": "automation",
-      "introduction": "可提交与网页重复操作、页面信息与操作流程相关的需求，由平台评估后统一分配。",
+      "introduction": "将网页中的重复操作整理为自动化流程，处理页面交互与信息提取。",
       "skills": [
         "网页自动化",
         "重复操作",
@@ -1124,7 +1124,7 @@
       "kind": "service",
       "display_name": "文件处理自动化",
       "category_code": "automation",
-      "introduction": "可提交与文件归类、格式转换与处理任务相关的需求，由平台评估后统一分配。",
+      "introduction": "自动完成文件归类、格式转换与整理，减少重复的本地文件操作。",
       "skills": [
         "文件自动化",
         "文件归类",
@@ -1139,7 +1139,7 @@
       "kind": "service",
       "display_name": "表单收集与同步",
       "category_code": "automation",
-      "introduction": "可提交与表单信息收集、校验与数据同步相关的需求，由平台评估后统一分配。",
+      "introduction": "串联表单收集、字段校验和数据同步，让信息进入后续业务流程。",
       "skills": [
         "表单收集",
         "信息校验",
@@ -1154,7 +1154,7 @@
       "kind": "service",
       "display_name": "跨系统业务衔接",
       "category_code": "automation",
-      "introduction": "可提交与系统间字段对接、状态同步与流程衔接相关的需求，由平台评估后统一分配。",
+      "introduction": "连接不同业务系统，处理字段映射、状态同步和跨系统流程。",
       "skills": [
         "系统对接",
         "状态同步",
@@ -1169,7 +1169,7 @@
       "kind": "service",
       "display_name": "定时数据整理",
       "category_code": "automation",
-      "introduction": "可提交与定时采集、数据整理与汇总任务相关的需求，由平台评估后统一分配。",
+      "introduction": "设置定时采集、数据整理和汇总任务，留下清楚的执行记录。",
       "skills": [
         "定时整理",
         "数据采集",
@@ -1184,7 +1184,7 @@
       "kind": "service",
       "display_name": "消息通知工作流",
       "category_code": "automation",
-      "introduction": "可提交与业务通知、提醒条件与转交步骤相关的需求，由平台评估后统一分配。",
+      "introduction": "设计业务通知与提醒规则，配置触发条件、接收对象和转交步骤。",
       "skills": [
         "消息通知",
         "条件提醒",
@@ -1199,7 +1199,7 @@
       "kind": "service",
       "display_name": "审批与任务流转",
       "category_code": "automation",
-      "introduction": "可提交与审批节点、负责人分配与任务状态相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理审批节点、负责人和任务状态，让业务流转过程清晰可追踪。",
       "skills": [
         "审批流程",
         "负责人分配",
@@ -1214,7 +1214,7 @@
       "kind": "service",
       "display_name": "业务脚本整理",
       "category_code": "automation",
-      "introduction": "可提交与现有脚本梳理、参数配置与运行方式相关的需求，由平台评估后统一分配。",
+      "introduction": "整理现有业务脚本，明确参数、运行方式和使用说明，方便维护。",
       "skills": [
         "业务脚本",
         "参数配置",
@@ -1229,7 +1229,7 @@
       "kind": "service",
       "display_name": "重复任务批处理",
       "category_code": "automation",
-      "introduction": "可提交与重复业务任务、批量执行与结果记录相关的需求，由平台评估后统一分配。",
+      "introduction": "将重复业务任务改为批量执行，统一输入、结果记录和失败处理。",
       "skills": [
         "批量执行",
         "重复任务",
@@ -1244,7 +1244,7 @@
       "kind": "service",
       "display_name": "自动化故障排查",
       "category_code": "automation",
-      "introduction": "可提交与自动化中断、执行日志与失败恢复相关的需求，由平台评估后统一分配。",
+      "introduction": "分析自动化中断与执行日志，定位失败步骤，完善恢复和异常反馈。",
       "skills": [
         "自动化排查",
         "执行日志",
@@ -1259,7 +1259,7 @@
       "kind": "service",
       "display_name": "应用部署配置",
       "category_code": "operations",
-      "introduction": "可提交与应用运行环境、部署配置与启动流程相关的需求，由平台评估后统一分配。",
+      "introduction": "整理应用运行环境与部署参数，配置启动流程，处理环境差异。",
       "skills": [
         "应用部署",
         "运行环境",
@@ -1274,7 +1274,7 @@
       "kind": "service",
       "display_name": "容器运行配置",
       "category_code": "operations",
-      "introduction": "可提交与容器配置、持久化目录与运行问题相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理容器配置、网络与持久化目录，定位启动和运行问题。",
       "skills": [
         "容器配置",
         "持久化",
@@ -1289,7 +1289,7 @@
       "kind": "service",
       "display_name": "域名与证书配置",
       "category_code": "operations",
-      "introduction": "可提交与域名解析、HTTPS 与证书配置问题相关的需求，由平台评估后统一分配。",
+      "introduction": "配置域名解析、HTTPS 和证书，排查访问失败与证书异常。",
       "skills": [
         "域名解析",
         "HTTPS",
@@ -1304,7 +1304,7 @@
       "kind": "service",
       "display_name": "反向代理配置",
       "category_code": "operations",
-      "introduction": "可提交与代理转发、路径规则与连接问题相关的需求，由平台评估后统一分配。",
+      "introduction": "调整反向代理的转发路径、请求规则和连接设置，处理访问链路问题。",
       "skills": [
         "反向代理",
         "路径转发",
@@ -1319,7 +1319,7 @@
       "kind": "service",
       "display_name": "服务日志排查",
       "category_code": "operations",
-      "introduction": "可提交与日志整理、错误定位与问题时间线相关的需求，由平台评估后统一分配。",
+      "introduction": "整理服务日志与问题时间线，关联异常请求，缩小故障定位范围。",
       "skills": [
         "服务日志",
         "错误定位",
@@ -1334,7 +1334,7 @@
       "kind": "service",
       "display_name": "备份与恢复流程",
       "category_code": "operations",
-      "introduction": "可提交与备份策略、恢复步骤与验证方案相关的需求，由平台评估后统一分配。",
+      "introduction": "设计备份策略与恢复步骤，明确数据范围、验证方式和操作顺序。",
       "skills": [
         "备份流程",
         "恢复步骤",
@@ -1349,7 +1349,7 @@
       "kind": "service",
       "display_name": "监控与状态展示",
       "category_code": "operations",
-      "introduction": "可提交与服务状态、监控指标与异常提醒相关的需求，由平台评估后统一分配。",
+      "introduction": "整理服务状态与监控指标，搭建状态展示和异常提醒。",
       "skills": [
         "服务监控",
         "状态展示",
@@ -1364,7 +1364,7 @@
       "kind": "service",
       "display_name": "配置与环境管理",
       "category_code": "operations",
-      "introduction": "可提交与环境配置、参数管理与敏感信息保存相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理环境配置和参数管理方式，完善敏感信息的保存与使用边界。",
       "skills": [
         "环境配置",
         "参数管理",
@@ -1379,7 +1379,7 @@
       "kind": "service",
       "display_name": "发布流程整理",
       "category_code": "operations",
-      "introduction": "可提交与发布步骤、验证检查与回退条件相关的需求，由平台评估后统一分配。",
+      "introduction": "整理发布步骤、验收检查和回退条件，让操作流程清楚可执行。",
       "skills": [
         "发布流程",
         "验证检查",
@@ -1394,7 +1394,7 @@
       "kind": "service",
       "display_name": "运行资源排查",
       "category_code": "operations",
-      "introduction": "可提交与CPU、内存、磁盘与服务资源问题相关的需求，由平台评估后统一分配。",
+      "introduction": "排查 CPU、内存和磁盘占用，分析服务资源瓶颈与异常增长。",
       "skills": [
         "资源排查",
         "CPU 内存",
@@ -1409,7 +1409,7 @@
       "kind": "service",
       "display_name": "产品界面设计",
       "category_code": "design",
-      "introduction": "可提交与页面结构、视觉层级与功能布局相关的需求，由平台评估后统一分配。",
+      "introduction": "设计产品页面结构与视觉层级，梳理主要功能和信息布局。",
       "skills": [
         "产品界面",
         "视觉层级",
@@ -1424,7 +1424,7 @@
       "kind": "service",
       "display_name": "操作流程设计",
       "category_code": "design",
-      "introduction": "可提交与任务步骤、表单流程与关键操作相关的需求，由平台评估后统一分配。",
+      "introduction": "优化任务步骤、表单与关键操作，让用户更容易理解下一步。",
       "skills": [
         "操作流程",
         "任务步骤",
@@ -1439,7 +1439,7 @@
       "kind": "service",
       "display_name": "移动界面适配",
       "category_code": "design",
-      "introduction": "可提交与窄屏布局、触控控件与移动体验相关的需求，由平台评估后统一分配。",
+      "introduction": "调整窄屏布局、触控控件和内容顺序，改善手机端操作体验。",
       "skills": [
         "移动界面",
         "窄屏布局",
@@ -1454,7 +1454,7 @@
       "kind": "service",
       "display_name": "深浅主题适配",
       "category_code": "design",
-      "introduction": "可提交与深浅配色、界面状态与可读性相关的需求，由平台评估后统一分配。",
+      "introduction": "适配深色与浅色主题，调整配色、状态反馈和文字可读性。",
       "skills": [
         "深浅主题",
         "界面状态",
@@ -1469,7 +1469,7 @@
       "kind": "service",
       "display_name": "图标与标识整理",
       "category_code": "design",
-      "introduction": "可提交与功能图标、业务标识与图形规范相关的需求，由平台评估后统一分配。",
+      "introduction": "整理功能图标与业务标识，统一尺寸、风格和使用规则。",
       "skills": [
         "功能图标",
         "业务标识",
@@ -1484,7 +1484,7 @@
       "kind": "service",
       "display_name": "组件样式规范",
       "category_code": "design",
-      "introduction": "可提交与按钮、表单、卡片与组件状态规范相关的需求，由平台评估后统一分配。",
+      "introduction": "梳理按钮、表单和卡片的样式及交互状态，建立统一的组件规范。",
       "skills": [
         "组件样式",
         "表单控件",
@@ -1499,7 +1499,7 @@
       "kind": "service",
       "display_name": "后台操作体验",
       "category_code": "design",
-      "introduction": "可提交与管理列表、筛选、编辑与操作反馈相关的需求，由平台评估后统一分配。",
+      "introduction": "改进后台列表、筛选和编辑流程，让常用操作更顺手、反馈更明确。",
       "skills": [
         "后台体验",
         "列表筛选",
@@ -1514,7 +1514,7 @@
       "kind": "service",
       "display_name": "界面文案梳理",
       "category_code": "design",
-      "introduction": "可提交与按钮文字、状态提示与错误说明相关的需求，由平台评估后统一分配。",
+      "introduction": "整理按钮、状态和错误提示，替换含糊表述，让界面说明简洁易懂。",
       "skills": [
         "界面文案",
         "状态提示",
@@ -1529,7 +1529,7 @@
       "kind": "service",
       "display_name": "页面原型整理",
       "category_code": "design",
-      "introduction": "可提交与页面原型、交互说明与实现标注相关的需求，由平台评估后统一分配。",
+      "introduction": "整理页面原型、交互说明和实现标注，让设计与开发衔接更清晰。",
       "skills": [
         "页面原型",
         "交互说明",
@@ -1544,7 +1544,7 @@
       "kind": "service",
       "display_name": "可用性问题排查",
       "category_code": "design",
-      "introduction": "可提交与界面遮挡、滚动、反馈与操作问题相关的需求，由平台评估后统一分配。",
+      "introduction": "检查界面遮挡、滚动和操作反馈，定位影响使用的问题并提出改进方案。",
       "skills": [
         "可用性",
         "滚动交互",
