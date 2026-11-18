@@ -388,9 +388,13 @@ func TestDemandLocalFixtureServer(t *testing.T) {
 			c.Status(401)
 			return
 		}
-		bundle := f.bundles[name]
-		service.WriteRefreshCookie(c, bundle.RefreshToken)
 		u := f.users[name]
+		bundle, err := service.CreateLoginSession(u.Id, "synthetic-browser-fixture", "127.0.0.1", "demand-browser")
+		if err != nil {
+			c.Status(500)
+			return
+		}
+		service.WriteRefreshCookie(c, bundle.RefreshToken)
 		common.ApiSuccess(c, gin.H{"access_token": bundle.AccessToken, "token_type": bundle.TokenType, "access_expires_at": bundle.AccessExpiresAt, "session": bundle.Session, "user": gin.H{"id": u.Id, "username": u.Username, "display_name": u.DisplayName, "role": u.Role, "status": u.Status, "permissions": gin.H{"admin_permissions": authz.Capabilities(u.Id, u.Role)}}})
 	})
 	listener, err := net.Listen("tcp", address)
