@@ -2,6 +2,7 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"image"
@@ -11,10 +12,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -132,6 +135,14 @@ func newDemandFixture(t *testing.T) *demandFixture {
 	middleware.SetUpLogger(f.engine)
 	f.engine.Use(middleware.RequestId())
 	SetDemandRoutes(f.engine.Group("/api"))
+	f.engine.GET("/api/user/self", middleware.UserAuth(), func(c *gin.Context) {
+		u, err := model.GetUserById(c.GetInt("id"), false)
+		if err != nil {
+			c.Status(500)
+			return
+		}
+		common.ApiSuccess(c, gin.H{"id": u.Id, "quota": u.Quota, "group": u.Group, "phone_e164": u.PhoneE164, "username": u.Username, "display_name": u.DisplayName, "role": u.Role, "status": u.Status, "permissions": gin.H{"admin_permissions": authz.Capabilities(u.Id, u.Role)}})
+	})
 	return f
 }
 func (f *demandFixture) request(t *testing.T, who, method, path string, body any, status int) []byte {
@@ -366,14 +377,6 @@ func TestDemandLocalFixtureServer(t *testing.T) {
 	})
 	f.engine.POST("/api/user/auth/refresh", controller.RefreshAuth)
 	f.engine.POST("/api/user/auth/refresh/recoverable", controller.RefreshRecoverableAuth)
-	f.engine.GET("/api/user/self", middleware.UserAuth(), func(c *gin.Context) {
-		u, err := model.GetUserById(c.GetInt("id"), false)
-		if err != nil {
-			c.Status(500)
-			return
-		}
-		common.ApiSuccess(c, gin.H{"id": u.Id, "username": u.Username, "display_name": u.DisplayName, "role": u.Role, "status": u.Status, "permissions": gin.H{"admin_permissions": authz.Capabilities(u.Id, u.Role)}})
-	})
 	f.engine.POST("/api/user/login", func(c *gin.Context) {
 		var in struct {
 			Username string `json:"username"`
@@ -402,14 +405,26 @@ func TestDemandLocalFixtureServer(t *testing.T) {
 	system_setting.TaskPublicAddress = "http://" + listener.Addr().String()
 	server := &http.Server{Handler: f.engine, ReadHeaderTimeout: 5 * time.Second}
 	defer server.Close()
-	manifest := map[string]any{"schema_version": 1, "base_url": system_setting.TaskPublicAddress, "synthetic_only": true, "expires_at": time.Now().Add(15 * time.Minute).Unix(), "tokens": map[string]string{"customerA": f.tokens["owner"], "customerB": f.tokens["other"], "engineerA": f.tokens["engineer"], "engineerB": f.tokens["replacement"], "admin": f.tokens["admin"]}, "users": f.users, "engineers": f.engineers, "admin_page": "/demand-management", "engineer_page": "/engineer-workspace"}
+	manifest := map[string]any{"schema_version": 1, "fixture_revision": 2, "fixture_id": uuid.NewString(), "source_commit": os.Getenv("DEMAND_FIXTURE_SOURCE_COMMIT"), "base_url": system_setting.TaskPublicAddress, "synthetic_only": true, "expires_at": time.Now().Add(15 * time.Minute).Unix(), "tokens": map[string]string{"customerA": f.tokens["owner"], "customerB": f.tokens["other"], "engineerA": f.tokens["engineer"], "engineerB": f.tokens["replacement"], "admin": f.tokens["admin"]}, "users": f.users, "engineers": f.engineers, "admin_page": "/demand-management", "engineer_page": "/engineer-workspace"}
 	raw, err := common.Marshal(manifest)
 	require.NoError(t, err)
 	output := os.Getenv("DEMAND_FIXTURE_OUTPUT")
 	require.NotEmpty(t, output)
 	require.NoError(t, os.WriteFile(output, raw, 0600))
 	t.Logf("Synthetic local demand fixture: %s", listener.Addr())
-	err = server.Serve(listener)
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stop)
+	result := make(chan error, 1)
+	go func() { result <- server.Serve(listener) }()
+	select {
+	case err = <-result:
+	case <-stop:
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, server.Shutdown(ctx))
+		err = <-result
+	}
 	if err != nil && err != http.ErrServerClosed {
 		t.Fatal(err)
 	}
@@ -551,4 +566,22 @@ func TestDemandPublishedAvatarAccessRevokesWithoutDeletingOriginalWork(t *testin
 	f.engine.ServeHTTP(response, httptest.NewRequest("GET", u.RequestURI(), nil))
 	assert.Equal(t, 404, response.Code, "disabled engineer account must revoke its published avatar")
 	f.request(t, "owner", "GET", "/api/product/demands/"+original.Demand.ID, nil, 200)
+}
+
+func TestDemandFixtureSelfMetadataSatisfiesHostAccountContract(t *testing.T) {
+	f := newDemandFixture(t)
+	for _, name := range []string{"owner", "other", "engineer", "replacement", "admin"} {
+		metadata := demandData[struct {
+			ID        int      `json:"id"`
+			Quota     *float64 `json:"quota"`
+			Group     string   `json:"group"`
+			PhoneE164 *string  `json:"phone_e164"`
+		}](t, f.request(t, name, "GET", "/api/user/self", nil, 200))
+		require.Positive(t, metadata.ID)
+		require.NotNil(t, metadata.Quota, "Host requires an explicit finite non-negative quota")
+		assert.GreaterOrEqual(t, *metadata.Quota, float64(0))
+		assert.EqualValues(t, f.users[name].Quota, *metadata.Quota)
+		assert.Equal(t, f.users[name].Group, metadata.Group)
+		assert.Equal(t, f.users[name].PhoneE164, metadata.PhoneE164)
+	}
 }
