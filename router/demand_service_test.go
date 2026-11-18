@@ -63,11 +63,11 @@ func newDemandFixture(t *testing.T) *demandFixture {
 	oldMain, oldLogKind := common.MainDatabaseType(), common.LogDatabaseType()
 	var dialect gorm.Dialector = sqlite.Open(filepath.Join(t.TempDir(), "demand-synthetic.db") + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if dsn := os.Getenv("DEMAND_TEST_POSTGRES_DSN"); dsn != "" {
-		require.Contains(t, dsn, "127.0.0.1:43306/test_demand_")
+		require.True(t, strings.Contains(dsn, "127.0.0.1:43306/test_demand_") || strings.Contains(dsn, "127.0.0.1:43406/test_demand_"))
 		dialect = postgres.Open(dsn)
 		common.SetDatabaseTypes(common.DatabaseTypePostgreSQL, common.DatabaseTypePostgreSQL)
 	} else if dsn := os.Getenv("DEMAND_TEST_MYSQL_DSN"); dsn != "" {
-		require.Contains(t, dsn, "tcp(127.0.0.1:43307)/test_demand_")
+		require.True(t, strings.Contains(dsn, "tcp(127.0.0.1:43307)/test_demand_") || strings.Contains(dsn, "tcp(127.0.0.1:43407)/test_demand_"))
 		dialect = mysql.Open(dsn)
 		common.SetDatabaseTypes(common.DatabaseTypeMySQL, common.DatabaseTypeMySQL)
 	} else {
@@ -631,4 +631,200 @@ func TestDemandHistoryAuthorNamesFollowSendersAfterReassignment(t *testing.T) {
 	require.Len(t, history.Items, 3)
 	assert.Nil(t, history.Items[1].AuthorName)
 	assert.Nil(t, history.Items[2].AuthorName)
+}
+
+type demandDirectoryPage[T any] struct {
+	Items   []T    `json:"items"`
+	Next    string `json:"next_after_id"`
+	HasMore bool   `json:"has_more"`
+	Total   int    `json:"total"`
+}
+
+func TestDemandDirectoryPresetImportPaginationAndPrivateAvatars(t *testing.T) {
+	f := newDemandFixture(t)
+	in := map[string]string{"batch_code": "test-catalog-v1"}
+	receipt := demandData[service.DemandProfileImportResult](t, f.request(t, "admin", "POST", "/api/demand-management/profile-presets", in, 200))
+	assert.Equal(t, 100, receipt.CreatedServiceProfiles)
+	assert.Equal(t, 100, receipt.CreatedCustomerProfiles)
+	var users int64
+	require.NoError(t, f.db.Model(&model.User{}).Count(&users).Error)
+	assert.EqualValues(t, 5, users)
+	all := []service.DemandServiceProfileView{}
+	cursor := ""
+	for {
+		page := demandData[demandDirectoryPage[service.DemandServiceProfileView]](t, f.request(t, "owner", "GET", "/api/product/demands/service-profiles?limit=30&after_id="+url.QueryEscape(cursor), nil, 200))
+		assert.Equal(t, 100, page.Total)
+		require.LessOrEqual(t, len(page.Items), 30)
+		all = append(all, page.Items...)
+		if !page.HasMore {
+			break
+		}
+		require.NotEmpty(t, page.Next)
+		cursor = page.Next
+	}
+	require.Len(t, all, 100)
+	assert.Equal(t, "YS-SVC-001", all[0].Code)
+	assert.Equal(t, "platform", all[0].IntakeMode)
+	firstPage := demandData[demandDirectoryPage[service.DemandServiceProfileView]](t, f.request(t, "owner", "GET", "/api/product/demands/service-profiles?limit=1", nil, 200))
+	f.request(t, "owner", "GET", "/api/product/demands/service-profiles?limit=1&q=changed&after_id="+url.QueryEscape(firstPage.Next), nil, 400)
+	f.request(t, "owner", "GET", "/api/product/demands/service-profiles?limit=101", nil, 400)
+	literal := demandData[demandDirectoryPage[service.DemandServiceProfileView]](t, f.request(t, "owner", "GET", "/api/product/demands/service-profiles?q=%25", nil, 200))
+	assert.Empty(t, literal.Items)
+	old := demandData[demandDirectoryPage[service.DemandEngineerView]](t, f.request(t, "owner", "GET", "/api/product/demands/engineers", nil, 200))
+	assert.Len(t, old.Items, 2)
+	avatar := all[0].AvatarAttachmentID
+	require.NotEmpty(t, avatar)
+	link := demandData[service.DemandAttachmentLink](t, f.request(t, "owner", "POST", "/api/product/demands/attachments/"+avatar+"/link", map[string]string{"disposition": "inline"}, 200))
+	u, err := url.Parse(link.URL)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	request := httptest.NewRequest("GET", u.RequestURI(), nil)
+	request.Header.Set("Range", "bytes=0-31")
+	f.engine.ServeHTTP(w, request)
+	assert.Equal(t, 206, w.Code)
+	assert.Equal(t, []byte{137, 80, 78, 71}, w.Body.Bytes()[:4])
+	edited := all[0]
+	edited.DisplayName = "管理员修改保留"
+	edited.Published = false
+	edited = demandData[service.DemandServiceProfileView](t, f.request(t, "admin", "PUT", "/api/demand-management/service-profiles/"+edited.ID, edited, 200))
+	f.request(t, "admin", "PUT", "/api/demand-management/service-profiles/"+edited.ID, all[0], 409)
+	w = httptest.NewRecorder()
+	f.engine.ServeHTTP(w, httptest.NewRequest("GET", u.RequestURI(), nil))
+	assert.Equal(t, 404, w.Code)
+	repeated := demandData[service.DemandProfileImportResult](t, f.request(t, "admin", "POST", "/api/demand-management/profile-presets", in, 200))
+	assert.True(t, repeated.Replayed)
+	skipped := demandData[service.DemandProfileImportResult](t, f.request(t, "admin", "POST", "/api/demand-management/profile-presets", map[string]string{"batch_code": "test-catalog-v2"}, 200))
+	assert.Equal(t, 100, skipped.SkippedServiceProfiles)
+	assert.Equal(t, 100, skipped.SkippedCustomerProfiles)
+	var kept model.DemandServiceProfile
+	require.NoError(t, f.db.First(&kept, "id = ?", edited.ID).Error)
+	assert.Equal(t, edited.DisplayName, kept.DisplayName)
+	assert.False(t, kept.Published)
+	customers := demandData[demandDirectoryPage[service.DemandCustomerProfileView]](t, f.request(t, "admin", "GET", "/api/demand-management/customer-profiles?limit=100", nil, 200))
+	assert.Equal(t, 100, customers.Total)
+	require.Len(t, customers.Items, 100)
+	cp := customers.Items[0]
+	assert.Zero(t, cp.UserID)
+	f.request(t, "owner", "POST", "/api/product/demands/attachments/"+cp.AvatarAttachmentID+"/link", map[string]string{"disposition": "inline"}, 404)
+	f.request(t, "owner", "GET", "/api/demand-management/customer-profiles", nil, 403)
+	cp.UserID = f.users["owner"].Id
+	cp.DisplayName = "已关联客户"
+	cp = demandData[service.DemandCustomerProfileView](t, f.request(t, "admin", "PUT", "/api/demand-management/customer-profiles/"+cp.ID, cp, 200))
+	duplicate := customers.Items[1]
+	duplicate.UserID = cp.UserID
+	f.request(t, "admin", "PUT", "/api/demand-management/customer-profiles/"+duplicate.ID, duplicate, 409)
+	// Avatar reservation remains private and cannot be rebound into somebody else's conversation.
+	f.request(t, "admin", "POST", "/api/product/demands", service.DemandCreate{ClientRequestID: "avatar-as-message-001", EngineerID: f.engineers["engineer"], AttachmentIDs: []string{avatar}}, 409)
+}
+
+func TestDemandPlatformIntakeAssignmentMediaAndLegacyReads(t *testing.T) {
+	f := newDemandFixture(t)
+	p := demandData[service.DemandServiceProfileView](t, f.request(t, "admin", "POST", "/api/demand-management/service-profiles", service.DemandServiceProfileView{DemandServiceProfile: model.DemandServiceProfile{Code: "service_web", DisplayName: "网站服务", ServiceDirection: "网站与表单", Enabled: true, Published: true}, CategoryIDs: []string{"software"}}, 200))
+	var pngData bytes.Buffer
+	require.NoError(t, png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	imageAttachment := f.upload(t, "owner", "brief.png", "image/png", pngData.Bytes())
+	videoData := append([]byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 0, 0, 'm', 'p', '4', '2', 'i', 's', 'o', 'm'}, bytes.Repeat([]byte{0}, 1024)...)
+	video := f.upload(t, "owner", "brief.mp4", "video/mp4", videoData)
+	create := service.DemandCreate{ClientRequestID: "platform-order-001", ServiceProfileID: p.ID, Text: "平台统一分配", AttachmentIDs: []string{imageAttachment.ID, video.ID}}
+	first := demandData[service.DemandSendReceipt](t, f.request(t, "owner", "POST", "/api/product/demands", create, 201))
+	d := first.Demand
+	assert.False(t, d.Assigned)
+	assert.Equal(t, "platform-intake", d.EngineerID)
+	assert.Equal(t, "平台统一接待", d.Engineer.DisplayName)
+	assert.Equal(t, "platform", d.IntakeMode)
+	assert.Equal(t, p.DisplayName, d.ServiceProfileName)
+	var dbDemand model.Demand
+	require.NoError(t, f.db.First(&dbDemand, "id = ?", d.ID).Error)
+	assert.Empty(t, dbDemand.EngineerID)
+	f.request(t, "engineer", "GET", "/api/engineer/demands/"+d.ID, nil, 404)
+	f.request(t, "other", "GET", "/api/product/demands/"+d.ID, nil, 404)
+	queue := demandData[struct {
+		Items []service.DemandView `json:"items"`
+	}](t, f.request(t, "admin", "GET", "/api/demand-management?assignment=unassigned", nil, 200))
+	require.Len(t, queue.Items, 1)
+	p.Enabled = false
+	p = demandData[service.DemandServiceProfileView](t, f.request(t, "admin", "PUT", "/api/demand-management/service-profiles/"+p.ID, p, 200))
+	replay := demandData[service.DemandSendReceipt](t, f.request(t, "owner", "POST", "/api/product/demands", create, 200))
+	assert.True(t, replay.Replayed)
+	newCreate := create
+	newCreate.ClientRequestID = "platform-order-002"
+	newCreate.AttachmentIDs = nil
+	f.request(t, "owner", "POST", "/api/product/demands", newCreate, 409)
+	assigned := demandData[service.DemandActionResult](t, f.request(t, "admin", "POST", "/api/demand-management/"+d.ID+"/actions", service.DemandAction{ClientActionID: "platform-assign-001", Revision: d.Revision, Action: "assign", EngineerID: f.engineers["engineer"]}, 200))
+	d = assigned.Demand
+	assert.True(t, d.Assigned)
+	assert.Equal(t, p.ID, d.ServiceProfileID)
+	accepted := demandData[service.DemandActionResult](t, f.request(t, "engineer", "POST", "/api/engineer/demands/"+d.ID+"/actions", service.DemandAction{ClientActionID: "platform-accept-001", Revision: d.Revision, Action: "accept"}, 200))
+	d = accepted.Demand
+	link := demandData[service.DemandAttachmentLink](t, f.request(t, "engineer", "POST", "/api/product/demands/attachments/"+video.ID+"/link", map[string]string{"disposition": "inline"}, 200))
+	u, err := url.Parse(link.URL)
+	require.NoError(t, err)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", u.RequestURI(), nil)
+	r.Header.Set("Range", "bytes=0-15")
+	f.engine.ServeHTTP(w, r)
+	assert.Equal(t, 206, w.Code)
+	assert.Equal(t, videoData[:16], w.Body.Bytes())
+	transferred := demandData[service.DemandActionResult](t, f.request(t, "admin", "POST", "/api/demand-management/"+d.ID+"/actions", service.DemandAction{ClientActionID: "platform-transfer-001", Revision: d.Revision, Action: "assign", EngineerID: f.engineers["replacement"]}, 200))
+	d = transferred.Demand
+	w = httptest.NewRecorder()
+	f.engine.ServeHTTP(w, httptest.NewRequest("GET", u.RequestURI(), nil))
+	assert.Equal(t, 404, w.Code)
+	accepted = demandData[service.DemandActionResult](t, f.request(t, "replacement", "POST", "/api/engineer/demands/"+d.ID+"/actions", service.DemandAction{ClientActionID: "platform-accept-002", Revision: d.Revision, Action: "accept"}, 200))
+	d = accepted.Demand
+	reply := demandData[service.DemandSendReceipt](t, f.request(t, "replacement", "POST", "/api/engineer/demands/"+d.ID+"/messages", service.DemandSend{ClientMessageID: "platform-reply-001", Text: "接单已确认"}, 200))
+	d = reply.Demand
+	deliveryFile := f.upload(t, "replacement", "delivery.png", "image/png", pngData.Bytes())
+	delivery := demandData[service.DemandActionResult](t, f.request(t, "replacement", "POST", "/api/engineer/demands/"+d.ID+"/actions", service.DemandAction{ClientActionID: "platform-deliver-001", Revision: d.Revision, Action: "deliver", Text: "交付", AttachmentIDs: []string{deliveryFile.ID}}, 200))
+	d = delivery.Demand
+	final := demandData[service.DemandActionResult](t, f.request(t, "owner", "POST", "/api/product/demands/"+d.ID+"/actions", service.DemandAction{ClientActionID: "platform-confirm-001", Revision: d.Revision, Action: "accept_delivery", DeliveryID: d.DeliveryID}, 200))
+	assert.Equal(t, "completed", final.Demand.Status)
+	legacy := f.create(t, "legacy-direct-001")
+	assert.Equal(t, "direct", legacy.Demand.IntakeMode)
+	assert.True(t, legacy.Demand.Assigned)
+	f.request(t, "owner", "GET", "/api/product/demands", nil, 200)
+	create.ClientRequestID = "mutually-exclusive-001"
+	create.EngineerID = f.engineers["engineer"]
+	f.request(t, "owner", "POST", "/api/product/demands", create, 400)
+}
+
+func TestDemandDirectoryUpgradeKeepsLegacyDemandReceipts(t *testing.T) {
+	f := newDemandFixture(t)
+	legacy := f.create(t, "legacy-before-upgrade")
+	var sessionsBefore []model.UserSession
+	require.NoError(t, f.db.Find(&sessionsBefore).Error)
+	require.NoError(t, f.db.Migrator().DropTable(&model.DemandServiceProfile{}, &model.DemandCustomerProfile{}, &model.DemandProfileImport{}))
+	require.NoError(t, f.db.Migrator().DropColumn(&model.Demand{}, "service_profile_id"))
+	require.NoError(t, f.db.Migrator().DropColumn(&model.Demand{}, "service_profile_name"))
+	require.NoError(t, f.db.Migrator().DropColumn(&model.DemandAttachment{}, "avatar_reserved"))
+	for range 2 {
+		require.NoError(t, f.db.AutoMigrate(model.DemandTables()...))
+	}
+	// A real upgrade opens a new process/pool after migration. Reopen instead of retaining
+	// pgx prepared SELECT * plans from before the deliberately removed/re-added columns.
+	nextDB, err := gorm.Open(f.db.Dialector, &gorm.Config{})
+	require.NoError(t, err)
+	f.db = nextDB
+	model.DB = nextDB
+	model.LOG_DB = nextDB
+	nextPool, err := nextDB.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, nextPool.Close()) })
+	recovered := demandData[service.DemandSendReceipt](t, f.request(t, "owner", "POST", "/api/product/demands", service.DemandCreate{ClientRequestID: "legacy-before-upgrade", EngineerID: f.engineers["engineer"], Text: "Synthetic website request"}, 200))
+	assert.True(t, recovered.Replayed)
+	assert.Equal(t, legacy.Demand.ID, recovered.Demand.ID)
+	var sessionsAfter []model.UserSession
+	require.NoError(t, f.db.Find(&sessionsAfter).Error)
+	assert.Equal(t, sessionsBefore, sessionsAfter)
+	for _, before := range f.users {
+		var after model.User
+		require.NoError(t, f.db.First(&after, before.Id).Error)
+		assert.Equal(t, before, after)
+	}
+	// The original per-user submission uniqueness still holds after the additive migration.
+	var row model.Demand
+	require.NoError(t, f.db.First(&row, "id = ?", legacy.Demand.ID).Error)
+	row.ID = "duplicate-demand"
+	row.Number = "duplicate-number"
+	assert.Error(t, f.db.Create(&row).Error)
 }

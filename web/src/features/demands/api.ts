@@ -113,6 +113,10 @@ export const demandSchema = z.object({
   last_message_at: z.number().optional(),
   delivery_id: z.string(),
   engineer: engineerSchema,
+  service_profile_id: z.string().optional(),
+  service_profile_name: z.string().optional(),
+  intake_mode: z.enum(['direct', 'platform']).optional(),
+  assigned: z.boolean().optional(),
   owner: z
     .object({
       id: z.number(),

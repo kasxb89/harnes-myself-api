@@ -73,7 +73,7 @@ func GetDemandConfiguration(c *gin.Context) {
 		demandRespond(c, v, err)
 		return
 	}
-	demandRespond(c, gin.H{"config": v.Config, "server_time": time.Now().Unix(), "capabilities": gin.H{"resumable_upload": true, "polling": true}}, err)
+	demandRespond(c, gin.H{"config": v.Config, "server_time": time.Now().Unix(), "capabilities": gin.H{"resumable_upload": true, "polling": true, "service_profiles": true, "engineer_pagination": true}}, err)
 }
 func SaveDemandConfiguration(c *gin.Context) {
 	var in service.DemandConfigVersion
@@ -84,33 +84,8 @@ func SaveDemandConfiguration(c *gin.Context) {
 	demandRespond(c, v, err)
 }
 func GetDemandEngineers(c *gin.Context) {
-	items := []model.DemandEngineer{}
-	q := model.DB.Model(&model.DemandEngineer{})
-	if !c.GetBool("demand_admin") {
-		q = q.Where("published = ? AND enabled = ?", true, true)
-		q = q.Where("user_id IN (?)", model.DB.Model(&model.User{}).Select("id").Where("status = ?", common.UserStatusEnabled))
-	}
-	if err := q.Order("sort ASC, id ASC").Find(&items).Error; err != nil {
-		demandRespond(c, nil, err)
-		return
-	}
-	views := []service.DemandEngineerView{}
-	for _, e := range items {
-		v := service.DemandEngineerPublic(e, c.GetBool("demand_admin"))
-		if cat := c.Query("category_id"); cat != "" {
-			found := false
-			for _, id := range v.CategoryIDs {
-				if id == cat {
-					found = true
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-		views = append(views, v)
-	}
-	demandRespond(c, gin.H{"items": views, "server_time": time.Now().Unix()}, nil)
+	c.Set("demand_directory_kind", "engineers")
+	GetDemandDirectory(c)
 }
 func SaveDemandEngineer(c *gin.Context) {
 	var in service.DemandEngineerView
@@ -274,6 +249,26 @@ func demandListQuery(c *gin.Context) (*gorm.DB, error) {
 		q = q.Where("status = ?", status)
 	}
 	if a.Admin {
+		switch c.Query("assignment") {
+		case "unassigned":
+			q = q.Where("engineer_id = ? OR engineer_id IS NULL", "")
+		case "assigned":
+			q = q.Where("engineer_id <> ?", "")
+		case "":
+		default:
+			return nil, &service.DemandError{Status: 400, Code: "DEMAND_INVALID_INPUT", Message: "Invalid assignment filter"}
+		}
+		if profileID := c.Query("customer_profile_id"); profileID != "" {
+			var profile model.DemandCustomerProfile
+			if model.DB.First(&profile, "id = ?", profileID).Error != nil {
+				return nil, &service.DemandError{Status: 404, Code: "DEMAND_NOT_FOUND", Message: "Customer profile not found"}
+			}
+			if profile.UserID == nil {
+				q = q.Where("1 = 0")
+			} else {
+				q = q.Where("user_id = ?", *profile.UserID)
+			}
+		}
 		for _, field := range []string{"user_id", "engineer_id"} {
 			if v := c.Query(field); v != "" {
 				q = q.Where(field+" = ?", v)

@@ -181,12 +181,10 @@ func SaveDemandEngineer(db *gorm.DB, id string, in DemandEngineerView) (DemandEn
 	}
 	raw, _ := common.Marshal(in.CategoryIDs)
 	e := model.DemandEngineer{ID: id, UserID: in.UserID, DisplayName: in.DisplayName, AvatarAttachmentID: in.AvatarAttachmentID, CategoryJSON: string(raw), Introduction: in.Introduction, ServiceHours: in.ServiceHours, Published: in.Published, Enabled: in.Enabled, Accepting: in.Accepting, Capacity: in.Capacity, Sort: in.Sort, Revision: in.Revision + 1}
-	if in.AvatarAttachmentID != "" {
-		var a model.DemandAttachment
-		if db.Where("id = ? AND status = ? AND kind = ? AND demand_id = ?", in.AvatarAttachmentID, "ready", "image", "").First(&a).Error != nil {
-			return in, demandError(400, "UPLOAD_INVALID", "Invalid engineer avatar")
-		}
+	if err = validateDemandProfileAvatar(db, in.AvatarAttachmentID); err != nil {
+		return in, err
 	}
+
 	if id == "" {
 		e.ID = uuid.NewString()
 		err = db.Create(&e).Error
@@ -238,6 +236,8 @@ func DemandAccess(db *gorm.DB, a DemandActor, id string) (model.Demand, error) {
 type DemandView struct {
 	model.Demand
 	Engineer    DemandEngineerView `json:"engineer"`
+	IntakeMode  string             `json:"intake_mode"`
+	Assigned    bool               `json:"assigned"`
 	LastReadSeq int64              `json:"last_read_seq"`
 	UnreadCount int64              `json:"unread_count"`
 	Owner       *DemandOwner       `json:"owner,omitempty"`
@@ -250,11 +250,21 @@ type DemandOwner struct {
 
 func ProjectDemand(db *gorm.DB, a DemandActor, d model.Demand) (DemandView, error) {
 	v := DemandView{Demand: d}
-	var e model.DemandEngineer
-	if err := db.First(&e, "id = ?", d.EngineerID).Error; err != nil {
-		return v, err
+	v.IntakeMode = "direct"
+	v.Assigned = d.EngineerID != ""
+	if d.ServiceProfileID != "" {
+		v.IntakeMode = "platform"
 	}
-	v.Engineer = DemandEngineerPublic(e, a.Admin)
+	if d.EngineerID == "" {
+		v.Demand.EngineerID = "platform-intake"
+		v.Engineer = DemandEngineerView{ID: "platform-intake", DisplayName: "平台统一接待", CategoryIDs: []string{}, Introduction: "由平台审核需求后分派工程师", Published: true, Enabled: true, Revision: 1, Presence: "offline"}
+	} else {
+		var e model.DemandEngineer
+		if err := db.First(&e, "id = ?", d.EngineerID).Error; err != nil {
+			return v, err
+		}
+		v.Engineer = DemandEngineerPublic(e, a.Admin)
+	}
 	var cursor model.DemandReadCursor
 	err := db.Where("demand_id = ? AND user_id = ?", d.ID, a.UserID).Find(&cursor).Error
 	if err != nil {
@@ -284,6 +294,9 @@ type DemandMessageView struct {
 // ProjectDemandMessages batches attachments, author profiles and read cursors for one page.
 func ProjectDemandMessages(db *gorm.DB, a DemandActor, d model.Demand, messages []model.DemandMessage) ([]DemandMessageView, int64, error) {
 	recipient := d.UserID
+	if recipient == a.UserID && d.EngineerID == "" {
+		recipient = 0
+	}
 	if recipient == a.UserID {
 		var engineer model.DemandEngineer
 		if err := db.Select("user_id").First(&engineer, "id = ?", d.EngineerID).Error; err != nil {
@@ -361,15 +374,16 @@ type DemandSend struct {
 	AttachmentIDs   []string `json:"attachment_ids"`
 }
 type DemandCreate struct {
-	ClientRequestID string   `json:"client_request_id"`
-	EngineerID      string   `json:"engineer_id"`
-	Text            string   `json:"text"`
-	AttachmentIDs   []string `json:"attachment_ids"`
-	Title           string   `json:"title"`
-	Budget          string   `json:"budget"`
-	ExpectedDate    string   `json:"expected_date"`
-	ClientVersion   string   `json:"client_version"`
-	ClientPlatform  string   `json:"client_platform"`
+	ClientRequestID  string   `json:"client_request_id"`
+	EngineerID       string   `json:"engineer_id"`
+	ServiceProfileID string   `json:"service_profile_id,omitempty"`
+	Text             string   `json:"text"`
+	AttachmentIDs    []string `json:"attachment_ids"`
+	Title            string   `json:"title"`
+	Budget           string   `json:"budget"`
+	ExpectedDate     string   `json:"expected_date"`
+	ClientVersion    string   `json:"client_version"`
+	ClientPlatform   string   `json:"client_platform"`
 }
 type DemandSendReceipt struct {
 	Demand   DemandView        `json:"demand"`
@@ -407,7 +421,14 @@ func bindDemandAttachments(tx *gorm.DB, a DemandActor, d model.Demand, messageID
 		if v.DemandID != "" || v.MessageID != "" {
 			return demandError(409, "ATTACHMENT_IN_USE", "Attachment is already attached to a message")
 		}
-		res := tx.Model(&model.DemandAttachment{}).Where("id = ? AND message_id = ? AND demand_id = ?", id, "", "").Updates(map[string]any{"demand_id": d.ID, "message_id": messageID})
+		reserved, err := demandAvatarReserved(tx, id)
+		if err != nil {
+			return err
+		}
+		if reserved {
+			return demandError(409, "ATTACHMENT_IN_USE", "Profile avatar cannot be attached to a message")
+		}
+		res := tx.Model(&model.DemandAttachment{}).Where("id = ? AND message_id = ? AND demand_id = ? AND (avatar_reserved = ? OR avatar_reserved IS NULL)", id, "", "", false).Updates(map[string]any{"demand_id": d.ID, "message_id": messageID})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -456,23 +477,34 @@ func CreateDemand(db *gorm.DB, a DemandActor, in DemandCreate) (DemandSendReceip
 		if !cfg.Config.Enabled {
 			return demandError(503, "DISABLED", "Demand service is not enabled")
 		}
+		if (in.EngineerID == "") == (in.ServiceProfileID == "") || len(in.EngineerID) > 40 || len(in.ServiceProfileID) > 40 {
+			return demandError(400, "INVALID_INPUT", "Choose one engineer or service profile")
+		}
+		var profile model.DemandServiceProfile
 		var e model.DemandEngineer
-		if err := tx.First(&e, "id = ?", in.EngineerID).Error; err != nil {
-			return demandError(409, "ENGINEER_UNAVAILABLE", "Engineer is not accepting new demands")
-		}
-		var enabledUser int64
-		if err := tx.Model(&model.User{}).Where("id = ? AND status = ?", e.UserID, common.UserStatusEnabled).Count(&enabledUser).Error; err != nil {
-			return err
-		}
-		if enabledUser != 1 {
-			return demandError(409, "ENGINEER_UNAVAILABLE", "Engineer is not accepting new demands")
-		}
-		res := tx.Model(&model.DemandEngineer{}).Where("id = ? AND enabled = ? AND published = ? AND accepting = ? AND open_demand_count < capacity", e.ID, true, true, true).UpdateColumn("open_demand_count", gorm.Expr("open_demand_count + 1"))
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected != 1 {
-			return demandError(409, "ENGINEER_UNAVAILABLE", "Engineer is not accepting new demands")
+		if in.ServiceProfileID != "" {
+			profile, err = demandServiceIntake(tx, in.ServiceProfileID)
+			if err != nil {
+				return err
+			}
+		} else {
+			if err := tx.First(&e, "id = ?", in.EngineerID).Error; err != nil {
+				return demandError(409, "ENGINEER_UNAVAILABLE", "Engineer is not accepting new demands")
+			}
+			var enabledUser int64
+			if err := tx.Model(&model.User{}).Where("id = ? AND status = ?", e.UserID, common.UserStatusEnabled).Count(&enabledUser).Error; err != nil {
+				return err
+			}
+			if enabledUser != 1 {
+				return demandError(409, "ENGINEER_UNAVAILABLE", "Engineer is not accepting new demands")
+			}
+			res := tx.Model(&model.DemandEngineer{}).Where("id = ? AND enabled = ? AND published = ? AND accepting = ? AND open_demand_count < capacity", e.ID, true, true, true).UpdateColumn("open_demand_count", gorm.Expr("open_demand_count + 1"))
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected != 1 {
+				return demandError(409, "ENGINEER_UNAVAILABLE", "Engineer is not accepting new demands")
+			}
 		}
 		id := uuid.NewString()
 		title := strings.TrimSpace(in.Title)
@@ -483,7 +515,7 @@ func CreateDemand(db *gorm.DB, a DemandActor, in DemandCreate) (DemandSendReceip
 			title = "Image or video request"
 		}
 		now := time.Now().Unix()
-		d = model.Demand{ID: id, Number: "YS-" + strings.ToUpper(strings.ReplaceAll(id, "-", "")), UserID: a.UserID, ClientRequestID: in.ClientRequestID, CreateHash: hash, EngineerID: e.ID, Title: title, Budget: in.Budget, ExpectedDate: in.ExpectedDate, Status: "pending", Priority: "normal", Revision: 1, LastSeq: 1, Preview: title, ClientVersion: in.ClientVersion, ClientPlatform: in.ClientPlatform, CreatedAt: now, UpdatedAt: now, LastMessageAt: now}
+		d = model.Demand{ID: id, Number: "YS-" + strings.ToUpper(strings.ReplaceAll(id, "-", "")), UserID: a.UserID, ClientRequestID: in.ClientRequestID, CreateHash: hash, EngineerID: e.ID, ServiceProfileID: profile.ID, ServiceProfileName: profile.DisplayName, Title: title, Budget: in.Budget, ExpectedDate: in.ExpectedDate, Status: "pending", Priority: "normal", Revision: 1, LastSeq: 1, Preview: title, ClientVersion: in.ClientVersion, ClientPlatform: in.ClientPlatform, CreatedAt: now, UpdatedAt: now, LastMessageAt: now}
 		if err := tx.Create(&d).Error; err != nil {
 			return err
 		}
@@ -494,7 +526,7 @@ func CreateDemand(db *gorm.DB, a DemandActor, in DemandCreate) (DemandSendReceip
 		if err := bindDemandAttachments(tx, a, d, m.ID, in.AttachmentIDs); err != nil {
 			return err
 		}
-		return demandAudit(tx, a, d.ID, "created", e.ID)
+		return demandAudit(tx, a, d.ID, "created", e.ID+profile.ID)
 	})
 	// A concurrent identical first submission may have won a unique constraint.
 	if err != nil {
@@ -729,7 +761,7 @@ func ActOnDemand(db *gorm.DB, a DemandActor, id string, in DemandAction) (Demand
 			}
 			d.Status = "closed"
 		case "status":
-			if !a.Admin || terminal || !slices.Contains([]string{"pending", "communicating", "in_progress", "cancelled", "closed"}, in.Status) {
+			if !a.Admin || terminal || !slices.Contains([]string{"pending", "communicating", "in_progress", "cancelled", "closed"}, in.Status) || d.EngineerID == "" && !slices.Contains([]string{"pending", "cancelled", "closed"}, in.Status) {
 				return demandError(409, "STATUS_CONFLICT", "Invalid demand status transition")
 			}
 			d.Status = in.Status

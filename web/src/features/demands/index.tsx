@@ -46,11 +46,14 @@ import {
 } from './api'
 import { DemandSettings } from './config-editor'
 import { DemandConversation } from './conversation'
+import { DemandDirectory } from './directory'
 import { DemandEngineers } from './engineers'
 
 export function DemandManagementPage() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
+  const [tab, setTab] = useState('demands')
+  const [customerFilter, setCustomerFilter] = useState('')
   if (!user || !canAccessAdminRoute(user, '/demand-management')) {
     return <ErrorState title={t('Access denied')} />
   }
@@ -61,23 +64,53 @@ export function DemandManagementPage() {
         {t('Demand management')}
       </SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <Tabs defaultValue='demands' className='flex h-full min-h-0 flex-col'>
+        <Tabs
+          value={tab}
+          onValueChange={setTab}
+          className='flex h-full min-h-0 flex-col'
+        >
           <TabsList
             aria-label={t('Demand management')}
-            className='mb-4 shrink-0'
+            className='mb-4 h-auto shrink-0 flex-wrap'
           >
             <TabsTrigger value='demands'>{t('Demands')}</TabsTrigger>
+            <TabsTrigger value='service-profiles'>
+              {t('Service profiles')}
+            </TabsTrigger>
+            <TabsTrigger value='customer-profiles'>
+              {t('Customer profiles')}
+            </TabsTrigger>
             <TabsTrigger value='engineers'>{t('Engineers')}</TabsTrigger>
             <TabsTrigger value='settings'>{t('Service settings')}</TabsTrigger>
           </TabsList>
           <TabsContent value='demands' className='min-h-0 flex-1'>
             <DemandInbox
-              key={`admin:${user.id}`}
+              key={`admin:${user.id}:${customerFilter}`}
+              customerProfileId={customerFilter}
+              onClearCustomer={() => setCustomerFilter('')}
               accountId={user.id}
               mode='admin'
               canWrite={canWrite}
             />
           </TabsContent>
+          {(['service-profiles', 'customer-profiles'] as const).map((kind) => (
+            <TabsContent
+              key={kind}
+              value={kind}
+              className='min-h-0 flex-1 overflow-y-auto'
+            >
+              <DemandDirectory
+                key={`${user.id}:${kind}`}
+                accountId={user.id}
+                canWrite={canWrite}
+                kind={kind}
+                onViewDemands={(id) => {
+                  setCustomerFilter(id)
+                  setTab('demands')
+                }}
+              />
+            </TabsContent>
+          ))}
           <TabsContent
             value='engineers'
             className='min-h-0 flex-1 overflow-y-auto'
@@ -127,13 +160,19 @@ function DemandInbox({
   accountId,
   mode,
   canWrite,
+  customerProfileId,
+  onClearCustomer,
 }: {
+  customerProfileId?: string
+  onClearCustomer?: () => void
   accountId: number
   mode: DemandMode
   canWrite: boolean
 }) {
   const { t } = useTranslation()
-  const [filters, setFilters] = useState<Record<string, string>>({})
+  const [filters, setFilters] = useState<Record<string, string>>(
+    customerProfileId ? { customer_profile_id: customerProfileId } : {}
+  )
   const [selected, setSelected] = useState<Demand | null>(null)
   const [olderCursor, setOlderCursor] = useState('')
   const query = useQuery({
@@ -198,6 +237,23 @@ function DemandInbox({
         </label>
         {mode === 'admin' && (
           <>
+            <label className='space-y-1 text-sm'>
+              <span className='block'>{t('Assignment')}</span>
+              <NativeSelect
+                value={filters.assignment ?? ''}
+                onChange={(e) => updateFilter('assignment', e.target.value)}
+              >
+                <option value=''>{t('All assignments')}</option>
+                <option value='unassigned'>{t('Awaiting assignment')}</option>
+                <option value='assigned'>{t('Assigned')}</option>
+              </NativeSelect>
+            </label>
+            {customerProfileId && (
+              <Button variant='outline' onClick={onClearCustomer}>
+                {t('Clear customer filter')}
+              </Button>
+            )}
+
             <label className='space-y-1 text-sm'>
               <span className='block'>{t('Engineer')}</span>
               <NativeSelect
@@ -335,12 +391,19 @@ function DemandInbox({
                 )}
               </div>
               <p className='text-muted-foreground truncate text-xs'>
-                {demand.engineer.display_name} ·{' '}
-                {t(statusLabels[demand.status])}
+                {demand.assigned === false
+                  ? t('Awaiting assignment')
+                  : demand.engineer.display_name}{' '}
+                · {t(statusLabels[demand.status])}
               </p>
               <p className='text-muted-foreground line-clamp-2 text-sm'>
                 {demand.preview}
               </p>
+              {demand.service_profile_name && (
+                <p className='text-muted-foreground text-xs'>
+                  {t('Service source')}: {demand.service_profile_name}
+                </p>
+              )}
               <p className='text-muted-foreground text-xs break-all'>
                 {demand.number}
               </p>

@@ -75,6 +75,14 @@ func DemandAttachmentAccess(db *gorm.DB, a DemandActor, id string) (model.Demand
 	if v.Kind == "image" && db.Model(&model.DemandEngineer{}).Where("avatar_attachment_id = ? AND enabled = ? AND published = ?", id, true, true).Where("user_id IN (?)", db.Model(&model.User{}).Select("id").Where("status = ?", common.UserStatusEnabled)).Count(&count).Error == nil && count > 0 {
 		return v, nil
 	}
+	if v.Kind == "image" {
+		if err := db.Model(&model.DemandServiceProfile{}).Where("avatar_attachment_id = ? AND enabled = ? AND published = ?", id, true, true).Count(&count).Error; err != nil {
+			return v, err
+		}
+		if count > 0 {
+			return v, nil
+		}
+	}
 	return v, demandError(404, "ATTACHMENT_NOT_FOUND", "Demand attachment not found")
 }
 func CreateDemandUpload(db *gorm.DB, a DemandActor, in DemandUploadCreate) (DemandUploadResult, error) {

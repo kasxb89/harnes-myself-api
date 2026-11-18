@@ -1,0 +1,3058 @@
+{
+  "schema_version": 1,
+  "catalog_id": "yunshu-platform-services-customers-100x100-v1",
+  "counts": {
+    "service": 100,
+    "customer": 100,
+    "total": 200
+  },
+  "notes": [
+    "服务档案表示可提交需求的服务方向，平台统一评估与分配，不表示独立在岗人员。",
+    "客户档案为后台预建的未绑定记录，不是注册用户，不产生登录凭据或赠积分。",
+    "所有头像均为通用角色图形，不是真人照片。"
+  ],
+  "service_categories": [
+    {
+      "code": "web",
+      "name": "网站与小程序"
+    },
+    {
+      "code": "software",
+      "name": "软件与客户端"
+    },
+    {
+      "code": "backend",
+      "name": "后端与接口"
+    },
+    {
+      "code": "ai",
+      "name": "AI 应用与集成"
+    },
+    {
+      "code": "office",
+      "name": "文档与办公"
+    },
+    {
+      "code": "media",
+      "name": "图片与视频"
+    },
+    {
+      "code": "data",
+      "name": "数据与报表"
+    },
+    {
+      "code": "automation",
+      "name": "自动化工作流"
+    },
+    {
+      "code": "operations",
+      "name": "部署与运维"
+    },
+    {
+      "code": "design",
+      "name": "设计与体验"
+    }
+  ],
+  "items": [
+    {
+      "code": "YS-SVC-001",
+      "kind": "service",
+      "display_name": "企业网站搭建",
+      "category_code": "web",
+      "introduction": "可提交与企业介绍、产品展示与联系页面相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "企业网站",
+        "页面开发",
+        "内容展示"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-001.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-002",
+      "kind": "service",
+      "display_name": "活动专题页面",
+      "category_code": "web",
+      "introduction": "可提交与活动介绍、报名入口与专题页面相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "专题页面",
+        "活动报名",
+        "移动适配"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-002.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-003",
+      "kind": "service",
+      "display_name": "预约与表单页面",
+      "category_code": "web",
+      "introduction": "可提交与预约申请、信息收集与表单校验相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "在线表单",
+        "预约流程",
+        "字段校验"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-003.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-004",
+      "kind": "service",
+      "display_name": "商品展示页面",
+      "category_code": "web",
+      "introduction": "可提交与商品列表、详情展示与筛选页面相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "商品页面",
+        "列表筛选",
+        "界面交互"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-004.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-005",
+      "kind": "service",
+      "display_name": "内容管理页面",
+      "category_code": "web",
+      "introduction": "可提交与文章发布、内容分类与后台管理页面相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "内容管理",
+        "文章发布",
+        "后台页面"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-005.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-006",
+      "kind": "service",
+      "display_name": "微信小程序开发",
+      "category_code": "web",
+      "introduction": "可提交与小程序页面、业务表单与接口对接相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "微信小程序",
+        "业务表单",
+        "接口对接"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-006.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-007",
+      "kind": "service",
+      "display_name": "移动网站适配",
+      "category_code": "web",
+      "introduction": "可提交与手机浏览、触控操作与不同屏幕适配相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "响应式布局",
+        "移动网站",
+        "触控适配"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-007.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-008",
+      "kind": "service",
+      "display_name": "网站交互调整",
+      "category_code": "web",
+      "introduction": "可提交与导航、弹窗、菜单与页面交互调整相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "交互调整",
+        "导航菜单",
+        "页面组件"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-008.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-009",
+      "kind": "service",
+      "display_name": "网站无障碍适配",
+      "category_code": "web",
+      "introduction": "可提交与键盘操作、焦点提示与可读性改进相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "键盘操作",
+        "无障碍",
+        "可读性"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-009.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-010",
+      "kind": "service",
+      "display_name": "网站性能排查",
+      "category_code": "web",
+      "introduction": "可提交与网页加载、资源体积与交互卡顿排查相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "加载性能",
+        "资源优化",
+        "问题排查"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-010.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-011",
+      "kind": "service",
+      "display_name": "桌面软件功能开发",
+      "category_code": "software",
+      "introduction": "可提交与桌面端业务功能、操作流程与界面开发相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "桌面软件",
+        "业务功能",
+        "界面开发"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-011.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-012",
+      "kind": "service",
+      "display_name": "客户端界面调整",
+      "category_code": "software",
+      "introduction": "可提交与客户端布局、控件与页面状态调整相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "客户端界面",
+        "控件布局",
+        "页面状态"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-012.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-013",
+      "kind": "service",
+      "display_name": "跨平台兼容排查",
+      "category_code": "software",
+      "introduction": "可提交与不同系统和架构下的客户端兼容问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "跨平台",
+        "系统兼容",
+        "架构适配"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-013.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-014",
+      "kind": "service",
+      "display_name": "Electron 应用集成",
+      "category_code": "software",
+      "introduction": "可提交与Electron 界面、原生窗口与本地能力集成相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "Electron",
+        "原生窗口",
+        "本地集成"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-014.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-015",
+      "kind": "service",
+      "display_name": "窗口与托盘功能",
+      "category_code": "software",
+      "introduction": "可提交与窗口管理、系统托盘与快捷操作相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "窗口管理",
+        "系统托盘",
+        "快捷操作"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-015.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-016",
+      "kind": "service",
+      "display_name": "安装与升级流程",
+      "category_code": "software",
+      "introduction": "可提交与安装路径、版本更新与升级流程问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "安装流程",
+        "版本更新",
+        "升级排查"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-016.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-017",
+      "kind": "service",
+      "display_name": "客户端状态恢复",
+      "category_code": "software",
+      "introduction": "可提交与异常退出后的状态保存与恢复流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "状态恢复",
+        "本地保存",
+        "异常处理"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-017.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-018",
+      "kind": "service",
+      "display_name": "文件导入与导出",
+      "category_code": "software",
+      "introduction": "可提交与文件选择、格式校验与导入导出流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "文件处理",
+        "导入导出",
+        "格式校验"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-018.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-019",
+      "kind": "service",
+      "display_name": "软件构建流程",
+      "category_code": "software",
+      "introduction": "可提交与项目构建、依赖配置与产物生成流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "项目构建",
+        "依赖配置",
+        "构建排查"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-019.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-020",
+      "kind": "service",
+      "display_name": "软件运行问题排查",
+      "category_code": "software",
+      "introduction": "可提交与启动失败、界面无响应与运行日志排查相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "启动排查",
+        "运行日志",
+        "异常定位"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-020.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-021",
+      "kind": "service",
+      "display_name": "业务接口开发",
+      "category_code": "backend",
+      "introduction": "可提交与业务数据查询、提交与接口设计相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "业务接口",
+        "接口设计",
+        "数据提交"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-021.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-022",
+      "kind": "service",
+      "display_name": "第三方接口对接",
+      "category_code": "backend",
+      "introduction": "可提交与第三方服务接入、字段映射与联调相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "接口对接",
+        "字段映射",
+        "联调验证"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-022.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-023",
+      "kind": "service",
+      "display_name": "登录与权限流程",
+      "category_code": "backend",
+      "introduction": "可提交与账号登录、角色权限与会话流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "账号登录",
+        "权限控制",
+        "会话管理"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-023.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-024",
+      "kind": "service",
+      "display_name": "数据库结构调整",
+      "category_code": "backend",
+      "introduction": "可提交与数据表结构、关联关系与迁移方案相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "数据表",
+        "数据关联",
+        "数据库迁移"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-024.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-025",
+      "kind": "service",
+      "display_name": "数据库查询优化",
+      "category_code": "backend",
+      "introduction": "可提交与查询速度、索引与慢查询排查相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "查询优化",
+        "数据库索引",
+        "慢查询"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-025.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-026",
+      "kind": "service",
+      "display_name": "文件上传接口",
+      "category_code": "backend",
+      "introduction": "可提交与文件上传、分片续传与访问授权相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "文件上传",
+        "分片续传",
+        "访问授权"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-026.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-027",
+      "kind": "service",
+      "display_name": "后台管理接口",
+      "category_code": "backend",
+      "introduction": "可提交与管理列表、筛选、编辑与审计接口相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "管理后台",
+        "列表筛选",
+        "操作审计"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-027.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-028",
+      "kind": "service",
+      "display_name": "消息与通知接口",
+      "category_code": "backend",
+      "introduction": "可提交与站内消息、通知投递与消息状态相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "站内消息",
+        "通知接口",
+        "消息状态"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-028.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-029",
+      "kind": "service",
+      "display_name": "定时与后台任务",
+      "category_code": "backend",
+      "introduction": "可提交与定时执行、任务队列与状态跟踪相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "定时任务",
+        "后台任务",
+        "任务队列"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-029.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-030",
+      "kind": "service",
+      "display_name": "接口错误排查",
+      "category_code": "backend",
+      "introduction": "可提交与请求失败、错误分类与服务日志排查相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "接口排查",
+        "错误分类",
+        "服务日志"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-030.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-031",
+      "kind": "service",
+      "display_name": "AI 对话功能集成",
+      "category_code": "ai",
+      "introduction": "可提交与模型接口接入、对话界面与消息流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "模型接入",
+        "对话界面",
+        "消息流程"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-031.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-032",
+      "kind": "service",
+      "display_name": "知识库检索应用",
+      "category_code": "ai",
+      "introduction": "可提交与资料整理、检索流程与问答应用相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "知识库",
+        "资料检索",
+        "问答应用"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-032.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-033",
+      "kind": "service",
+      "display_name": "智能客服流程",
+      "category_code": "ai",
+      "introduction": "可提交与客服知识、转人工与服务流程设计相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "智能客服",
+        "转人工",
+        "知识整理"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-033.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-034",
+      "kind": "service",
+      "display_name": "文档识别与整理",
+      "category_code": "ai",
+      "introduction": "可提交与文档识别、内容提取与结构化整理相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "文档识别",
+        "内容提取",
+        "结构化"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-034.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-035",
+      "kind": "service",
+      "display_name": "AI 工具调用集成",
+      "category_code": "ai",
+      "introduction": "可提交与工具接口、参数传递与执行结果展示相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "工具调用",
+        "参数适配",
+        "结果展示"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-035.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-036",
+      "kind": "service",
+      "display_name": "模型参数适配",
+      "category_code": "ai",
+      "introduction": "可提交与模型目录、上下文与输出参数适配相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "模型目录",
+        "参数适配",
+        "上下文设置"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-036.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-037",
+      "kind": "service",
+      "display_name": "提示词工作流",
+      "category_code": "ai",
+      "introduction": "可提交与固定任务提示词、输入规范与输出流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "提示词",
+        "固定流程",
+        "输出规范"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-037.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-038",
+      "kind": "service",
+      "display_name": "AI 创作功能集成",
+      "category_code": "ai",
+      "introduction": "可提交与图片视频生成接口、参数与任务状态相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "创作接口",
+        "任务状态",
+        "媒体参数"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-038.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-039",
+      "kind": "service",
+      "display_name": "智能体业务流程",
+      "category_code": "ai",
+      "introduction": "可提交与智能体角色、任务步骤与人工确认环节相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "智能体",
+        "业务流程",
+        "人工确认"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-039.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-040",
+      "kind": "service",
+      "display_name": "AI 应用问题排查",
+      "category_code": "ai",
+      "introduction": "可提交与模型请求、工具执行与生成结果异常相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "请求排查",
+        "工具执行",
+        "异常定位"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-040.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-041",
+      "kind": "service",
+      "display_name": "Word 文档排版",
+      "category_code": "office",
+      "introduction": "可提交与Word 样式、目录、分页与文档排版相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "Word",
+        "文档排版",
+        "目录分页"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-041.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-042",
+      "kind": "service",
+      "display_name": "PDF 内容重排",
+      "category_code": "office",
+      "introduction": "可提交与PDF 内容识别、结构整理与重新排版相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "PDF",
+        "内容识别",
+        "重新排版"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-042.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-043",
+      "kind": "service",
+      "display_name": "PPT 演示制作",
+      "category_code": "office",
+      "introduction": "可提交与演示结构、页面排版与图表插入相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "PPT",
+        "演示排版",
+        "图表插入"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-043.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-044",
+      "kind": "service",
+      "display_name": "Excel 表格整理",
+      "category_code": "office",
+      "introduction": "可提交与表格清洗、字段规范与数据整理相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "Excel",
+        "表格整理",
+        "字段规范"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-044.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-045",
+      "kind": "service",
+      "display_name": "Excel 公式与计算",
+      "category_code": "office",
+      "introduction": "可提交与公式编写、计算逻辑与结果核对相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "Excel 公式",
+        "计算逻辑",
+        "结果核对"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-045.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-046",
+      "kind": "service",
+      "display_name": "办公模板制作",
+      "category_code": "office",
+      "introduction": "可提交与常用文档、表格与演示模板相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "办公模板",
+        "文档样式",
+        "模板制作"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-046.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-047",
+      "kind": "service",
+      "display_name": "批量文档处理",
+      "category_code": "office",
+      "introduction": "可提交与批量生成、格式转换与文件命名流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "批量处理",
+        "格式转换",
+        "文件命名"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-047.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-048",
+      "kind": "service",
+      "display_name": "扫描资料整理",
+      "category_code": "office",
+      "introduction": "可提交与扫描页识别、文字校对与资料归档相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "扫描识别",
+        "文字校对",
+        "资料归档"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-048.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-049",
+      "kind": "service",
+      "display_name": "文档格式转换",
+      "category_code": "office",
+      "introduction": "可提交与办公文件、PDF 与常见数据格式转换相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "格式转换",
+        "办公文件",
+        "输出校验"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-049.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-050",
+      "kind": "service",
+      "display_name": "办公流程衔接",
+      "category_code": "office",
+      "introduction": "可提交与表单、文档、审批与归档步骤衔接相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "办公流程",
+        "表单文档",
+        "审批归档"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-050.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-051",
+      "kind": "service",
+      "display_name": "图片尺寸与裁切",
+      "category_code": "media",
+      "introduction": "可提交与图片比例、尺寸调整与主体裁切相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "图片尺寸",
+        "比例调整",
+        "主体裁切"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-051.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-052",
+      "kind": "service",
+      "display_name": "图片文字与标注",
+      "category_code": "media",
+      "introduction": "可提交与图片文字、说明标注与信息布局相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "图片文字",
+        "内容标注",
+        "信息布局"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-052.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-053",
+      "kind": "service",
+      "display_name": "商品图片整理",
+      "category_code": "media",
+      "introduction": "可提交与商品图片规格、命名与展示素材整理相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "商品图片",
+        "图片规格",
+        "素材整理"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-053.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-054",
+      "kind": "service",
+      "display_name": "图片批量处理",
+      "category_code": "media",
+      "introduction": "可提交与图片压缩、格式转换与批量命名相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "图片压缩",
+        "图片转换",
+        "批量命名"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-054.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-055",
+      "kind": "service",
+      "display_name": "短视频剪辑流程",
+      "category_code": "media",
+      "introduction": "可提交与片段剪辑、顺序整理与成片输出相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "视频剪辑",
+        "片段整理",
+        "成片输出"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-055.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-056",
+      "kind": "service",
+      "display_name": "视频拼接与导出",
+      "category_code": "media",
+      "introduction": "可提交与视频拼接、输出规格与导出问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "视频拼接",
+        "视频导出",
+        "输出规格"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-056.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-057",
+      "kind": "service",
+      "display_name": "字幕与音轨整理",
+      "category_code": "media",
+      "introduction": "可提交与字幕时间轴、音轨与画面衔接相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "字幕",
+        "音轨整理",
+        "时间轴"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-057.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-058",
+      "kind": "service",
+      "display_name": "视频规格转换",
+      "category_code": "media",
+      "introduction": "可提交与分辨率、画幅、编码与文件格式转换相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "视频规格",
+        "编码转换",
+        "画幅调整"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-058.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-059",
+      "kind": "service",
+      "display_name": "媒体预览集成",
+      "category_code": "media",
+      "introduction": "可提交与图片预览、视频播放与拖动控制相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "媒体预览",
+        "视频播放",
+        "进度拖动"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-059.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-060",
+      "kind": "service",
+      "display_name": "素材归档与检索",
+      "category_code": "media",
+      "introduction": "可提交与媒体分类、命名规则与素材检索相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "素材分类",
+        "命名规则",
+        "素材检索"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-060.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-061",
+      "kind": "service",
+      "display_name": "数据清洗与规范",
+      "category_code": "data",
+      "introduction": "可提交与字段清洗、重复记录与格式统一相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "数据清洗",
+        "去重",
+        "格式规范"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-061.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-062",
+      "kind": "service",
+      "display_name": "数据合并与匹配",
+      "category_code": "data",
+      "introduction": "可提交与多份数据合并、字段匹配与关联检查相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "数据合并",
+        "字段匹配",
+        "关联检查"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-062.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-063",
+      "kind": "service",
+      "display_name": "经营报表整理",
+      "category_code": "data",
+      "introduction": "可提交与经营数据汇总、指标口径与报表结构相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "经营报表",
+        "指标口径",
+        "数据汇总"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-063.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-064",
+      "kind": "service",
+      "display_name": "数据看板制作",
+      "category_code": "data",
+      "introduction": "可提交与指标展示、筛选与可视化看板相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "数据看板",
+        "指标展示",
+        "筛选交互"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-064.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-065",
+      "kind": "service",
+      "display_name": "图表设计与展示",
+      "category_code": "data",
+      "introduction": "可提交与图表类型、标注与数据表达相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "数据图表",
+        "图表设计",
+        "数据表达"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-065.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-066",
+      "kind": "service",
+      "display_name": "订单数据分析",
+      "category_code": "data",
+      "introduction": "可提交与订单结构、状态分类与经营数据整理相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "订单数据",
+        "状态分类",
+        "数据整理"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-066.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-067",
+      "kind": "service",
+      "display_name": "数据质量检查",
+      "category_code": "data",
+      "introduction": "可提交与缺失值、异常记录与统计口径检查相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "数据质量",
+        "异常检查",
+        "统计口径"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-067.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-068",
+      "kind": "service",
+      "display_name": "数据导入与导出",
+      "category_code": "data",
+      "introduction": "可提交与CSV、表格及数据库数据导入导出相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "CSV",
+        "数据导入",
+        "数据导出"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-068.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-069",
+      "kind": "service",
+      "display_name": "报表自动更新",
+      "category_code": "data",
+      "introduction": "可提交与报表刷新、数据同步与定时汇总流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "报表刷新",
+        "数据同步",
+        "定时汇总"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-069.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-070",
+      "kind": "service",
+      "display_name": "数据分析流程",
+      "category_code": "data",
+      "introduction": "可提交与分析问题拆解、计算步骤与结果说明相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "分析流程",
+        "计算步骤",
+        "结果说明"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-070.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-071",
+      "kind": "service",
+      "display_name": "网页操作自动化",
+      "category_code": "automation",
+      "introduction": "可提交与网页重复操作、页面信息与操作流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "网页自动化",
+        "重复操作",
+        "页面流程"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-071.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-072",
+      "kind": "service",
+      "display_name": "文件处理自动化",
+      "category_code": "automation",
+      "introduction": "可提交与文件归类、格式转换与处理任务相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "文件自动化",
+        "文件归类",
+        "处理任务"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-072.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-073",
+      "kind": "service",
+      "display_name": "表单收集与同步",
+      "category_code": "automation",
+      "introduction": "可提交与表单信息收集、校验与数据同步相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "表单收集",
+        "信息校验",
+        "数据同步"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-073.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-074",
+      "kind": "service",
+      "display_name": "跨系统业务衔接",
+      "category_code": "automation",
+      "introduction": "可提交与系统间字段对接、状态同步与流程衔接相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "系统对接",
+        "状态同步",
+        "流程衔接"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-074.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-075",
+      "kind": "service",
+      "display_name": "定时数据整理",
+      "category_code": "automation",
+      "introduction": "可提交与定时采集、数据整理与汇总任务相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "定时整理",
+        "数据采集",
+        "汇总任务"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-075.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-076",
+      "kind": "service",
+      "display_name": "消息通知工作流",
+      "category_code": "automation",
+      "introduction": "可提交与业务通知、提醒条件与转交步骤相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "消息通知",
+        "条件提醒",
+        "业务转交"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-076.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-077",
+      "kind": "service",
+      "display_name": "审批与任务流转",
+      "category_code": "automation",
+      "introduction": "可提交与审批节点、负责人分配与任务状态相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "审批流程",
+        "负责人分配",
+        "任务状态"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-077.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-078",
+      "kind": "service",
+      "display_name": "业务脚本整理",
+      "category_code": "automation",
+      "introduction": "可提交与现有脚本梳理、参数配置与运行方式相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "业务脚本",
+        "参数配置",
+        "脚本运行"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-078.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-079",
+      "kind": "service",
+      "display_name": "重复任务批处理",
+      "category_code": "automation",
+      "introduction": "可提交与重复业务任务、批量执行与结果记录相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "批量执行",
+        "重复任务",
+        "结果记录"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-079.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-080",
+      "kind": "service",
+      "display_name": "自动化故障排查",
+      "category_code": "automation",
+      "introduction": "可提交与自动化中断、执行日志与失败恢复相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "自动化排查",
+        "执行日志",
+        "失败恢复"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-080.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-081",
+      "kind": "service",
+      "display_name": "应用部署配置",
+      "category_code": "operations",
+      "introduction": "可提交与应用运行环境、部署配置与启动流程相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "应用部署",
+        "运行环境",
+        "启动流程"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-081.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-082",
+      "kind": "service",
+      "display_name": "容器运行配置",
+      "category_code": "operations",
+      "introduction": "可提交与容器配置、持久化目录与运行问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "容器配置",
+        "持久化",
+        "运行排查"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-082.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-083",
+      "kind": "service",
+      "display_name": "域名与证书配置",
+      "category_code": "operations",
+      "introduction": "可提交与域名解析、HTTPS 与证书配置问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "域名解析",
+        "HTTPS",
+        "证书配置"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-083.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-084",
+      "kind": "service",
+      "display_name": "反向代理配置",
+      "category_code": "operations",
+      "introduction": "可提交与代理转发、路径规则与连接问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "反向代理",
+        "路径转发",
+        "连接排查"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-084.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-085",
+      "kind": "service",
+      "display_name": "服务日志排查",
+      "category_code": "operations",
+      "introduction": "可提交与日志整理、错误定位与问题时间线相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "服务日志",
+        "错误定位",
+        "问题时间线"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-085.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-086",
+      "kind": "service",
+      "display_name": "备份与恢复流程",
+      "category_code": "operations",
+      "introduction": "可提交与备份策略、恢复步骤与验证方案相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "备份流程",
+        "恢复步骤",
+        "恢复验证"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-086.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-087",
+      "kind": "service",
+      "display_name": "监控与状态展示",
+      "category_code": "operations",
+      "introduction": "可提交与服务状态、监控指标与异常提醒相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "服务监控",
+        "状态展示",
+        "异常提醒"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-087.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-088",
+      "kind": "service",
+      "display_name": "配置与环境管理",
+      "category_code": "operations",
+      "introduction": "可提交与环境配置、参数管理与敏感信息保存相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "环境配置",
+        "参数管理",
+        "配置整理"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-088.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-089",
+      "kind": "service",
+      "display_name": "发布流程整理",
+      "category_code": "operations",
+      "introduction": "可提交与发布步骤、验证检查与回退条件相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "发布流程",
+        "验证检查",
+        "回退条件"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-089.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-090",
+      "kind": "service",
+      "display_name": "运行资源排查",
+      "category_code": "operations",
+      "introduction": "可提交与CPU、内存、磁盘与服务资源问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "资源排查",
+        "CPU 内存",
+        "磁盘使用"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-090.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-091",
+      "kind": "service",
+      "display_name": "产品界面设计",
+      "category_code": "design",
+      "introduction": "可提交与页面结构、视觉层级与功能布局相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "产品界面",
+        "视觉层级",
+        "功能布局"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-091.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-092",
+      "kind": "service",
+      "display_name": "操作流程设计",
+      "category_code": "design",
+      "introduction": "可提交与任务步骤、表单流程与关键操作相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "操作流程",
+        "任务步骤",
+        "表单流程"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-092.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-093",
+      "kind": "service",
+      "display_name": "移动界面适配",
+      "category_code": "design",
+      "introduction": "可提交与窄屏布局、触控控件与移动体验相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "移动界面",
+        "窄屏布局",
+        "触控控件"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-093.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-094",
+      "kind": "service",
+      "display_name": "深浅主题适配",
+      "category_code": "design",
+      "introduction": "可提交与深浅配色、界面状态与可读性相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "深浅主题",
+        "界面状态",
+        "可读性"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-094.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-095",
+      "kind": "service",
+      "display_name": "图标与标识整理",
+      "category_code": "design",
+      "introduction": "可提交与功能图标、业务标识与图形规范相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "功能图标",
+        "业务标识",
+        "图形规范"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-095.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-096",
+      "kind": "service",
+      "display_name": "组件样式规范",
+      "category_code": "design",
+      "introduction": "可提交与按钮、表单、卡片与组件状态规范相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "组件样式",
+        "表单控件",
+        "组件状态"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-096.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-097",
+      "kind": "service",
+      "display_name": "后台操作体验",
+      "category_code": "design",
+      "introduction": "可提交与管理列表、筛选、编辑与操作反馈相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "后台体验",
+        "列表筛选",
+        "操作反馈"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-097.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-098",
+      "kind": "service",
+      "display_name": "界面文案梳理",
+      "category_code": "design",
+      "introduction": "可提交与按钮文字、状态提示与错误说明相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "界面文案",
+        "状态提示",
+        "错误说明"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-098.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-099",
+      "kind": "service",
+      "display_name": "页面原型整理",
+      "category_code": "design",
+      "introduction": "可提交与页面原型、交互说明与实现标注相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "页面原型",
+        "交互说明",
+        "实现标注"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-099.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-SVC-100",
+      "kind": "service",
+      "display_name": "可用性问题排查",
+      "category_code": "design",
+      "introduction": "可提交与界面遮挡、滚动、反馈与操作问题相关的需求，由平台评估后统一分配。",
+      "skills": [
+        "可用性",
+        "滚动交互",
+        "操作反馈"
+      ],
+      "routing_mode": "platform",
+      "avatar_path": "avatars/png/YS-SVC-100.png",
+      "avatar_style": "platform-role-graphic"
+    },
+    {
+      "code": "YS-CUS-001",
+      "kind": "customer",
+      "display_name": "客户档案 001",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-001.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-002",
+      "kind": "customer",
+      "display_name": "客户档案 002",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-002.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-003",
+      "kind": "customer",
+      "display_name": "客户档案 003",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-003.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-004",
+      "kind": "customer",
+      "display_name": "客户档案 004",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-004.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-005",
+      "kind": "customer",
+      "display_name": "客户档案 005",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-005.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-006",
+      "kind": "customer",
+      "display_name": "客户档案 006",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-006.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-007",
+      "kind": "customer",
+      "display_name": "客户档案 007",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-007.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-008",
+      "kind": "customer",
+      "display_name": "客户档案 008",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-008.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-009",
+      "kind": "customer",
+      "display_name": "客户档案 009",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-009.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-010",
+      "kind": "customer",
+      "display_name": "客户档案 010",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-010.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-011",
+      "kind": "customer",
+      "display_name": "客户档案 011",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-011.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-012",
+      "kind": "customer",
+      "display_name": "客户档案 012",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-012.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-013",
+      "kind": "customer",
+      "display_name": "客户档案 013",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-013.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-014",
+      "kind": "customer",
+      "display_name": "客户档案 014",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-014.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-015",
+      "kind": "customer",
+      "display_name": "客户档案 015",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-015.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-016",
+      "kind": "customer",
+      "display_name": "客户档案 016",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-016.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-017",
+      "kind": "customer",
+      "display_name": "客户档案 017",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-017.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-018",
+      "kind": "customer",
+      "display_name": "客户档案 018",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-018.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-019",
+      "kind": "customer",
+      "display_name": "客户档案 019",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-019.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-020",
+      "kind": "customer",
+      "display_name": "客户档案 020",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-020.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-021",
+      "kind": "customer",
+      "display_name": "客户档案 021",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-021.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-022",
+      "kind": "customer",
+      "display_name": "客户档案 022",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-022.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-023",
+      "kind": "customer",
+      "display_name": "客户档案 023",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-023.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-024",
+      "kind": "customer",
+      "display_name": "客户档案 024",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-024.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-025",
+      "kind": "customer",
+      "display_name": "客户档案 025",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-025.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-026",
+      "kind": "customer",
+      "display_name": "客户档案 026",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-026.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-027",
+      "kind": "customer",
+      "display_name": "客户档案 027",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-027.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-028",
+      "kind": "customer",
+      "display_name": "客户档案 028",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-028.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-029",
+      "kind": "customer",
+      "display_name": "客户档案 029",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-029.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-030",
+      "kind": "customer",
+      "display_name": "客户档案 030",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-030.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-031",
+      "kind": "customer",
+      "display_name": "客户档案 031",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-031.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-032",
+      "kind": "customer",
+      "display_name": "客户档案 032",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-032.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-033",
+      "kind": "customer",
+      "display_name": "客户档案 033",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-033.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-034",
+      "kind": "customer",
+      "display_name": "客户档案 034",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-034.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-035",
+      "kind": "customer",
+      "display_name": "客户档案 035",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-035.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-036",
+      "kind": "customer",
+      "display_name": "客户档案 036",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-036.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-037",
+      "kind": "customer",
+      "display_name": "客户档案 037",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-037.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-038",
+      "kind": "customer",
+      "display_name": "客户档案 038",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-038.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-039",
+      "kind": "customer",
+      "display_name": "客户档案 039",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-039.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-040",
+      "kind": "customer",
+      "display_name": "客户档案 040",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-040.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-041",
+      "kind": "customer",
+      "display_name": "客户档案 041",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-041.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-042",
+      "kind": "customer",
+      "display_name": "客户档案 042",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-042.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-043",
+      "kind": "customer",
+      "display_name": "客户档案 043",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-043.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-044",
+      "kind": "customer",
+      "display_name": "客户档案 044",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-044.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-045",
+      "kind": "customer",
+      "display_name": "客户档案 045",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-045.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-046",
+      "kind": "customer",
+      "display_name": "客户档案 046",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-046.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-047",
+      "kind": "customer",
+      "display_name": "客户档案 047",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-047.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-048",
+      "kind": "customer",
+      "display_name": "客户档案 048",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-048.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-049",
+      "kind": "customer",
+      "display_name": "客户档案 049",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-049.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-050",
+      "kind": "customer",
+      "display_name": "客户档案 050",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-050.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-051",
+      "kind": "customer",
+      "display_name": "客户档案 051",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-051.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-052",
+      "kind": "customer",
+      "display_name": "客户档案 052",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-052.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-053",
+      "kind": "customer",
+      "display_name": "客户档案 053",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-053.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-054",
+      "kind": "customer",
+      "display_name": "客户档案 054",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-054.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-055",
+      "kind": "customer",
+      "display_name": "客户档案 055",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-055.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-056",
+      "kind": "customer",
+      "display_name": "客户档案 056",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-056.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-057",
+      "kind": "customer",
+      "display_name": "客户档案 057",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-057.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-058",
+      "kind": "customer",
+      "display_name": "客户档案 058",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-058.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-059",
+      "kind": "customer",
+      "display_name": "客户档案 059",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-059.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-060",
+      "kind": "customer",
+      "display_name": "客户档案 060",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-060.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-061",
+      "kind": "customer",
+      "display_name": "客户档案 061",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-061.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-062",
+      "kind": "customer",
+      "display_name": "客户档案 062",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-062.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-063",
+      "kind": "customer",
+      "display_name": "客户档案 063",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-063.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-064",
+      "kind": "customer",
+      "display_name": "客户档案 064",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-064.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-065",
+      "kind": "customer",
+      "display_name": "客户档案 065",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-065.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-066",
+      "kind": "customer",
+      "display_name": "客户档案 066",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-066.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-067",
+      "kind": "customer",
+      "display_name": "客户档案 067",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-067.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-068",
+      "kind": "customer",
+      "display_name": "客户档案 068",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-068.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-069",
+      "kind": "customer",
+      "display_name": "客户档案 069",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-069.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-070",
+      "kind": "customer",
+      "display_name": "客户档案 070",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-070.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-071",
+      "kind": "customer",
+      "display_name": "客户档案 071",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-071.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-072",
+      "kind": "customer",
+      "display_name": "客户档案 072",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-072.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-073",
+      "kind": "customer",
+      "display_name": "客户档案 073",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-073.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-074",
+      "kind": "customer",
+      "display_name": "客户档案 074",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-074.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-075",
+      "kind": "customer",
+      "display_name": "客户档案 075",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-075.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-076",
+      "kind": "customer",
+      "display_name": "客户档案 076",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-076.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-077",
+      "kind": "customer",
+      "display_name": "客户档案 077",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-077.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-078",
+      "kind": "customer",
+      "display_name": "客户档案 078",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-078.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-079",
+      "kind": "customer",
+      "display_name": "客户档案 079",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-079.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-080",
+      "kind": "customer",
+      "display_name": "客户档案 080",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-080.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-081",
+      "kind": "customer",
+      "display_name": "客户档案 081",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-081.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-082",
+      "kind": "customer",
+      "display_name": "客户档案 082",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-082.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-083",
+      "kind": "customer",
+      "display_name": "客户档案 083",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-083.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-084",
+      "kind": "customer",
+      "display_name": "客户档案 084",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-084.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-085",
+      "kind": "customer",
+      "display_name": "客户档案 085",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-085.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-086",
+      "kind": "customer",
+      "display_name": "客户档案 086",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-086.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-087",
+      "kind": "customer",
+      "display_name": "客户档案 087",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-087.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-088",
+      "kind": "customer",
+      "display_name": "客户档案 088",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-088.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-089",
+      "kind": "customer",
+      "display_name": "客户档案 089",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-089.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-090",
+      "kind": "customer",
+      "display_name": "客户档案 090",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-090.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-091",
+      "kind": "customer",
+      "display_name": "客户档案 091",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-091.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-092",
+      "kind": "customer",
+      "display_name": "客户档案 092",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-092.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-093",
+      "kind": "customer",
+      "display_name": "客户档案 093",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-093.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-094",
+      "kind": "customer",
+      "display_name": "客户档案 094",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-094.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-095",
+      "kind": "customer",
+      "display_name": "客户档案 095",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-095.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-096",
+      "kind": "customer",
+      "display_name": "客户档案 096",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-096.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-097",
+      "kind": "customer",
+      "display_name": "客户档案 097",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-097.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-098",
+      "kind": "customer",
+      "display_name": "客户档案 098",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-098.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-099",
+      "kind": "customer",
+      "display_name": "客户档案 099",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-099.png",
+      "avatar_style": "customer-record-graphic"
+    },
+    {
+      "code": "YS-CUS-100",
+      "kind": "customer",
+      "display_name": "客户档案 100",
+      "category_code": "customer-unbound",
+      "introduction": "内部客户档案，尚未关联客户账号；管理员可完善资料，绑定真实用户后用于汇总需求。",
+      "skills": [],
+      "binding_state": "unbound",
+      "user_id": null,
+      "phone": null,
+      "contact_name": null,
+      "visibility": "admin",
+      "avatar_path": "avatars/png/YS-CUS-100.png",
+      "avatar_style": "customer-record-graphic"
+    }
+  ]
+}

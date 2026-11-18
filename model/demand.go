@@ -3,26 +3,28 @@ package model
 // Demand tables are independent of AI sessions, tasks, quotas and authentication.
 // String identifiers are opaque; sequence/revision fields are bounded by the API.
 type Demand struct {
-	ID              string `json:"id" gorm:"type:varchar(40);primaryKey"`
-	Number          string `json:"number" gorm:"type:varchar(50);uniqueIndex"`
-	UserID          int    `json:"user_id" gorm:"index;uniqueIndex:idx_demand_create,priority:1"`
-	ClientRequestID string `json:"-" gorm:"type:varchar(80);uniqueIndex:idx_demand_create,priority:2"`
-	CreateHash      string `json:"-" gorm:"type:varchar(64)"`
-	EngineerID      string `json:"engineer_id" gorm:"type:varchar(40);index"`
-	Title           string `json:"title" gorm:"type:varchar(200)"`
-	Budget          string `json:"budget" gorm:"type:varchar(100)"`
-	ExpectedDate    string `json:"expected_date" gorm:"type:varchar(10)"`
-	Status          string `json:"status" gorm:"type:varchar(32);index"`
-	Priority        string `json:"priority" gorm:"type:varchar(16)"`
-	Revision        int64  `json:"revision"`
-	LastSeq         int64  `json:"last_seq"`
-	Preview         string `json:"preview" gorm:"type:varchar(300)"`
-	LastMessageAt   int64  `json:"last_message_at"`
-	DeliveryID      string `json:"delivery_id" gorm:"type:varchar(40)"`
-	ClientVersion   string `json:"client_version,omitempty" gorm:"type:varchar(100)"`
-	ClientPlatform  string `json:"client_platform,omitempty" gorm:"type:varchar(100)"`
-	CreatedAt       int64  `json:"created_at" gorm:"autoCreateTime:false;index"`
-	UpdatedAt       int64  `json:"updated_at" gorm:"autoUpdateTime:false;index"`
+	ID                 string `json:"id" gorm:"type:varchar(40);primaryKey"`
+	Number             string `json:"number" gorm:"type:varchar(50);uniqueIndex"`
+	UserID             int    `json:"user_id" gorm:"index;uniqueIndex:idx_demand_create,priority:1"`
+	ClientRequestID    string `json:"-" gorm:"type:varchar(80);uniqueIndex:idx_demand_create,priority:2"`
+	CreateHash         string `json:"-" gorm:"type:varchar(64)"`
+	EngineerID         string `json:"engineer_id" gorm:"type:varchar(40);index"`
+	ServiceProfileID   string `json:"service_profile_id,omitempty" gorm:"type:varchar(40);index"`
+	ServiceProfileName string `json:"service_profile_name,omitempty" gorm:"type:varchar(100)"`
+	Title              string `json:"title" gorm:"type:varchar(200)"`
+	Budget             string `json:"budget" gorm:"type:varchar(100)"`
+	ExpectedDate       string `json:"expected_date" gorm:"type:varchar(10)"`
+	Status             string `json:"status" gorm:"type:varchar(32);index"`
+	Priority           string `json:"priority" gorm:"type:varchar(16)"`
+	Revision           int64  `json:"revision"`
+	LastSeq            int64  `json:"last_seq"`
+	Preview            string `json:"preview" gorm:"type:varchar(300)"`
+	LastMessageAt      int64  `json:"last_message_at"`
+	DeliveryID         string `json:"delivery_id" gorm:"type:varchar(40)"`
+	ClientVersion      string `json:"client_version,omitempty" gorm:"type:varchar(100)"`
+	ClientPlatform     string `json:"client_platform,omitempty" gorm:"type:varchar(100)"`
+	CreatedAt          int64  `json:"created_at" gorm:"autoCreateTime:false;index"`
+	UpdatedAt          int64  `json:"updated_at" gorm:"autoUpdateTime:false;index"`
 }
 
 type DemandEngineer struct {
@@ -99,6 +101,7 @@ type DemandAttachment struct {
 	Status         string `json:"status" gorm:"type:varchar(16)"`
 	SHA256         string `json:"sha256,omitempty" gorm:"type:varchar(64)"`
 	ObjectKey      string `json:"-" gorm:"type:varchar(80)"`
+	AvatarReserved bool   `json:"-"`
 	ExpiresAt      int64  `json:"expires_at"`
 	AssemblyToken  string `json:"-" gorm:"type:varchar(40)"`
 	AssemblyUntil  int64  `json:"-"`
@@ -112,6 +115,44 @@ type DemandUploadPart struct {
 	ObjectKey string `gorm:"type:varchar(80)"`
 }
 
+// Service directory entries are platform intake destinations, never login identities.
+type DemandServiceProfile struct {
+	ID                 string `json:"id" gorm:"type:varchar(40);primaryKey"`
+	Code               string `json:"code" gorm:"type:varchar(80);uniqueIndex"`
+	DisplayName        string `json:"display_name" gorm:"type:varchar(100)"`
+	ServiceDirection   string `json:"service_direction" gorm:"type:varchar(200)"`
+	Introduction       string `json:"introduction" gorm:"type:text"`
+	CategoryJSON       string `json:"-" gorm:"type:text"`
+	AvatarAttachmentID string `json:"avatar_attachment_id" gorm:"type:varchar(40);index"`
+	Published          bool   `json:"published"`
+	Enabled            bool   `json:"enabled"`
+	Sort               int    `json:"sort"`
+	Revision           int64  `json:"revision"`
+}
+
+// An optional real-user link associates existing demands; it grants no authentication rights.
+type DemandCustomerProfile struct {
+	ID                 string `json:"id" gorm:"type:varchar(40);primaryKey"`
+	Code               string `json:"code" gorm:"type:varchar(80);uniqueIndex"`
+	DisplayName        string `json:"display_name" gorm:"type:varchar(100)"`
+	Organization       string `json:"organization" gorm:"type:varchar(200)"`
+	Introduction       string `json:"introduction" gorm:"type:text"`
+	Notes              string `json:"notes" gorm:"type:text"`
+	AvatarAttachmentID string `json:"avatar_attachment_id" gorm:"type:varchar(40);index"`
+	UserID             *int   `json:"-" gorm:"uniqueIndex"`
+	Enabled            bool   `json:"enabled"`
+	Revision           int64  `json:"revision"`
+}
+
+type DemandProfileImport struct {
+	BatchCode               string `json:"batch_code" gorm:"type:varchar(80);primaryKey"`
+	PayloadHash             string `json:"-" gorm:"type:varchar(64)"`
+	CreatedServiceProfiles  int    `json:"created_service_profiles"`
+	CreatedCustomerProfiles int    `json:"created_customer_profiles"`
+	SkippedServiceProfiles  int    `json:"skipped_service_profiles"`
+	SkippedCustomerProfiles int    `json:"skipped_customer_profiles"`
+}
+
 func DemandTables() []interface{} {
-	return []interface{}{&Demand{}, &DemandEngineer{}, &DemandMessage{}, &DemandReadCursor{}, &DemandAudit{}, &DemandActionReceipt{}, &DemandConfiguration{}, &DemandAttachment{}, &DemandUploadPart{}}
+	return []interface{}{&Demand{}, &DemandEngineer{}, &DemandMessage{}, &DemandReadCursor{}, &DemandAudit{}, &DemandActionReceipt{}, &DemandConfiguration{}, &DemandAttachment{}, &DemandUploadPart{}, &DemandServiceProfile{}, &DemandCustomerProfile{}, &DemandProfileImport{}}
 }

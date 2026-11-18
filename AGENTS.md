@@ -40,6 +40,13 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - Selectable catalogs and submission admission require a real billing configuration. Distinguish missing tariffs from explicit free zero prices; do not use self-use fallback as proof a model is priced. Preserve original task retrieval and exclude just-disabled routes even when the pricing display cache is warm.
 - Batch catalog version and capacity reads within each request. Do not cache credential-dependent capacity evidence across requests or make Redis authoritative for billing, tasks, sessions, or configuration CAS.
 
+## Demand directory and central intake
+
+- Service profiles are platform intake entries, not users or online engineers. Customer profiles are internal records; an optional unique existing-user link grants no authentication, role or financial changes.
+- Presets and role avatars are imported only by an explicit administrator action. Stable profile codes and batch receipts must skip existing records and preserve administrator edits; never seed production on startup.
+- A service-profile demand remains unassigned until an administrator assigns an existing real engineer. Keep the original service ID/name snapshot. For legacy callers, project a non-null offline `platform-intake` engineer with matching public `engineer_id`; never persist a fake engineer/user to satisfy the projection.
+- Keep directory pages bounded, cursors bound to filters, and old direct-engineer creation/idempotency compatible. Private uploads and signed content must recheck current participant/profile visibility; reassignment and unpublication revoke prior access. Reserved profile avatars cannot be rebound into message attachments.
+
 ## Overseas manual phone login
 
 - Manage exact non-+86 E.164 numbers only in System settings → Authentication → Overseas phone whitelist. This is independent of the development SMS bypass; never enable that bypass for customer login.
