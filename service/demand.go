@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
@@ -276,9 +278,10 @@ type DemandMessageView struct {
 	model.DemandMessage
 	Attachments []model.DemandAttachment `json:"attachments"`
 	Read        bool                     `json:"read"`
+	AuthorName  string                   `json:"author_name,omitempty"`
 }
 
-// ProjectDemandMessages batches attachment and read-cursor lookups for one page.
+// ProjectDemandMessages batches attachments, author profiles and read cursors for one page.
 func ProjectDemandMessages(db *gorm.DB, a DemandActor, d model.Demand, messages []model.DemandMessage) ([]DemandMessageView, int64, error) {
 	recipient := d.UserID
 	if recipient == a.UserID {
@@ -296,6 +299,30 @@ func ProjectDemandMessages(db *gorm.DB, a DemandActor, d model.Demand, messages 
 	for _, message := range messages {
 		ids = append(ids, message.ID)
 	}
+	authorIDs := make([]int, 0)
+	seenAuthors := make(map[int]bool)
+	for _, message := range messages {
+		if message.Author == "engineer" && message.SenderID > 0 && !seenAuthors[message.SenderID] {
+			seenAuthors[message.SenderID] = true
+			authorIDs = append(authorIDs, message.SenderID)
+		}
+	}
+	authorNames := make(map[int]string)
+	if len(authorIDs) > 0 {
+		var profiles []model.DemandEngineer
+		// History follows its sender, including an unpublished/disabled former
+		// assignee. Select public profile names only, never user contact fields.
+		if err := db.Select("user_id", "display_name").Where("user_id IN ?", authorIDs).Find(&profiles).Error; err != nil {
+			return nil, 0, err
+		}
+		for _, profile := range profiles {
+			name := strings.TrimSpace(profile.DisplayName)
+			if name == "" || !utf8.ValidString(name) || len(utf16.Encode([]rune(name))) > 200 || strings.ContainsFunc(name, unicode.IsControl) {
+				continue
+			}
+			authorNames[profile.UserID] = name
+		}
+	}
 	attachments := []model.DemandAttachment{}
 	if len(ids) > 0 {
 		if err := db.Where("message_id IN ?", ids).Order("id").Find(&attachments).Error; err != nil {
@@ -312,7 +339,11 @@ func ProjectDemandMessages(db *gorm.DB, a DemandActor, d model.Demand, messages 
 		if files == nil {
 			files = []model.DemandAttachment{}
 		}
-		result = append(result, DemandMessageView{DemandMessage: message, Attachments: files, Read: message.SenderID == a.UserID && cursor.LastReadSeq >= message.Seq})
+		name := ""
+		if message.Author == "engineer" {
+			name = authorNames[message.SenderID]
+		}
+		result = append(result, DemandMessageView{DemandMessage: message, Attachments: files, Read: message.SenderID == a.UserID && cursor.LastReadSeq >= message.Seq, AuthorName: name})
 	}
 	return result, cursor.LastReadSeq, nil
 }

@@ -405,7 +405,7 @@ func TestDemandLocalFixtureServer(t *testing.T) {
 	system_setting.TaskPublicAddress = "http://" + listener.Addr().String()
 	server := &http.Server{Handler: f.engine, ReadHeaderTimeout: 5 * time.Second}
 	defer server.Close()
-	manifest := map[string]any{"schema_version": 1, "fixture_revision": 2, "fixture_id": uuid.NewString(), "source_commit": os.Getenv("DEMAND_FIXTURE_SOURCE_COMMIT"), "base_url": system_setting.TaskPublicAddress, "synthetic_only": true, "expires_at": time.Now().Add(15 * time.Minute).Unix(), "tokens": map[string]string{"customerA": f.tokens["owner"], "customerB": f.tokens["other"], "engineerA": f.tokens["engineer"], "engineerB": f.tokens["replacement"], "admin": f.tokens["admin"]}, "users": f.users, "engineers": f.engineers, "admin_page": "/demand-management", "engineer_page": "/engineer-workspace"}
+	manifest := map[string]any{"schema_version": 1, "fixture_revision": 3, "fixture_id": uuid.NewString(), "source_commit": os.Getenv("DEMAND_FIXTURE_SOURCE_COMMIT"), "base_url": system_setting.TaskPublicAddress, "synthetic_only": true, "expires_at": time.Now().Add(15 * time.Minute).Unix(), "tokens": map[string]string{"customerA": f.tokens["owner"], "customerB": f.tokens["other"], "engineerA": f.tokens["engineer"], "engineerB": f.tokens["replacement"], "admin": f.tokens["admin"]}, "users": f.users, "engineers": f.engineers, "admin_page": "/demand-management", "engineer_page": "/engineer-workspace"}
 	raw, err := common.Marshal(manifest)
 	require.NoError(t, err)
 	output := os.Getenv("DEMAND_FIXTURE_OUTPUT")
@@ -584,4 +584,51 @@ func TestDemandFixtureSelfMetadataSatisfiesHostAccountContract(t *testing.T) {
 		assert.Equal(t, f.users[name].Group, metadata.Group)
 		assert.Equal(t, f.users[name].PhoneE164, metadata.PhoneE164)
 	}
+}
+
+func TestDemandHistoryAuthorNamesFollowSendersAfterReassignment(t *testing.T) {
+	f := newDemandFixture(t)
+	require.NoError(t, f.db.Model(&model.DemandEngineer{}).Where("id = ?", f.engineers["engineer"]).Update("display_name", "SYNTHETIC Engineer A").Error)
+	require.NoError(t, f.db.Model(&model.DemandEngineer{}).Where("id = ?", f.engineers["replacement"]).Update("display_name", "SYNTHETIC Engineer B").Error)
+	original := f.create(t, "historical-authors-001")
+	id := original.Demand.ID
+	first := demandData[service.DemandSendReceipt](t, f.request(t, "engineer", "POST", "/api/engineer/demands/"+id+"/messages", service.DemandSend{ClientMessageID: "author-a-original-message", Text: "Message from original Engineer A"}, 200))
+	assigned := demandData[service.DemandActionResult](t, f.request(t, "admin", "POST", "/api/demand-management/"+id+"/actions", service.DemandAction{ClientActionID: "author-transfer-a-to-b", Action: "assign", Revision: first.Demand.Revision, EngineerID: f.engineers["replacement"]}, 200))
+	require.Equal(t, f.engineers["replacement"], assigned.Demand.EngineerID)
+	second := demandData[service.DemandSendReceipt](t, f.request(t, "replacement", "POST", "/api/engineer/demands/"+id+"/messages", service.DemandSend{ClientMessageID: "author-b-new-message", Text: "Message from new Engineer B"}, 200))
+	require.NoError(t, f.db.Model(&model.DemandEngineer{}).Where("id = ?", f.engineers["engineer"]).Updates(map[string]any{"enabled": false, "published": false}).Error)
+	type item struct {
+		ID         string  `json:"id"`
+		SenderID   int     `json:"sender_id"`
+		Author     string  `json:"author"`
+		AuthorName *string `json:"author_name"`
+		Seq        int64   `json:"seq"`
+	}
+	body := f.request(t, "owner", "GET", "/api/product/demands/"+id+"/messages", nil, 200)
+	history := demandData[struct {
+		Items []item `json:"items"`
+	}](t, body)
+	require.Len(t, history.Items, 3)
+	assert.Nil(t, history.Items[0].AuthorName, "user message labels stay client-owned")
+	require.NotNil(t, history.Items[1].AuthorName)
+	require.NotNil(t, history.Items[2].AuthorName)
+	assert.Equal(t, "SYNTHETIC Engineer A", *history.Items[1].AuthorName)
+	assert.Equal(t, "SYNTHETIC Engineer B", *history.Items[2].AuthorName)
+	assert.Equal(t, first.Message.ID, history.Items[1].ID)
+	assert.Equal(t, second.Message.ID, history.Items[2].ID)
+	assert.EqualValues(t, 2, history.Items[1].Seq)
+	assert.EqualValues(t, 3, history.Items[2].Seq)
+	assert.Equal(t, f.users["engineer"].Id, history.Items[1].SenderID)
+	assert.Equal(t, f.users["replacement"].Id, history.Items[2].SenderID)
+	assert.NotContains(t, string(body), *f.users["engineer"].PhoneE164)
+	assert.NotContains(t, string(body), *f.users["replacement"].PhoneE164)
+	// Missing or unsafe profile data must omit the optional name, never borrow B's name for A.
+	require.NoError(t, f.db.Delete(&model.DemandEngineer{}, "id = ?", f.engineers["engineer"]).Error)
+	require.NoError(t, f.db.Model(&model.DemandEngineer{}).Where("id = ?", f.engineers["replacement"]).Update("display_name", "SYNTHETIC\tB").Error)
+	history = demandData[struct {
+		Items []item `json:"items"`
+	}](t, f.request(t, "owner", "GET", "/api/product/demands/"+id+"/messages", nil, 200))
+	require.Len(t, history.Items, 3)
+	assert.Nil(t, history.Items[1].AuthorName)
+	assert.Nil(t, history.Items[2].AuthorName)
 }
