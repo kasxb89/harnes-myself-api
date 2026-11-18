@@ -9299,6 +9299,7 @@
     "Profile avatar cannot be attached to a message": "Profile avatar cannot be attached to a message",
     "Service profile is not accepting new demands": "Service profile is not accepting new demands",
     "Choose one engineer or service profile": "Choose one engineer or service profile",
-    "Invalid assignment filter": "Invalid assignment filter"
+    "Invalid assignment filter": "Invalid assignment filter",
+    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads"
   }
 }

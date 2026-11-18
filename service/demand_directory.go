@@ -45,21 +45,35 @@ func ProjectDemandCustomerProfile(p model.DemandCustomerProfile) DemandCustomerP
 }
 
 // Shared avatar validation prevents message-bound private media becoming a directory image.
-func validateDemandProfileAvatar(db *gorm.DB, id string) error {
+func validateDemandProfileAvatar(db *gorm.DB, id, scope string) error {
 	if id == "" {
 		return nil
 	}
-	res := db.Model(&model.DemandAttachment{}).Where("id = ? AND status = ? AND kind = ? AND demand_id = ? AND message_id = ?", id, "ready", "image", "", "").UpdateColumn("avatar_reserved", true)
+	// Visibility can change later, so opposing references include unpublished/disabled profiles.
+	tables := []any{&model.DemandCustomerProfile{}}
+	if scope == "customer" {
+		tables = []any{&model.DemandServiceProfile{}, &model.DemandEngineer{}}
+	}
+	for _, table := range tables {
+		var count int64
+		if err := db.Model(table).Where("avatar_attachment_id = ?", id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return demandError(400, "UPLOAD_INVALID", "Customer and public profiles require separate avatar uploads")
+		}
+	}
+	res := db.Model(&model.DemandAttachment{}).Where("id = ? AND status = ? AND kind = ? AND demand_id = ? AND message_id = ? AND (avatar_scope = ? OR avatar_scope = ? OR avatar_scope IS NULL)", id, "ready", "image", "", "", scope, "").Updates(map[string]any{"avatar_reserved": true, "avatar_scope": scope})
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
 		var count int64
-		if err := db.Model(&model.DemandAttachment{}).Where("id = ? AND status = ? AND kind = ? AND demand_id = ? AND message_id = ? AND avatar_reserved = ?", id, "ready", "image", "", "", true).Count(&count).Error; err != nil {
+		if err := db.Model(&model.DemandAttachment{}).Where("id = ? AND status = ? AND kind = ? AND demand_id = ? AND message_id = ? AND avatar_scope = ?", id, "ready", "image", "", "", scope).Count(&count).Error; err != nil {
 			return err
 		}
 		if count != 1 {
-			return demandError(400, "UPLOAD_INVALID", "Invalid profile avatar")
+			return demandError(400, "UPLOAD_INVALID", "Customer and public profiles require separate avatar uploads")
 		}
 	}
 	return nil
@@ -77,7 +91,7 @@ func SaveDemandServiceProfile(db *gorm.DB, id string, in DemandServiceProfileVie
 			return in, demandError(400, "INVALID_INPUT", "Invalid demand category")
 		}
 	}
-	if err = validateDemandProfileAvatar(db, in.AvatarAttachmentID); err != nil {
+	if err = validateDemandProfileAvatar(db, in.AvatarAttachmentID, "public"); err != nil {
 		return in, err
 	}
 	p := in.DemandServiceProfile
@@ -118,7 +132,7 @@ func SaveDemandCustomerProfile(db *gorm.DB, id string, in DemandCustomerProfileV
 	if !demandProfileCode.MatchString(in.Code) || strings.TrimSpace(in.DisplayName) == "" || utf8.RuneCountInString(in.DisplayName) > 100 || utf8.RuneCountInString(in.Organization) > 200 || utf8.RuneCountInString(in.Introduction) > 2000 || utf8.RuneCountInString(in.Notes) > 4000 || in.UserID < 0 {
 		return in, demandError(400, "INVALID_INPUT", "Invalid customer profile")
 	}
-	if err := validateDemandProfileAvatar(db, in.AvatarAttachmentID); err != nil {
+	if err := validateDemandProfileAvatar(db, in.AvatarAttachmentID, "customer"); err != nil {
 		return in, err
 	}
 	p := in.DemandCustomerProfile

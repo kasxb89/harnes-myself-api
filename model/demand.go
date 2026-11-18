@@ -102,6 +102,7 @@ type DemandAttachment struct {
 	SHA256         string `json:"sha256,omitempty" gorm:"type:varchar(64)"`
 	ObjectKey      string `json:"-" gorm:"type:varchar(80)"`
 	AvatarReserved bool   `json:"-"`
+	AvatarScope    string `json:"-" gorm:"type:varchar(16)"`
 	ExpiresAt      int64  `json:"expires_at"`
 	AssemblyToken  string `json:"-" gorm:"type:varchar(40)"`
 	AssemblyUntil  int64  `json:"-"`

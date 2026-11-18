@@ -181,7 +181,7 @@ func SaveDemandEngineer(db *gorm.DB, id string, in DemandEngineerView) (DemandEn
 	}
 	raw, _ := common.Marshal(in.CategoryIDs)
 	e := model.DemandEngineer{ID: id, UserID: in.UserID, DisplayName: in.DisplayName, AvatarAttachmentID: in.AvatarAttachmentID, CategoryJSON: string(raw), Introduction: in.Introduction, ServiceHours: in.ServiceHours, Published: in.Published, Enabled: in.Enabled, Accepting: in.Accepting, Capacity: in.Capacity, Sort: in.Sort, Revision: in.Revision + 1}
-	if err = validateDemandProfileAvatar(db, in.AvatarAttachmentID); err != nil {
+	if err = validateDemandProfileAvatar(db, in.AvatarAttachmentID, "public"); err != nil {
 		return in, err
 	}
 

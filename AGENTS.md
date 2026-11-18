@@ -45,7 +45,7 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - Service profiles are platform intake entries, not users or online engineers. Customer profiles are internal records; an optional unique existing-user link grants no authentication, role or financial changes.
 - Presets and role avatars are imported only by an explicit administrator action. Stable profile codes and batch receipts must skip existing records and preserve administrator edits; never seed production on startup.
 - A service-profile demand remains unassigned until an administrator assigns an existing real engineer. Keep the original service ID/name snapshot. For legacy callers, project a non-null offline `platform-intake` engineer with matching public `engineer_id`; never persist a fake engineer/user to satisfy the projection.
-- Keep directory pages bounded, cursors bound to filters, and old direct-engineer creation/idempotency compatible. Private uploads and signed content must recheck current participant/profile visibility; reassignment and unpublication revoke prior access. Reserved profile avatars cannot be rebound into message attachments.
+- Keep directory pages bounded, cursors bound to filters, and old direct-engineer creation/idempotency compatible. Private uploads and signed content must recheck current participant/profile visibility; reassignment and unpublication revoke prior access. Reserved profile avatars cannot be rebound into message attachments. Internal customer avatars and public service/real engineer avatars must use separate uploads, including unpublished profiles; attachment-level scope reservation is atomic and persists after reference removal.
 
 ## Overseas manual phone login
 

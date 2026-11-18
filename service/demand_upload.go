@@ -68,6 +68,14 @@ func DemandAttachmentAccess(db *gorm.DB, a DemandActor, id string) (model.Demand
 		_, err := DemandAccess(db, a, v.DemandID)
 		return v, err
 	}
+	// A customer avatar stays internal even if its original upload owner is a regular user.
+	var privateProfiles int64
+	if err := db.Model(&model.DemandCustomerProfile{}).Where("avatar_attachment_id = ?", id).Count(&privateProfiles).Error; err != nil {
+		return v, err
+	}
+	if !a.Admin && (v.AvatarScope == "customer" || privateProfiles > 0) {
+		return v, demandError(404, "ATTACHMENT_NOT_FOUND", "Demand attachment not found")
+	}
 	if a.Admin || v.OwnerID == a.UserID {
 		return v, nil
 	}

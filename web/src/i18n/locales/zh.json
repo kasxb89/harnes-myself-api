@@ -9299,6 +9299,7 @@
     "Profile avatar cannot be attached to a message": "档案头像不能再次作为消息附件",
     "Service profile is not accepting new demands": "该服务入口暂不接收新需求",
     "Choose one engineer or service profile": "请选择一个工程师或服务入口",
-    "Invalid assignment filter": "分派筛选无效"
+    "Invalid assignment filter": "分派筛选无效",
+    "Customer and public profiles require separate avatar uploads": "客户档案与公开服务／工程师须分别上传头像，不能交叉复用"
   }
 }

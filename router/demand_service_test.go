@@ -797,6 +797,7 @@ func TestDemandDirectoryUpgradeKeepsLegacyDemandReceipts(t *testing.T) {
 	require.NoError(t, f.db.Migrator().DropColumn(&model.Demand{}, "service_profile_id"))
 	require.NoError(t, f.db.Migrator().DropColumn(&model.Demand{}, "service_profile_name"))
 	require.NoError(t, f.db.Migrator().DropColumn(&model.DemandAttachment{}, "avatar_reserved"))
+	require.NoError(t, f.db.Migrator().DropColumn(&model.DemandAttachment{}, "avatar_scope"))
 	for range 2 {
 		require.NoError(t, f.db.AutoMigrate(model.DemandTables()...))
 	}
@@ -827,4 +828,62 @@ func TestDemandDirectoryUpgradeKeepsLegacyDemandReceipts(t *testing.T) {
 	row.ID = "duplicate-demand"
 	row.Number = "duplicate-number"
 	assert.Error(t, f.db.Create(&row).Error)
+}
+
+func TestDemandDirectoryAvatarScopesPreventCrossVisibilityAndRollbackImport(t *testing.T) {
+	f := newDemandFixture(t)
+	var pngData bytes.Buffer
+	require.NoError(t, png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	private := f.upload(t, "admin", "internal-avatar.png", "image/png", pngData.Bytes())
+	customer := service.DemandCustomerProfileView{DemandCustomerProfile: model.DemandCustomerProfile{Code: "internal_customer", DisplayName: "Internal customer", Enabled: true, AvatarAttachmentID: private.ID}}
+	customer = demandData[service.DemandCustomerProfileView](t, f.request(t, "admin", "POST", "/api/demand-management/customer-profiles", customer, 200))
+	public := service.DemandServiceProfileView{DemandServiceProfile: model.DemandServiceProfile{Code: "public_service", DisplayName: "Public service", ServiceDirection: "Software", Enabled: true, Published: false, AvatarAttachmentID: private.ID}, CategoryIDs: []string{}}
+	// Unpublished public profiles can be listed later, so they must not accept an internal image either.
+	f.request(t, "admin", "POST", "/api/demand-management/service-profiles", public, 400)
+	var e model.DemandEngineer
+	require.NoError(t, f.db.First(&e, "id = ?", f.engineers["engineer"]).Error)
+	engineer := service.DemandEngineerPublic(e, true)
+	engineer.AvatarAttachmentID = private.ID
+	f.request(t, "admin", "PUT", "/api/demand-management/engineers/"+engineer.ID, engineer, 400)
+	publicAvatar := f.upload(t, "admin", "public-avatar.png", "image/png", pngData.Bytes())
+	public.AvatarAttachmentID = publicAvatar.ID
+	public = demandData[service.DemandServiceProfileView](t, f.request(t, "admin", "POST", "/api/demand-management/service-profiles", public, 200))
+	anotherCustomer := service.DemandCustomerProfileView{DemandCustomerProfile: model.DemandCustomerProfile{Code: "another_customer", DisplayName: "Another customer", Enabled: true, AvatarAttachmentID: publicAvatar.ID}}
+	f.request(t, "admin", "POST", "/api/demand-management/customer-profiles", anotherCustomer, 400)
+	// The ordinary upload owner also loses product-side access when its image is deliberately classified internal.
+	owned := f.upload(t, "owner", "owned-internal.png", "image/png", pngData.Bytes())
+	anotherCustomer.AvatarAttachmentID = owned.ID
+	anotherCustomer = demandData[service.DemandCustomerProfileView](t, f.request(t, "admin", "POST", "/api/demand-management/customer-profiles", anotherCustomer, 200))
+	f.request(t, "owner", "POST", "/api/product/demands/attachments/"+owned.ID+"/link", map[string]string{"disposition": "inline"}, 404)
+	f.request(t, "admin", "POST", "/api/demand-management/attachments/"+owned.ID+"/link", map[string]string{"disposition": "inline"}, 200)
+	batchAvatar := f.upload(t, "admin", "batch-avatar.png", "image/png", pngData.Bytes())
+	batchService := service.DemandServiceProfileView{DemandServiceProfile: model.DemandServiceProfile{Code: "batch_service", DisplayName: "Batch service", ServiceDirection: "Software", Enabled: true, AvatarAttachmentID: batchAvatar.ID}, CategoryIDs: []string{}}
+	batchCustomer := service.DemandCustomerProfileView{DemandCustomerProfile: model.DemandCustomerProfile{Code: "batch_customer", DisplayName: "Batch customer", Enabled: true, AvatarAttachmentID: batchAvatar.ID}}
+	batch := service.DemandProfileImportInput{BatchCode: "mixed-batch-001", ServiceProfiles: []service.DemandServiceProfileView{batchService}, CustomerProfiles: []service.DemandCustomerProfileView{batchCustomer}}
+	f.request(t, "admin", "POST", "/api/demand-management/profile-import", batch, 400)
+	for _, table := range []any{&model.DemandServiceProfile{}, &model.DemandCustomerProfile{}} {
+		var count int64
+		require.NoError(t, f.db.Model(table).Where("code IN ?", []string{"batch_service", "batch_customer"}).Count(&count).Error)
+		assert.Zero(t, count)
+	}
+	var receiptCount int64
+	require.NoError(t, f.db.Model(&model.DemandProfileImport{}).Where("batch_code = ?", batch.BatchCode).Count(&receiptCount).Error)
+	assert.Zero(t, receiptCount)
+	var recovered model.DemandAttachment
+	require.NoError(t, f.db.First(&recovered, "id = ?", batchAvatar.ID).Error)
+	assert.Empty(t, recovered.AvatarScope)
+	assert.False(t, recovered.AvatarReserved)
+	// A failed cross-class import leaves the upload available for a corrected, single-class batch.
+	batch.ServiceProfiles = nil
+	imported := demandData[service.DemandProfileImportResult](t, f.request(t, "admin", "POST", "/api/demand-management/profile-import", batch, 200))
+	assert.Equal(t, 1, imported.CreatedCustomerProfiles)
+	replay := demandData[service.DemandProfileImportResult](t, f.request(t, "admin", "POST", "/api/demand-management/profile-import", batch, 200))
+	assert.True(t, replay.Replayed)
+	batch.CustomerProfiles[0].DisplayName = "Different payload"
+	f.request(t, "admin", "POST", "/api/demand-management/profile-import", batch, 409)
+	// Removing a customer reference does not silently reclassify an already internal upload as public.
+	customer.AvatarAttachmentID = ""
+	f.request(t, "admin", "PUT", "/api/demand-management/customer-profiles/"+customer.ID, customer, 200)
+	public.AvatarAttachmentID = private.ID
+	f.request(t, "admin", "PUT", "/api/demand-management/service-profiles/"+public.ID, public, 400)
 }
