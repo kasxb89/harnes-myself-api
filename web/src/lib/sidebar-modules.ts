@@ -181,6 +181,11 @@ export const SIDEBAR_MODULE_SECTIONS: SidebarModuleSection[] = [
         descriptionKey: 'Manage client model names, order and descriptions.',
       },
       {
+        key: 'demands',
+        titleKey: 'Demand management',
+        descriptionKey: 'Manage engineers and customer demands.',
+      },
+      {
         key: 'creation_content',
         titleKey: 'AI Creation Management',
         descriptionKey: 'Manage creative templates and published content.',
@@ -394,6 +399,7 @@ export const SIDEBAR_URL_MODULES: Record<
   '/models/deployments': { section: 'models', module: 'models' },
   '/client-model-config': { section: 'content', module: 'client_model_config' },
   '/creation-content': { section: 'content', module: 'creation_content' },
+  '/demand-management': { section: 'content', module: 'demands' },
   '/system-settings/content/announcements': {
     section: 'content',
     module: 'announcements',

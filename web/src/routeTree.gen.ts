@@ -41,6 +41,8 @@ import { Route as AuthenticatedClientModelConfigIndexRouteImport } from './route
 import { Route as AuthenticatedCreationContentIndexRouteImport } from './routes/_authenticated/creation-content/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
+import { Route as AuthenticatedDemandManagementIndexRouteImport } from './routes/_authenticated/demand-management/index'
+import { Route as AuthenticatedEngineerWorkspaceIndexRouteImport } from './routes/_authenticated/engineer-workspace/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedImageManagementIndexRouteImport } from './routes/_authenticated/image-management/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
@@ -250,6 +252,18 @@ const AuthenticatedDashboardSectionRoute =
   AuthenticatedDashboardSectionRouteImport.update({
     id: '/dashboard/$section',
     path: '/dashboard/$section',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDemandManagementIndexRoute =
+  AuthenticatedDemandManagementIndexRouteImport.update({
+    id: '/demand-management/',
+    path: '/demand-management/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedEngineerWorkspaceIndexRoute =
+  AuthenticatedEngineerWorkspaceIndexRouteImport.update({
+    id: '/engineer-workspace/',
+    path: '/engineer-workspace/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedErrorsErrorRoute =
@@ -555,6 +569,8 @@ export interface FileRoutesByFullPath {
   '/client-model-config/': typeof AuthenticatedClientModelConfigIndexRoute
   '/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/demand-management/': typeof AuthenticatedDemandManagementIndexRoute
+  '/engineer-workspace/': typeof AuthenticatedEngineerWorkspaceIndexRoute
   '/image-management/': typeof AuthenticatedImageManagementIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/media-management/': typeof AuthenticatedMediaManagementIndexRoute
@@ -631,6 +647,8 @@ export interface FileRoutesByTo {
   '/client-model-config': typeof AuthenticatedClientModelConfigIndexRoute
   '/creation-content': typeof AuthenticatedCreationContentIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/demand-management': typeof AuthenticatedDemandManagementIndexRoute
+  '/engineer-workspace': typeof AuthenticatedEngineerWorkspaceIndexRoute
   '/image-management': typeof AuthenticatedImageManagementIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/media-management': typeof AuthenticatedMediaManagementIndexRoute
@@ -711,6 +729,8 @@ export interface FileRoutesById {
   '/_authenticated/client-model-config/': typeof AuthenticatedClientModelConfigIndexRoute
   '/_authenticated/creation-content/': typeof AuthenticatedCreationContentIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/demand-management/': typeof AuthenticatedDemandManagementIndexRoute
+  '/_authenticated/engineer-workspace/': typeof AuthenticatedEngineerWorkspaceIndexRoute
   '/_authenticated/image-management/': typeof AuthenticatedImageManagementIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/media-management/': typeof AuthenticatedMediaManagementIndexRoute
@@ -790,6 +810,8 @@ export interface FileRouteTypes {
     | '/client-model-config/'
     | '/creation-content/'
     | '/dashboard/'
+    | '/demand-management/'
+    | '/engineer-workspace/'
     | '/image-management/'
     | '/keys/'
     | '/media-management/'
@@ -866,6 +888,8 @@ export interface FileRouteTypes {
     | '/client-model-config'
     | '/creation-content'
     | '/dashboard'
+    | '/demand-management'
+    | '/engineer-workspace'
     | '/image-management'
     | '/keys'
     | '/media-management'
@@ -945,6 +969,8 @@ export interface FileRouteTypes {
     | '/_authenticated/client-model-config/'
     | '/_authenticated/creation-content/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/demand-management/'
+    | '/_authenticated/engineer-workspace/'
     | '/_authenticated/image-management/'
     | '/_authenticated/keys/'
     | '/_authenticated/media-management/'
@@ -1231,6 +1257,20 @@ declare module '@tanstack/react-router' {
       path: '/dashboard/$section'
       fullPath: '/dashboard/$section'
       preLoaderRoute: typeof AuthenticatedDashboardSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/demand-management/': {
+      id: '/_authenticated/demand-management/'
+      path: '/demand-management'
+      fullPath: '/demand-management/'
+      preLoaderRoute: typeof AuthenticatedDemandManagementIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/engineer-workspace/': {
+      id: '/_authenticated/engineer-workspace/'
+      path: '/engineer-workspace'
+      fullPath: '/engineer-workspace/'
+      preLoaderRoute: typeof AuthenticatedEngineerWorkspaceIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/errors/$error': {
@@ -1654,6 +1694,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedClientModelConfigIndexRoute: typeof AuthenticatedClientModelConfigIndexRoute
   AuthenticatedCreationContentIndexRoute: typeof AuthenticatedCreationContentIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedDemandManagementIndexRoute: typeof AuthenticatedDemandManagementIndexRoute
+  AuthenticatedEngineerWorkspaceIndexRoute: typeof AuthenticatedEngineerWorkspaceIndexRoute
   AuthenticatedImageManagementIndexRoute: typeof AuthenticatedImageManagementIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedMediaManagementIndexRoute: typeof AuthenticatedMediaManagementIndexRoute
@@ -1696,6 +1738,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCreationContentIndexRoute:
     AuthenticatedCreationContentIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedDemandManagementIndexRoute:
+    AuthenticatedDemandManagementIndexRoute,
+  AuthenticatedEngineerWorkspaceIndexRoute:
+    AuthenticatedEngineerWorkspaceIndexRoute,
   AuthenticatedImageManagementIndexRoute:
     AuthenticatedImageManagementIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,

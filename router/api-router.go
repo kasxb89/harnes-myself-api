@@ -17,10 +17,11 @@ import (
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
-	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/creation/assets/"})))
+	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/creation/assets/", "/api/product/demands/attachments/"})))
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
+	SetDemandRoutes(apiRouter)
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
 		apiRouter.GET("/setup", controller.GetSetup)

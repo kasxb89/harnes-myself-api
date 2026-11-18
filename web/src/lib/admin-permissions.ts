@@ -24,6 +24,7 @@ export type AdminPermissionMatrix = Record<string, Record<string, boolean>>
 export type AdminCapabilities = AdminPermissionMatrix
 
 export const ADMIN_PERMISSION_RESOURCES = {
+  DEMANDS: 'demands',
   AUDIT: 'audit',
   CHANNEL: 'channel',
   TASK_PLUGIN: 'task_plugin',
@@ -144,6 +145,7 @@ export function canAccessAdminRoute(
     return read('media_operations') || read('video_usage')
   }
   const resources: ReadonlyArray<readonly [string, string]> = [
+    ['/demand-management', 'demands'],
     ['/model-profits', 'model_profits'],
     ['/dashboard/users', 'operations'],
     ['/balance-ledger', 'balance_ledger'],

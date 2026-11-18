@@ -3,6 +3,8 @@ package authz
 // These permissions govern interactive administration. They are intentionally
 // excluded from PAT scopes; existing token boundaries remain unchanged.
 var (
+	DemandsRead            = Permission{Resource: "demands", Action: ActionRead}
+	DemandsWrite           = Permission{Resource: "demands", Action: ActionWrite}
 	OperationsRead         = Permission{Resource: "operations", Action: ActionRead}
 	ModelProfitsRead       = Permission{Resource: "model_profits", Action: ActionRead}
 	BalanceLedgerRead      = Permission{Resource: "balance_ledger", Action: ActionRead}
@@ -28,6 +30,7 @@ func init() {
 	for _, resource := range []struct {
 		key, label, group, description, editDescription string
 	}{
+		{"demands", "Demand management", "content", "View assigned customer demands and private attachments.", "Manage engineers, assign demands and maintain service settings."},
 		{"operations", "Business overview", "finance", "View operating totals and usage trends.", ""},
 		{"model_profits", "Model profits", "finance", "View model revenue, procurement costs and profits without changing prices.", ""},
 		{"balance_ledger", "Balance ledger", "finance", "View registration credits, top-ups and administrator balance changes.", ""},
