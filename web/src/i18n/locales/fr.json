@@ -9307,6 +9307,13 @@
     "Reply to customer": "Répondre au client",
     "Send to customer": "Envoyer au client",
     "Message visibility": "Visibilité du message",
-    "This reply is visible to the customer. No engineer assignment is required.": "Cette réponse est visible par le client. Aucune affectation d’ingénieur n’est nécessaire."
+    "This reply is visible to the customer. No engineer assignment is required.": "Cette réponse est visible par le client. Aucune affectation d’ingénieur n’est nécessaire.",
+    "All demands": "Toutes les demandes",
+    "Filter demands": "Filtrer les demandes",
+    "Reset filters": "Réinitialiser les filtres",
+    "Choose a conversation to reply to the customer.": "Choisissez une conversation pour répondre au client.",
+    "Demand details": "Détails de la demande",
+    "Demand updated": "Demande mise à jour",
+    "Assign": "Attribuer"
   }
 }

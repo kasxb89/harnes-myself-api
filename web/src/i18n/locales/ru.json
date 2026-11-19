@@ -9307,6 +9307,13 @@
     "Reply to customer": "Ответить клиенту",
     "Send to customer": "Отправить клиенту",
     "Message visibility": "Видимость сообщения",
-    "This reply is visible to the customer. No engineer assignment is required.": "Ответ виден клиенту. Назначать инженера заранее не требуется."
+    "This reply is visible to the customer. No engineer assignment is required.": "Ответ виден клиенту. Назначать инженера заранее не требуется.",
+    "All demands": "Все заявки",
+    "Filter demands": "Фильтры заявок",
+    "Reset filters": "Сбросить фильтры",
+    "Choose a conversation to reply to the customer.": "Выберите переписку для ответа клиенту.",
+    "Demand details": "Подробности заявки",
+    "Demand updated": "Заявка обновлена",
+    "Assign": "Назначить"
   }
 }

@@ -249,8 +249,13 @@ test('internal notes use the administrator action endpoint and never the public 
     />
   )
   await screen.findByText('Customer message')
+  await user.type(screen.getByLabelText('Reply to customer'), 'PUBLIC draft')
   await user.click(screen.getByRole('button', { name: 'Internal note' }))
   await user.type(screen.getByLabelText('Internal note'), 'PRIVATE note')
+  await user.click(screen.getByRole('button', { name: 'Reply to customer' }))
+  expect(screen.getByLabelText('Reply to customer')).toHaveValue('PUBLIC draft')
+  await user.click(screen.getByRole('button', { name: 'Internal note' }))
+  expect(screen.getByLabelText('Internal note')).toHaveValue('PRIVATE note')
   await user.click(screen.getByRole('button', { name: 'Add internal note' }))
   await waitFor(() =>
     expect(post).toHaveBeenCalledWith(
@@ -473,10 +478,17 @@ test('an administrator can reply before assignment and see the customer informat
     'aria-pressed',
     'false'
   )
+  expect(
+    screen.queryByRole('region', { name: 'Customer information' })
+  ).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Assign engineer')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Customer information' }))
   const info = screen.getByRole('region', { name: 'Customer information' })
   expect(within(info).getByText('SYNTHETIC customer')).toBeInTheDocument()
   expect(within(info).getByText('+15550001000')).toBeInTheDocument()
   expect(within(info).getByText('1')).toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  expect(screen.getByLabelText('Reply to customer')).toBeVisible()
   await user.type(
     screen.getByLabelText('Reply to customer'),
     'I can help without assigning an engineer'
@@ -498,6 +510,7 @@ test('an administrator can reply before assignment and see the customer informat
 })
 
 test('a read-only administrator sees customer details without public reply or note actions', async () => {
+  const user = userEvent.setup()
   const selected: Demand = {
     ...demand,
     owner: { id: 1, nickname: 'SYNTHETIC customer', phone: null },
@@ -513,6 +526,7 @@ test('a read-only administrator sees customer details without public reply or no
     />
   )
   await screen.findByText('Customer message')
+  await user.click(screen.getByRole('button', { name: 'Customer information' }))
   expect(
     screen.getByRole('region', { name: 'Customer information' })
   ).toBeInTheDocument()
@@ -521,6 +535,29 @@ test('a read-only administrator sees customer details without public reply or no
     screen.queryByRole('button', { name: 'Send to customer' })
   ).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Internal note')).not.toBeInTheDocument()
+})
+
+test('advanced demand filters open on request and retain the selected status when dismissed', async () => {
+  const user = userEvent.setup()
+  useAuthStore.getState().auth.setUser({ id: 9, username: 'admin', role: 100 })
+  get.mockImplementation((url: string) =>
+    Promise.resolve(
+      envelope({
+        items: url.endsWith('/engineers') ? [engineer] : [demand],
+        next_before_id: '',
+        has_more: false,
+      })
+    )
+  )
+  view(<DemandManagementPage />)
+  await screen.findByText(demand.title)
+  expect(screen.queryByLabelText('Created after')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Filter demands' }))
+  await user.selectOptions(screen.getByLabelText('Status'), 'in_progress')
+  await user.keyboard('{Escape}')
+  expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Filter demands' }))
+  expect(screen.getByLabelText('Status')).toHaveValue('in_progress')
 })
 
 test('an administrator keeps the same public reply fence after an unknown result and remount', async () => {

@@ -9307,6 +9307,13 @@
     "Reply to customer": "Reply to customer",
     "Send to customer": "Send to customer",
     "Message visibility": "Message visibility",
-    "This reply is visible to the customer. No engineer assignment is required.": "This reply is visible to the customer. No engineer assignment is required."
+    "This reply is visible to the customer. No engineer assignment is required.": "This reply is visible to the customer. No engineer assignment is required.",
+    "All demands": "All demands",
+    "Filter demands": "Filter demands",
+    "Reset filters": "Reset filters",
+    "Choose a conversation to reply to the customer.": "Choose a conversation to reply to the customer.",
+    "Demand details": "Demand details",
+    "Demand updated": "Demand updated",
+    "Assign": "Assign"
   }
 }

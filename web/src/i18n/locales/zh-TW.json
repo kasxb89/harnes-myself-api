@@ -9307,6 +9307,13 @@
     "Reply to customer": "回覆使用者",
     "Send to customer": "傳送給使用者",
     "Message visibility": "訊息可見範圍",
-    "This reply is visible to the customer. No engineer assignment is required.": "回覆會直接顯示給使用者，無需先指派工程師。"
+    "This reply is visible to the customer. No engineer assignment is required.": "回覆會直接顯示給使用者，無需先指派工程師。",
+    "All demands": "全部需求",
+    "Filter demands": "篩選需求",
+    "Reset filters": "清除篩選",
+    "Choose a conversation to reply to the customer.": "選擇一筆需求開始回覆。",
+    "Demand details": "需求詳情",
+    "Demand updated": "需求更新",
+    "Assign": "指派"
   }
 }

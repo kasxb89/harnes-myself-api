@@ -9307,6 +9307,13 @@
     "Reply to customer": "お客様に返信",
     "Send to customer": "お客様に送信",
     "Message visibility": "メッセージの公開範囲",
-    "This reply is visible to the customer. No engineer assignment is required.": "この返信はお客様に表示されます。担当エンジニアの割り当ては不要です。"
+    "This reply is visible to the customer. No engineer assignment is required.": "この返信はお客様に表示されます。担当エンジニアの割り当ては不要です。",
+    "All demands": "すべての依頼",
+    "Filter demands": "依頼を絞り込む",
+    "Reset filters": "フィルターをリセット",
+    "Choose a conversation to reply to the customer.": "お客様に返信する依頼を選択してください。",
+    "Demand details": "依頼の詳細",
+    "Demand updated": "依頼を更新",
+    "Assign": "割り当て"
   }
 }

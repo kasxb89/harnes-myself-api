@@ -16,18 +16,45 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  ArrowLeft01Icon,
+  ArrowUp02Icon,
+  Attachment01Icon,
+  Cancel01Icon,
+  InformationCircleIcon,
+} from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from '@/components/ai-elements/conversation'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { CopyButton } from '@/components/copy-button'
+import {
+  sideDrawerContentClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { LoadingState } from '@/components/loading-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NativeSelect } from '@/components/ui/native-select'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { formatTimestampToDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import {
   attachmentLink,
@@ -122,6 +149,7 @@ export function DemandConversation({
   const [assignment, setAssignment] = useState('')
   const [closeOpen, setCloseOpen] = useState(false)
   const [localError, setLocalError] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
   const uploads = useRef(new Map<string, AbortController>())
   useEffect(() => {
     const active = uploads.current
@@ -345,262 +373,414 @@ export function DemandConversation({
   if (outbox) sendLabel = 'Retry same message'
   if (send.isPending) sendLabel = 'Sending...'
   const ready = files.every((f) => f.attachment !== undefined)
+  const statusLabel =
+    demand.assigned === false
+      ? 'Awaiting assignment'
+      : statusLabels[demand.status]
+  const customerName = demand.owner?.nickname || t('User')
   return (
     <section
-      className='flex h-full min-h-0 flex-col overflow-y-auto'
+      className='flex h-full min-h-0 flex-col overflow-hidden'
       aria-label={t('Demand conversation')}
     >
-      <header className='shrink-0 space-y-3 border-b p-4'>
-        <Button variant='ghost' onClick={onBack} className='md:hidden'>
-          {t('Back to demands')}
-        </Button>
-        <div className='flex flex-wrap items-start justify-between gap-2'>
+      <header className='flex min-h-16 shrink-0 items-center justify-between gap-3 border-b px-4 py-3'>
+        <div className='flex min-w-0 items-center gap-2'>
+          <Button
+            size='icon'
+            variant='ghost'
+            onClick={onBack}
+            className='shrink-0 md:hidden'
+            aria-label={t('Back to demands')}
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} aria-hidden='true' />
+          </Button>
           <div className='min-w-0'>
-            <h2 className='font-medium break-words'>{demand.title}</h2>
-            <p className='text-muted-foreground mt-1 text-xs break-all'>
-              {demand.number}
+            <div className='flex min-w-0 items-center gap-2'>
+              <h2 className='truncate text-sm font-semibold'>{demand.title}</h2>
+              <Badge variant='outline' className='shrink-0 text-[11px]'>
+                {t(statusLabel)}
+              </Badge>
+            </div>
+            <p className='text-muted-foreground mt-1 truncate text-xs'>
+              {customerName} ·{' '}
+              {demand.service_profile_name || demand.engineer.display_name}
             </p>
           </div>
-          <Badge variant='secondary'>{t(statusLabels[demand.status])}</Badge>
         </div>
-        {mode === 'admin' ? (
-          <section aria-label={t('Customer information')} className='space-y-2'>
-            <h3 className='text-sm font-medium'>{t('Customer information')}</h3>
-            <dl className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-3'>
-              <div>
-                <dt className='text-muted-foreground text-xs'>
-                  {t('Nickname')}
-                </dt>
-                <dd className='break-words'>
-                  {demand.owner?.nickname || t('Not provided')}
-                </dd>
-              </div>
-              <div>
-                <dt className='text-muted-foreground text-xs'>
-                  {t('Phone number')}
-                </dt>
-                <dd className='break-all'>
-                  {demand.owner?.phone || t('Not provided')}
-                </dd>
-              </div>
-              <div>
-                <dt className='text-muted-foreground text-xs'>
-                  {t('User ID')}
-                </dt>
-                <dd>{demand.owner?.id ?? demand.user_id}</dd>
-              </div>
-            </dl>
-          </section>
-        ) : (
-          <p className='text-muted-foreground text-sm'>
-            {demand.engineer.display_name} ·{' '}
-            {demand.owner?.nickname ?? t('User')} {demand.owner?.phone ?? ''}
-          </p>
-        )}
-        <div className='flex flex-wrap gap-2'>
-          {mode === 'engineer' && !terminal && (
-            <>
-              {demand.status === 'pending' && (
+        {mode === 'admin' && (
+          <Sheet>
+            <SheetTrigger
+              render={
                 <Button
-                  disabled={action.isPending}
-                  onClick={() => runAction('accept')}
+                  size='sm'
+                  variant='ghost'
+                  className='shrink-0'
+                  aria-label={t('Customer information')}
+                />
+              }
+            >
+              <HugeiconsIcon
+                icon={InformationCircleIcon}
+                data-icon='inline-start'
+                aria-hidden='true'
+              />
+              <span className='hidden sm:inline'>
+                {t('Customer information')}
+              </span>
+            </SheetTrigger>
+            <SheetContent
+              side='right'
+              className={sideDrawerContentClassName('sm:max-w-md')}
+            >
+              <SheetHeader className={sideDrawerHeaderClassName()}>
+                <SheetTitle>{t('Demand details')}</SheetTitle>
+              </SheetHeader>
+              <div className={sideDrawerFormClassName()}>
+                <section
+                  aria-label={t('Customer information')}
+                  className='space-y-4'
                 >
-                  {t('Accept demand')}
-                </Button>
-              )}
-              {demand.status === 'communicating' && (
-                <Button
-                  disabled={action.isPending}
-                  onClick={() => runAction('start')}
-                >
-                  {t('Start work')}
-                </Button>
-              )}
-              <Button
-                variant='outline'
-                disabled={action.isPending}
-                onClick={() =>
-                  runAction('request_transfer', {
-                    text: t('Engineer requested reassignment'),
-                  })
-                }
-              >
-                {t('Request reassignment')}
-              </Button>
-            </>
-          )}
-          {mode === 'admin' && canWrite && !terminal && (
-            <>
-              <NativeSelect
-                aria-label={t('Assign engineer')}
-                value={assignment}
-                onChange={(e) => setAssignment(e.target.value)}
-              >
-                <option value=''>{t('Assign engineer')}</option>
-                {engineers
-                  .filter((e) => e.enabled && e.id !== demand.engineer_id)
-                  .map((e) => (
-                    <option value={e.id} key={e.id}>
-                      {e.display_name}
-                    </option>
-                  ))}
-              </NativeSelect>
-              <Button
-                variant='outline'
-                disabled={!assignment || action.isPending}
-                onClick={() => runAction('assign', { engineer_id: assignment })}
-              >
-                {t('Reassign')}
-              </Button>
-              <NativeSelect
-                aria-label={t('Priority')}
-                value={demand.priority}
-                disabled={action.isPending}
-                onChange={(e) =>
-                  runAction('priority', { priority: e.target.value })
-                }
-              >
-                {['normal', 'high', 'urgent'].map((v) => (
-                  <option key={v} value={v}>
-                    {t(
-                      (
-                        {
-                          normal: 'Normal',
-                          high: 'High',
-                          urgent: 'Urgent',
-                        } as Record<string, string>
-                      )[v]
+                  <h3 className='text-sm font-semibold'>
+                    {t('Customer information')}
+                  </h3>
+                  <dl className='grid grid-cols-2 gap-4 text-sm'>
+                    <div>
+                      <dt className='text-muted-foreground mb-1 text-xs'>
+                        {t('Nickname')}
+                      </dt>
+                      <dd className='break-words'>{customerName}</dd>
+                    </div>
+                    <div>
+                      <dt className='text-muted-foreground mb-1 text-xs'>
+                        {t('User ID')}
+                      </dt>
+                      <dd>{demand.owner?.id ?? demand.user_id}</dd>
+                    </div>
+                    <div className='col-span-2'>
+                      <dt className='text-muted-foreground mb-1 text-xs'>
+                        {t('Phone number')}
+                      </dt>
+                      <dd className='break-all'>
+                        {demand.owner?.phone || t('Not provided')}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+                <section className='space-y-3 border-t pt-5'>
+                  <h3 className='text-sm font-semibold'>
+                    {t('Demand details')}
+                  </h3>
+                  <div className='flex min-w-0 items-center gap-2'>
+                    <p className='text-muted-foreground min-w-0 flex-1 font-mono text-xs break-all'>
+                      {demand.number}
+                    </p>
+                    <CopyButton value={demand.number} size='sm' />
+                  </div>
+                  <dl className='space-y-3 text-sm'>
+                    <div>
+                      <dt className='text-muted-foreground mb-1 text-xs'>
+                        {t('Service source')}
+                      </dt>
+                      <dd>
+                        {demand.service_profile_name ||
+                          demand.engineer.display_name}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className='text-muted-foreground mb-1 text-xs'>
+                        {t('Created')}
+                      </dt>
+                      <dd>{formatTimestampToDate(demand.created_at)}</dd>
+                    </div>
+                  </dl>
+                </section>
+                {canWrite && !terminal && (
+                  <section className='space-y-4 border-t pt-5'>
+                    <label className='block space-y-2 text-sm'>
+                      <span>{t('Assign engineer')}</span>
+                      <div className='flex gap-2'>
+                        <NativeSelect
+                          aria-label={t('Assign engineer')}
+                          className='min-w-0 flex-1'
+                          value={assignment}
+                          onChange={(e) => setAssignment(e.target.value)}
+                        >
+                          <option value=''>{t('Assign engineer')}</option>
+                          {engineers
+                            .filter(
+                              (e) => e.enabled && e.id !== demand.engineer_id
+                            )
+                            .map((e) => (
+                              <option value={e.id} key={e.id}>
+                                {e.display_name}
+                              </option>
+                            ))}
+                        </NativeSelect>
+                        <Button
+                          variant='outline'
+                          disabled={!assignment || action.isPending}
+                          onClick={() =>
+                            runAction('assign', { engineer_id: assignment })
+                          }
+                        >
+                          {t(demand.assigned === false ? 'Assign' : 'Reassign')}
+                        </Button>
+                      </div>
+                    </label>
+                    <label className='block space-y-2 text-sm'>
+                      <span>{t('Priority')}</span>
+                      <NativeSelect
+                        aria-label={t('Priority')}
+                        value={demand.priority}
+                        disabled={action.isPending}
+                        onChange={(e) =>
+                          runAction('priority', { priority: e.target.value })
+                        }
+                      >
+                        {['normal', 'high', 'urgent'].map((v) => (
+                          <option key={v} value={v}>
+                            {t(
+                              (
+                                {
+                                  normal: 'Normal',
+                                  high: 'High',
+                                  urgent: 'Urgent',
+                                } as Record<string, string>
+                              )[v]
+                            )}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </label>
+                    <label className='block space-y-2 text-sm'>
+                      <span>{t('Adjust demand status')}</span>
+                      <NativeSelect
+                        aria-label={t('Adjust demand status')}
+                        value=''
+                        disabled={action.isPending}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            runAction('status', { status: e.target.value })
+                          }
+                        }}
+                      >
+                        <option value=''>{t('Adjust demand status')}</option>
+                        {['pending', 'communicating', 'in_progress'].map(
+                          (v) => (
+                            <option key={v} value={v}>
+                              {t(statusLabels[v as keyof typeof statusLabels])}
+                            </option>
+                          )
+                        )}
+                      </NativeSelect>
+                    </label>
+                    <Button
+                      variant='ghost'
+                      className='text-destructive'
+                      disabled={action.isPending}
+                      onClick={() => setCloseOpen(true)}
+                    >
+                      {t('Close demand')}
+                    </Button>
+                  </section>
+                )}
+                {audit.data && (
+                  <section
+                    className='space-y-3 border-t pt-5'
+                    aria-label={t('Internal timeline')}
+                  >
+                    <h3 className='text-sm font-semibold'>
+                      {t('Internal timeline')}
+                    </h3>
+                    {audit.data.items.map((event) => (
+                      <div
+                        key={event.id}
+                        className='space-y-1 border-l-2 pl-3 text-sm'
+                      >
+                        <div className='text-muted-foreground flex flex-wrap justify-between gap-2 text-xs'>
+                          <span>
+                            {t(
+                              event.action === 'internal_note'
+                                ? 'Internal note'
+                                : 'Demand updated'
+                            )}
+                          </span>
+                          <time>{formatTimestampToDate(event.created_at)}</time>
+                        </div>
+                        {event.detail && (
+                          <p className='break-words whitespace-pre-wrap'>
+                            {event.detail}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    {audit.data.has_more && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        disabled={audit.isFetching}
+                        onClick={() => {
+                          void audit.refetch()
+                        }}
+                      >
+                        {t('Load more')}
+                      </Button>
                     )}
-                  </option>
-                ))}
-              </NativeSelect>
-              <NativeSelect
-                aria-label={t('Adjust demand status')}
-                value=''
-                disabled={action.isPending}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    runAction('status', { status: e.target.value })
-                  }
-                }}
-              >
-                <option value=''>{t('Adjust demand status')}</option>
-                {['pending', 'communicating', 'in_progress'].map((value) => (
-                  <option key={value} value={value}>
-                    {t(statusLabels[value as keyof typeof statusLabels])}
-                  </option>
-                ))}
-              </NativeSelect>
+                  </section>
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
+        )}
+        {mode === 'engineer' && !terminal && (
+          <div className='flex shrink-0 flex-wrap gap-2'>
+            {demand.status === 'pending' && (
               <Button
-                variant='outline'
+                size='sm'
                 disabled={action.isPending}
-                onClick={() => setCloseOpen(true)}
+                onClick={() => runAction('accept')}
               >
-                {t('Close demand')}
+                {t('Accept demand')}
               </Button>
-            </>
-          )}
-        </div>
+            )}
+            {demand.status === 'communicating' && (
+              <Button
+                size='sm'
+                disabled={action.isPending}
+                onClick={() => runAction('start')}
+              >
+                {t('Start work')}
+              </Button>
+            )}
+            <Button
+              size='sm'
+              variant='ghost'
+              disabled={action.isPending}
+              onClick={() =>
+                runAction('request_transfer', {
+                  text: t('Engineer requested reassignment'),
+                })
+              }
+            >
+              {t('Request reassignment')}
+            </Button>
+          </div>
+        )}
       </header>
-      <div
-        className='min-h-0 flex-1 space-y-4 overflow-y-auto p-4'
+      <Conversation
+        initial='instant'
+        aria-label={t('Demand conversation')}
         aria-live='polite'
         aria-relevant='additions'
       >
-        {conversation.isPending && <LoadingState />}
-        {conversation.isError && (
-          <p role='alert' className='text-destructive text-sm'>
-            {t(
-              'Messages could not be refreshed. Existing messages are retained.'
-            )}
-          </p>
-        )}
-        {(conversation.data?.items[0]?.seq ?? 1) > 1 && (
-          <Button
-            variant='outline'
-            disabled={earlier.isPending}
-            onClick={() => earlier.mutate()}
-          >
-            {t('Load earlier messages')}
-          </Button>
-        )}
-        {earlier.isError && (
-          <p role='alert'>{t('Earlier messages could not be loaded')}</p>
-        )}
-        {conversation.data?.items.map((message) => (
-          <article key={message.id} className='space-y-2 border-b pb-4'>
-            <div className='text-muted-foreground flex flex-wrap gap-2 text-xs'>
-              <span>
-                {message.author_name?.trim() ||
-                  t(
-                    {
-                      user: 'User',
-                      engineer: 'Engineer',
-                      system: 'Administrator',
-                    }[message.author]
-                  )}
-              </span>
-              <time>{formatTimestampToDate(message.created_at)}</time>
-              {message.kind === 'delivery' && (
-                <Badge variant='outline'>{t('Delivery')}</Badge>
+        <ConversationContent className='space-y-5 p-4 sm:p-6'>
+          {conversation.isPending && <LoadingState />}
+          {conversation.isError && (
+            <p role='alert' className='text-destructive text-sm'>
+              {t(
+                'Messages could not be refreshed. Existing messages are retained.'
               )}
-              {message.read && <span>{t('Read')}</span>}
-            </div>
-            <p className='text-sm break-words whitespace-pre-wrap'>
-              {message.text}
             </p>
-            <div className='grid gap-3 sm:grid-cols-2'>
-              {message.attachments.map((attachment) => (
-                <DemandMedia
-                  key={attachment.id}
-                  attachment={attachment}
-                  mode={mode}
-                />
-              ))}
-            </div>
-          </article>
-        ))}
-        {mode === 'admin' && audit.data && (
-          <section
-            className='space-y-2 rounded-lg border p-3'
-            aria-label={t('Internal timeline')}
-          >
-            <h3 className='font-medium'>{t('Internal timeline')}</h3>
-            <p className='text-muted-foreground text-xs'>
-              {t('Internal notes are visible only to administrators.')}
-            </p>
-            {audit.data.items.map((event) => (
-              <div key={event.id} className='border-b py-2 text-sm'>
-                <span className='text-muted-foreground text-xs'>
-                  {formatTimestampToDate(event.created_at)} · {event.action}
-                </span>
-                <p className='break-words whitespace-pre-wrap'>
-                  {event.detail}
+          )}
+          {(conversation.data?.items[0]?.seq ?? 1) > 1 && (
+            <Button
+              variant='ghost'
+              className='mx-auto flex'
+              disabled={earlier.isPending}
+              onClick={() => earlier.mutate()}
+            >
+              {t('Load earlier messages')}
+            </Button>
+          )}
+          {earlier.isError && (
+            <p role='alert'>{t('Earlier messages could not be loaded')}</p>
+          )}
+          {conversation.data?.items.map((message) => {
+            if (message.kind === 'system') {
+              return (
+                <p
+                  key={message.id}
+                  className='text-muted-foreground text-center text-xs'
+                >
+                  {message.text}
                 </p>
-              </div>
-            ))}
-            {audit.data.has_more && (
-              <Button
-                variant='outline'
-                disabled={audit.isFetching}
-                onClick={() => {
-                  void audit.refetch()
-                }}
+              )
+            }
+            const own = message.sender_id === accountId
+            let author = customerName
+            if (message.author !== 'user') {
+              author =
+                message.author_name?.trim() ||
+                t(message.author === 'engineer' ? 'Engineer' : 'Administrator')
+            }
+            return (
+              <article
+                key={message.id}
+                className={cn('flex', own ? 'justify-end' : 'justify-start')}
               >
-                {t('Load more')}
-              </Button>
-            )}
-          </section>
-        )}
-      </div>
+                <div className='max-w-[90%] min-w-0 space-y-1.5 sm:max-w-[80%]'>
+                  <p
+                    className={cn(
+                      'text-muted-foreground px-1 text-xs',
+                      own && 'text-right'
+                    )}
+                  >
+                    {author}
+                  </p>
+                  <div
+                    className={cn(
+                      'space-y-3 rounded-xl px-3.5 py-3',
+                      own ? 'bg-primary/10' : 'bg-muted/60'
+                    )}
+                  >
+                    {message.kind === 'delivery' && (
+                      <Badge variant='outline'>{t('Delivery')}</Badge>
+                    )}
+                    {message.text && (
+                      <p className='text-sm leading-6 break-words whitespace-pre-wrap'>
+                        {message.text}
+                      </p>
+                    )}
+                    {message.attachments.length > 0 && (
+                      <div className='grid gap-2'>
+                        {message.attachments.map((attachment) => (
+                          <DemandMedia
+                            key={attachment.id}
+                            attachment={attachment}
+                            mode={mode}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      'text-muted-foreground flex gap-2 px-1 text-[11px]',
+                      own && 'justify-end'
+                    )}
+                  >
+                    <time title={formatTimestampToDate(message.created_at)}>
+                      {formatTimestampToDate(message.created_at).slice(5, 16)}
+                    </time>
+                    {own && message.read && <span>{t('Read')}</span>}
+                  </div>
+                </div>
+              </article>
+            )
+          })}
+        </ConversationContent>
+        <ConversationScrollButton aria-label={t('Scroll to bottom')} />
+      </Conversation>
       {mode === 'admin' && canWrite && (
         <div
           role='group'
           aria-label={t('Message visibility')}
-          className='flex shrink-0 gap-2 border-t px-4 pt-3'
+          className='flex shrink-0 gap-1 border-t px-4 pt-2'
         >
           <Button
-            variant={!terminal && composer === 'reply' ? 'default' : 'outline'}
+            size='sm'
+            variant={!terminal && composer === 'reply' ? 'secondary' : 'ghost'}
+            className='rounded-md text-xs'
             aria-pressed={!terminal && composer === 'reply'}
             disabled={terminal || send.isPending}
             onClick={() => setComposer('reply')}
@@ -608,7 +788,9 @@ export function DemandConversation({
             {t('Reply to customer')}
           </Button>
           <Button
-            variant={terminal || composer === 'note' ? 'default' : 'outline'}
+            size='sm'
+            variant={terminal || composer === 'note' ? 'secondary' : 'ghost'}
+            className='rounded-md text-xs'
             aria-pressed={terminal || composer === 'note'}
             disabled={send.isPending}
             onClick={() => setComposer('note')}
@@ -620,162 +802,188 @@ export function DemandConversation({
       {canWrite &&
         !terminal &&
         (mode === 'engineer' || composer === 'reply') && (
-          <footer className='shrink-0 space-y-3 border-t p-4'>
-            {mode === 'admin' && (
-              <p className='text-muted-foreground text-xs'>
-                {t(
-                  'This reply is visible to the customer. No engineer assignment is required.'
-                )}
-              </p>
-            )}
+          <footer className='shrink-0 space-y-2 p-3 sm:px-4'>
             {outbox && (
-              <p role='status' className='text-muted-foreground text-sm'>
+              <p role='status' className='text-muted-foreground text-xs'>
                 {t(
                   'An unconfirmed message is retained. Retry sends the same message, not a new one.'
                 )}
               </p>
             )}
-            <label className='block text-sm' htmlFor={`reply-${initial.id}`}>
-              {t(
-                mode === 'admin' ? 'Reply to customer' : 'Message to customer'
-              )}
-            </label>
-            <Textarea
-              id={`reply-${initial.id}`}
-              value={text}
-              maxLength={10000}
-              disabled={!!outbox || send.isPending}
-              onChange={(e) => setText(e.target.value)}
-            />
-            <label className='block text-sm'>
-              {t('Add images or videos')}
-              <Input
-                type='file'
-                multiple
-                accept={rules.data?.allowed_mime_types.join(',')}
-                disabled={!!outbox || send.isPending || !rules.data}
-                onChange={(e) => {
-                  const candidates = [...(e.target.files ?? [])]
-                  const r = rules.data
-                  if (
-                    !r ||
-                    files.length + candidates.length > r.max_attachments ||
-                    candidates.some(
-                      (file) =>
-                        !r.allowed_mime_types.includes(file.type) ||
-                        file.size >
-                          (file.type.startsWith('image/')
-                            ? r.max_image_bytes
-                            : r.max_video_bytes)
-                    )
-                  ) {
-                    setLocalError(
-                      'These files exceed the configured attachment rules.'
-                    )
-                    e.target.value = ''
-                    return
-                  }
-                  setLocalError('')
-                  const selected = candidates.map((file) => ({
-                    key: crypto.randomUUID(),
-                    file,
-                    progress: 0,
-                    failed: false,
-                  }))
-                  setFiles((old) => [...old, ...selected])
-                  for (const draft of selected) void upload(draft)
-                  e.target.value = ''
-                }}
-              />
-            </label>
-            {rules.data && (
-              <p className='text-muted-foreground text-xs'>
+            <div className='focus-within:ring-ring/30 rounded-xl border focus-within:ring-2'>
+              <label className='sr-only' htmlFor={`reply-${initial.id}`}>
                 {t(
-                  'Up to {{count}} attachments; images {{image}} MiB, videos {{video}} MiB.',
-                  {
-                    count: rules.data.max_attachments,
-                    image: rules.data.max_image_bytes / 1048576,
-                    video: rules.data.max_video_bytes / 1048576,
-                  }
+                  mode === 'admin' ? 'Reply to customer' : 'Message to customer'
                 )}
-              </p>
-            )}
+              </label>
+              <Textarea
+                id={`reply-${initial.id}`}
+                value={text}
+                maxLength={10000}
+                rows={3}
+                placeholder={t(
+                  mode === 'admin' ? 'Reply to customer' : 'Message to customer'
+                )}
+                className='max-h-40 min-h-20 resize-none rounded-none border-0 bg-transparent px-3 py-2.5 shadow-none focus-visible:ring-0'
+                disabled={!!outbox || send.isPending}
+                onChange={(e) => setText(e.target.value)}
+              />
+              {files.map((file) => (
+                <div
+                  key={file.key}
+                  className='bg-muted/60 mx-3 mb-2 flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs'
+                >
+                  <span className='min-w-0 flex-1 truncate'>
+                    {file.file.name} · {file.progress}%
+                  </span>
+                  {file.failed && (
+                    <Button
+                      size='sm'
+                      variant='ghost'
+                      onClick={() => {
+                        void upload(file)
+                      }}
+                    >
+                      {t('Retry upload')}
+                    </Button>
+                  )}
+                  <Button
+                    size='icon-sm'
+                    variant='ghost'
+                    disabled={!!outbox || send.isPending}
+                    aria-label={`${t('Remove attachment')} ${file.file.name}`}
+                    onClick={() => {
+                      uploads.current.get(file.key)?.abort()
+                      setFiles((old) =>
+                        old.filter((value) => value.key !== file.key)
+                      )
+                    }}
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} aria-hidden='true' />
+                  </Button>
+                </div>
+              ))}
+              <div className='flex items-center justify-between gap-2 px-2 pb-2'>
+                <Input
+                  ref={fileInput}
+                  type='file'
+                  multiple
+                  className='hidden'
+                  aria-label={t('Add images or videos')}
+                  accept={rules.data?.allowed_mime_types.join(',')}
+                  disabled={!!outbox || send.isPending || !rules.data}
+                  onChange={(e) => {
+                    const candidates = [...(e.target.files ?? [])]
+                    const r = rules.data
+                    if (
+                      !r ||
+                      files.length + candidates.length > r.max_attachments ||
+                      candidates.some(
+                        (file) =>
+                          !r.allowed_mime_types.includes(file.type) ||
+                          file.size >
+                            (file.type.startsWith('image/')
+                              ? r.max_image_bytes
+                              : r.max_video_bytes)
+                      )
+                    ) {
+                      setLocalError(
+                        'These files exceed the configured attachment rules.'
+                      )
+                      e.target.value = ''
+                      return
+                    }
+                    setLocalError('')
+                    const selected = candidates.map((file) => ({
+                      key: crypto.randomUUID(),
+                      file,
+                      progress: 0,
+                      failed: false,
+                    }))
+                    setFiles((old) => [...old, ...selected])
+                    for (const draft of selected) void upload(draft)
+                    e.target.value = ''
+                  }}
+                />
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  aria-label={t('Add images or videos')}
+                  disabled={!!outbox || send.isPending || !rules.data}
+                  onClick={() => fileInput.current?.click()}
+                  title={
+                    rules.data
+                      ? t(
+                          'Up to {{count}} attachments; images {{image}} MiB, videos {{video}} MiB.',
+                          {
+                            count: rules.data.max_attachments,
+                            image: rules.data.max_image_bytes / 1048576,
+                            video: rules.data.max_video_bytes / 1048576,
+                          }
+                        )
+                      : t('Add images or videos')
+                  }
+                >
+                  <HugeiconsIcon icon={Attachment01Icon} aria-hidden='true' />
+                </Button>
+                <div className='flex gap-2'>
+                  {mode === 'engineer' &&
+                    ['communicating', 'in_progress'].includes(
+                      demand.status
+                    ) && (
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        disabled={
+                          !!outbox ||
+                          !ready ||
+                          action.isPending ||
+                          (!text.trim() && files.length === 0)
+                        }
+                        onClick={() =>
+                          runAction('deliver', {
+                            text,
+                            attachment_ids: files.flatMap((f) =>
+                              f.attachment ? [f.attachment.id] : []
+                            ),
+                          })
+                        }
+                      >
+                        {t('Submit delivery')}
+                      </Button>
+                    )}
+                  <Button
+                    size='sm'
+                    aria-label={t(sendLabel)}
+                    disabled={
+                      send.isPending ||
+                      (!outbox &&
+                        (!ready || (!text.trim() && files.length === 0)))
+                    }
+                    onClick={submit}
+                  >
+                    <HugeiconsIcon
+                      icon={ArrowUp02Icon}
+                      data-icon='inline-start'
+                      aria-hidden='true'
+                    />
+                    {t(sendLabel === 'Send to customer' ? 'Send' : sendLabel)}
+                  </Button>
+                </div>
+              </div>
+            </div>
             {localError && (
-              <p role='alert' className='text-destructive text-sm'>
+              <p role='alert' className='text-destructive text-xs'>
                 {t(localError)}
               </p>
             )}
             {rules.isError && (
-              <p role='alert'>{t('Attachment rules could not be loaded')}</p>
+              <p role='alert' className='text-destructive text-xs'>
+                {t('Attachment rules could not be loaded')}
+              </p>
             )}
-            {files.map((file) => (
-              <div
-                key={file.key}
-                className='flex items-center justify-between gap-2 text-xs'
-              >
-                <span className='min-w-0 truncate'>
-                  {file.file.name} · {file.progress}%
-                </span>
-                {file.failed && (
-                  <Button
-                    variant='outline'
-                    onClick={() => {
-                      void upload(file)
-                    }}
-                  >
-                    {t('Retry upload')}
-                  </Button>
-                )}
-                <Button
-                  variant='ghost'
-                  disabled={!!outbox || send.isPending}
-                  aria-label={`${t('Remove attachment')} ${file.file.name}`}
-                  onClick={() => {
-                    uploads.current.get(file.key)?.abort()
-                    setFiles((old) =>
-                      old.filter((value) => value.key !== file.key)
-                    )
-                  }}
-                >
-                  {t('Remove')}
-                </Button>
-              </div>
-            ))}
-            <div className='flex flex-wrap gap-2'>
-              <Button
-                disabled={
-                  send.isPending ||
-                  (!outbox && (!ready || (!text.trim() && files.length === 0)))
-                }
-                onClick={submit}
-              >
-                {t(sendLabel)}
-              </Button>
-              {mode === 'engineer' &&
-                ['communicating', 'in_progress'].includes(demand.status) && (
-                  <Button
-                    variant='outline'
-                    disabled={
-                      !!outbox ||
-                      !ready ||
-                      action.isPending ||
-                      (!text.trim() && files.length === 0)
-                    }
-                    onClick={() =>
-                      runAction('deliver', {
-                        text,
-                        attachment_ids: files.flatMap((f) =>
-                          f.attachment ? [f.attachment.id] : []
-                        ),
-                      })
-                    }
-                  >
-                    {t('Submit delivery')}
-                  </Button>
-                )}
-            </div>
             {send.isError && (
-              <p role='alert' className='text-destructive text-sm'>
+              <p role='alert' className='text-destructive text-xs'>
                 {t(
                   'Message delivery is unconfirmed. Your draft and submission key are retained.'
                 )}
@@ -784,22 +992,31 @@ export function DemandConversation({
           </footer>
         )}
       {mode === 'admin' && canWrite && (terminal || composer === 'note') && (
-        <footer className='shrink-0 space-y-2 border-t p-4'>
-          <label htmlFor={`note-${initial.id}`} className='text-sm'>
+        <footer className='shrink-0 space-y-2 p-3 sm:px-4'>
+          <p className='text-muted-foreground text-xs'>
+            {t('Internal notes are visible only to administrators.')}
+          </p>
+          <label htmlFor={`note-${initial.id}`} className='sr-only'>
             {t('Internal note')}
           </label>
           <Textarea
             id={`note-${initial.id}`}
             value={note}
+            placeholder={t('Internal note')}
             onChange={(e) => setNote(e.target.value)}
             maxLength={10000}
+            rows={3}
+            className='min-h-20 resize-none rounded-xl'
           />
-          <Button
-            disabled={!note.trim() || action.isPending}
-            onClick={() => runAction('internal_note', { text: note })}
-          >
-            {t('Add internal note')}
-          </Button>
+          <div className='flex justify-end'>
+            <Button
+              size='sm'
+              disabled={!note.trim() || action.isPending}
+              onClick={() => runAction('internal_note', { text: note })}
+            >
+              {t('Add internal note')}
+            </Button>
+          </div>
         </footer>
       )}
       {action.isError && (
@@ -854,7 +1071,7 @@ function DemandMedia({
     },
   })
   return (
-    <div className='min-w-0 space-y-2 rounded-lg border p-3'>
+    <div className='min-w-0 space-y-2'>
       <p className='truncate text-sm'>{attachment.name}</p>
       <div className='flex flex-wrap gap-2'>
         <Button

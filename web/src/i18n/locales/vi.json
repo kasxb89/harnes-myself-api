@@ -9307,6 +9307,13 @@
     "Reply to customer": "Trả lời khách hàng",
     "Send to customer": "Gửi cho khách hàng",
     "Message visibility": "Phạm vi hiển thị tin nhắn",
-    "This reply is visible to the customer. No engineer assignment is required.": "Khách hàng sẽ thấy câu trả lời này. Không cần phân công kỹ sư trước."
+    "This reply is visible to the customer. No engineer assignment is required.": "Khách hàng sẽ thấy câu trả lời này. Không cần phân công kỹ sư trước.",
+    "All demands": "Tất cả yêu cầu",
+    "Filter demands": "Lọc yêu cầu",
+    "Reset filters": "Đặt lại bộ lọc",
+    "Choose a conversation to reply to the customer.": "Chọn cuộc trò chuyện để trả lời khách hàng.",
+    "Demand details": "Chi tiết yêu cầu",
+    "Demand updated": "Yêu cầu đã cập nhật",
+    "Assign": "Phân công"
   }
 }
