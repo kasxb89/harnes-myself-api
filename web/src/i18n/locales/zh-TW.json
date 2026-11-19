@@ -9382,5 +9382,15 @@
     "Change listing visibility": "调整公开状态",
     "View public community listings and private participant orders.": "查看公开需求和双方私密订单。",
     "Moderate community orders and communicate with both participants.": "管理用户互接订单并与双方沟通。"
-  }
+  },
+  "Community approval status": "需求審核狀態",
+  "All approval statuses": "全部審核狀態",
+  "Pending approval": "待審核",
+  "Approved listing": "已通過審核",
+  "Rejected listing": "已駁回",
+  "Approve listing": "通過審核",
+  "Reject listing": "駁回需求",
+  "Expected delivery date": "預期交付日",
+  "Invalid expected delivery date": "預期交付日無效",
+  "Administrator approval is required before acceptance": "管理員審核通過後才能接單"
 }

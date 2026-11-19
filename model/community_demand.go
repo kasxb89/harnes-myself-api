@@ -11,6 +11,9 @@ type CommunityOrder struct {
 	Title                 string `gorm:"type:varchar(200)"`
 	PublicSummary         string `gorm:"type:text"`
 	PublicBudget          string `gorm:"type:varchar(100)"`
+	ExpectedDeliveryDate  string `gorm:"type:varchar(10)"`
+	ApprovalStatus        string `gorm:"type:varchar(16);default:pending;index"`
+	ApprovalReason        string `gorm:"type:text"`
 	ServiceProfileID      string `gorm:"type:varchar(40);index"`
 	ServiceProfileName    string `gorm:"type:varchar(100)"`
 	PublicAttachmentsJSON string `gorm:"type:text"`

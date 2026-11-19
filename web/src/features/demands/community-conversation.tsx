@@ -46,6 +46,8 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import {
+  communityApprovalLabels,
+  communityModerationActions,
   communityAttachmentLink,
   communityStatusLabels,
   loadCommunityAudit,
@@ -69,7 +71,7 @@ const messagePacket = z.object({
 const actionPacket = z.object({
   client_action_id: z.string(),
   revision: z.number(),
-  action: z.enum(['hide_listing', 'show_listing', 'cancel', 'reopen']),
+  action: z.enum(communityModerationActions),
   reason: z.string(),
 })
 function restore<T>(key: string, schema: z.ZodType<T>): T | null {
@@ -327,6 +329,10 @@ export function CommunityConversation(props: {
     setPendingAction(body)
     action.mutate(body)
   }
+  let confirmTitle = 'Change listing visibility'
+  if (confirm === 'approve_listing') confirmTitle = 'Approve listing'
+  if (confirm === 'reject_listing') confirmTitle = 'Reject listing'
+  if (confirm === 'cancel') confirmTitle = 'Cancel order'
   return (
     <section
       aria-label={t('Community order conversation')}
@@ -471,6 +477,54 @@ export function CommunityConversation(props: {
           </SheetContent>
         </Sheet>
       </header>
+      {config.data?.capabilities?.community_approval_v1 &&
+        order.listing.approval_status && (
+          <div className='flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2.5'>
+            <Badge variant='outline'>
+              {t(communityApprovalLabels[order.listing.approval_status])}
+            </Badge>
+            {order.listing.expected_delivery_date && (
+              <span className='text-muted-foreground text-xs'>
+                {t('Expected delivery date')} ·{' '}
+                <time dateTime={order.listing.expected_delivery_date}>
+                  {order.listing.expected_delivery_date}
+                </time>
+              </span>
+            )}
+            {props.canWrite && (
+              <div className='ml-auto flex gap-2'>
+                <Button
+                  size='sm'
+                  disabled={
+                    busy ||
+                    !!pendingAction ||
+                    order.listing.approval_status === 'approved'
+                  }
+                  onClick={() => setConfirm('approve_listing')}
+                >
+                  {t('Approve listing')}
+                </Button>
+                <Button
+                  size='sm'
+                  variant='outline'
+                  disabled={
+                    busy ||
+                    !!pendingAction ||
+                    order.listing.approval_status === 'rejected'
+                  }
+                  onClick={() => setConfirm('reject_listing')}
+                >
+                  {t('Reject listing')}
+                </Button>
+              </div>
+            )}
+            {order.listing.approval_reason && (
+              <p className='text-destructive w-full text-xs'>
+                {order.listing.approval_reason}
+              </p>
+            )}
+          </div>
+        )}
       {data.isPending && <LoadingState />}
       {data.isError && !data.data && (
         <ErrorState onRetry={() => void data.refetch()} />
@@ -644,13 +698,15 @@ export function CommunityConversation(props: {
         onOpenChange={(open) => {
           if (!open && !action.isPending) setConfirm(null)
         }}
-        title={t(
-          confirm === 'cancel' ? 'Cancel order' : 'Change listing visibility'
-        )}
+        title={t(confirmTitle)}
         desc={t('This action is recorded and applies immediately.')}
         confirmText={t('Confirm')}
-        destructive={confirm === 'cancel' || confirm === 'hide_listing'}
-        disabled={reason.trim().length === 0}
+        destructive={
+          confirm === 'cancel' ||
+          confirm === 'hide_listing' ||
+          confirm === 'reject_listing'
+        }
+        disabled={confirm !== 'approve_listing' && reason.trim().length === 0}
         isLoading={action.isPending}
         handleConfirm={moderate}
       >

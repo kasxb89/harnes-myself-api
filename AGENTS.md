@@ -47,6 +47,12 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - A service-profile demand remains unassigned until an administrator assigns an existing real engineer. Keep the original service ID/name snapshot. For legacy callers, project a non-null offline `platform-intake` engineer with matching public `engineer_id`; never persist a fake engineer/user to satisfy the projection.
 - Keep directory pages bounded, cursors bound to filters, and old direct-engineer creation/idempotency compatible. Private uploads and signed content must recheck current participant/profile visibility; reassignment and unpublication revoke prior access. Reserved profile avatars cannot be rebound into message attachments. Internal customer avatars and public service/real engineer avatars must use separate uploads, including unpublished profiles; attachment-level scope reservation is atomic and persists after reference removal.
 
+## Community publication approval
+
+- New community listings require explicit administrative approval, independently of lifecycle status and the visibility switch. Never infer approval from an old visible row. Public discovery, new acceptance, link issuance and signed content reads all enforce approval; existing participants retain their original records and private media.
+- Keep `expected_delivery_date` optional and empty on old listings. Its empty creation field must remain omitted from the serialized idempotency hash. Do not rewrite old request UUIDs, payload hashes or action receipts; successful receipts are resolved before new approval/state gates.
+- Rejection reasons are private to the publisher and authorized administrators, not acceptors, observers or conversation messages. Existing admin permissions, CAS revisions and action audits apply to approval decisions.
+
 ## Overseas manual phone login
 
 - Manage exact non-+86 E.164 numbers only in System settings → Authentication → Overseas phone whitelist. This is independent of the development SMS bypass; never enable that bypass for customer login.

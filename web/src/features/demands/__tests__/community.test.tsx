@@ -30,6 +30,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { DemandManagementPage } from '..'
 import { configSchema } from '../api'
+import { CommunityInbox } from '../community'
 import type { CommunityOrder } from '../community-api'
 import { CommunityConversation } from '../community-conversation'
 
@@ -52,6 +53,8 @@ const order: CommunityOrder = {
   listing: {
     public_summary: 'Public overview only',
     public_budget: '',
+    expected_delivery_date: '2026-12-20',
+    approval_status: 'pending',
     service_profile_name: 'Website',
     public_attachments: [],
   },
@@ -74,6 +77,7 @@ const rules = configSchema.shape.config.shape.upload_rules.parse({
   allowed_mime_types: ['image/png', 'video/mp4'],
   upload_ttl_seconds: 86400,
 })
+let approval = false
 const clients: QueryClient[] = []
 function view(element: React.ReactNode) {
   const client = new QueryClient({
@@ -85,6 +89,7 @@ function view(element: React.ReactNode) {
   )
 }
 beforeEach(() => {
+  approval = false
   sessionStorage.clear()
   useAuthStore.getState().auth.setUser({
     id: 9,
@@ -101,7 +106,13 @@ beforeEach(() => {
   get.mockImplementation((url: string) => {
     if (url.endsWith('/config')) {
       return Promise.resolve(
-        envelope({ revision: 1, enabled: true, upload_rules: rules })
+        envelope({
+          revision: 1,
+          enabled: true,
+          upload_rules: rules,
+          capabilities: { community_approval_v1: approval },
+          ...(approval ? { publication_policy: 'approval_required' } : {}),
+        })
       )
     }
     if (url.endsWith('/messages')) {
@@ -152,8 +163,9 @@ test('a lost administrator reply retains its original key and retries the same p
   let failed = false
   post.mockImplementation(
     (url: string, body: { client_message_id: string; text: string }) => {
-      if (url.endsWith('/read'))
-        {return Promise.resolve(envelope({ last_read_seq: 1, unread_count: 0 }))}
+      if (url.endsWith('/read')) {
+        return Promise.resolve(envelope({ last_read_seq: 1, unread_count: 0 }))
+      }
       if (!failed) {
         failed = true
         return Promise.reject(new Error('connection lost'))
@@ -227,4 +239,105 @@ test('read-only moderators can inspect participants and history without replying
   expect(
     screen.queryByRole('button', { name: 'Hide public listing' })
   ).toBeNull()
+})
+
+test('an older backend without approval capability has no approval controls or approval claim', async () => {
+  view(<CommunityInbox accountId={9} canWrite />)
+  fireEvent.click(
+    await screen.findByRole('button', { name: /A real user project/ })
+  )
+  await screen.findByRole('textbox', { name: 'Reply to both participants' })
+  expect(
+    screen.queryByRole('combobox', { name: 'Community approval status' })
+  ).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Approve listing' })).toBeNull()
+  expect(screen.queryByText('Approved listing')).toBeNull()
+})
+test('approval filtering preserves lifecycle filtering and displays the actual delivery date', async () => {
+  approval = true
+  view(<CommunityInbox accountId={9} canWrite />)
+  const filter = await screen.findByRole('combobox', {
+    name: 'Community approval status',
+  })
+  fireEvent.change(filter, { target: { value: 'pending' } })
+  await waitFor(() =>
+    expect(
+      get.mock.calls.some(
+        ([url, options]) =>
+          String(url).endsWith('/orders') &&
+          options.params.approval_status === 'pending' &&
+          options.params.status === ''
+      )
+    ).toBe(true)
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: /A real user project/ })
+  )
+  expect(await screen.findByText('2026-12-20')).toHaveAttribute(
+    'datetime',
+    '2026-12-20'
+  )
+  fireEvent.click(await screen.findByRole('button', { name: 'Reject listing' }))
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Moderation reason' }), {
+    target: { value: 'Needs clarification' },
+  })
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeEnabled()
+})
+test('a lost approval response retries the original UUID revision and body without another decision', async () => {
+  approval = true
+  let failed = false
+  post.mockImplementation((url: string) => {
+    if (url.endsWith('/read')) {
+      return Promise.resolve(envelope({ last_read_seq: 1, unread_count: 0 }))
+    }
+    if (!failed) {
+      failed = true
+      return Promise.reject(new Error('lost response'))
+    }
+    return Promise.resolve(
+      envelope({
+        order: {
+          ...order,
+          revision: 2,
+          listing: { ...order.listing, approval_status: 'approved' },
+        },
+        message: null,
+        replayed: true,
+      })
+    )
+  })
+  view(
+    <CommunityConversation
+      initial={order}
+      accountId={9}
+      canWrite
+      onBack={() => {}}
+    />
+  )
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Approve listing' })
+  )
+  const sends = () =>
+    post.mock.calls.filter(([url]) => String(url).endsWith('/actions'))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  await screen.findAllByRole('alert')
+  expect(sends()).toHaveLength(1)
+  const packet = sends()[0][1]
+  expect(packet).toMatchObject({
+    action: 'approve_listing',
+    revision: 1,
+    reason: '',
+  })
+  expect(
+    sessionStorage.getItem('community-admin-action:9:community-fixture')
+  ).toContain(packet.client_action_id)
+  fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  await waitFor(() => expect(sends()).toHaveLength(2))
+  expect(sends()[1][1]).toEqual(packet)
+  await waitFor(() =>
+    expect(
+      sessionStorage.getItem('community-admin-action:9:community-fixture')
+    ).toBeNull()
+  )
 })

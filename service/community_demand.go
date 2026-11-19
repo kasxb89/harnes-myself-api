@@ -42,6 +42,14 @@ func communityClosed(s string) bool { return s == "completed" || s == "cancelled
 
 var CommunityStatuses = []string{"open", "accepted", "awaiting_acceptance", "completed", "cancelled"}
 
+// Empty legacy values have never been reviewed and must not become approved.
+func CommunityApprovalStatus(o model.CommunityOrder) string {
+	if o.ApprovalStatus == "approved" || o.ApprovalStatus == "rejected" {
+		return o.ApprovalStatus
+	}
+	return "pending"
+}
+
 type CommunityConfig struct {
 	Revision int64 `json:"revision"`
 	Enabled  bool  `json:"enabled"`
@@ -110,7 +118,7 @@ func CommunityListingAccess(db *gorm.DB, a CommunityActor, id string) (model.Com
 	if err != nil {
 		return o, err
 	}
-	if !cfg.Enabled || !o.Visible || communityClosed(o.Status) {
+	if !cfg.Enabled || !o.Visible || o.ApprovalStatus != "approved" || communityClosed(o.Status) {
 		return o, communityMissing()
 	}
 	return o, nil
@@ -126,6 +134,8 @@ type CommunityCreate struct {
 	PublicAttachmentIDs  []string `json:"public_attachment_ids"`
 	PrivateText          string   `json:"private_text"`
 	PrivateAttachmentIDs []string `json:"private_attachment_ids"`
+	// Omitting the empty field preserves the exact hash of pre-approval requests.
+	ExpectedDeliveryDate string `json:"expected_delivery_date,omitempty"`
 }
 type CommunitySend struct {
 	ClientMessageID string   `json:"client_message_id"`
@@ -227,8 +237,16 @@ func CreateCommunityOrder(db *gorm.DB, a CommunityActor, in CommunityCreate) (mo
 	if strings.TrimSpace(in.Title) == "" || utf8.RuneCountInString(in.Title) > 200 || strings.TrimSpace(in.PublicSummary) == "" || utf8.RuneCountInString(in.PublicSummary) > 4000 || utf8.RuneCountInString(in.PublicBudget) > 100 || utf8.RuneCountInString(in.PrivateText) > 12000 {
 		return out, nil, false, communityError(400, "INVALID_INPUT", "Invalid community order")
 	}
+	if in.ExpectedDeliveryDate != "" {
+		date, err := time.Parse(time.DateOnly, in.ExpectedDeliveryDate)
+		if err != nil || date.Year() < 1 || date.Format(time.DateOnly) != in.ExpectedDeliveryDate {
+			return out, nil, false, communityError(400, "INVALID_INPUT", "Invalid expected delivery date")
+		}
+	}
 	now := time.Now().Unix()
 	out = model.CommunityOrder{ID: uuid.NewString(), Number: "YC-" + strings.ToUpper(strings.ReplaceAll(uuid.NewString(), "-", "")[:20]), PublisherID: a.UserID, ClientRequestID: in.ClientRequestID, PayloadHash: hash, Title: strings.TrimSpace(in.Title), PublicSummary: strings.TrimSpace(in.PublicSummary), PublicBudget: in.PublicBudget, ServiceProfileID: in.ServiceProfileID, PrivateText: in.PrivateText, Status: "open", Visible: true, Revision: 1, CreatedAt: now, UpdatedAt: now}
+	out.ExpectedDeliveryDate = in.ExpectedDeliveryDate
+	out.ApprovalStatus = "pending"
 	ids, _ := common.Marshal(in.PublicAttachmentIDs)
 	out.PublicAttachmentsJSON = string(ids)
 	replay := false
@@ -338,7 +356,7 @@ func AcceptCommunityOrder(db *gorm.DB, a CommunityActor, id, key string) (model.
 			if err = communityEnabled(tx); err != nil {
 				return err
 			}
-			r := tx.Model(&model.CommunityOrder{}).Where("id = ? AND status = ? AND acceptor_id = 0 AND publisher_id <> ? AND visible = ?", id, "open", a.UserID, true).Updates(map[string]any{"acceptor_id": a.UserID, "status": "accepted", "accepted_at": time.Now().Unix(), "revision": gorm.Expr("revision + 1"), "updated_at": time.Now().Unix()})
+			r := tx.Model(&model.CommunityOrder{}).Where("id = ? AND status = ? AND acceptor_id = 0 AND publisher_id <> ? AND visible = ? AND approval_status = ?", id, "open", a.UserID, true, "approved").Updates(map[string]any{"acceptor_id": a.UserID, "status": "accepted", "accepted_at": time.Now().Unix(), "revision": gorm.Expr("revision + 1"), "updated_at": time.Now().Unix()})
 			if r.Error != nil {
 				return r.Error
 			}
@@ -356,6 +374,9 @@ func AcceptCommunityOrder(db *gorm.DB, a CommunityActor, id, key string) (model.
 				}
 				if out.AcceptorID != 0 {
 					return communityError(409, "ALREADY_ACCEPTED", "Another user already accepted this order")
+				}
+				if out.ApprovalStatus != "approved" {
+					return communityError(409, "APPROVAL_REQUIRED", "Administrator approval is required before acceptance")
 				}
 				return communityError(409, "ORDER_NOT_OPEN", "This order is not open")
 			}
@@ -491,6 +512,18 @@ func ActCommunityOrder(db *gorm.DB, a CommunityActor, id string, in CommunityAct
 		next := out.Status
 		adminAction := false
 		switch in.Action {
+		case "approve_listing", "reject_listing":
+			if !a.Admin {
+				return communityError(403, "FORBIDDEN", "Administrator permission is required")
+			}
+			out.ApprovalStatus, out.ApprovalReason = "approved", ""
+			if in.Action == "reject_listing" {
+				if strings.TrimSpace(in.Reason) == "" {
+					return communityError(400, "INVALID_INPUT", "A moderation reason is required")
+				}
+				out.ApprovalStatus, out.ApprovalReason = "rejected", in.Reason
+			}
+			adminAction = true
 		case "hide_listing", "show_listing":
 			if !a.Admin {
 				return communityError(403, "FORBIDDEN", "Administrator permission is required")
@@ -572,11 +605,13 @@ func ActCommunityOrder(db *gorm.DB, a CommunityActor, id string, in CommunityAct
 		out.Status = next
 		out.Revision++
 		out.UpdatedAt = time.Now().Unix()
-		out.ClosedAt = 0
-		if communityClosed(next) {
-			out.ClosedAt = out.UpdatedAt
+		if !adminAction {
+			out.ClosedAt = 0
+			if communityClosed(next) {
+				out.ClosedAt = out.UpdatedAt
+			}
 		}
-		if err = tx.Model(&out).Updates(map[string]any{"status": next, "visible": out.Visible, "revision": out.Revision, "updated_at": out.UpdatedAt, "closed_at": out.ClosedAt, "delivery_message_id": out.DeliveryMessageID}).Error; err != nil {
+		if err = tx.Model(&out).Updates(map[string]any{"status": next, "visible": out.Visible, "approval_status": out.ApprovalStatus, "approval_reason": out.ApprovalReason, "revision": out.Revision, "updated_at": out.UpdatedAt, "closed_at": out.ClosedAt, "delivery_message_id": out.DeliveryMessageID}).Error; err != nil {
 			return err
 		}
 		return communityAudit(tx, a, id, in.Action, in.Reason)

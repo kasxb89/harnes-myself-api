@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 	"strings"
 	"time"
 )
@@ -46,7 +47,14 @@ type communityReceipt struct {
 
 func (f *demandFixture) communityCreate(t *testing.T, key string) communityReceipt {
 	t.Helper()
-	return demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", service.CommunityCreate{ClientRequestID: key, PublishToCommunity: true, Title: "Synthetic user project", PublicSummary: "Public overview only", PrivateText: "PRIVATE-COMMUNITY-SECRET"}, 201))
+	created := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", service.CommunityCreate{ClientRequestID: key, PublishToCommunity: true, Title: "Synthetic user project", PublicSummary: "Public overview only", PrivateText: "PRIVATE-COMMUNITY-SECRET"}, 201))
+	return f.communityApprove(t, created)
+}
+func (f *demandFixture) communityApprove(t *testing.T, created communityReceipt) communityReceipt {
+	t.Helper()
+	approved := demandData[communityReceipt](t, f.request(t, "admin", "POST", "/api/community-demand-management/orders/"+created.Order.ID+"/actions", service.CommunityAction{ClientActionID: "approve:" + created.Order.ID, Revision: created.Order.Revision, Action: "approve_listing"}, 200))
+	created.Order = approved.Order
+	return created
 }
 func communityPath(id string) string { return "/api/product/community-demands/orders/" + id }
 func TestCommunityExplicitPublicationPreservesLegacyPrivacy(t *testing.T) {
@@ -254,6 +262,7 @@ func TestCommunityPublicAndPrivateAttachmentACLRangeAndRevocation(t *testing.T) 
 	public := f.communityUpload(t, "owner", "public-png", "listing", "", "Public.png", "image/png", data)
 	private := f.communityUpload(t, "owner", "private-png", "conversation", "", "Private.png", "image/png", data)
 	order := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", service.CommunityCreate{ClientRequestID: "media-order", PublishToCommunity: true, Title: "Media project", PublicSummary: "Only the selected public image", PublicAttachmentIDs: []string{public}, PrivateText: "Private attachment", PrivateAttachmentIDs: []string{private}}, 201))
+	order = f.communityApprove(t, order)
 	listing := f.request(t, "other", "GET", "/api/product/community-demands/listings/"+order.Order.ID, nil, 200)
 	assert.Contains(t, string(listing), "Public.png")
 	assert.NotContains(t, string(listing), "Private.png")
@@ -454,4 +463,183 @@ func TestCommunityConcurrentGlobalMessageKeyCannotCrossOrders(t *testing.T) {
 	var count int64
 	require.NoError(t, f.db.Model(&model.CommunityMessage{}).Where("sender_id = ? AND client_message_id = ?", f.users["other"].Id, "same-sender-global-key").Count(&count).Error)
 	assert.EqualValues(t, 1, count)
+}
+
+func TestCommunityApprovalPendingCannotBeDiscoveredOrAccepted(t *testing.T) {
+	f := newCommunityFixture(t)
+	created := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", service.CommunityCreate{ClientRequestID: "pending-gate", PublishToCommunity: true, Title: "Requires review", PublicSummary: "Only public after admin approval"}, 201))
+	page := demandData[struct {
+		Items []service.CommunityListingView `json:"items"`
+	}](t, f.request(t, "other", "GET", "/api/product/community-demands/listings", nil, 200))
+	require.Empty(t, page.Items, "newly submitted listing must not be public before approval")
+	f.request(t, "other", "GET", "/api/product/community-demands/listings/"+created.Order.ID, nil, 404)
+	f.request(t, "other", "POST", communityPath(created.Order.ID)+"/accept", map[string]string{"client_action_id": "pending-claim"}, 409)
+	f.request(t, "owner", "GET", communityPath(created.Order.ID), nil, 200)
+}
+
+func TestCommunityApprovalDatesReceiptsAndReasonPrivacy(t *testing.T) {
+	f := newCommunityFixture(t)
+	cfg := demandData[map[string]any](t, f.request(t, "owner", "GET", "/api/product/community-demands/config", nil, 200))
+	assert.Equal(t, "approval_required", cfg["publication_policy"])
+	assert.Equal(t, true, cfg["capabilities"].(map[string]any)["community_approval_v1"])
+	for _, date := range []string{"2026-02-29", "2024-02-30", "2026-1-02", "0000-01-01", "2026-11-30T00:00:00Z", " 2026-11-30"} {
+		f.request(t, "owner", "POST", "/api/product/community-demands/orders", service.CommunityCreate{ClientRequestID: "invalid:" + date, PublishToCommunity: true, Title: "Invalid date", PublicSummary: "summary", ExpectedDeliveryDate: date}, 400)
+	}
+	input := service.CommunityCreate{ClientRequestID: "dated-original", PublishToCommunity: true, Title: "A calendar date", PublicSummary: "summary", PublicBudget: "CNY 3000–5000", ExpectedDeliveryDate: "2028-02-29"}
+	first := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", input, 201))
+	assert.Equal(t, "2028-02-29", first.Order.Listing.ExpectedDeliveryDate)
+	assert.Equal(t, "pending", first.Order.Listing.ApprovalStatus)
+	assert.False(t, first.Order.Listing.CanAccept)
+	path := "/api/community-demand-management/orders/" + first.Order.ID + "/actions"
+	f.request(t, "owner", "POST", communityPath(first.Order.ID)+"/actions", service.CommunityAction{ClientActionID: "cannot-approve", Revision: first.Order.Revision, Action: "approve_listing"}, 403)
+	reject := service.CommunityAction{ClientActionID: "reject-original", Revision: first.Order.Revision, Action: "reject_listing", Reason: "ONLY-OWNER-ADMIN-REJECTION"}
+	rejected := demandData[communityReceipt](t, f.request(t, "admin", "POST", path, reject, 200))
+	assert.Equal(t, "rejected", rejected.Order.Listing.ApprovalStatus)
+	assert.Equal(t, reject.Reason, rejected.Order.Listing.ApprovalReason)
+	again := demandData[communityReceipt](t, f.request(t, "admin", "POST", path, reject, 200))
+	assert.True(t, again.Replayed)
+	assert.Equal(t, rejected.Order.Revision, again.Order.Revision)
+	assert.Nil(t, again.Message)
+	f.request(t, "other", "GET", "/api/product/community-demands/listings/"+first.Order.ID, nil, 404)
+	shown := demandData[communityReceipt](t, f.request(t, "admin", "POST", path, service.CommunityAction{ClientActionID: "show-rejected", Revision: rejected.Order.Revision, Action: "show_listing", Reason: "visibility is not approval"}, 200))
+	assert.Equal(t, "rejected", shown.Order.Listing.ApprovalStatus)
+	f.request(t, "other", "POST", communityPath(first.Order.ID)+"/accept", map[string]string{"client_action_id": "reject-claim"}, 409)
+	approved := f.communityApprove(t, shown)
+	assert.Equal(t, "approved", approved.Order.Listing.ApprovalStatus)
+	accept := map[string]string{"client_action_id": "stable-approved-claim"}
+	accepted := demandData[communityReceipt](t, f.request(t, "other", "POST", communityPath(first.Order.ID)+"/accept", accept, 200))
+	reject.ClientActionID = "revoke-after-accept"
+	reject.Revision = accepted.Order.Revision
+	f.request(t, "admin", "POST", path, reject, 200)
+	replay := demandData[communityReceipt](t, f.request(t, "other", "POST", communityPath(first.Order.ID)+"/accept", accept, 200))
+	assert.True(t, replay.Replayed)
+	assert.Equal(t, accepted.Order.ID, replay.Order.ID)
+	assert.Equal(t, "accepted", replay.Order.Status)
+	assert.Empty(t, replay.Order.Listing.ApprovalReason)
+	observer := f.request(t, "other", "GET", communityPath(first.Order.ID), nil, 200)
+	assert.NotContains(t, string(observer), reject.Reason)
+	owner := f.request(t, "owner", "GET", communityPath(first.Order.ID), nil, 200)
+	assert.Contains(t, string(owner), reject.Reason)
+	f.request(t, "other", "POST", communityPath(first.Order.ID)+"/messages", service.CommunitySend{ClientMessageID: "after-review", Text: "Original accepted conversation remains usable"}, 201)
+	recovered := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", input, 200))
+	assert.True(t, recovered.Replayed)
+	assert.Equal(t, first.Order.ID, recovered.Order.ID)
+	for _, approval := range []string{"pending", "approved", "rejected"} {
+		page := demandData[struct {
+			Items []service.CommunityOrderView `json:"items"`
+		}](t, f.request(t, "admin", "GET", "/api/community-demand-management/orders?approval_status="+approval, nil, 200))
+		for _, item := range page.Items {
+			assert.Equal(t, approval, item.Listing.ApprovalStatus)
+		}
+	}
+}
+
+func TestCommunityApprovalRevokesPublicSignedGetHeadAndRange(t *testing.T) {
+	f := newCommunityFixture(t)
+	public := f.communityUpload(t, "owner", "approval-cover", "listing", "", "cover.png", "image/png", communityPNG(t))
+	o := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", service.CommunityCreate{ClientRequestID: "approval-media", PublishToCommunity: true, Title: "Cover review", PublicSummary: "summary", PublicAttachmentIDs: []string{public}}, 201))
+	linkPath := "/api/product/community-demands/attachments/" + public + "/link"
+	f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 404)
+	o = f.communityApprove(t, o)
+	link := demandData[service.CommunityAttachmentLink](t, f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 200))
+	u, err := url.Parse(link.URL)
+	require.NoError(t, err)
+	f.request(t, "other", "GET", u.RequestURI(), nil, 200)
+	f.request(t, "admin", "POST", "/api/community-demand-management/orders/"+o.Order.ID+"/actions", service.CommunityAction{ClientActionID: "reject-cover", Revision: o.Order.Revision, Action: "reject_listing", Reason: "private moderation reason"}, 200)
+	for _, method := range []string{"GET", "HEAD"} {
+		for _, ranged := range []bool{false, true} {
+			req := httptest.NewRequest(method, u.RequestURI(), nil)
+			if ranged {
+				req.Header.Set("Range", "bytes=0-31")
+			}
+			w := httptest.NewRecorder()
+			f.engine.ServeHTTP(w, req)
+			assert.Equal(t, 404, w.Code)
+		}
+	}
+	f.request(t, "other", "POST", linkPath, map[string]string{"disposition": "inline"}, 404)
+	f.request(t, "owner", "POST", linkPath, map[string]string{"disposition": "inline"}, 200)
+}
+
+func TestCommunityApprovalOldPayloadHashAndAdditiveMigration(t *testing.T) {
+	f := newCommunityFixture(t)
+	// Exact pre-approval CommunityCreate serialization, including original null arrays.
+	frozen := []byte(`{"client_request_id":"frozen-old-uuid","publish_to_community":true,"title":"Same title","public_summary":"Old summary","public_budget":"","service_profile_id":"","public_attachment_ids":null,"private_text":"Old private","private_attachment_ids":null}`)
+	sum := sha256.Sum256(frozen)
+	var input service.CommunityCreate
+	require.NoError(t, common.Unmarshal(frozen, &input))
+	created := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", input, 201))
+	var old model.CommunityOrder
+	require.NoError(t, f.db.First(&old, "id = ?", created.Order.ID).Error)
+	assert.Equal(t, hex.EncodeToString(sum[:]), old.PayloadHash)
+	created = f.communityApprove(t, created)
+	claim := map[string]string{"client_action_id": "pre-migration-claim"}
+	accepted := demandData[communityReceipt](t, f.request(t, "other", "POST", communityPath(created.Order.ID)+"/accept", claim, 200))
+	var sessions []model.UserSession
+	require.NoError(t, f.db.Order("sid").Find(&sessions).Error)
+	require.NoError(t, f.db.Migrator().DropIndex(&model.CommunityOrder{}, "idx_community_orders_approval_status"))
+	for _, column := range []string{"ExpectedDeliveryDate", "ApprovalStatus", "ApprovalReason"} {
+		require.NoError(t, f.db.Migrator().DropColumn(&model.CommunityOrder{}, column))
+	}
+	for range 2 {
+		require.NoError(t, f.db.AutoMigrate(model.CommunityTables()...))
+	}
+	// The new backend opens its own pool after additive migration, rather than
+	// retaining PostgreSQL plans prepared against the deliberately old schema.
+	previous := f.db
+	next, err := gorm.Open(previous.Dialector, &gorm.Config{})
+	require.NoError(t, err)
+	pool, err := next.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		f.db, model.DB, model.LOG_DB = previous, previous, previous
+		require.NoError(t, pool.Close())
+	})
+	f.db, model.DB, model.LOG_DB = next, next, next
+	raw := f.request(t, "owner", "GET", communityPath(created.Order.ID), nil, 200)
+	order := demandData[struct {
+		Order service.CommunityOrderView `json:"order"`
+	}](t, raw).Order
+	assert.Equal(t, "pending", order.Listing.ApprovalStatus)
+	assert.Empty(t, order.Listing.ExpectedDeliveryDate)
+	assert.Equal(t, "accepted", order.Status)
+	assert.Equal(t, accepted.Order.Acceptor, order.Acceptor)
+	recovery := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", input, 200))
+	assert.True(t, recovery.Replayed)
+	assert.Equal(t, created.Order.ID, recovery.Order.ID)
+	require.NotNil(t, recovery.Message)
+	require.NotNil(t, created.Message)
+	assert.Equal(t, created.Message.ID, recovery.Message.ID)
+	replay := demandData[communityReceipt](t, f.request(t, "other", "POST", communityPath(created.Order.ID)+"/accept", claim, 200))
+	assert.True(t, replay.Replayed)
+	input.ClientRequestID = "distinct-old-uuid"
+	distinct := demandData[communityReceipt](t, f.request(t, "owner", "POST", "/api/product/community-demands/orders", input, 201))
+	assert.NotEqual(t, created.Order.ID, distinct.Order.ID)
+	var sessionsAfter []model.UserSession
+	require.NoError(t, f.db.Order("sid").Find(&sessionsAfter).Error)
+	assert.Equal(t, sessions, sessionsAfter)
+	// The original blank legacy field is also pending, and never a public approval.
+	require.NoError(t, f.db.Model(&model.CommunityOrder{}).Where("id = ?", distinct.Order.ID).Update("approval_status", "").Error)
+	page := demandData[struct {
+		Items []service.CommunityListingView `json:"items"`
+	}](t, f.request(t, "other", "GET", "/api/product/community-demands/listings", nil, 200))
+	assert.Empty(t, page.Items)
+	pending := demandData[struct {
+		Items []service.CommunityOrderView `json:"items"`
+	}](t, f.request(t, "admin", "GET", "/api/community-demand-management/orders?approval_status=pending", nil, 200))
+	assert.Len(t, pending.Items, 2)
+}
+
+func TestCommunityApprovalDoesNotRewriteClosedParticipantHistory(t *testing.T) {
+	f := newCommunityFixture(t)
+	o := f.communityCreate(t, "historically-completed")
+	accepted := demandData[communityReceipt](t, f.request(t, "other", "POST", communityPath(o.Order.ID)+"/accept", map[string]string{"client_action_id": "original-completed-claim"}, 200))
+	require.NoError(t, f.db.Model(&model.CommunityOrder{}).Where("id = ?", o.Order.ID).Updates(map[string]any{"status": "completed", "closed_at": int64(1700000100)}).Error)
+	reviewed := demandData[communityReceipt](t, f.request(t, "admin", "POST", "/api/community-demand-management/orders/"+o.Order.ID+"/actions", service.CommunityAction{ClientActionID: "review-old-completed", Revision: accepted.Order.Revision, Action: "reject_listing", Reason: "Private retrospective review"}, 200))
+	assert.Equal(t, "completed", reviewed.Order.Status)
+	assert.EqualValues(t, 1700000100, reviewed.Order.ClosedAt)
+	assert.Equal(t, accepted.Order.LastSeq, reviewed.Order.LastSeq)
+	for _, actor := range []string{"owner", "other"} {
+		f.request(t, actor, "GET", communityPath(o.Order.ID)+"/messages", nil, 200)
+	}
 }

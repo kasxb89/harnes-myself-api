@@ -32,20 +32,23 @@ func ProjectCommunityAttachment(f model.CommunityAttachment) CommunityAttachment
 }
 
 type CommunityListingView struct {
-	SchemaVersion      int                       `json:"schema_version"`
-	ID                 string                    `json:"id"`
-	Number             string                    `json:"number"`
-	Title              string                    `json:"title"`
-	PublicSummary      string                    `json:"public_summary"`
-	PublicBudget       string                    `json:"public_budget"`
-	ServiceProfileID   string                    `json:"service_profile_id"`
-	ServiceProfileName string                    `json:"service_profile_name"`
-	Publisher          CommunityUser             `json:"publisher"`
-	Status             string                    `json:"status"`
-	PublicAttachments  []CommunityAttachmentView `json:"public_attachments"`
-	CreatedAt          int64                     `json:"created_at"`
-	UpdatedAt          int64                     `json:"updated_at"`
-	CanAccept          bool                      `json:"can_accept"`
+	SchemaVersion        int                       `json:"schema_version"`
+	ID                   string                    `json:"id"`
+	Number               string                    `json:"number"`
+	Title                string                    `json:"title"`
+	PublicSummary        string                    `json:"public_summary"`
+	PublicBudget         string                    `json:"public_budget"`
+	ExpectedDeliveryDate string                    `json:"expected_delivery_date"`
+	ApprovalStatus       string                    `json:"approval_status"`
+	ApprovalReason       string                    `json:"approval_reason,omitempty"`
+	ServiceProfileID     string                    `json:"service_profile_id"`
+	ServiceProfileName   string                    `json:"service_profile_name"`
+	Publisher            CommunityUser             `json:"publisher"`
+	Status               string                    `json:"status"`
+	PublicAttachments    []CommunityAttachmentView `json:"public_attachments"`
+	CreatedAt            int64                     `json:"created_at"`
+	UpdatedAt            int64                     `json:"updated_at"`
+	CanAccept            bool                      `json:"can_accept"`
 }
 type CommunityOrderView struct {
 	SchemaVersion     int                  `json:"schema_version"`
@@ -177,7 +180,11 @@ func ProjectCommunityListings(db *gorm.DB, a CommunityActor, orders []model.Comm
 				assets = append(assets, f)
 			}
 		}
-		out = append(out, CommunityListingView{SchemaVersion: 1, ID: o.ID, Number: o.Number, Title: o.Title, PublicSummary: o.PublicSummary, PublicBudget: o.PublicBudget, ServiceProfileID: o.ServiceProfileID, ServiceProfileName: o.ServiceProfileName, Publisher: names[o.PublisherID], Status: o.Status, PublicAttachments: assets, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, CanAccept: cfg.Enabled && o.Visible && o.Status == "open" && o.AcceptorID == 0 && o.PublisherID != a.UserID})
+		reason := ""
+		if o.ApprovalStatus == "rejected" && (a.Admin || o.PublisherID == a.UserID) {
+			reason = o.ApprovalReason
+		}
+		out = append(out, CommunityListingView{SchemaVersion: 1, ID: o.ID, Number: o.Number, Title: o.Title, PublicSummary: o.PublicSummary, PublicBudget: o.PublicBudget, ExpectedDeliveryDate: o.ExpectedDeliveryDate, ApprovalStatus: CommunityApprovalStatus(o), ApprovalReason: reason, ServiceProfileID: o.ServiceProfileID, ServiceProfileName: o.ServiceProfileName, Publisher: names[o.PublisherID], Status: o.Status, PublicAttachments: assets, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt, CanAccept: cfg.Enabled && o.Visible && o.ApprovalStatus == "approved" && o.Status == "open" && o.AcceptorID == 0 && o.PublisherID != a.UserID})
 	}
 	return out, nil
 }

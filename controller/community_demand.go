@@ -59,7 +59,7 @@ func GetCommunityConfig(c *gin.Context) {
 	}
 	shared, err := service.LoadDemandConfig(communityDB(c))
 	shared.Config.UploadRules.MaxAttachments = min(8, shared.Config.UploadRules.MaxAttachments)
-	communityRespond(c, gin.H{"schema_version": 1, "revision": cfg.Revision, "enabled": cfg.Enabled, "capabilities": gin.H{"community_orders_v1": true, "explicit_publication": true, "single_acceptor": true, "resumable_upload": true, "private_participant_messages": true}, "upload_rules": shared.Config.UploadRules}, err)
+	communityRespond(c, gin.H{"schema_version": 1, "revision": cfg.Revision, "enabled": cfg.Enabled, "publication_policy": "approval_required", "capabilities": gin.H{"community_orders_v1": true, "community_approval_v1": true, "explicit_publication": true, "single_acceptor": true, "resumable_upload": true, "private_participant_messages": true}, "upload_rules": shared.Config.UploadRules}, err)
 }
 func PutCommunityConfig(c *gin.Context) {
 	var in service.CommunityConfig
@@ -114,7 +114,7 @@ func ListCommunityOrders(c *gin.Context) {
 			communityRespond(c, gin.H{"items": []service.CommunityListingView{}, "next_cursor": "", "has_more": false}, nil)
 			return
 		}
-		q = q.Where("visible = ? AND status = ? AND acceptor_id = 0", true, "open")
+		q = q.Where("visible = ? AND status = ? AND acceptor_id = 0 AND approval_status = ?", true, "open", "approved")
 	} else if !a.Admin {
 		switch c.DefaultQuery("view", "all") {
 		case "published":
@@ -150,6 +150,17 @@ func ListCommunityOrders(c *gin.Context) {
 		q = q.Where("(title LIKE ? OR public_summary LIKE ?)", "%"+text+"%", "%"+text+"%")
 	}
 	if a.Admin {
+		if approval := c.Query("approval_status"); approval != "" {
+			switch approval {
+			case "pending":
+				q = q.Where("(approval_status = ? OR approval_status = ? OR approval_status IS NULL)", "pending", "")
+			case "approved", "rejected":
+				q = q.Where("approval_status = ?", approval)
+			default:
+				communityInvalid(c)
+				return
+			}
+		}
 		for _, field := range []string{"publisher_id", "acceptor_id"} {
 			if raw := c.Query(field); raw != "" {
 				id, e := strconv.Atoi(raw)

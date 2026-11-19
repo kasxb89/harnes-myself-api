@@ -9382,5 +9382,15 @@
     "Change listing visibility": "Change listing visibility",
     "View public community listings and private participant orders.": "View public community listings and private participant orders.",
     "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants."
-  }
+  },
+  "Community approval status": "Validation de la demande",
+  "All approval statuses": "Toutes les validations",
+  "Pending approval": "En attente de validation",
+  "Approved listing": "Demande approuvée",
+  "Rejected listing": "Demande refusée",
+  "Approve listing": "Approuver la demande",
+  "Reject listing": "Refuser la demande",
+  "Expected delivery date": "Date de livraison prévue",
+  "Invalid expected delivery date": "Date de livraison prévue invalide",
+  "Administrator approval is required before acceptance": "La demande doit être approuvée par un administrateur avant son acceptation"
 }

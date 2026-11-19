@@ -9382,5 +9382,15 @@
     "Change listing visibility": "Change listing visibility",
     "View public community listings and private participant orders.": "View public community listings and private participant orders.",
     "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants."
-  }
+  },
+  "Community approval status": "依頼の審査状況",
+  "All approval statuses": "すべての審査状況",
+  "Pending approval": "審査待ち",
+  "Approved listing": "承認済み",
+  "Rejected listing": "却下済み",
+  "Approve listing": "依頼を承認",
+  "Reject listing": "依頼を却下",
+  "Expected delivery date": "納品予定日",
+  "Invalid expected delivery date": "納品予定日が無効です",
+  "Administrator approval is required before acceptance": "受注には管理者の承認が必要です"
 }

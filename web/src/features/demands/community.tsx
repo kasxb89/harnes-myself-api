@@ -31,6 +31,8 @@ import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
+  communityApprovalLabels,
+  communityApprovalStatuses,
   communityStatuses,
   communityStatusLabels,
   loadCommunityConfig,
@@ -48,6 +50,7 @@ export function CommunityInbox(props: {
   const cache = useQueryClient()
   const [filters, setFilters] = useState({
     status: '',
+    approval_status: '',
     visibility: 'all',
     publisher_id: '',
     acceptor_id: '',
@@ -104,6 +107,21 @@ export function CommunityInbox(props: {
             </option>
           ))}
         </NativeSelect>
+        {config.data?.capabilities?.community_approval_v1 && (
+          <NativeSelect
+            className='w-40'
+            aria-label={t('Community approval status')}
+            value={filters.approval_status}
+            onChange={(e) => filter('approval_status', e.target.value)}
+          >
+            <option value=''>{t('All approval statuses')}</option>
+            {communityApprovalStatuses.map((status) => (
+              <option key={status} value={status}>
+                {t(communityApprovalLabels[status])}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
         <NativeSelect
           className='w-36'
           aria-label={t('Listing visibility')}
@@ -188,6 +206,14 @@ export function CommunityInbox(props: {
                 </p>
                 <div className='text-muted-foreground mt-2 flex items-center gap-2 text-[11px]'>
                   <span>{t(communityStatusLabels[order.status])}</span>
+                  {config.data?.capabilities?.community_approval_v1 &&
+                    order.listing.approval_status && (
+                      <span>
+                        {t(
+                          communityApprovalLabels[order.listing.approval_status]
+                        )}
+                      </span>
+                    )}
                   {!order.listing_visible && <span>{t('Hidden')}</span>}
                   <time className='ml-auto'>
                     {formatTimestampToDate(order.created_at).slice(5, 16)}

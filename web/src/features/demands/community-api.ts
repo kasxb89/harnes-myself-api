@@ -37,6 +37,24 @@ export const communityStatusLabels = {
   completed: 'Completed',
   cancelled: 'Cancelled',
 } as const
+export const communityApprovalStatuses = [
+  'pending',
+  'approved',
+  'rejected',
+] as const
+export const communityApprovalLabels = {
+  pending: 'Pending approval',
+  approved: 'Approved listing',
+  rejected: 'Rejected listing',
+} as const
+export const communityModerationActions = [
+  'hide_listing',
+  'show_listing',
+  'cancel',
+  'reopen',
+  'approve_listing',
+  'reject_listing',
+] as const
 const person = z.object({
   id: z.number().int().positive(),
   display_name: z.string(),
@@ -66,6 +84,9 @@ export const communityOrderSchema = z.object({
   listing: z.object({
     public_summary: z.string(),
     public_budget: z.string(),
+    expected_delivery_date: z.string().optional(),
+    approval_status: z.enum(communityApprovalStatuses).optional(),
+    approval_reason: z.string().optional(),
     service_profile_name: z.string(),
     public_attachments: z.array(communityAttachmentSchema),
   }),
@@ -99,6 +120,10 @@ export type CommunityAttachment = z.infer<typeof communityAttachmentSchema>
 export const communityConfigSchema = z.object({
   revision: z.number(),
   enabled: z.boolean(),
+  capabilities: z
+    .object({ community_approval_v1: z.boolean().optional() })
+    .optional(),
+  publication_policy: z.literal('approval_required').optional(),
   upload_rules: configSchema.shape.config.shape.upload_rules,
 })
 const base = '/api/community-demand-management'
@@ -120,6 +145,7 @@ export async function loadCommunityOrders(
   params: {
     status: string
     visibility: string
+    approval_status: string
     publisher_id: string
     acceptor_id: string
     q: string
@@ -179,7 +205,7 @@ export async function sendCommunityMessage(id: string, body: CommunityOutbox) {
 export type CommunityModeration = {
   client_action_id: string
   revision: number
-  action: 'hide_listing' | 'show_listing' | 'cancel' | 'reopen'
+  action: (typeof communityModerationActions)[number]
   reason: string
 }
 export async function moderateCommunity(id: string, body: CommunityModeration) {
