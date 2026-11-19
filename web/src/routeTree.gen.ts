@@ -44,6 +44,7 @@ import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedDemandManagementIndexRouteImport } from './routes/_authenticated/demand-management/index'
 import { Route as AuthenticatedEngineerWorkspaceIndexRouteImport } from './routes/_authenticated/engineer-workspace/index'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedForumManagementIndexRouteImport } from './routes/_authenticated/forum-management/index'
 import { Route as AuthenticatedImageManagementIndexRouteImport } from './routes/_authenticated/image-management/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedMediaManagementIndexRouteImport } from './routes/_authenticated/media-management/index'
@@ -270,6 +271,12 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedForumManagementIndexRoute =
+  AuthenticatedForumManagementIndexRouteImport.update({
+    id: '/forum-management/',
+    path: '/forum-management/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedImageManagementIndexRoute =
@@ -571,6 +578,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/demand-management/': typeof AuthenticatedDemandManagementIndexRoute
   '/engineer-workspace/': typeof AuthenticatedEngineerWorkspaceIndexRoute
+  '/forum-management/': typeof AuthenticatedForumManagementIndexRoute
   '/image-management/': typeof AuthenticatedImageManagementIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/media-management/': typeof AuthenticatedMediaManagementIndexRoute
@@ -649,6 +657,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/demand-management': typeof AuthenticatedDemandManagementIndexRoute
   '/engineer-workspace': typeof AuthenticatedEngineerWorkspaceIndexRoute
+  '/forum-management': typeof AuthenticatedForumManagementIndexRoute
   '/image-management': typeof AuthenticatedImageManagementIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/media-management': typeof AuthenticatedMediaManagementIndexRoute
@@ -731,6 +740,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/demand-management/': typeof AuthenticatedDemandManagementIndexRoute
   '/_authenticated/engineer-workspace/': typeof AuthenticatedEngineerWorkspaceIndexRoute
+  '/_authenticated/forum-management/': typeof AuthenticatedForumManagementIndexRoute
   '/_authenticated/image-management/': typeof AuthenticatedImageManagementIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/media-management/': typeof AuthenticatedMediaManagementIndexRoute
@@ -812,6 +822,7 @@ export interface FileRouteTypes {
     | '/dashboard/'
     | '/demand-management/'
     | '/engineer-workspace/'
+    | '/forum-management/'
     | '/image-management/'
     | '/keys/'
     | '/media-management/'
@@ -890,6 +901,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/demand-management'
     | '/engineer-workspace'
+    | '/forum-management'
     | '/image-management'
     | '/keys'
     | '/media-management'
@@ -971,6 +983,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/'
     | '/_authenticated/demand-management/'
     | '/_authenticated/engineer-workspace/'
+    | '/_authenticated/forum-management/'
     | '/_authenticated/image-management/'
     | '/_authenticated/keys/'
     | '/_authenticated/media-management/'
@@ -1278,6 +1291,13 @@ declare module '@tanstack/react-router' {
       path: '/errors/$error'
       fullPath: '/errors/$error'
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/forum-management/': {
+      id: '/_authenticated/forum-management/'
+      path: '/forum-management'
+      fullPath: '/forum-management/'
+      preLoaderRoute: typeof AuthenticatedForumManagementIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/image-management/': {
@@ -1696,6 +1716,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedDemandManagementIndexRoute: typeof AuthenticatedDemandManagementIndexRoute
   AuthenticatedEngineerWorkspaceIndexRoute: typeof AuthenticatedEngineerWorkspaceIndexRoute
+  AuthenticatedForumManagementIndexRoute: typeof AuthenticatedForumManagementIndexRoute
   AuthenticatedImageManagementIndexRoute: typeof AuthenticatedImageManagementIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedMediaManagementIndexRoute: typeof AuthenticatedMediaManagementIndexRoute
@@ -1742,6 +1763,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedDemandManagementIndexRoute,
   AuthenticatedEngineerWorkspaceIndexRoute:
     AuthenticatedEngineerWorkspaceIndexRoute,
+  AuthenticatedForumManagementIndexRoute:
+    AuthenticatedForumManagementIndexRoute,
   AuthenticatedImageManagementIndexRoute:
     AuthenticatedImageManagementIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,

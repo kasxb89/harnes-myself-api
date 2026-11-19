@@ -366,7 +366,11 @@ func TestDemandLocalFixtureServer(t *testing.T) {
 	host, _, err := net.SplitHostPort(address)
 	require.NoError(t, err)
 	require.Equal(t, "127.0.0.1", host)
-	f := newDemandFixture(t)
+	serveDemandLocalFixture(t, newDemandFixture(t), address)
+}
+
+func serveDemandLocalFixture(t *testing.T, f *demandFixture, address string) {
+	t.Helper()
 	// These metadata and login endpoints exist only in this opt-in test server.
 	// Real session issuance, cookies and refresh still use the existing services.
 	common.SessionCookieSecure = false
@@ -405,7 +409,7 @@ func TestDemandLocalFixtureServer(t *testing.T) {
 	system_setting.TaskPublicAddress = "http://" + listener.Addr().String()
 	server := &http.Server{Handler: f.engine, ReadHeaderTimeout: 5 * time.Second}
 	defer server.Close()
-	manifest := map[string]any{"schema_version": 1, "fixture_revision": 3, "fixture_id": uuid.NewString(), "source_commit": os.Getenv("DEMAND_FIXTURE_SOURCE_COMMIT"), "base_url": system_setting.TaskPublicAddress, "synthetic_only": true, "expires_at": time.Now().Add(15 * time.Minute).Unix(), "tokens": map[string]string{"customerA": f.tokens["owner"], "customerB": f.tokens["other"], "engineerA": f.tokens["engineer"], "engineerB": f.tokens["replacement"], "admin": f.tokens["admin"]}, "users": f.users, "engineers": f.engineers, "admin_page": "/demand-management", "engineer_page": "/engineer-workspace"}
+	manifest := map[string]any{"schema_version": 1, "fixture_revision": 3, "fixture_id": uuid.NewString(), "source_commit": os.Getenv("DEMAND_FIXTURE_SOURCE_COMMIT"), "base_url": system_setting.TaskPublicAddress, "synthetic_only": true, "expires_at": time.Now().Add(15 * time.Minute).Unix(), "auth_bundles": f.bundles, "tokens": map[string]string{"customerA": f.tokens["owner"], "customerB": f.tokens["other"], "engineerA": f.tokens["engineer"], "engineerB": f.tokens["replacement"], "admin": f.tokens["admin"]}, "users": f.users, "engineers": f.engineers, "admin_page": "/demand-management", "engineer_page": "/engineer-workspace"}
 	raw, err := common.Marshal(manifest)
 	require.NoError(t, err)
 	output := os.Getenv("DEMAND_FIXTURE_OUTPUT")

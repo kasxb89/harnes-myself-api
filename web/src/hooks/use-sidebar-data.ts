@@ -250,6 +250,12 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.ADMIN,
             items: [
               {
+                title: t('Forum management'),
+                url: '/forum-management',
+                icon: MessageSquare,
+                requiredRole: ROLE.ADMIN,
+              },
+              {
                 title: t('Demand management'),
                 url: '/demand-management',
                 icon: MessageSquare,

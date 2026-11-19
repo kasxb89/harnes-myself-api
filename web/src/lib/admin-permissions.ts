@@ -25,6 +25,7 @@ export type AdminCapabilities = AdminPermissionMatrix
 
 export const ADMIN_PERMISSION_RESOURCES = {
   DEMANDS: 'demands',
+  FORUM: 'forum',
   AUDIT: 'audit',
   CHANNEL: 'channel',
   TASK_PLUGIN: 'task_plugin',
@@ -146,6 +147,7 @@ export function canAccessAdminRoute(
   }
   const resources: ReadonlyArray<readonly [string, string]> = [
     ['/demand-management', 'demands'],
+    ['/forum-management', 'forum'],
     ['/model-profits', 'model_profits'],
     ['/dashboard/users', 'operations'],
     ['/balance-ledger', 'balance_ledger'],
