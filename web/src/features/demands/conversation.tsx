@@ -347,7 +347,7 @@ export function DemandConversation({
   const ready = files.every((f) => f.attachment !== undefined)
   return (
     <section
-      className='flex h-full min-h-0 flex-col'
+      className='flex h-full min-h-0 flex-col overflow-y-auto'
       aria-label={t('Demand conversation')}
     >
       <header className='shrink-0 space-y-3 border-b p-4'>
@@ -366,7 +366,7 @@ export function DemandConversation({
         {mode === 'admin' ? (
           <section aria-label={t('Customer information')} className='space-y-2'>
             <h3 className='text-sm font-medium'>{t('Customer information')}</h3>
-            <dl className='grid gap-2 text-sm sm:grid-cols-3'>
+            <dl className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-3'>
               <div>
                 <dt className='text-muted-foreground text-xs'>
                   {t('Nickname')}
@@ -600,7 +600,7 @@ export function DemandConversation({
           className='flex shrink-0 gap-2 border-t px-4 pt-3'
         >
           <Button
-            variant={!terminal && composer === 'reply' ? 'secondary' : 'ghost'}
+            variant={!terminal && composer === 'reply' ? 'default' : 'outline'}
             aria-pressed={!terminal && composer === 'reply'}
             disabled={terminal || send.isPending}
             onClick={() => setComposer('reply')}
@@ -608,7 +608,7 @@ export function DemandConversation({
             {t('Reply to customer')}
           </Button>
           <Button
-            variant={terminal || composer === 'note' ? 'secondary' : 'ghost'}
+            variant={terminal || composer === 'note' ? 'default' : 'outline'}
             aria-pressed={terminal || composer === 'note'}
             disabled={send.isPending}
             onClick={() => setComposer('note')}

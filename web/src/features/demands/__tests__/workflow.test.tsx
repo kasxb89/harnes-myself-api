@@ -466,6 +466,13 @@ test('an administrator can reply before assignment and see the customer informat
     />
   )
   await screen.findByText('Customer message')
+  expect(
+    screen.getByRole('button', { name: 'Reply to customer' })
+  ).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'Internal note' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  )
   const info = screen.getByRole('region', { name: 'Customer information' })
   expect(within(info).getByText('SYNTHETIC customer')).toBeInTheDocument()
   expect(within(info).getByText('+15550001000')).toBeInTheDocument()
