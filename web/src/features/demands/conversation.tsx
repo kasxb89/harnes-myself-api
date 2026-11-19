@@ -35,8 +35,8 @@ import {
   loadConversation,
   loadDemandAudit,
   loadUploadRules,
-  readEngineerDemand,
-  sendEngineerMessage,
+  readDemand,
+  sendDemandMessage,
   statusLabels,
   uploadDemandFile,
   type Attachment,
@@ -110,11 +110,15 @@ export function DemandConversation({
   const { t } = useTranslation()
   const cache = useQueryClient()
   const key = ['demand-conversation', accountId, mode, initial.id] as const
-  const outboxKey = `demand-message:${accountId}:${initial.id}`
+  const outboxKey =
+    mode === 'admin'
+      ? `demand-message:${accountId}:admin:${initial.id}`
+      : `demand-message:${accountId}:${initial.id}`
   const [outbox, setOutbox] = useState(() => loadOutbox(outboxKey))
   const [text, setText] = useState(outbox?.text ?? '')
   const [files, setFiles] = useState<AttachmentDraft[]>([])
   const [note, setNote] = useState('')
+  const [composer, setComposer] = useState<'reply' | 'note'>('reply')
   const [assignment, setAssignment] = useState('')
   const [closeOpen, setCloseOpen] = useState(false)
   const [localError, setLocalError] = useState('')
@@ -126,9 +130,9 @@ export function DemandConversation({
     }
   }, [])
   const rules = useQuery({
-    queryKey: ['demand-upload-rules', accountId],
-    enabled: mode === 'engineer',
-    queryFn: ({ signal }) => loadUploadRules(signal),
+    queryKey: ['demand-upload-rules', accountId, mode],
+    enabled: canWrite,
+    queryFn: ({ signal }) => loadUploadRules(signal, mode),
     retry: false,
   })
   const actionRef = useRef<{
@@ -212,7 +216,8 @@ export function DemandConversation({
     },
   })
   const send = useMutation({
-    mutationFn: (body: MessageOutbox) => sendEngineerMessage(initial.id, body),
+    mutationFn: (body: MessageOutbox) =>
+      sendDemandMessage(mode, initial.id, body),
     retry: false,
     onSuccess: () => {
       try {
@@ -245,7 +250,7 @@ export function DemandConversation({
   const lastRead = useRef(0)
   const lastSeq = conversation.data?.last_seq ?? 0
   const read = useMutation({
-    mutationFn: (seq: number) => readEngineerDemand(initial.id, seq),
+    mutationFn: (seq: number) => readDemand(mode, initial.id, seq),
     retry: false,
     onSuccess: (_result, seq) => {
       lastRead.current = seq
@@ -254,7 +259,6 @@ export function DemandConversation({
   })
   useEffect(() => {
     if (
-      mode === 'engineer' &&
       lastSeq > lastRead.current &&
       !read.isPending &&
       !read.isError &&
@@ -298,7 +302,7 @@ export function DemandConversation({
           setFiles((old) =>
             old.map((v) => (v.key === draft.key ? { ...v, progress } : v))
           ),
-        'engineer',
+        mode,
         controller.signal
       )
       setFiles((old) =>
@@ -337,7 +341,7 @@ export function DemandConversation({
     setOutbox(body)
     send.mutate(body)
   }
-  let sendLabel = 'Send'
+  let sendLabel = mode === 'admin' ? 'Send to customer' : 'Send'
   if (outbox) sendLabel = 'Retry same message'
   if (send.isPending) sendLabel = 'Sending...'
   const ready = files.every((f) => f.attachment !== undefined)
@@ -359,10 +363,40 @@ export function DemandConversation({
           </div>
           <Badge variant='secondary'>{t(statusLabels[demand.status])}</Badge>
         </div>
-        <p className='text-muted-foreground text-sm'>
-          {demand.engineer.display_name} · {demand.owner?.nickname ?? t('User')}{' '}
-          {demand.owner?.phone ?? ''}
-        </p>
+        {mode === 'admin' ? (
+          <section aria-label={t('Customer information')} className='space-y-2'>
+            <h3 className='text-sm font-medium'>{t('Customer information')}</h3>
+            <dl className='grid gap-2 text-sm sm:grid-cols-3'>
+              <div>
+                <dt className='text-muted-foreground text-xs'>
+                  {t('Nickname')}
+                </dt>
+                <dd className='break-words'>
+                  {demand.owner?.nickname || t('Not provided')}
+                </dd>
+              </div>
+              <div>
+                <dt className='text-muted-foreground text-xs'>
+                  {t('Phone number')}
+                </dt>
+                <dd className='break-all'>
+                  {demand.owner?.phone || t('Not provided')}
+                </dd>
+              </div>
+              <div>
+                <dt className='text-muted-foreground text-xs'>
+                  {t('User ID')}
+                </dt>
+                <dd>{demand.owner?.id ?? demand.user_id}</dd>
+              </div>
+            </dl>
+          </section>
+        ) : (
+          <p className='text-muted-foreground text-sm'>
+            {demand.engineer.display_name} ·{' '}
+            {demand.owner?.nickname ?? t('User')} {demand.owner?.phone ?? ''}
+          </p>
+        )}
         <div className='flex flex-wrap gap-2'>
           {mode === 'engineer' && !terminal && (
             <>
@@ -497,13 +531,14 @@ export function DemandConversation({
           <article key={message.id} className='space-y-2 border-b pb-4'>
             <div className='text-muted-foreground flex flex-wrap gap-2 text-xs'>
               <span>
-                {t(
-                  {
-                    user: 'User',
-                    engineer: 'Engineer',
-                    system: 'Administrator',
-                  }[message.author]
-                )}
+                {message.author_name?.trim() ||
+                  t(
+                    {
+                      user: 'User',
+                      engineer: 'Engineer',
+                      system: 'Administrator',
+                    }[message.author]
+                  )}
               </span>
               <time>{formatTimestampToDate(message.created_at)}</time>
               {message.kind === 'delivery' && (
@@ -558,161 +593,197 @@ export function DemandConversation({
           </section>
         )}
       </div>
-      {mode === 'engineer' && !terminal && (
-        <footer className='shrink-0 space-y-3 border-t p-4'>
-          {outbox && (
-            <p role='status' className='text-muted-foreground text-sm'>
+      {mode === 'admin' && canWrite && (
+        <div
+          role='group'
+          aria-label={t('Message visibility')}
+          className='flex shrink-0 gap-2 border-t px-4 pt-3'
+        >
+          <Button
+            variant={!terminal && composer === 'reply' ? 'secondary' : 'ghost'}
+            aria-pressed={!terminal && composer === 'reply'}
+            disabled={terminal || send.isPending}
+            onClick={() => setComposer('reply')}
+          >
+            {t('Reply to customer')}
+          </Button>
+          <Button
+            variant={terminal || composer === 'note' ? 'secondary' : 'ghost'}
+            aria-pressed={terminal || composer === 'note'}
+            disabled={send.isPending}
+            onClick={() => setComposer('note')}
+          >
+            {t('Internal note')}
+          </Button>
+        </div>
+      )}
+      {canWrite &&
+        !terminal &&
+        (mode === 'engineer' || composer === 'reply') && (
+          <footer className='shrink-0 space-y-3 border-t p-4'>
+            {mode === 'admin' && (
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'This reply is visible to the customer. No engineer assignment is required.'
+                )}
+              </p>
+            )}
+            {outbox && (
+              <p role='status' className='text-muted-foreground text-sm'>
+                {t(
+                  'An unconfirmed message is retained. Retry sends the same message, not a new one.'
+                )}
+              </p>
+            )}
+            <label className='block text-sm' htmlFor={`reply-${initial.id}`}>
               {t(
-                'An unconfirmed message is retained. Retry sends the same message, not a new one.'
+                mode === 'admin' ? 'Reply to customer' : 'Message to customer'
               )}
-            </p>
-          )}
-          <label className='block text-sm' htmlFor={`reply-${initial.id}`}>
-            {t('Message to customer')}
-          </label>
-          <Textarea
-            id={`reply-${initial.id}`}
-            value={text}
-            maxLength={10000}
-            disabled={!!outbox || send.isPending}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <label className='block text-sm'>
-            {t('Add images or videos')}
-            <Input
-              type='file'
-              multiple
-              accept={rules.data?.allowed_mime_types.join(',')}
-              disabled={!!outbox || send.isPending || !rules.data}
-              onChange={(e) => {
-                const candidates = [...(e.target.files ?? [])]
-                const r = rules.data
-                if (
-                  !r ||
-                  files.length + candidates.length > r.max_attachments ||
-                  candidates.some(
-                    (file) =>
-                      !r.allowed_mime_types.includes(file.type) ||
-                      file.size >
-                        (file.type.startsWith('image/')
-                          ? r.max_image_bytes
-                          : r.max_video_bytes)
-                  )
-                ) {
-                  setLocalError(
-                    'These files exceed the configured attachment rules.'
-                  )
-                  e.target.value = ''
-                  return
-                }
-                setLocalError('')
-                const selected = candidates.map((file) => ({
-                  key: crypto.randomUUID(),
-                  file,
-                  progress: 0,
-                  failed: false,
-                }))
-                setFiles((old) => [...old, ...selected])
-                for (const draft of selected) void upload(draft)
-                e.target.value = ''
-              }}
+            </label>
+            <Textarea
+              id={`reply-${initial.id}`}
+              value={text}
+              maxLength={10000}
+              disabled={!!outbox || send.isPending}
+              onChange={(e) => setText(e.target.value)}
             />
-          </label>
-          {rules.data && (
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Up to {{count}} attachments; images {{image}} MiB, videos {{video}} MiB.',
-                {
-                  count: rules.data.max_attachments,
-                  image: rules.data.max_image_bytes / 1048576,
-                  video: rules.data.max_video_bytes / 1048576,
-                }
-              )}
-            </p>
-          )}
-          {localError && (
-            <p role='alert' className='text-destructive text-sm'>
-              {t(localError)}
-            </p>
-          )}
-          {rules.isError && (
-            <p role='alert'>{t('Attachment rules could not be loaded')}</p>
-          )}
-          {files.map((file) => (
-            <div
-              key={file.key}
-              className='flex items-center justify-between gap-2 text-xs'
-            >
-              <span className='min-w-0 truncate'>
-                {file.file.name} · {file.progress}%
-              </span>
-              {file.failed && (
+            <label className='block text-sm'>
+              {t('Add images or videos')}
+              <Input
+                type='file'
+                multiple
+                accept={rules.data?.allowed_mime_types.join(',')}
+                disabled={!!outbox || send.isPending || !rules.data}
+                onChange={(e) => {
+                  const candidates = [...(e.target.files ?? [])]
+                  const r = rules.data
+                  if (
+                    !r ||
+                    files.length + candidates.length > r.max_attachments ||
+                    candidates.some(
+                      (file) =>
+                        !r.allowed_mime_types.includes(file.type) ||
+                        file.size >
+                          (file.type.startsWith('image/')
+                            ? r.max_image_bytes
+                            : r.max_video_bytes)
+                    )
+                  ) {
+                    setLocalError(
+                      'These files exceed the configured attachment rules.'
+                    )
+                    e.target.value = ''
+                    return
+                  }
+                  setLocalError('')
+                  const selected = candidates.map((file) => ({
+                    key: crypto.randomUUID(),
+                    file,
+                    progress: 0,
+                    failed: false,
+                  }))
+                  setFiles((old) => [...old, ...selected])
+                  for (const draft of selected) void upload(draft)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            {rules.data && (
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Up to {{count}} attachments; images {{image}} MiB, videos {{video}} MiB.',
+                  {
+                    count: rules.data.max_attachments,
+                    image: rules.data.max_image_bytes / 1048576,
+                    video: rules.data.max_video_bytes / 1048576,
+                  }
+                )}
+              </p>
+            )}
+            {localError && (
+              <p role='alert' className='text-destructive text-sm'>
+                {t(localError)}
+              </p>
+            )}
+            {rules.isError && (
+              <p role='alert'>{t('Attachment rules could not be loaded')}</p>
+            )}
+            {files.map((file) => (
+              <div
+                key={file.key}
+                className='flex items-center justify-between gap-2 text-xs'
+              >
+                <span className='min-w-0 truncate'>
+                  {file.file.name} · {file.progress}%
+                </span>
+                {file.failed && (
+                  <Button
+                    variant='outline'
+                    onClick={() => {
+                      void upload(file)
+                    }}
+                  >
+                    {t('Retry upload')}
+                  </Button>
+                )}
                 <Button
-                  variant='outline'
+                  variant='ghost'
+                  disabled={!!outbox || send.isPending}
+                  aria-label={`${t('Remove attachment')} ${file.file.name}`}
                   onClick={() => {
-                    void upload(file)
+                    uploads.current.get(file.key)?.abort()
+                    setFiles((old) =>
+                      old.filter((value) => value.key !== file.key)
+                    )
                   }}
                 >
-                  {t('Retry upload')}
+                  {t('Remove')}
                 </Button>
-              )}
+              </div>
+            ))}
+            <div className='flex flex-wrap gap-2'>
               <Button
-                variant='ghost'
-                disabled={!!outbox || send.isPending}
-                aria-label={`${t('Remove attachment')} ${file.file.name}`}
-                onClick={() => {
-                  uploads.current.get(file.key)?.abort()
-                  setFiles((old) =>
-                    old.filter((value) => value.key !== file.key)
-                  )
-                }}
-              >
-                {t('Remove')}
-              </Button>
-            </div>
-          ))}
-          <div className='flex flex-wrap gap-2'>
-            <Button
-              disabled={
-                send.isPending ||
-                (!outbox && (!ready || (!text.trim() && files.length === 0)))
-              }
-              onClick={submit}
-            >
-              {t(sendLabel)}
-            </Button>
-            {['communicating', 'in_progress'].includes(demand.status) && (
-              <Button
-                variant='outline'
                 disabled={
-                  !!outbox ||
-                  !ready ||
-                  action.isPending ||
-                  (!text.trim() && files.length === 0)
+                  send.isPending ||
+                  (!outbox && (!ready || (!text.trim() && files.length === 0)))
                 }
-                onClick={() =>
-                  runAction('deliver', {
-                    text,
-                    attachment_ids: files.flatMap((f) =>
-                      f.attachment ? [f.attachment.id] : []
-                    ),
-                  })
-                }
+                onClick={submit}
               >
-                {t('Submit delivery')}
+                {t(sendLabel)}
               </Button>
+              {mode === 'engineer' &&
+                ['communicating', 'in_progress'].includes(demand.status) && (
+                  <Button
+                    variant='outline'
+                    disabled={
+                      !!outbox ||
+                      !ready ||
+                      action.isPending ||
+                      (!text.trim() && files.length === 0)
+                    }
+                    onClick={() =>
+                      runAction('deliver', {
+                        text,
+                        attachment_ids: files.flatMap((f) =>
+                          f.attachment ? [f.attachment.id] : []
+                        ),
+                      })
+                    }
+                  >
+                    {t('Submit delivery')}
+                  </Button>
+                )}
+            </div>
+            {send.isError && (
+              <p role='alert' className='text-destructive text-sm'>
+                {t(
+                  'Message delivery is unconfirmed. Your draft and submission key are retained.'
+                )}
+              </p>
             )}
-          </div>
-          {send.isError && (
-            <p role='alert' className='text-destructive text-sm'>
-              {t(
-                'Message delivery is unconfirmed. Your draft and submission key are retained.'
-              )}
-            </p>
-          )}
-        </footer>
-      )}
-      {mode === 'admin' && canWrite && (
+          </footer>
+        )}
+      {mode === 'admin' && canWrite && (terminal || composer === 'note') && (
         <footer className='shrink-0 space-y-2 border-t p-4'>
           <label htmlFor={`note-${initial.id}`} className='text-sm'>
             {t('Internal note')}

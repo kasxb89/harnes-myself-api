@@ -9300,6 +9300,13 @@
     "Service profile is not accepting new demands": "Service profile is not accepting new demands",
     "Choose one engineer or service profile": "Choose one engineer or service profile",
     "Invalid assignment filter": "Invalid assignment filter",
-    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads"
+    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads",
+    "Customer information": "Thông tin khách hàng",
+    "Nickname": "Tên hiển thị",
+    "Not provided": "Chưa cung cấp",
+    "Reply to customer": "Trả lời khách hàng",
+    "Send to customer": "Gửi cho khách hàng",
+    "Message visibility": "Phạm vi hiển thị tin nhắn",
+    "This reply is visible to the customer. No engineer assignment is required.": "Khách hàng sẽ thấy câu trả lời này. Không cần phân công kỹ sư trước."
   }
 }

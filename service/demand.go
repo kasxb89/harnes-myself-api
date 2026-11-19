@@ -356,6 +356,13 @@ func ProjectDemandMessages(db *gorm.DB, a DemandActor, d model.Demand, messages 
 		if message.Author == "engineer" {
 			name = authorNames[message.SenderID]
 		}
+		// Existing clients reserve system for text-only notices. Public staff
+		// replies remain conversation messages with their real sender ID and
+		// an explicit platform name; no engineer assignment or user is created.
+		if !a.Admin && message.Author == "system" && message.Kind == "message" {
+			message.Author = "engineer"
+			name = "平台客服"
+		}
 		result = append(result, DemandMessageView{DemandMessage: message, Attachments: files, Read: message.SenderID == a.UserID && cursor.LastReadSeq >= message.Seq, AuthorName: name})
 	}
 	return result, cursor.LastReadSeq, nil

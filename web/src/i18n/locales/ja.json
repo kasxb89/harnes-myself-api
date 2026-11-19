@@ -9300,6 +9300,13 @@
     "Service profile is not accepting new demands": "Service profile is not accepting new demands",
     "Choose one engineer or service profile": "Choose one engineer or service profile",
     "Invalid assignment filter": "Invalid assignment filter",
-    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads"
+    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads",
+    "Customer information": "お客様情報",
+    "Nickname": "ニックネーム",
+    "Not provided": "未提供",
+    "Reply to customer": "お客様に返信",
+    "Send to customer": "お客様に送信",
+    "Message visibility": "メッセージの公開範囲",
+    "This reply is visible to the customer. No engineer assignment is required.": "この返信はお客様に表示されます。担当エンジニアの割り当ては不要です。"
   }
 }

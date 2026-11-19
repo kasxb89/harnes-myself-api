@@ -9300,6 +9300,13 @@
     "Service profile is not accepting new demands": "Service profile is not accepting new demands",
     "Choose one engineer or service profile": "Choose one engineer or service profile",
     "Invalid assignment filter": "Invalid assignment filter",
-    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads"
+    "Customer and public profiles require separate avatar uploads": "Customer and public profiles require separate avatar uploads",
+    "Customer information": "Customer information",
+    "Nickname": "Nickname",
+    "Not provided": "Not provided",
+    "Reply to customer": "Reply to customer",
+    "Send to customer": "Send to customer",
+    "Message visibility": "Message visibility",
+    "This reply is visible to the customer. No engineer assignment is required.": "This reply is visible to the customer. No engineer assignment is required."
   }
 }

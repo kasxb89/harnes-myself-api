@@ -141,6 +141,7 @@ export const messageSchema = z.object({
   seq: z.number(),
   sender_id: z.number(),
   author: z.enum(['user', 'engineer', 'system']),
+  author_name: z.string().max(200).optional(),
   kind: z.enum(['message', 'delivery', 'system']),
   text: z.string(),
   created_at: z.number(),
@@ -258,12 +259,13 @@ export async function demandAction(
     .object({ demand: demandSchema, replayed: z.boolean() })
     .parse(requireServerSuccess(r.data).data)
 }
-export async function sendEngineerMessage(
+export async function sendDemandMessage(
+  mode: DemandMode,
   id: string,
   body: { client_message_id: string; text: string; attachment_ids: string[] }
 ) {
   const r = await api.post<Envelope>(
-    `/api/engineer/demands/${encodeURIComponent(id)}/messages`,
+    `${demandBase(mode)}/${encodeURIComponent(id)}/messages`,
     body
   )
   return z
@@ -274,9 +276,13 @@ export async function sendEngineerMessage(
     })
     .parse(requireServerSuccess(r.data).data)
 }
-export async function readEngineerDemand(id: string, last_read_seq: number) {
+export async function readDemand(
+  mode: DemandMode,
+  id: string,
+  last_read_seq: number
+) {
   const r = await api.post<Envelope>(
-    `/api/engineer/demands/${encodeURIComponent(id)}/read`,
+    `${demandBase(mode)}/${encodeURIComponent(id)}/read`,
     { last_read_seq }
   )
   requireServerSuccess(r.data)
@@ -371,11 +377,19 @@ export async function uploadDemandFile(
   return uploadSchema.parse(requireServerSuccess(done.data).data).attachment
 }
 
-export async function loadUploadRules(signal?: AbortSignal) {
-  const r = await api.get<Envelope>('/api/product/demands/config', {
-    signal,
-    disableDuplicate: true,
-  })
+export async function loadUploadRules(
+  signal?: AbortSignal,
+  mode: DemandMode = 'engineer'
+) {
+  const r = await api.get<Envelope>(
+    mode === 'admin'
+      ? '/api/demand-management/config'
+      : '/api/product/demands/config',
+    {
+      signal,
+      disableDuplicate: true,
+    }
+  )
   return configSchema.shape.config.parse(
     z.object({ config: z.unknown() }).parse(requireServerSuccess(r.data).data)
       .config

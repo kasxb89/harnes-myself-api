@@ -9300,6 +9300,13 @@
     "Service profile is not accepting new demands": "该服务入口暂不接收新需求",
     "Choose one engineer or service profile": "请选择一个工程师或服务入口",
     "Invalid assignment filter": "分派筛选无效",
-    "Customer and public profiles require separate avatar uploads": "客户档案与公开服务／工程师须分别上传头像，不能交叉复用"
+    "Customer and public profiles require separate avatar uploads": "客户档案与公开服务／工程师须分别上传头像，不能交叉复用",
+    "Customer information": "客戶資訊",
+    "Nickname": "暱稱",
+    "Not provided": "未提供",
+    "Reply to customer": "回覆使用者",
+    "Send to customer": "傳送給使用者",
+    "Message visibility": "訊息可見範圍",
+    "This reply is visible to the customer. No engineer assignment is required.": "回覆會直接顯示給使用者，無需先指派工程師。"
   }
 }

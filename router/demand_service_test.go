@@ -887,3 +887,99 @@ func TestDemandDirectoryAvatarScopesPreventCrossVisibilityAndRollbackImport(t *t
 	public.AvatarAttachmentID = private.ID
 	f.request(t, "admin", "PUT", "/api/demand-management/service-profiles/"+public.ID, public, 400)
 }
+
+func TestDemandAdminCanReplyBeforeAssignmentWithPrivateMediaAndStableReceipts(t *testing.T) {
+	f := newDemandFixture(t)
+	profile := demandData[service.DemandServiceProfileView](t, f.request(t, "admin", "POST", "/api/demand-management/service-profiles", service.DemandServiceProfileView{DemandServiceProfile: model.DemandServiceProfile{Code: "admin_intake", DisplayName: "Platform intake", ServiceDirection: "Customer support", Enabled: true, Published: true}, CategoryIDs: []string{"software"}}, 200))
+	first := demandData[service.DemandSendReceipt](t, f.request(t, "owner", "POST", "/api/product/demands", service.DemandCreate{ClientRequestID: "admin-unassigned-demand", ServiceProfileID: profile.ID, Text: "Customer asks for help"}, 201))
+	id := first.Demand.ID
+	require.False(t, first.Demand.Assigned)
+	var picture bytes.Buffer
+	require.NoError(t, png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	video := append([]byte{0, 0, 0, 24, 'f', 't', 'y', 'p', 'm', 'p', '4', '2', 0, 0, 0, 0, 'm', 'p', '4', '2', 'i', 's', 'o', 'm'}, bytes.Repeat([]byte{0}, 64)...)
+	var attachments []string
+	for _, media := range []struct {
+		name, mime string
+		raw        []byte
+	}{{"admin.png", "image/png", picture.Bytes()}, {"admin.mp4", "video/mp4", video}} {
+		up := demandData[service.DemandUploadResult](t, f.request(t, "admin", "POST", "/api/demand-management/uploads", service.DemandUploadCreate{ClientUploadID: uuid.NewString(), Name: media.name, MimeType: media.mime, SizeBytes: int64(len(media.raw))}, 200))
+		req := httptest.NewRequest("PUT", "/api/demand-management/uploads/"+up.Attachment.ID+"/chunks", bytes.NewReader(media.raw))
+		req.Header.Set("Authorization", "Bearer "+f.tokens["admin"])
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("Upload-Offset", "0")
+		w := httptest.NewRecorder()
+		f.engine.ServeHTTP(w, req)
+		require.Equal(t, 200, w.Code, w.Body.String())
+		sum := sha256.Sum256(media.raw)
+		done := demandData[service.DemandUploadResult](t, f.request(t, "admin", "POST", "/api/demand-management/uploads/"+up.Attachment.ID+"/complete", map[string]string{"sha256": hex.EncodeToString(sum[:])}, 200))
+		attachments = append(attachments, done.Attachment.ID)
+	}
+	body := service.DemandSend{ClientMessageID: "admin-public-reply-one", Text: "The platform can help before assigning an engineer", AttachmentIDs: attachments}
+	reply := demandData[service.DemandSendReceipt](t, f.request(t, "admin", "POST", "/api/demand-management/"+id+"/messages", body, 200))
+	assert.False(t, reply.Demand.Assigned)
+	assert.Equal(t, "pending", reply.Demand.Status)
+	assert.Equal(t, "system", reply.Message.Author)
+	assert.Equal(t, f.users["admin"].Id, reply.Message.SenderID)
+	require.Len(t, reply.Message.Attachments, 2)
+	replay := demandData[service.DemandSendReceipt](t, f.request(t, "admin", "POST", "/api/demand-management/"+id+"/messages", body, 200))
+	assert.True(t, replay.Replayed)
+	assert.Equal(t, reply.Message.ID, replay.Message.ID)
+	f.request(t, "admin", "POST", "/api/demand-management/"+id+"/read", map[string]int64{"last_read_seq": reply.Message.Seq}, 200)
+	current := demandData[service.DemandActionResult](t, f.request(t, "admin", "POST", "/api/demand-management/"+id+"/actions", service.DemandAction{ClientActionID: "admin-private-note", Revision: reply.Demand.Revision, Action: "internal_note", Text: "PRIVATE ADMIN NOTE"}, 200))
+	history := demandData[struct {
+		Items []service.DemandMessageView `json:"items"`
+	}](t, f.request(t, "owner", "GET", "/api/product/demands/"+id+"/messages", nil, 200))
+	require.Len(t, history.Items, 2)
+	assert.Equal(t, "engineer", history.Items[1].Author)
+	assert.Equal(t, "平台客服", history.Items[1].AuthorName)
+	assert.Equal(t, f.users["admin"].Id, history.Items[1].SenderID)
+	require.Len(t, history.Items[1].Attachments, 2)
+	assert.Equal(t, body.Text, history.Items[1].Text)
+	for _, m := range history.Items {
+		assert.NotContains(t, m.Text, "PRIVATE ADMIN NOTE")
+	}
+	for _, a := range reply.Message.Attachments {
+		link := demandData[service.DemandAttachmentLink](t, f.request(t, "owner", "POST", "/api/product/demands/attachments/"+a.ID+"/link", map[string]string{"disposition": "inline"}, 200))
+		u, err := url.Parse(link.URL)
+		require.NoError(t, err)
+		req := httptest.NewRequest("GET", u.RequestURI(), nil)
+		req.Header.Set("Range", "bytes=0-3")
+		w := httptest.NewRecorder()
+		f.engine.ServeHTTP(w, req)
+		require.Equal(t, 206, w.Code)
+		f.request(t, "other", "POST", "/api/product/demands/attachments/"+a.ID+"/link", map[string]string{"disposition": "inline"}, 404)
+	}
+	f.request(t, "engineer", "GET", "/api/engineer/demands/"+id+"/messages", nil, 404)
+	f.request(t, "other", "POST", "/api/demand-management/"+id+"/messages", body, 403)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", f.users["admin"].Id).Update("role", common.RoleAdminUser).Error)
+	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"demands": {"read": true, "write": false}}))
+	detail := demandData[struct {
+		Demand service.DemandView `json:"demand"`
+	}](t, f.request(t, "admin", "GET", "/api/demand-management/"+id, nil, 200))
+	details := detail.Demand
+	require.NotNil(t, details.Owner)
+	assert.Equal(t, f.users["owner"].Id, details.Owner.ID)
+	assert.Equal(t, f.users["owner"].PhoneE164, details.Owner.Phone)
+	denied := body
+	denied.ClientMessageID = "read-only-admin-must-not-send"
+	f.request(t, "admin", "POST", "/api/demand-management/"+id+"/messages", denied, 403)
+	f.request(t, "admin", "POST", "/api/demand-management/"+id+"/read", map[string]int64{"last_read_seq": reply.Message.Seq}, 200)
+	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"demands": {"read": true, "write": true}}))
+	demandData[service.DemandActionResult](t, f.request(t, "admin", "POST", "/api/demand-management/"+id+"/actions", service.DemandAction{ClientActionID: "close-admin-conversation", Revision: current.Demand.Revision, Action: "close"}, 200))
+	denied.ClientMessageID = "closed-admin-must-not-send"
+	f.request(t, "admin", "POST", "/api/demand-management/"+id+"/messages", denied, 409)
+	again := demandData[service.DemandSendReceipt](t, f.request(t, "admin", "POST", "/api/demand-management/"+id+"/messages", body, 200))
+	assert.True(t, again.Replayed)
+	assert.Equal(t, reply.Message.ID, again.Message.ID)
+	var count int64
+	require.NoError(t, f.db.Model(&model.DemandMessage{}).Where("demand_id = ? AND sender_id = ? AND kind = ?", id, f.users["admin"].Id, "message").Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+	for _, table := range []any{&model.Task{}, &model.WalletFundingEvent{}, &model.Log{}} {
+		require.NoError(t, f.db.Model(table).Count(&count).Error)
+		assert.Zero(t, count)
+	}
+	var owner model.User
+	require.NoError(t, f.db.First(&owner, f.users["owner"].Id).Error)
+	assert.Equal(t, f.users["owner"].Quota, owner.Quota)
+	assert.Equal(t, f.users["owner"].AuthVersion, owner.AuthVersion)
+}
