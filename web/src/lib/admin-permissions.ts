@@ -25,6 +25,7 @@ export type AdminCapabilities = AdminPermissionMatrix
 
 export const ADMIN_PERMISSION_RESOURCES = {
   DEMANDS: 'demands',
+  COMMUNITY_DEMANDS: 'community_demands',
   FORUM: 'forum',
   AUDIT: 'audit',
   CHANNEL: 'channel',
@@ -144,6 +145,9 @@ export function canAccessAdminRoute(
   }
   if (matches('/media-management') || matches('/video-management')) {
     return read('media_operations') || read('video_usage')
+  }
+  if (matches('/demand-management')) {
+    return read('demands') || read('community_demands')
   }
   const resources: ReadonlyArray<readonly [string, string]> = [
     ['/demand-management', 'demands'],

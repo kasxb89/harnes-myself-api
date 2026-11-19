@@ -3,6 +3,8 @@ package authz
 // These permissions govern interactive administration. They are intentionally
 // excluded from PAT scopes; existing token boundaries remain unchanged.
 var (
+	CommunityDemandsRead   = Permission{Resource: "community_demands", Action: ActionRead}
+	CommunityDemandsWrite  = Permission{Resource: "community_demands", Action: ActionWrite}
 	ForumRead              = Permission{Resource: "forum", Action: ActionRead}
 	ForumWrite             = Permission{Resource: "forum", Action: ActionWrite}
 	DemandsRead            = Permission{Resource: "demands", Action: ActionRead}
@@ -32,6 +34,7 @@ func init() {
 	for _, resource := range []struct {
 		key, label, group, description, editDescription string
 	}{
+		{"community_demands", "Community orders", "content", "View public community listings and private participant orders.", "Moderate community orders and communicate with both participants."},
 		{"forum", "Forum management", "content", "View published forum posts, comments and moderation records.", "Review and remove forum posts and comments."},
 		{"demands", "Demand management", "content", "View assigned customer demands and private attachments.", "Manage engineers, assign demands and maintain service settings."},
 		{"operations", "Business overview", "finance", "View operating totals and usage trends.", ""},

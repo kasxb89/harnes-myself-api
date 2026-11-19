@@ -58,6 +58,7 @@ import {
   type Demand,
   type DemandMode,
 } from './api'
+import { CommunityInbox } from './community'
 import { DemandSettings } from './config-editor'
 import { DemandConversation } from './conversation'
 import { DemandDirectory } from './directory'
@@ -72,6 +73,8 @@ export function DemandManagementPage() {
     return <ErrorState title={t('Access denied')} />
   }
   const canWrite = hasPermission(user, 'demands', 'write')
+  const canReadOfficial = hasPermission(user, 'demands', 'read')
+  const canReadCommunity = hasPermission(user, 'community_demands', 'read')
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
@@ -79,7 +82,7 @@ export function DemandManagementPage() {
       </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <Tabs
-          value={tab}
+          value={canReadOfficial ? tab : 'community'}
           onValueChange={setTab}
           className='flex h-full min-h-0 flex-col'
         >
@@ -88,64 +91,90 @@ export function DemandManagementPage() {
             variant='line'
             className='mb-3 w-full shrink-0 justify-start overflow-x-auto border-b px-0 group-data-horizontal/tabs:h-10 [&_[data-slot=tabs-trigger]]:flex-none [&_[data-slot=tabs-trigger]]:px-3'
           >
-            <TabsTrigger value='demands'>{t('Demands')}</TabsTrigger>
-            <TabsTrigger value='service-profiles'>
-              {t('Service profiles')}
-            </TabsTrigger>
-            <TabsTrigger value='customer-profiles'>
-              {t('Customer profiles')}
-            </TabsTrigger>
-            <TabsTrigger value='engineers'>{t('Engineers')}</TabsTrigger>
-            <TabsTrigger value='settings'>{t('Service settings')}</TabsTrigger>
+            {canReadCommunity && (
+              <TabsTrigger value='community'>
+                {t('Community orders')}
+              </TabsTrigger>
+            )}
+            {canReadOfficial && (
+              <>
+                <TabsTrigger value='demands'>{t('Demands')}</TabsTrigger>
+                <TabsTrigger value='service-profiles'>
+                  {t('Service profiles')}
+                </TabsTrigger>
+                <TabsTrigger value='customer-profiles'>
+                  {t('Customer profiles')}
+                </TabsTrigger>
+                <TabsTrigger value='engineers'>{t('Engineers')}</TabsTrigger>
+                <TabsTrigger value='settings'>
+                  {t('Service settings')}
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
-          <TabsContent value='demands' className='min-h-0 flex-1'>
-            <DemandInbox
-              key={`admin:${user.id}:${customerFilter}`}
-              customerProfileId={customerFilter}
-              onClearCustomer={() => setCustomerFilter('')}
-              accountId={user.id}
-              mode='admin'
-              canWrite={canWrite}
-            />
-          </TabsContent>
-          {(['service-profiles', 'customer-profiles'] as const).map((kind) => (
-            <TabsContent
-              key={kind}
-              value={kind}
-              className='min-h-0 flex-1 overflow-y-auto'
-            >
-              <DemandDirectory
-                key={`${user.id}:${kind}`}
+          {canReadCommunity && (
+            <TabsContent value='community' className='min-h-0 flex-1'>
+              <CommunityInbox
+                key={user.id}
                 accountId={user.id}
-                canWrite={canWrite}
-                kind={kind}
-                onViewDemands={(id) => {
-                  setCustomerFilter(id)
-                  setTab('demands')
-                }}
+                canWrite={hasPermission(user, 'community_demands', 'write')}
               />
             </TabsContent>
-          ))}
-          <TabsContent
-            value='engineers'
-            className='min-h-0 flex-1 overflow-y-auto'
-          >
-            <DemandEngineers
-              key={user.id}
-              accountId={user.id}
-              canWrite={canWrite}
-            />
-          </TabsContent>
-          <TabsContent
-            value='settings'
-            className='min-h-0 flex-1 overflow-y-auto'
-          >
-            <DemandSettings
-              key={user.id}
-              accountId={user.id}
-              canWrite={canWrite}
-            />
-          </TabsContent>
+          )}
+          {canReadOfficial && (
+            <>
+              <TabsContent value='demands' className='min-h-0 flex-1'>
+                <DemandInbox
+                  key={`admin:${user.id}:${customerFilter}`}
+                  customerProfileId={customerFilter}
+                  onClearCustomer={() => setCustomerFilter('')}
+                  accountId={user.id}
+                  mode='admin'
+                  canWrite={canWrite}
+                />
+              </TabsContent>
+              {(['service-profiles', 'customer-profiles'] as const).map(
+                (kind) => (
+                  <TabsContent
+                    key={kind}
+                    value={kind}
+                    className='min-h-0 flex-1 overflow-y-auto'
+                  >
+                    <DemandDirectory
+                      key={`${user.id}:${kind}`}
+                      accountId={user.id}
+                      canWrite={canWrite}
+                      kind={kind}
+                      onViewDemands={(id) => {
+                        setCustomerFilter(id)
+                        setTab('demands')
+                      }}
+                    />
+                  </TabsContent>
+                )
+              )}
+              <TabsContent
+                value='engineers'
+                className='min-h-0 flex-1 overflow-y-auto'
+              >
+                <DemandEngineers
+                  key={user.id}
+                  accountId={user.id}
+                  canWrite={canWrite}
+                />
+              </TabsContent>
+              <TabsContent
+                value='settings'
+                className='min-h-0 flex-1 overflow-y-auto'
+              >
+                <DemandSettings
+                  key={user.id}
+                  accountId={user.id}
+                  canWrite={canWrite}
+                />
+              </TabsContent>
+            </>
+          )}
         </Tabs>
       </SectionPageLayout.Content>
     </SectionPageLayout>

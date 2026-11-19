@@ -408,6 +408,9 @@ func migrateDB() error {
 	if err := DB.AutoMigrate(ForumTables()...); err != nil {
 		return err
 	}
+	if err := DB.AutoMigrate(CommunityTables()...); err != nil {
+		return err
+	}
 	if err := InitializeSurveyConfiguration(); err != nil {
 		return err
 	}
