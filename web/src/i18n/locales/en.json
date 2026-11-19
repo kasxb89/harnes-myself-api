@@ -9381,16 +9381,16 @@
     "Restore public listing": "Restore public listing",
     "Change listing visibility": "Change listing visibility",
     "View public community listings and private participant orders.": "View public community listings and private participant orders.",
-    "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants."
-  },
-  "Community approval status": "Community approval status",
-  "All approval statuses": "All approval statuses",
-  "Pending approval": "Pending approval",
-  "Approved listing": "Approved listing",
-  "Rejected listing": "Rejected listing",
-  "Approve listing": "Approve listing",
-  "Reject listing": "Reject listing",
-  "Expected delivery date": "Expected delivery date",
-  "Invalid expected delivery date": "Invalid expected delivery date",
-  "Administrator approval is required before acceptance": "Administrator approval is required before acceptance"
+    "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants.",
+    "Community approval status": "Community approval status",
+    "All approval statuses": "All approval statuses",
+    "Pending approval": "Pending approval",
+    "Approved listing": "Approved listing",
+    "Rejected listing": "Rejected listing",
+    "Approve listing": "Approve listing",
+    "Reject listing": "Reject listing",
+    "Expected delivery date": "Expected delivery date",
+    "Invalid expected delivery date": "Invalid expected delivery date",
+    "Administrator approval is required before acceptance": "Administrator approval is required before acceptance"
+  }
 }

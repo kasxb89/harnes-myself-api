@@ -9381,16 +9381,16 @@
     "Restore public listing": "Restore public listing",
     "Change listing visibility": "Change listing visibility",
     "View public community listings and private participant orders.": "View public community listings and private participant orders.",
-    "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants."
-  },
-  "Community approval status": "Trạng thái duyệt yêu cầu",
-  "All approval statuses": "Tất cả trạng thái duyệt",
-  "Pending approval": "Chờ duyệt",
-  "Approved listing": "Yêu cầu đã duyệt",
-  "Rejected listing": "Yêu cầu bị từ chối",
-  "Approve listing": "Duyệt yêu cầu",
-  "Reject listing": "Từ chối yêu cầu",
-  "Expected delivery date": "Ngày bàn giao dự kiến",
-  "Invalid expected delivery date": "Ngày bàn giao dự kiến không hợp lệ",
-  "Administrator approval is required before acceptance": "Cần quản trị viên duyệt trước khi nhận việc"
+    "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants.",
+    "Community approval status": "Trạng thái duyệt yêu cầu",
+    "All approval statuses": "Tất cả trạng thái duyệt",
+    "Pending approval": "Chờ duyệt",
+    "Approved listing": "Yêu cầu đã duyệt",
+    "Rejected listing": "Yêu cầu bị từ chối",
+    "Approve listing": "Duyệt yêu cầu",
+    "Reject listing": "Từ chối yêu cầu",
+    "Expected delivery date": "Ngày bàn giao dự kiến",
+    "Invalid expected delivery date": "Ngày bàn giao dự kiến không hợp lệ",
+    "Administrator approval is required before acceptance": "Cần quản trị viên duyệt trước khi nhận việc"
+  }
 }

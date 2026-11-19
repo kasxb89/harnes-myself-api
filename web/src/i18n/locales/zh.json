@@ -9381,16 +9381,16 @@
     "Restore public listing": "恢复公开需求",
     "Change listing visibility": "调整公开状态",
     "View public community listings and private participant orders.": "查看公开需求和双方私密订单。",
-    "Moderate community orders and communicate with both participants.": "管理用户互接订单并与双方沟通。"
-  },
-  "Community approval status": "需求审核状态",
-  "All approval statuses": "全部审核状态",
-  "Pending approval": "待审核",
-  "Approved listing": "已通过审核",
-  "Rejected listing": "已驳回",
-  "Approve listing": "通过审核",
-  "Reject listing": "驳回需求",
-  "Expected delivery date": "预期交付日",
-  "Invalid expected delivery date": "预期交付日无效",
-  "Administrator approval is required before acceptance": "管理员审核通过后才能接单"
+    "Moderate community orders and communicate with both participants.": "管理用户互接订单并与双方沟通。",
+    "Community approval status": "需求审核状态",
+    "All approval statuses": "全部审核状态",
+    "Pending approval": "待审核",
+    "Approved listing": "已通过审核",
+    "Rejected listing": "已驳回",
+    "Approve listing": "通过审核",
+    "Reject listing": "驳回需求",
+    "Expected delivery date": "预期交付日",
+    "Invalid expected delivery date": "预期交付日无效",
+    "Administrator approval is required before acceptance": "管理员审核通过后才能接单"
+  }
 }

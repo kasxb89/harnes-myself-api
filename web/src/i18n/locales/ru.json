@@ -9381,16 +9381,16 @@
     "Restore public listing": "Restore public listing",
     "Change listing visibility": "Change listing visibility",
     "View public community listings and private participant orders.": "View public community listings and private participant orders.",
-    "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants."
-  },
-  "Community approval status": "Статус проверки заявки",
-  "All approval statuses": "Все статусы проверки",
-  "Pending approval": "Ожидает проверки",
-  "Approved listing": "Заявка одобрена",
-  "Rejected listing": "Заявка отклонена",
-  "Approve listing": "Одобрить заявку",
-  "Reject listing": "Отклонить заявку",
-  "Expected delivery date": "Плановая дата сдачи",
-  "Invalid expected delivery date": "Неверная плановая дата сдачи",
-  "Administrator approval is required before acceptance": "Перед принятием требуется одобрение администратора"
+    "Moderate community orders and communicate with both participants.": "Moderate community orders and communicate with both participants.",
+    "Community approval status": "Статус проверки заявки",
+    "All approval statuses": "Все статусы проверки",
+    "Pending approval": "Ожидает проверки",
+    "Approved listing": "Заявка одобрена",
+    "Rejected listing": "Заявка отклонена",
+    "Approve listing": "Одобрить заявку",
+    "Reject listing": "Отклонить заявку",
+    "Expected delivery date": "Плановая дата сдачи",
+    "Invalid expected delivery date": "Неверная плановая дата сдачи",
+    "Administrator approval is required before acceptance": "Перед принятием требуется одобрение администратора"
+  }
 }
