@@ -444,6 +444,15 @@ func ProjectModelConfigurationParameters(base, controls map[string]any) map[stri
 					}
 				}
 			}
+			// An editable ceiling cannot advertise more references than this
+			// executing adapter accepts, including a text-only zero ceiling.
+			if native, ok := limits[key].(float64); ok {
+				if declaration, ok := fields[field].(map[string]any); ok {
+					if maximum, bounded := declaration["maxItems"].(float64); !bounded || maximum > native {
+						declaration["maxItems"] = native
+					}
+				}
+			}
 		}
 	}
 	if control, changed := configured["frame_images"]; changed {
@@ -455,82 +464,164 @@ func ProjectModelConfigurationParameters(base, controls map[string]any) map[stri
 			}
 		}
 	}
+	if native, ok := result["x-reference-frame-max-images"].(float64); ok {
+		if declaration, ok := fields["frame_images"].(map[string]any); ok {
+			if maximum, bounded := declaration["maxItems"].(float64); !bounded || maximum > native {
+				declaration["maxItems"] = native
+			}
+		}
+	}
 	if _, explicit := controls["oneOf"]; !explicit {
 		if branches, ok := result["oneOf"].([]any); ok {
-			retained := []any{}
-			for _, raw := range branches {
-				branch, ok := raw.(map[string]any)
+			result["oneOf"] = narrowModelParameterBranches(branches, changed)
+		}
+	}
+	projectImageEditSpecifications(result)
+	return result
+}
+
+// Each intersection owns its branches; shared adapter metadata and another
+// generation branch must not inherit the previous branch's narrowed choices.
+func narrowModelParameterBranches(branches []any, changed map[string]any) []any {
+	encoded, err := common.Marshal(branches)
+	if err != nil {
+		return nil
+	}
+	if common.Unmarshal(encoded, &branches) != nil {
+		return nil
+	}
+	retained := []any{}
+	for _, raw := range branches {
+		branch, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		properties, _ := branch["properties"].(map[string]any)
+		valid := true
+		for name, rawField := range properties {
+			constraint, present := changed[name]
+			if !present {
+				continue
+			}
+			if constraint == false {
+				valid = false
+				break
+			}
+			field, ok := rawField.(map[string]any)
+			if !ok {
+				valid = false
+				break
+			}
+			control := constraint.(map[string]any)
+			if value, constant := field["const"]; constant && !modelParameterValueMatches(name, control, value, true) {
+				valid = false
+				break
+			}
+			if menu, exists := field["enum"].([]any); exists {
+				choices := []any{}
+				for _, value := range menu {
+					if modelParameterValueMatches(name, control, value, true) {
+						choices = append(choices, value)
+					}
+				}
+				if len(choices) == 0 {
+					valid = false
+					break
+				}
+				field["enum"] = choices
+			}
+			for _, key := range []string{"minimum", "minItems"} {
+				if bound, ok := control[key].(float64); ok {
+					previous, exists := field[key].(float64)
+					if !exists || bound > previous {
+						field[key] = bound
+					}
+				}
+			}
+			for _, key := range []string{"maximum", "maxItems"} {
+				if bound, ok := control[key].(float64); ok {
+					previous, exists := field[key].(float64)
+					if !exists || bound < previous {
+						field[key] = bound
+					}
+				}
+			}
+			if minimum, ok := field["minimum"].(float64); ok {
+				if maximum, ok := field["maximum"].(float64); ok && minimum > maximum {
+					valid = false
+					break
+				}
+			}
+			if value, exists := field["default"]; exists && !modelParameterValueMatches(name, field, value, true) {
+				delete(field, "default")
+			}
+		}
+		if valid {
+			retained = append(retained, branch)
+		}
+	}
+	return retained
+}
+
+// Editing specifications are a subset of the executing adapter's generation
+// contract, never an independent set that can survive disabled references.
+func projectImageEditSpecifications(parameters map[string]any) {
+	edit, ok := parameters["x-image-edit"].(map[string]any)
+	if !ok {
+		return
+	}
+	fields, _ := parameters["properties"].(map[string]any)
+	refs, _ := fields["reference_images"].(map[string]any)
+	maximum, bounded := refs["maxItems"].(float64)
+	if fields["reference_images"] == false || bounded && maximum == 0 {
+		delete(parameters, "x-image-edit")
+		return
+	}
+	specifications, constrained := edit["specifications"].([]any)
+	if !constrained {
+		return
+	}
+	specifications = narrowModelParameterBranches(specifications, fields)
+	if generation, bounded := parameters["oneOf"].([]any); bounded {
+		intersection := []any{}
+		for _, raw := range generation {
+			branch, _ := raw.(map[string]any)
+			properties, _ := branch["properties"].(map[string]any)
+			constraints := map[string]any{}
+			for name, rawField := range properties {
+				if rawField == false {
+					constraints[name] = false
+					continue
+				}
+				field, ok := rawField.(map[string]any)
 				if !ok {
 					continue
 				}
-				properties, _ := branch["properties"].(map[string]any)
-				valid := true
-				for name, rawField := range properties {
-					constraint, present := changed[name]
-					if !present {
-						continue
-					}
-					if constraint == false {
-						valid = false
-						break
-					}
-					field, ok := rawField.(map[string]any)
-					if !ok {
-						valid = false
-						break
-					}
-					control := constraint.(map[string]any)
-					if value, constant := field["const"]; constant && !modelParameterValueMatches(name, control, value, true) {
-						valid = false
-						break
-					}
-					if menu, exists := field["enum"].([]any); exists {
-						choices := []any{}
-						for _, value := range menu {
-							if modelParameterValueMatches(name, control, value, true) {
-								choices = append(choices, value)
-							}
-						}
-						if len(choices) == 0 {
-							valid = false
-							break
-						}
-						field["enum"] = choices
-					}
-					for _, key := range []string{"minimum", "minItems"} {
-						if bound, ok := control[key].(float64); ok {
-							previous, exists := field[key].(float64)
-							if !exists || bound > previous {
-								field[key] = bound
-							}
-						}
-					}
-					for _, key := range []string{"maximum", "maxItems"} {
-						if bound, ok := control[key].(float64); ok {
-							previous, exists := field[key].(float64)
-							if !exists || bound < previous {
-								field[key] = bound
-							}
-						}
-					}
-					if minimum, ok := field["minimum"].(float64); ok {
-						if maximum, ok := field["maximum"].(float64); ok && minimum > maximum {
-							valid = false
-							break
-						}
-					}
-					if value, exists := field["default"]; exists && !modelParameterValueMatches(name, field, value, true) {
-						delete(field, "default")
-					}
+				constraint := map[string]any{"type": modelParameterTypes[name]}
+				for key, value := range field {
+					constraint[key] = value
 				}
-				if valid {
-					retained = append(retained, branch)
+				constraints[name] = constraint
+			}
+			for _, candidate := range narrowModelParameterBranches(specifications, constraints) {
+				if !slices.ContainsFunc(intersection, func(existing any) bool { return reflect.DeepEqual(existing, candidate) }) {
+					intersection = append(intersection, candidate)
 				}
 			}
-			result["oneOf"] = retained
 		}
+		specifications = intersection
 	}
-	return result
+	if len(specifications) == 0 {
+		delete(parameters, "x-image-edit")
+		if refs != nil {
+			refs["maxItems"] = float64(0)
+		}
+		if limits, ok := parameters["x-reference-limits"].(map[string]any); ok {
+			limits["images"] = float64(0)
+		}
+		return
+	}
+	edit["specifications"] = specifications
 }
 
 func modelParameterObjectMatches(schema map[string]any, values map[string]any, branch bool) bool {

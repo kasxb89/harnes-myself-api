@@ -631,7 +631,7 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 		}
 		ratios := []string{"1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"}
 		return map[string]any{
-			"type": "object",
+			"type": "object", "x-model-kind": MediaImage,
 			"properties": map[string]any{
 				"resolution":       map[string]any{"type": "string", "enum": []string{"1k", "2k", "4k"}, "default": "1k"},
 				"size":             map[string]any{"type": "string", "enum": ratios, "default": "1:1"},
@@ -648,7 +648,7 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 			return nil
 		}
 		parameters := map[string]any{
-			"type": "object",
+			"type": "object", "x-model-kind": MediaVideo,
 			"properties": map[string]any{
 				"seconds":    map[string]any{"type": "integer", "minimum": 4, "maximum": 15, "default": 5},
 				"resolution": map[string]any{"type": "string", "enum": []string{"768P", "2K"}, "default": "768P"},
