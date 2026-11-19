@@ -343,6 +343,7 @@ func TestCommunitySessionPermissionsAndCursorIsolation(t *testing.T) {
 	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", f.users["admin"].Id).Update("role", common.RoleAdminUser).Error)
 	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"community_demands": {"read": true, "write": false}}))
 	f.request(t, "admin", "GET", path, nil, 200)
+	f.request(t, "admin", "POST", path+"/read", map[string]int64{"last_read_seq": o.Order.LastSeq}, 200)
 	f.request(t, "admin", "POST", path+"/messages", service.CommunitySend{ClientMessageID: "read-only-admin", Text: "not allowed"}, 403)
 	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"community_demands": {"read": true, "write": true}}))
 	reply := demandData[communityReceipt](t, f.request(t, "admin", "POST", path+"/messages", service.CommunitySend{ClientMessageID: "admin-reply", Text: "Administrator reply before acceptance"}, 201))

@@ -97,6 +97,7 @@ beforeEach(() => {
       },
     },
   })
+  post.mockResolvedValue(envelope({ last_read_seq: 1, unread_count: 0 }))
   get.mockImplementation((url: string) => {
     if (url.endsWith('/config')) {
       return Promise.resolve(
@@ -148,31 +149,39 @@ test('a community-only administrator opens peer orders without requesting privat
   ).toBe(true)
 })
 test('a lost administrator reply retains its original key and retries the same packet', async () => {
-  post
-    .mockRejectedValueOnce(new Error('connection lost'))
-    .mockImplementation(
-      (_url: string, body: { client_message_id: string; text: string }) =>
-        Promise.resolve(
-          envelope({
-            order,
-            message: {
-              id: 'message-one',
-              order_id: order.id,
-              seq: 2,
-              sender_id: 9,
-              author_kind: 'admin',
-              author_name: 'Administrator A',
-              kind: 'message',
-              text: body.text,
-              attachments: [],
-              created_at: 1700000001,
-              client_message_id: body.client_message_id,
-              read: false,
-            },
-            replayed: true,
-          })
-        )
-    )
+  let failed = false
+  post.mockImplementation(
+    (url: string, body: { client_message_id: string; text: string }) => {
+      if (url.endsWith('/read'))
+        {return Promise.resolve(envelope({ last_read_seq: 1, unread_count: 0 }))}
+      if (!failed) {
+        failed = true
+        return Promise.reject(new Error('connection lost'))
+      }
+      return Promise.resolve(
+        envelope({
+          order,
+          message: {
+            id: 'message-one',
+            order_id: order.id,
+            seq: 2,
+            sender_id: 9,
+            author_kind: 'admin',
+            author_name: 'Administrator A',
+            kind: 'message',
+            text: body.text,
+            attachments: [],
+            created_at: 1700000001,
+            client_message_id: body.client_message_id,
+            read: false,
+          },
+          replayed: true,
+        })
+      )
+    }
+  )
+  const sends = () =>
+    post.mock.calls.filter(([url]) => String(url).endsWith('/messages'))
   view(
     <CommunityConversation
       initial={order}
@@ -187,14 +196,14 @@ test('a lost administrator reply retains its original key and retries the same p
   fireEvent.change(input, { target: { value: 'Administrator direct reply' } })
   fireEvent.click(screen.getByRole('button', { name: 'Send' }))
   await screen.findByRole('button', { name: 'Retry same message' })
-  await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
-  const first = post.mock.calls[0][1]
+  await waitFor(() => expect(sends()).toHaveLength(1))
+  const first = sends()[0][1]
   expect(
     sessionStorage.getItem('community-admin-message:9:community-fixture')
   ).toContain(first.client_message_id)
   fireEvent.click(screen.getByRole('button', { name: 'Retry same message' }))
-  await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
-  expect(post.mock.calls[1][1]).toEqual(first)
+  await waitFor(() => expect(sends()).toHaveLength(2))
+  expect(sends()[1][1]).toEqual(first)
   expect(await screen.findByText('Administrator direct reply')).toBeVisible()
   expect(
     sessionStorage.getItem('community-admin-message:9:community-fixture')

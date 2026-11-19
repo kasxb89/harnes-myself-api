@@ -448,6 +448,7 @@ func ServeCommunityAttachment(c *gin.Context) {
 	c.Header("Content-Disposition", disposition)
 	c.Header("Cache-Control", "private, no-store")
 	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("ETag", `"`+v.SHA256+`"`)
 	http.ServeContent(c.Writer, c.Request, v.Name, info.ModTime(), f)
 }

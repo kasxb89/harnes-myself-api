@@ -285,3 +285,12 @@ export async function uploadCommunityFile(
   if (!attachment) throw new Error('Attachment is not ready')
   return attachment
 }
+
+export async function readCommunityOrder(id: string, seq: number) {
+  const r = await api.post(
+    `${orderPath(id)}/read`,
+    { last_read_seq: seq },
+    { disableDuplicate: true }
+  )
+  requireServerSuccess(r.data)
+}

@@ -52,6 +52,7 @@ import {
   loadCommunityConfig,
   loadCommunityConversation,
   moderateCommunity,
+  readCommunityOrder,
   sendCommunityMessage,
   uploadCommunityFile,
   type CommunityAttachment,
@@ -157,6 +158,23 @@ export function CommunityConversation(props: {
     retry: false,
     refetchInterval: 15000,
   })
+  const readThrough = useRef(0)
+  const { mutate: markRead } = useMutation({
+    mutationFn: (seq: number) => readCommunityOrder(id, seq),
+    retry: false,
+    onSuccess: () => {
+      void cache.invalidateQueries({
+        queryKey: ['community-orders', props.accountId],
+      })
+    },
+  })
+  useEffect(() => {
+    const seq = data.data?.last_seq ?? 0
+    if (seq > readThrough.current) {
+      readThrough.current = seq
+      markRead(seq)
+    }
+  }, [data.data?.last_seq, markRead])
   const order = data.data?.order ?? props.initial
   const refresh = () => {
     void cache.invalidateQueries({
