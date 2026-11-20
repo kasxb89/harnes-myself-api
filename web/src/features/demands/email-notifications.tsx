@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -721,14 +722,17 @@ function EmailDeliveries({ accountId }: { accountId: number }) {
               cell: (row) => {
                 const url = emailDetailURL(row)
                 return url ? (
-                  <a
+                  <Link
                     className='text-primary underline underline-offset-4'
-                    href={url}
-                    target='_blank'
-                    rel='noopener noreferrer'
+                    to='/demand-management'
+                    search={
+                      row.domain === 'official'
+                        ? { tab: 'demands', demandId: row.entity_id }
+                        : { tab: 'community', orderId: row.entity_id }
+                    }
                   >
                     {t('Open demand')}
-                  </a>
+                  </Link>
                 ) : (
                   <span className='text-muted-foreground'>—</span>
                 )

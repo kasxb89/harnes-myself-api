@@ -18,6 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
+import {
   cleanup,
   fireEvent,
   render,
@@ -58,13 +65,30 @@ function view(canWrite = true) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   clients.push(client)
-  return render(
-    <QueryClientProvider client={client}>
+  const root = createRootRoute()
+  const page = createRoute({
+    getParentRoute: () => root,
+    path: '/demand-management',
+    validateSearch: parseDemandManagementSearch,
+    component: () => (
       <DemandEmailNotifications accountId={10} canWrite={canWrite} />
+    ),
+  })
+  const router = createRouter({
+    routeTree: root.addChildren([page]),
+    history: createMemoryHistory({
+      initialEntries: ['/demand-management?tab=email'],
+    }),
+  })
+  const rendered = render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
     </QueryClientProvider>
   )
+  return { ...rendered, router }
 }
 beforeEach(() => {
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   sessionStorage.clear()
   config = {
     config: {
@@ -233,7 +257,10 @@ test('unknown delivery shows no resend action or raw SMTP diagnostic and preserv
   expect(screen.queryByText('PRIVATE_RAW_PASSWORD')).not.toBeInTheDocument()
   expect(
     within(table).getByRole('link', { name: 'Open demand' })
-  ).toHaveAttribute('href', deliveries[0].detail_url)
+  ).toHaveAttribute(
+    'href',
+    '/demand-management?tab=demands&demandId=demand-one'
+  )
   expect(
     screen.queryByRole('button', { name: /resend/i })
   ).not.toBeInTheDocument()
@@ -389,3 +416,70 @@ test('console base validation rejects empty query and fragment delimiters while 
     validAdminBaseURL('https://console.example.test/path%3Fname%23part')
   ).toBe(true)
 })
+
+test.each([
+  {
+    domain: 'official',
+    tab: 'demands',
+    idKey: 'demandId',
+    id: 'original-demand',
+  },
+  {
+    domain: 'community',
+    tab: 'community',
+    idKey: 'orderId',
+    id: 'original-order',
+  },
+] as const)(
+  'a $domain record navigates within the current console and returns to email records',
+  async ({ domain, tab, idKey, id }) => {
+    deliveries = [
+      {
+        id: 'delivery-local-navigation',
+        domain,
+        entity_id: id,
+        type: 'customer_message',
+        recipient: 'alerts@example.test',
+        status: 'sent',
+        number: 'YS-original',
+        title: 'Original request',
+        event_count: 1,
+        attempt_count: 1,
+        due_at: 1,
+        created_at: 1700000000,
+        updated_at: 1,
+        sent_at: 1,
+        error_code: '',
+        error_stage: '',
+        pause_reason: '',
+        detail_url: `https://other-console.example.test/prefix/demand-management?tab=${tab}&${idKey}=${id}`,
+      },
+    ]
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const { router } = view(false)
+    const link = await screen.findByRole('link', { name: 'Open demand' })
+    expect(link).not.toHaveAttribute('target')
+    const rawHref = link.getAttribute('href')
+    expect(rawHref).toBeTruthy()
+    const href = new URL(rawHref ?? '', window.location.origin)
+    expect(href.origin).toBe(window.location.origin)
+    expect(href.pathname).toBe('/demand-management')
+    expect(Object.fromEntries(href.searchParams)).toEqual({ tab, [idKey]: id })
+    fireEvent.click(link)
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ tab, [idKey]: id })
+    )
+    expect(router.state.location.pathname).toBe('/demand-management')
+    expect(open).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+    expect(put).not.toHaveBeenCalled()
+    router.history.back()
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ tab: 'email' })
+    )
+    expect(
+      await screen.findByRole('link', { name: 'Open demand' })
+    ).toBeVisible()
+    open.mockRestore()
+  }
+)
