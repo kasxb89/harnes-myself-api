@@ -1,0 +1,652 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* Obsidian is an isolated presentation of the existing registration flow. */
+.relay-portal[data-theme='obsidian'] {
+  --rp-accent: #fc1c46;
+  --rp-on-accent: #000;
+  --rp-ink: #fff;
+  --rp-muted: #ccc;
+  --rp-control-line: #777;
+  --rp-page: #000;
+  --rp-surface: #000;
+  --rp-line: #333;
+  --rp-radius: 0;
+  --ring: #fff;
+  --secondary: #000;
+  --secondary-foreground: #fff;
+  --destructive: #ff879c;
+  display: flex;
+  flex-direction: column;
+  color-scheme: dark;
+  overflow-x: clip;
+  overflow-wrap: break-word;
+  background: #000;
+  color: #fff;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-header {
+  order: 0;
+  width: 100%;
+  max-width: 1680px;
+  min-height: 108px;
+  margin-inline: auto;
+  padding: 26px clamp(24px, 4.5vw, 76px);
+  border: 0;
+  background: transparent;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-brand {
+  gap: 14px;
+  font-size: 23px;
+  letter-spacing: -0.045em;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-brand img {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  border-radius: 0;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-actions {
+  gap: 10px;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-action,
+.relay-portal[data-theme='obsidian'] .relay-portal-login {
+  padding: 10px 18px;
+  border: 1px solid #666;
+  border-radius: 9999px;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-action:hover,
+.relay-portal[data-theme='obsidian'] .relay-portal-login:hover {
+  border-color: #fff;
+  background: transparent;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-stage {
+  order: 1;
+  width: 100%;
+  max-width: 1680px;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(310px, 400px);
+  grid-template-areas: 'hero form' 'visual visual';
+  column-gap: clamp(44px, 5.5vw, 92px);
+  margin: 0 auto;
+  padding: 0 clamp(24px, 4.5vw, 76px);
+  background: #000;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-hero {
+  min-height: 740px;
+  padding: 74px 0 72px;
+  overflow: visible;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-eyebrow {
+  max-width: 32rem;
+  margin: 0 0 32px;
+  color: #ccc;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-eyebrow > span {
+  display: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-hero h1 {
+  max-width: 12ch;
+  font-size: clamp(78px, 7.6vw, 118px);
+  line-height: 1.12;
+  font-weight: 650;
+  letter-spacing: -0.065em;
+  white-space: pre-line;
+  text-wrap: balance;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-description {
+  max-width: 20rem;
+  margin-top: 38px;
+  color: #ccc;
+  font-size: 17px;
+  line-height: 1.85;
+  text-wrap: pretty;
+}
+.relay-portal[data-theme='obsidian'] .relay-hero-guide {
+  margin-top: 25px;
+  padding: 10px 0;
+  border-bottom: 1px solid #777;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-chapters,
+.relay-portal[data-theme='obsidian'] .relay-effect-stage {
+  display: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-obsidian-visual {
+  position: absolute;
+  z-index: 0;
+  top: 175px;
+  right: 0;
+  width: min(550px, 78%);
+  height: 520px;
+  pointer-events: none;
+}
+.relay-obsidian-visual > .relay-obsidian-object {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.relay-obsidian-object :is(canvas, .relay-obsidian-fallback) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.relay-obsidian-object-fallback {
+  position: absolute;
+  inset: 16% 20%;
+  width: 60%;
+  height: 68%;
+  border: 24px solid #1c1c1c;
+  border-top-color: #a0a0a0;
+  border-right-color: #555;
+  border-radius: 45% 55% 46% 54%;
+  transform: rotate(-24deg) skew(-12deg);
+}
+.relay-portal[data-theme='obsidian'] .relay-registration {
+  align-self: start;
+  padding: 87px 0 72px;
+  border: 0;
+  background: transparent;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration-heading {
+  margin: 0 0 28px;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration-heading p {
+  margin-bottom: 11px;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 400;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration-heading h2 {
+  font-size: 32px;
+  font-weight: 550;
+  letter-spacing: -0.045em;
+}
+.relay-portal[data-theme='obsidian']
+  .relay-registration-content
+  > [role='status'] {
+  margin-bottom: 30px;
+  color: #ccc;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration form {
+  row-gap: 27px;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration label {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 400;
+}
+.relay-portal[data-theme='obsidian']
+  .relay-registration
+  input:not([type='checkbox']):not([type='hidden']) {
+  min-height: 52px;
+  padding-left: 0;
+  border: 0;
+  border-bottom: 1px solid #777;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  font-size: 16px;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration input::placeholder {
+  color: #aaa;
+  opacity: 1;
+}
+.relay-portal[data-theme='obsidian']
+  .relay-registration
+  input[aria-invalid='true'] {
+  border-bottom-color: #ff879c;
+  box-shadow: none;
+}
+.relay-portal[data-theme='obsidian']
+  .relay-registration
+  [data-slot='form-message'] {
+  color: #ff879c;
+}
+.relay-portal[data-theme='obsidian']
+  .relay-registration
+  [data-slot='button']:not([type='submit']) {
+  border-radius: 9999px;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-registration button[type='submit'] {
+  min-height: 56px;
+  margin-top: 9px;
+  padding: 14px 22px;
+  border: 0;
+  border-radius: 9999px;
+  background: #fc1c46;
+  color: #000;
+  box-shadow: none;
+  font-size: 17px;
+  font-weight: 700;
+}
+@media (hover: hover) and (pointer: fine) {
+  .relay-portal[data-theme='obsidian']
+    .relay-registration
+    button[type='submit']:hover {
+    background: #fc1c46;
+    transform: translateY(-2px);
+  }
+}
+.relay-portal[data-theme='obsidian']
+  .relay-registration-content
+  > p:last-child {
+  margin-top: 28px;
+  color: #ccc;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.relay-portal[data-theme='obsidian'] :is(a, button, input):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 5px;
+  box-shadow: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-protocol {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  column-gap: 80px;
+  align-items: start;
+  margin: 0;
+  padding: 44px 0 62px;
+  border-top: 1px solid #333;
+  overflow: visible;
+}
+.relay-portal[data-theme='obsidian'] .relay-protocol-title {
+  color: #fff;
+  font-size: 24px;
+  font-weight: 450;
+  letter-spacing: -0.035em;
+}
+.relay-portal[data-theme='obsidian'] .relay-protocol-title > svg,
+.relay-portal[data-theme='obsidian'] .relay-route-visual {
+  display: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-request-example {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #ccc;
+}
+.relay-portal[data-theme='obsidian'] .relay-request-example > p {
+  padding: 0 0 20px;
+  border: 0;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 400;
+}
+.relay-portal[data-theme='obsidian']
+  .relay-request-example
+  > p
+  > span:last-child {
+  display: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-request-example > pre {
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.9;
+}
+.relay-portal[data-theme='obsidian'] .relay-code-method,
+.relay-portal[data-theme='obsidian'] .relay-code-key {
+  color: #fff;
+  font-weight: 500;
+}
+.relay-portal[data-theme='obsidian'] .relay-protocol-note {
+  max-width: 27ch;
+  margin-top: 24px;
+  color: #ccc;
+}
+.relay-portal[data-theme='obsidian'] .relay-theme-nav {
+  order: 2;
+  width: calc(100% - clamp(48px, 9vw, 152px));
+  max-width: 1528px;
+  align-items: flex-start;
+  margin-inline: auto;
+  padding: 22px 0;
+  border-top: 1px solid #333;
+  border-bottom: 0;
+  background: transparent;
+}
+.relay-portal[data-theme='obsidian'] .relay-theme-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+.relay-portal[data-theme='obsidian'] .relay-theme-option {
+  padding-inline: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #aaa;
+  font-size: 13px;
+  font-weight: 400;
+}
+.relay-portal[data-theme='obsidian'] .relay-theme-option:hover,
+.relay-portal[data-theme='obsidian'] .relay-theme-option[aria-pressed='true'] {
+  border-bottom-color: #fff;
+  background: transparent;
+  color: #fff;
+}
+.relay-theme-swatch[data-swatch='obsidian'] {
+  background: #000;
+}
+.relay-portal[data-theme='obsidian'] .relay-theme-swatch {
+  display: none;
+}
+.relay-portal[data-theme='obsidian'] .relay-portal-footer {
+  order: 3;
+  width: 100%;
+  max-width: 1680px;
+  margin-inline: auto;
+  padding: 22px clamp(24px, 4.5vw, 76px) 32px;
+  border: 0;
+  background: transparent;
+  color: #ccc;
+}
+/* Dialog portals and the standalone guide share the same local dark surface. */
+.relay-obsidian-guide {
+  --background: #000;
+  --foreground: #fff;
+  --card: #000;
+  --card-foreground: #fff;
+  --popover: #000;
+  --popover-foreground: #fff;
+  --primary: #fff;
+  --primary-foreground: #000;
+  --secondary: #000;
+  --secondary-foreground: #fff;
+  --muted: #111;
+  --muted-foreground: #ccc;
+  --accent: #111;
+  --accent-foreground: #fff;
+  --border: #666;
+  --input: #777;
+  --ring: #fff;
+  color-scheme: dark;
+  border-color: #555;
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+  box-shadow: none;
+}
+.relay-obsidian-guide :is(a, button, input):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+.relay-obsidian-guide a {
+  color: #fff;
+}
+.relay-obsidian-guide .prose {
+  --tw-prose-body: #ccc;
+  --tw-prose-headings: #fff;
+  --tw-prose-lead: #ccc;
+  --tw-prose-links: #fff;
+  --tw-prose-bold: #fff;
+  --tw-prose-counters: #ccc;
+  --tw-prose-bullets: #888;
+  --tw-prose-hr: #333;
+  --tw-prose-quotes: #ccc;
+  --tw-prose-quote-borders: #555;
+  --tw-prose-captions: #ccc;
+  --tw-prose-code: #fff;
+  --tw-prose-pre-code: #eee;
+  --tw-prose-pre-bg: #111;
+  --tw-prose-th-borders: #666;
+  --tw-prose-td-borders: #333;
+}
+.relay-obsidian-guide :is(h1, h2, h3, h4, strong) {
+  color: #fff;
+}
+.relay-obsidian-guide :is(p, li, td, th) {
+  color: #ccc;
+}
+.relay-obsidian-guide [data-slot='button'],
+.relay-obsidian-guide a[data-slot='button'] {
+  min-height: 44px;
+  border-color: #666;
+  border-radius: 9999px;
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+}
+.relay-obsidian-guide :is(pre, code) {
+  background-color: #111;
+  color: #eee;
+}
+@media (min-width: 1680px) {
+  .relay-portal[data-theme='obsidian'] .relay-obsidian-visual {
+    right: 0;
+  }
+}
+@media (max-width: 1100px) {
+  .relay-portal[data-theme='obsidian'] .relay-portal-stage {
+    column-gap: 44px;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 350px);
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-hero h1 {
+    font-size: clamp(64px, 7.8vw, 86px);
+  }
+  .relay-portal[data-theme='obsidian'] .relay-obsidian-visual {
+    top: 215px;
+    right: -70px;
+    height: 440px;
+  }
+}
+@media (max-width: 1100px) {
+  .relay-portal[data-theme='obsidian'] .relay-portal-header {
+    min-height: 88px;
+    gap: 16px;
+    padding-block: 20px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-brand {
+    gap: 10px;
+    font-size: 18px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-actions {
+    gap: 8px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-action {
+    min-width: 44px;
+    padding-inline: 12px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-action > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-login {
+    padding-inline: 14px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'hero' 'form' 'visual';
+    padding-inline: 32px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-hero {
+    min-height: 660px;
+    padding: 48px 0 52px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-hero h1 {
+    max-width: 13ch;
+    font-size: clamp(64px, 10.5vw, 92px);
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-description {
+    max-width: min(18rem, 36%);
+  }
+  .relay-portal[data-theme='obsidian'] .relay-obsidian-visual {
+    top: 140px;
+    right: 0;
+    width: 58%;
+    height: 460px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-registration {
+    max-width: 520px;
+    padding: 14px 0 64px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-registration-content,
+  .relay-portal[data-theme='obsidian'] .relay-registration-heading {
+    max-width: none;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-protocol {
+    column-gap: 38px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-theme-nav {
+    width: calc(100% - 64px);
+  }
+}
+@media (max-width: 520px) {
+  .relay-portal[data-theme='obsidian'] .relay-portal-header {
+    min-height: 82px;
+    gap: 12px;
+    padding: 18px 20px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-brand {
+    max-width: 38%;
+    gap: 8px;
+    font-size: 16px;
+    line-height: 1.3;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-brand img {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-brand span {
+    overflow-wrap: anywhere;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-actions {
+    gap: 6px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-action {
+    min-width: 44px;
+    padding-inline: 10px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-login {
+    padding-inline: 13px;
+    font-size: 13px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-login > svg {
+    display: none;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-stage {
+    padding-inline: 24px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-hero {
+    min-height: 680px;
+    padding: 38px 0 38px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-eyebrow {
+    max-width: 22ch;
+    margin-bottom: 30px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-hero h1 {
+    max-width: none;
+    font-size: clamp(48px, 11.9vw, 62px);
+    line-height: 1.2;
+    letter-spacing: -0.055em;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-description {
+    max-width: 27ch;
+    margin-top: 28px;
+    font-size: 16px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-hero-guide {
+    margin-top: 18px;
+    font-size: 14px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-obsidian-visual {
+    top: auto;
+    right: -18px;
+    bottom: -18px;
+    width: 85%;
+    height: 310px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-registration {
+    padding-bottom: 52px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-registration-heading h2 {
+    font-size: 29px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-registration form {
+    row-gap: 24px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-protocol {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+    padding: 32px 0 38px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-protocol-title {
+    font-size: 22px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-request-example {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-protocol-note {
+    max-width: 33ch;
+    margin-top: 0;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-theme-nav {
+    width: calc(100% - 48px);
+    flex-direction: column;
+    gap: 12px;
+    padding-block: 20px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-theme-options {
+    justify-content: flex-start;
+    gap: 4px 20px;
+  }
+  .relay-portal[data-theme='obsidian'] .relay-portal-footer {
+    flex-direction: column;
+    gap: 8px;
+    padding-inline: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .relay-portal[data-theme='obsidian']
+    .relay-registration
+    button[type='submit']:hover {
+    transform: none;
+  }
+}

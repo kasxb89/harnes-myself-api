@@ -44,7 +44,7 @@ export function SignUp({ comparison = false }: { comparison?: boolean } = {}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const search = useSearch({ strict: false })
-  const { design = 'signal', aff } = parseRelayDesignSearch(search)
+  const { design = 'obsidian', aff } = parseRelayDesignSearch(search)
   const { systemName, logo } = useSystemConfig()
   const query = useQuery(statusQueryOptions)
   const status = query.data as SystemStatus | null | undefined
@@ -123,7 +123,11 @@ export function SignUp({ comparison = false }: { comparison?: boolean } = {}) {
         open={guideOpen}
         onOpenChange={setGuideOpen}
         title={t('Relay access guide')}
-        contentClassName='sm:max-w-6xl'
+        contentClassName={
+          design === 'obsidian'
+            ? 'relay-obsidian-guide sm:max-w-6xl'
+            : 'sm:max-w-6xl'
+        }
         contentHeight='min(74svh, 850px)'
       >
         {guideOpen && (

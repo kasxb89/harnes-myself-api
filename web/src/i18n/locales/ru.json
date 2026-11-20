@@ -9520,6 +9520,9 @@
     "New account registration is currently closed. Existing accounts can still sign in.": "Регистрация новых аккаунтов сейчас закрыта. Существующие пользователи могут войти.",
     "Local preview. Registration creates a local test account only.": "Локальный просмотр. При регистрации создаётся только локальный тестовый аккаунт.",
     "Pause effects": "Приостановить эффекты",
-    "Enable effects": "Включить эффекты"
+    "Enable effects": "Включить эффекты",
+    "Obsidian studio": "Обсидиановая студия",
+    "A dark stage. One clear signal.": "Тёмная сцена. Один чёткий сигнал.",
+    "One API. Your entire workflow.": "Один API. Весь ваш рабочий процесс."
   }
 }

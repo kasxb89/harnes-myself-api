@@ -27,7 +27,7 @@ import {
   Play,
   Route,
 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,13 @@ import { Button } from '@/components/ui/button'
 import { relayThemes, type RelayTheme } from './themes'
 
 import './portal.css'
+import './obsidian.css'
+
+const ObsidianObject = lazy(() =>
+  import('./obsidian-object').then((module) => ({
+    default: module.ObsidianObject,
+  }))
+)
 
 export type { RelayTheme } from './themes'
 
@@ -61,6 +68,34 @@ export function RelayPortal({
   const [effectsEnabled, setEffectsEnabled] = useState(true)
   const current =
     relayThemes.find((item) => item.id === theme) ?? relayThemes[0]
+  const themeNavigation = comparison ? (
+    <nav
+      className='relay-theme-nav'
+      aria-label={t('Compare registration designs')}
+    >
+      <span className='relay-theme-caption'>{t('Choose your view')}</span>
+      <div className='relay-theme-options'>
+        {relayThemes.map((item) => (
+          <Button
+            key={item.id}
+            type='button'
+            variant='ghost'
+            aria-pressed={theme === item.id}
+            className='relay-theme-option'
+            disabled={!onThemeChange}
+            onClick={() => onThemeChange?.(item.id)}
+          >
+            <span
+              className='relay-theme-swatch'
+              data-swatch={item.id}
+              aria-hidden='true'
+            />
+            <span>{t(item.nameKey)}</span>
+          </Button>
+        ))}
+      </div>
+    </nav>
+  ) : null
   return (
     <div
       className='relay-portal'
@@ -108,34 +143,7 @@ export function RelayPortal({
         </nav>
       </header>
 
-      {comparison && (
-        <nav
-          className='relay-theme-nav'
-          aria-label={t('Compare registration designs')}
-        >
-          <span className='relay-theme-caption'>{t('Choose your view')}</span>
-          <div className='relay-theme-options'>
-            {relayThemes.map((item) => (
-              <Button
-                key={item.id}
-                type='button'
-                variant='ghost'
-                aria-pressed={theme === item.id}
-                className='relay-theme-option'
-                disabled={!onThemeChange}
-                onClick={() => onThemeChange?.(item.id)}
-              >
-                <span
-                  className='relay-theme-swatch'
-                  data-swatch={item.id}
-                  aria-hidden='true'
-                />
-                <span>{t(item.nameKey)}</span>
-              </Button>
-            ))}
-          </div>
-        </nav>
-      )}
+      {theme !== 'obsidian' && themeNavigation}
 
       <main className='relay-portal-stage'>
         <section
@@ -176,6 +184,15 @@ export function RelayPortal({
               <li>{t('Model selection')}</li>
             </ol>
           </div>
+          {theme === 'obsidian' && (
+            <div className='relay-obsidian-visual' aria-hidden='true'>
+              <Suspense
+                fallback={<div className='relay-obsidian-object-fallback' />}
+              >
+                <ObsidianObject running={effectsEnabled} />
+              </Suspense>
+            </div>
+          )}
         </section>
 
         <section
@@ -252,6 +269,7 @@ export function RelayPortal({
           </p>
         </figure>
       </main>
+      {theme === 'obsidian' && themeNavigation}
       <footer className='relay-portal-footer'>
         <span>{systemName}</span>
         <span>{t('Your account. Your tools. Your next idea.')}</span>

@@ -18,6 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export const relayThemes = [
   {
+    id: 'obsidian',
+    nameKey: 'Obsidian studio',
+    descriptionKey: 'A dark stage. One clear signal.',
+    heroKey: 'One API. Your entire workflow.',
+  },
+  {
     id: 'signal',
     nameKey: 'Signal blue',
     descriptionKey: 'Clear blue. A direct connection.',
@@ -52,5 +58,5 @@ export const relayThemes = [
 export type RelayTheme = (typeof relayThemes)[number]['id']
 
 export function parseRelayTheme(value: unknown): RelayTheme {
-  return relayThemes.find((theme) => theme.id === value)?.id ?? 'signal'
+  return relayThemes.find((theme) => theme.id === value)?.id ?? 'obsidian'
 }

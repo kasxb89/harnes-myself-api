@@ -9520,6 +9520,9 @@
     "New account registration is currently closed. Existing accounts can still sign in.": "現在、新規アカウント登録は受け付けていません。既存のアカウントでは引き続きログインできます。",
     "Local preview. Registration creates a local test account only.": "ローカルプレビューです。登録するとローカルのテストアカウントのみが作成されます。",
     "Pause effects": "エフェクトを一時停止",
-    "Enable effects": "エフェクトを有効にする"
+    "Enable effects": "エフェクトを有効にする",
+    "Obsidian studio": "オブシディアンスタジオ",
+    "A dark stage. One clear signal.": "暗いステージ。ひとつの明確なシグナル。",
+    "One API. Your entire workflow.": "ひとつのAPI。\nすべてのワークフロー。"
   }
 }

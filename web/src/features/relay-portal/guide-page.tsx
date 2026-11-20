@@ -27,18 +27,20 @@ import { statusQueryOptions } from '@/lib/status-query'
 import { RelayAccessGuide } from './guide'
 import { normalizeRelayRoot } from './guide-content'
 
+import './obsidian.css'
+
 export function RelayGuidePage() {
   const { t } = useTranslation()
   const { systemName, logo } = useSystemConfig()
   const status = useQuery(statusQueryOptions)
   return (
-    <div className='bg-background text-foreground min-h-svh'>
+    <div className='relay-obsidian-guide relay-obsidian-guide-page bg-background text-foreground min-h-svh'>
       <header className='mx-auto flex max-w-6xl items-center justify-between gap-4 border-b px-5 py-5 sm:px-8'>
         <Link to='/' className='flex min-w-0 items-center gap-3 font-semibold'>
           <img src={logo} alt='' className='h-8 w-8 object-contain' />
           <span>{systemName}</span>
         </Link>
-        <Button render={<Link to='/sign-up' search={{ design: 'signal' }} />}>
+        <Button render={<Link to='/sign-up' search={{ design: 'obsidian' }} />}>
           {t('Create account')}
         </Button>
       </header>

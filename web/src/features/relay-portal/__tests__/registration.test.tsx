@@ -69,6 +69,9 @@ vi.mock('@/hooks/use-system-config', () => ({
     loading: false,
   }),
 }))
+vi.mock('../obsidian-object', () => ({
+  ObsidianObject: () => <div data-testid='local-3d-renderer-placeholder' />,
+}))
 const clients: QueryClient[] = []
 async function view() {
   const client = new QueryClient({
@@ -133,8 +136,9 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
 })
 
-test('all five theme values are bounded and referral links remain intact', () => {
+test('the selected reference is the default and all five previous designs and referrals remain usable', () => {
   expect(relayThemes.map((theme) => theme.id)).toEqual([
+    'obsidian',
     'signal',
     'punch',
     'circuit',
@@ -143,10 +147,14 @@ test('all five theme values are bounded and referral links remain intact', () =>
   ])
   expect(
     parseRelayDesignSearch({ design: '<script>', aff: 'original-referral' })
-  ).toEqual({ design: 'signal', aff: 'original-referral' })
+  ).toEqual({ design: 'obsidian', aff: 'original-referral' })
+  expect(parseRelayDesignSearch({ aff: 'original-referral' })).toEqual({
+    design: 'obsidian',
+    aff: 'original-referral',
+  })
 })
 
-test('switching all five layouts preserves one form and its draft without registration or verification requests', async () => {
+test('switching the reference and five previous layouts preserves one form and its draft without registration or verification requests', async () => {
   const router = await view()
   await screen.findByLabelText('Username')
   fillForm()
