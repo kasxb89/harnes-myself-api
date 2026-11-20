@@ -10,6 +10,7 @@ import (
 // SetDemandRoutes is also used by the loopback-only synthetic fixture service.
 // It never installs AI relay, billing, SMS, or task dispatch routes.
 func SetDemandRoutes(api *gin.RouterGroup) {
+	SetDemandEmailRoutes(api)
 	public := api.Group("/product/demands", middleware.DisableCache())
 	public.GET("/attachments/:attachment_id/content", controller.ServeDemandAttachment)
 	public.HEAD("/attachments/:attachment_id/content", controller.ServeDemandAttachment)

@@ -229,9 +229,21 @@ func main() {
 
 	common.LogStartupSuccess(startTime, port)
 
+	// Demand mail is independent of user transactions and is canceled/joined on shutdown.
+	mailContext, stopDemandMail := context.WithCancel(context.Background())
+	mailDone := make(chan struct{})
+	go func() {
+		defer close(mailDone)
+		if common.IsMasterNode {
+			service.RunDemandEmailWorker(mailContext, model.DB)
+		}
+	}()
+	defer func() { stopDemandMail(); <-mailDone }()
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
+	stopDemandMail()
+	<-mailDone
 	common.SysLog(common.LogText("received signal: %v, shutting down...", sig))
 
 	// SSE streams may run for minutes; give them time to finish before forced exit

@@ -53,6 +53,7 @@ import {
   demandStatuses,
   heartbeatEngineer,
   loadDemands,
+  loadDemandDetail,
   loadEngineers,
   statusLabels,
   type Demand,
@@ -61,13 +62,19 @@ import {
 import { CommunityInbox } from './community'
 import { DemandSettings } from './config-editor'
 import { DemandConversation } from './conversation'
+import type { DemandManagementSearch } from './demand-search'
 import { DemandDirectory } from './directory'
+import { DemandEmailNotifications } from './email-notifications'
 import { DemandEngineers } from './engineers'
 
-export function DemandManagementPage() {
+export function DemandManagementPage({
+  search = {},
+}: {
+  search?: DemandManagementSearch
+}) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const [tab, setTab] = useState('demands')
+  const [tab, setTab] = useState(search.tab ?? 'demands')
   const [customerFilter, setCustomerFilter] = useState('')
   if (!user || !canAccessAdminRoute(user, '/demand-management')) {
     return <ErrorState title={t('Access denied')} />
@@ -75,6 +82,15 @@ export function DemandManagementPage() {
   const canWrite = hasPermission(user, 'demands', 'write')
   const canReadOfficial = hasPermission(user, 'demands', 'read')
   const canReadCommunity = hasPermission(user, 'community_demands', 'read')
+  const canReadEmail = canReadOfficial && canReadCommunity
+  if (search.invalidLink) return <ErrorState title={t('Invalid demand link')} />
+  if (
+    (search.demandId && !canReadOfficial) ||
+    (search.orderId && !canReadCommunity) ||
+    (search.tab === 'email' && !canReadEmail)
+  ) {
+    return <ErrorState title={t('Access denied')} />
+  }
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
@@ -83,7 +99,7 @@ export function DemandManagementPage() {
       <SectionPageLayout.Content>
         <Tabs
           value={canReadOfficial ? tab : 'community'}
-          onValueChange={setTab}
+          onValueChange={(value) => setTab(value as typeof tab)}
           className='flex h-full min-h-0 flex-col'
         >
           <TabsList
@@ -111,11 +127,17 @@ export function DemandManagementPage() {
                 </TabsTrigger>
               </>
             )}
+            {canReadEmail && (
+              <TabsTrigger value='email'>
+                {t('Demand email notifications')}
+              </TabsTrigger>
+            )}
           </TabsList>
           {canReadCommunity && (
             <TabsContent value='community' className='min-h-0 flex-1'>
               <CommunityInbox
-                key={user.id}
+                key={`${user.id}:${search.orderId ?? ''}`}
+                orderId={search.orderId}
                 accountId={user.id}
                 canWrite={hasPermission(user, 'community_demands', 'write')}
               />
@@ -126,6 +148,7 @@ export function DemandManagementPage() {
               <TabsContent value='demands' className='min-h-0 flex-1'>
                 <DemandInbox
                   key={`admin:${user.id}:${customerFilter}`}
+                  demandId={search.demandId}
                   customerProfileId={customerFilter}
                   onClearCustomer={() => setCustomerFilter('')}
                   accountId={user.id}
@@ -175,6 +198,20 @@ export function DemandManagementPage() {
               </TabsContent>
             </>
           )}
+          {canReadEmail && tab === 'email' && (
+            <TabsContent
+              value='email'
+              className='min-h-0 flex-1 overflow-y-auto'
+            >
+              <DemandEmailNotifications
+                key={user.id}
+                accountId={user.id}
+                canWrite={
+                  canWrite && hasPermission(user, 'community_demands', 'write')
+                }
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </SectionPageLayout.Content>
     </SectionPageLayout>
@@ -206,7 +243,9 @@ function DemandInbox({
   canWrite,
   customerProfileId,
   onClearCustomer,
+  demandId,
 }: {
+  demandId?: string
   customerProfileId?: string
   onClearCustomer?: () => void
   accountId: number
@@ -219,6 +258,15 @@ function DemandInbox({
   )
   const [selected, setSelected] = useState<Demand | null>(null)
   const [olderCursor, setOlderCursor] = useState('')
+  const [linkDismissed, setLinkDismissed] = useState(false)
+  const linked = useQuery({
+    queryKey: ['demand-detail', accountId, mode, demandId],
+    enabled: Boolean(demandId) && !linkDismissed,
+    queryFn: ({ signal }) => loadDemandDetail(mode, demandId ?? '', signal),
+    retry: false,
+  })
+  const current = selected ?? (!linkDismissed ? linked.data : undefined)
+  const linkActive = Boolean(demandId) && !linkDismissed && !selected
   const query = useQuery({
     queryKey: ['demands', accountId, mode, filters, olderCursor],
     queryFn: ({ signal }) =>
@@ -265,12 +313,44 @@ function DemandInbox({
   const hasFilters = Object.entries(filters).some(
     ([name, value]) => name !== 'assignment' && Boolean(value)
   )
+  let detail = (
+    <EmptyState
+      title={t('Select a demand')}
+      description={t('Choose a conversation to reply to the customer.')}
+    />
+  )
+  if (linkActive && linked.isPending) detail = <LoadingState />
+  else if (linkActive && linked.isError) {
+    detail = (
+      <ErrorState
+        title={t('Linked demand unavailable')}
+        description={t('This demand was not found or you do not have access.')}
+        onRetry={() => void linked.refetch()}
+      />
+    )
+  } else if (current) {
+    detail = (
+      <DemandConversation
+        key={`${accountId}:${current.id}`}
+        initial={rows.find((row) => row.id === current.id) ?? current}
+        accountId={accountId}
+        mode={mode}
+        canWrite={canWrite}
+        engineers={engineers.data ?? []}
+        onBack={() => {
+          setSelected(null)
+          setLinkDismissed(true)
+        }}
+      />
+    )
+  }
+
   return (
     <div className='grid h-full min-h-0 overflow-hidden rounded-xl border md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)]'>
       <aside
         className={cn(
           'flex min-h-0 flex-col md:border-r',
-          selected && 'hidden md:flex'
+          (current || linkActive) && 'hidden md:flex'
         )}
         aria-label={t('Demand list')}
       >
@@ -491,10 +571,10 @@ function DemandInbox({
               type='button'
               key={demand.id}
               onClick={() => setSelected(demand)}
-              aria-current={selected?.id === demand.id ? 'true' : undefined}
+              aria-current={current?.id === demand.id ? 'true' : undefined}
               className={cn(
                 'hover:bg-muted/60 focus-visible:ring-ring block w-full cursor-pointer space-y-2 border-b px-4 py-4 text-left focus-visible:ring-2 focus-visible:outline-none',
-                selected?.id === demand.id &&
+                current?.id === demand.id &&
                   'bg-primary/5 shadow-[inset_3px_0_0_var(--primary)]'
               )}
             >
@@ -561,23 +641,13 @@ function DemandInbox({
           )}
         </div>
       </aside>
-      <div className={cn('min-h-0 min-w-0', !selected && 'hidden md:block')}>
-        {selected ? (
-          <DemandConversation
-            key={`${accountId}:${selected.id}`}
-            initial={rows.find((row) => row.id === selected.id) ?? selected}
-            accountId={accountId}
-            mode={mode}
-            canWrite={canWrite}
-            engineers={engineers.data ?? []}
-            onBack={() => setSelected(null)}
-          />
-        ) : (
-          <EmptyState
-            title={t('Select a demand')}
-            description={t('Choose a conversation to reply to the customer.')}
-          />
+      <div
+        className={cn(
+          'min-h-0 min-w-0',
+          !current && !linkActive && 'hidden md:block'
         )}
+      >
+        {detail}
       </div>
     </div>
   )

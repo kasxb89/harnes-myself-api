@@ -53,6 +53,14 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - Keep `expected_delivery_date` optional and empty on old listings. Its empty creation field must remain omitted from the serialized idempotency hash. Do not rewrite old request UUIDs, payload hashes or action receipts; successful receipts are resolved before new approval/state gates.
 - Rejection reasons are private to the publisher and authorized administrators, not acceptors, observers or conversation messages. Existing admin permissions, CAS revisions and action audits apply to approval decisions.
 
+## Demand email notifications
+
+- Demand mail is opt-in with empty default recipients. Store events and per-recipient outbox associations in the first successful business transaction; original request replay, creation's first message, administrator replies and system messages must not enqueue duplicates.
+- Customer-message batches use a fixed first-event deadline, normally120 seconds. This is a new-message notification, not an unread-only guarantee; do not infer administrator user IDs from recipient email addresses.
+- Snapshot SMTP configuration and authentication once per attempt. Persist the sending fence before network work, execute SMTP outside transactions, and cancel/join bounded attempts during shutdown. A confirmed final DATA acceptance stays sent even if QUIT fails; missing final confirmation or abandoned sending becomes unknown and must never auto-retry. Retry only definite transient failures, at most three attempts, with backoff after the completed attempt.
+- Mail contains scrubbed request metadata, message/media counts and an authorized console deep link. Never copy chat bodies, attachment names/URLs, phone numbers, credentials or SMTP secrets into the notification or delivery DTO. Each recipient receives a separate envelope and To header.
+- Configuration and send records require both demand domains' existing admin permissions; writes also require both write permissions and the normal Origin guard. Exact deep links load the requested record without silently selecting another order. Mail failure cannot reverse a committed customer submission; no legacy backfill or automatic resumption of paused/unknown deliveries.
+
 ## Overseas manual phone login
 
 - Manage exact non-+86 E.164 numbers only in System settings → Authentication → Overseas phone whitelist. This is independent of the development SMS bypass; never enable that bypass for customer login.

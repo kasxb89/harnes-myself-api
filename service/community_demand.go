@@ -290,7 +290,10 @@ func CreateCommunityOrder(db *gorm.DB, a CommunityActor, in CommunityCreate) (mo
 			}
 			first = &m
 		}
-		return communityAudit(tx, a, out.ID, "published", "")
+		if err := communityAudit(tx, a, out.ID, "published", ""); err != nil {
+			return err
+		}
+		return queueCommunityCreatedEmail(tx, a, out)
 	})
 	if err == nil && replay && first == nil {
 		var m model.CommunityMessage
@@ -459,7 +462,7 @@ func SendCommunityMessage(db *gorm.DB, a CommunityActor, id string, in Community
 		if err != nil {
 			return err
 		}
-		return nil
+		return queueCommunityMessageEmail(tx, a, out, message, in.AttachmentIDs)
 	})
 	if err != nil {
 		// A competing transaction may have committed this global message key.
@@ -595,6 +598,9 @@ func ActCommunityOrder(db *gorm.DB, a CommunityActor, id string, in CommunityAct
 				return err
 			}
 			msg = &m
+			if err = queueCommunityMessageEmail(tx, a, out, m, ids); err != nil {
+				return err
+			}
 			if in.Action == "deliver" {
 				out.DeliveryMessageID = m.ID
 			}

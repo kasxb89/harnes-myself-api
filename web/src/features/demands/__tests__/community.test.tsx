@@ -341,3 +341,53 @@ test('a lost approval response retries the original UUID revision and body witho
     ).toBeNull()
   )
 })
+
+test('a linked community order outside the first page opens its exact record', async () => {
+  const original = get.getMockImplementation()
+  if (!original) throw new Error('Expected initialized API mock')
+  get.mockImplementation((url: string, options: unknown) => {
+    if (url === '/api/community-demand-management/orders') {
+      return Promise.resolve(
+        envelope({
+          items: [{ ...order, id: 'other-order', title: 'Other first row' }],
+          next_cursor: '',
+          has_more: false,
+        })
+      )
+    }
+    if (url === '/api/community-demand-management/orders/community-fixture') {
+      return Promise.resolve(envelope({ order }))
+    }
+    return original(url, options)
+  })
+  view(
+    <DemandManagementPage search={{ tab: 'community', orderId: order.id }} />
+  )
+  fireEvent.click(await screen.findByRole('button', { name: 'Order details' }))
+  expect(
+    await screen.findByText('Only participants and administrators')
+  ).toBeVisible()
+  expect(get).toHaveBeenCalledWith(
+    '/api/community-demand-management/orders/community-fixture',
+    expect.anything()
+  )
+  expect(
+    get.mock.calls.some(([url]) => String(url).includes('other-order/messages'))
+  ).toBe(false)
+})
+
+test('a forbidden community deep link never falls back to a visible order', async () => {
+  const original = get.getMockImplementation()
+  if (!original) throw new Error('Expected initialized API mock')
+  get.mockImplementation((url: string, options: unknown) => {
+    if (url === '/api/community-demand-management/orders/forbidden') {
+      return Promise.reject(new Error('Forbidden'))
+    }
+    return original(url, options)
+  })
+  view(<CommunityInbox accountId={9} canWrite orderId='forbidden' />)
+  expect(await screen.findByText('Linked demand unavailable')).toBeVisible()
+  expect(
+    get.mock.calls.some(([url]) => String(url).endsWith('/messages'))
+  ).toBe(false)
+})

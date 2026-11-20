@@ -19,10 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { DemandManagementPage } from '@/features/demands'
+import { parseDemandManagementSearch } from '@/features/demands/demand-search'
 import { canAccessAdminRoute } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/demand-management/')({
+  validateSearch: parseDemandManagementSearch,
   beforeLoad: () => {
     if (
       !canAccessAdminRoute(
@@ -33,5 +35,10 @@ export const Route = createFileRoute('/_authenticated/demand-management/')({
       throw redirect({ to: '/403' })
     }
   },
-  component: DemandManagementPage,
+  component: DemandManagementRoute,
 })
+
+function DemandManagementRoute() {
+  const search = Route.useSearch()
+  return <DemandManagementPage key={JSON.stringify(search)} search={search} />
+}

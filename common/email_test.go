@@ -2,21 +2,29 @@ package common
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -560,4 +568,363 @@ func TestSendEmailExplicitStartTLSRejectsUntrustedCertificateByDefault(t *testin
 	err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
 	require.Error(t, err)
 	require.Contains(t, fmt.Sprint(err), "certificate")
+}
+
+type demandSMTPScenario struct {
+	finalCode       int
+	dropFinal       bool
+	dropQuit        bool
+	rejectRecipient bool
+	stallGreeting   bool
+	stallFinal      bool
+	username        string
+	password        string
+}
+type demandSMTPTestServer struct {
+	listener net.Listener
+	address  string
+	port     int
+	commands chan string
+	messages chan string
+	done     chan struct{}
+	mu       sync.Mutex
+	conn     net.Conn
+}
+
+func newDemandSMTPTestServer(t *testing.T, scenario demandSMTPScenario) *demandSMTPTestServer {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	host, port, err := net.SplitHostPort(listener.Addr().String())
+	require.NoError(t, err)
+	n, err := strconv.Atoi(port)
+	require.NoError(t, err)
+	server := &demandSMTPTestServer{listener: listener, address: host, port: n, commands: make(chan string, 32), messages: make(chan string, 1), done: make(chan struct{})}
+	go func() {
+		defer close(server.done)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		server.mu.Lock()
+		server.conn = conn
+		server.mu.Unlock()
+		defer conn.Close()
+		_ = conn.SetDeadline(time.Now().Add(4 * time.Second))
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		if scenario.stallGreeting {
+			var b [1]byte
+			_, _ = conn.Read(b[:])
+			return
+		}
+		if writeSMTPLine(rw, "220 local-demand-test ESMTP") != nil {
+			return
+		}
+		for {
+			line, err := rw.ReadString('\n')
+			if err != nil {
+				return
+			}
+			line = strings.TrimRight(line, "\r\n")
+			server.commands <- line
+			upper := strings.ToUpper(line)
+			switch {
+			case strings.HasPrefix(upper, "EHLO"):
+				if writeSMTPLine(rw, "250-local-demand-test") != nil {
+					return
+				}
+				if writeSMTPLine(rw, "250 AUTH PLAIN LOGIN NTLM") != nil {
+					return
+				}
+			case strings.HasPrefix(upper, "AUTH LOGIN"):
+				if writeSMTPLine(rw, "334 "+base64.StdEncoding.EncodeToString([]byte("Username:"))) != nil {
+					return
+				}
+				user, err := rw.ReadString('\n')
+				if err != nil {
+					return
+				}
+				u, e := base64.StdEncoding.DecodeString(strings.TrimSpace(user))
+				if e != nil {
+					return
+				}
+				if writeSMTPLine(rw, "334 "+base64.StdEncoding.EncodeToString([]byte("Password:"))) != nil {
+					return
+				}
+				pass, err := rw.ReadString('\n')
+				if err != nil {
+					return
+				}
+				p, e := base64.StdEncoding.DecodeString(strings.TrimSpace(pass))
+				if e != nil {
+					return
+				}
+				if string(u) != scenario.username || string(p) != scenario.password {
+					_ = writeSMTPLine(rw, "535 authentication rejected")
+					return
+				}
+				if writeSMTPLine(rw, "235 authenticated") != nil {
+					return
+				}
+			case strings.HasPrefix(upper, "AUTH"):
+				if writeSMTPLine(rw, "235 authenticated") != nil {
+					return
+				}
+			case strings.HasPrefix(upper, "MAIL FROM:"):
+				if writeSMTPLine(rw, "250 sender accepted") != nil {
+					return
+				}
+			case strings.HasPrefix(upper, "RCPT TO:"):
+				if scenario.rejectRecipient {
+					_ = writeSMTPLine(rw, "550 secret-bearing response must never escape")
+					return
+				}
+				if writeSMTPLine(rw, "250 recipient accepted") != nil {
+					return
+				}
+			case upper == "DATA":
+				if writeSMTPLine(rw, "354 send body") != nil {
+					return
+				}
+				var content strings.Builder
+				for {
+					line, err := rw.ReadString('\n')
+					if err != nil {
+						return
+					}
+					if strings.TrimRight(line, "\r\n") == "." {
+						break
+					}
+					content.WriteString(line)
+				}
+				server.messages <- content.String()
+				if scenario.dropFinal {
+					return
+				}
+				if scenario.stallFinal {
+					var b [1]byte
+					_, _ = conn.Read(b[:])
+					return
+				}
+				code := scenario.finalCode
+				if code == 0 {
+					code = 250
+				}
+				if writeSMTPLine(rw, fmt.Sprintf("%d local result", code)) != nil {
+					return
+				}
+			case upper == "QUIT":
+				if !scenario.dropQuit {
+					_ = writeSMTPLine(rw, "221 bye")
+				}
+				return
+			default:
+				if writeSMTPLine(rw, "502 unsupported") != nil {
+					return
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		server.mu.Lock()
+		if server.conn != nil {
+			_ = server.conn.Close()
+		}
+		server.mu.Unlock()
+		select {
+		case <-server.done:
+		case <-time.After(2 * time.Second):
+			t.Error("local SMTP handler did not terminate")
+		}
+	})
+	return server
+}
+func demandSMTPTestConfig(server *demandSMTPTestServer) DemandSMTPConfig {
+	return DemandSMTPConfig{Server: server.address, Port: server.port, From: "no-reply@example.invalid", Name: "Local demand test", Timeout: time.Second}
+}
+func demandSMTPTestMessage(recipient string) DemandSMTPMessage {
+	return DemandSMTPMessage{Recipient: recipient, Subject: "需求消息", Text: "文本摘要 <script>is literal text</script>", MessageID: "<stable-demand-notification@example.invalid>"}
+}
+func TestDemandSMTPAcceptsEachRecipientIndependentlyAndIgnoresQuitFailure(t *testing.T) {
+	for _, recipient := range []string{"first@example.invalid", "second@example.invalid"} {
+		t.Run(recipient, func(t *testing.T) {
+			server := newDemandSMTPTestServer(t, demandSMTPScenario{dropQuit: true})
+			fences := 0
+			result := SendDemandEmail(context.Background(), demandSMTPTestConfig(server), demandSMTPTestMessage(recipient), func() error { fences++; return nil })
+			require.Equal(t, "accepted", result.State)
+			assert.Equal(t, "smtp_accepted_quit_failed", result.Code)
+			assert.False(t, result.Retryable)
+			assert.Equal(t, 1, fences)
+			raw := <-server.messages
+			message, err := mail.ReadMessage(strings.NewReader(raw))
+			require.NoError(t, err)
+			to, err := message.Header.AddressList("To")
+			require.NoError(t, err)
+			require.Len(t, to, 1)
+			assert.Equal(t, recipient, to[0].Address)
+			assert.Empty(t, message.Header.Get("Cc"))
+			assert.Contains(t, message.Header.Get("Content-Type"), "text/plain")
+			decoded, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, message.Body))
+			require.NoError(t, err)
+			assert.Equal(t, demandSMTPTestMessage(recipient).Text, string(decoded))
+			assert.Equal(t, demandSMTPTestMessage(recipient).MessageID, message.Header.Get("Message-ID"))
+			subject, err := new(mime.WordDecoder).DecodeHeader(message.Header.Get("Subject"))
+			require.NoError(t, err)
+			assert.Equal(t, "需求消息", subject)
+			<-server.done
+			rcpts := []string{}
+			for len(server.commands) > 0 {
+				cmd := <-server.commands
+				if strings.HasPrefix(cmd, "RCPT TO:") {
+					rcpts = append(rcpts, cmd)
+				}
+			}
+			assert.Equal(t, []string{"RCPT TO:<" + recipient + ">"}, rcpts)
+		})
+	}
+}
+func TestDemandSMTPDistinguishesFinalRejectionAndUnknownConfirmation(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		scenario demandSMTPScenario
+		state    string
+		retry    bool
+	}{{"lost-final", demandSMTPScenario{dropFinal: true}, "unknown", false}, {"temporary-reject", demandSMTPScenario{finalCode: 450}, "failed", true}, {"permanent-reject", demandSMTPScenario{finalCode: 550}, "failed", false}, {"recipient-reject", demandSMTPScenario{rejectRecipient: true}, "failed", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newDemandSMTPTestServer(t, tc.scenario)
+			result := SendDemandEmail(context.Background(), demandSMTPTestConfig(server), demandSMTPTestMessage("first@example.invalid"), func() error { return nil })
+			assert.Equal(t, tc.state, result.State)
+			assert.Equal(t, tc.retry, result.Retryable)
+			assert.NotContains(t, fmt.Sprint(result), "secret-bearing")
+		})
+	}
+}
+func TestDemandSMTPFenceFailureAndHeaderInjectionSendNoMessage(t *testing.T) {
+	server := newDemandSMTPTestServer(t, demandSMTPScenario{})
+	result := SendDemandEmail(context.Background(), demandSMTPTestConfig(server), demandSMTPTestMessage("first@example.invalid"), func() error { return errors.New("private database failure") })
+	assert.Equal(t, "not_sent", result.State)
+	assert.Equal(t, "smtp_fence_rejected", result.Code)
+	assert.NotContains(t, fmt.Sprint(result), "private database")
+	<-server.done
+	assert.Empty(t, server.messages)
+	for _, tc := range []struct {
+		name   string
+		change func(*DemandSMTPMessage)
+	}{{"recipient", func(m *DemandSMTPMessage) { m.Recipient = "first@example.invalid\r\nCc: injected@example.invalid" }}, {"multiple recipients", func(m *DemandSMTPMessage) { m.Recipient = "first@example.invalid, second@example.invalid" }}, {"subject", func(m *DemandSMTPMessage) { m.Subject = "hello\r\nBcc: injected@example.invalid" }}, {"message-id", func(m *DemandSMTPMessage) { m.MessageID = "<one@example.invalid>\r\nCc: injected@example.invalid" }}} {
+		t.Run(tc.name, func(t *testing.T) {
+			message := demandSMTPTestMessage("first@example.invalid")
+			tc.change(&message)
+			called := false
+			result := SendDemandEmail(context.Background(), DemandSMTPConfig{Server: "127.0.0.1", Port: 1, From: "no-reply@example.invalid"}, message, func() error { called = true; return nil })
+			assert.Equal(t, "smtp_invalid_message", result.Code)
+			assert.False(t, called)
+		})
+	}
+}
+func TestDemandSMTPTimeoutAndCancellationCloseOwnedConnections(t *testing.T) {
+	t.Run("bounded greeting", func(t *testing.T) {
+		server := newDemandSMTPTestServer(t, demandSMTPScenario{stallGreeting: true})
+		cfg := demandSMTPTestConfig(server)
+		cfg.Timeout = 50 * time.Millisecond
+		result := SendDemandEmail(context.Background(), cfg, demandSMTPTestMessage("first@example.invalid"), func() error { return nil })
+		assert.Equal(t, "failed", result.State)
+		assert.Equal(t, "smtp_timeout", result.Code)
+		<-server.done
+	})
+	t.Run("cancel after body", func(t *testing.T) {
+		server := newDemandSMTPTestServer(t, demandSMTPScenario{stallFinal: true})
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan DemandSMTPResult, 1)
+		go func() {
+			done <- SendDemandEmail(ctx, demandSMTPTestConfig(server), demandSMTPTestMessage("first@example.invalid"), func() error { return nil })
+		}()
+		<-server.messages
+		cancel()
+		select {
+		case result := <-done:
+			assert.Equal(t, "unknown", result.State)
+			assert.False(t, result.Retryable)
+		case <-time.After(2 * time.Second):
+			t.Fatal("canceled SMTP call did not return")
+		}
+		<-server.done
+	})
+}
+func TestDemandSMTPSnapshotAndAuthenticationNeverRereadGlobals(t *testing.T) {
+	server := newDemandSMTPTestServer(t, demandSMTPScenario{username: "snapshot@example.invalid", password: "snapshot-secret"})
+	withSMTPSettings(t)
+	OptionMapRWMutex.Lock()
+	original := OptionMap
+	OptionMap = map[string]string{"SMTPServer": server.address, "SMTPPort": strconv.Itoa(server.port), "SMTPFrom": "snapshot@example.invalid", "SMTPAccount": "snapshot@example.invalid", "SMTPToken": "snapshot-secret", "SMTPForceAuthLogin": "true", "SystemName": "Snapshot sender"}
+	OptionMapRWMutex.Unlock()
+	t.Cleanup(func() { OptionMapRWMutex.Lock(); OptionMap = original; OptionMapRWMutex.Unlock() })
+	cfg := SnapshotDemandSMTPConfig()
+	encoded, err := Marshal(cfg)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "snapshot-secret")
+	cfg.Timeout = time.Second
+	OptionMapRWMutex.Lock()
+	SMTPServer = "must-never-be-dialed.invalid"
+	SMTPAccount = "changed@example.invalid"
+	SMTPFrom = "changed@example.invalid"
+	SMTPToken = "changed-secret"
+	SMTPForceAuthLogin = false
+	OptionMap = map[string]string{"SMTPServer": "must-never-be-dialed.invalid"}
+	OptionMapRWMutex.Unlock()
+	result := SendDemandEmail(context.Background(), cfg, demandSMTPTestMessage("first@example.invalid"), func() error { return nil })
+	assert.Equal(t, "accepted", result.State)
+	raw := <-server.messages
+	assert.Contains(t, raw, "snapshot@example.invalid")
+	assert.NotContains(t, raw, "changed@example.invalid")
+	assert.NotContains(t, raw, "snapshot-secret")
+	assert.NotContains(t, raw, "changed-secret")
+	<-server.done
+	auth := []string{}
+	for len(server.commands) > 0 {
+		cmd := <-server.commands
+		if strings.HasPrefix(cmd, "AUTH ") {
+			auth = append(auth, cmd)
+		}
+	}
+	assert.Equal(t, []string{"AUTH LOGIN"}, auth)
+	// Compatibility selection is immutable too: Outlook preference still permits
+	// an NTLM-only server, while explicit ForceAuthLogin keeps LOGIN.
+	for _, tc := range []struct {
+		force bool
+		want  string
+	}{{false, "NTLM"}, {true, "LOGIN"}} {
+		a := &demandSMTPAuth{server: "snapshot.example.invalid", username: "user@outlook.invalid", password: "secret", preferLogin: true, forceLogin: tc.force}
+		mechanism, _, err := a.Start(&smtp.ServerInfo{Name: "snapshot.example.invalid", Auth: []string{"NTLM"}})
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, mechanism)
+	}
+}
+func TestDemandSMTPTLSOptionsUseOwnedBoundedTransport(t *testing.T) {
+	t.Run("explicit STARTTLS", func(t *testing.T) {
+		server := newFakeSMTPServer(t)
+		defer server.close()
+		cfg := DemandSMTPConfig{Server: server.host, Port: server.port, From: "sender@example.invalid", StartTLS: true, InsecureSkipVerify: true, Timeout: 2 * time.Second}
+		result := SendDemandEmail(context.Background(), cfg, demandSMTPTestMessage("first@example.invalid"), func() error { return nil })
+		assert.Equal(t, "accepted", result.State)
+		assert.Equal(t, "STARTTLS", <-server.startTLSCommands)
+	})
+	t.Run("implicit TLS", func(t *testing.T) {
+		server := newFakeImplicitTLSSMTPServer(t)
+		defer server.close()
+		cfg := DemandSMTPConfig{Server: server.host, Port: server.port, From: "sender@example.invalid", SSL: true, InsecureSkipVerify: true, Timeout: 2 * time.Second}
+		result := SendDemandEmail(context.Background(), cfg, demandSMTPTestMessage("first@example.invalid"), func() error { return nil })
+		assert.Equal(t, "accepted", result.State)
+	})
+	t.Run("untrusted TLS rejected", func(t *testing.T) {
+		server := newFakeImplicitTLSSMTPServer(t)
+		defer server.close()
+		cfg := DemandSMTPConfig{Server: server.host, Port: server.port, From: "sender@example.invalid", SSL: true, Timeout: 2 * time.Second}
+		called := false
+		result := SendDemandEmail(context.Background(), cfg, demandSMTPTestMessage("first@example.invalid"), func() error { called = true; return nil })
+		assert.Equal(t, "failed", result.State)
+		assert.Equal(t, "tls", result.Stage)
+		assert.False(t, called)
+	})
 }

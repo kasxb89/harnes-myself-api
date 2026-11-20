@@ -613,3 +613,71 @@ test('an administrator keeps the same public reply fence after an unknown result
     ).toBeNull()
   )
 })
+
+test('a linked demand outside the first page opens its exact record', async () => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 9, username: 'administrator', role: 100 })
+  const original = get.getMockImplementation()
+  if (!original) throw new Error('Expected initialized API mock')
+  get.mockImplementation((url: string, options: unknown) => {
+    if (url === '/api/demand-management') {
+      return Promise.resolve(
+        envelope({
+          items: [{ ...demand, id: 'other-demand', title: 'Other first row' }],
+          next_before_id: '',
+          has_more: false,
+        })
+      )
+    }
+    if (url === '/api/demand-management/engineers') {
+      return Promise.resolve(envelope({ items: [engineer] }))
+    }
+    if (url === '/api/demand-management/demand-fixture') {
+      return Promise.resolve(envelope({ demand }))
+    }
+    return original(url, options)
+  })
+  view(
+    <DemandManagementPage search={{ tab: 'demands', demandId: demand.id }} />
+  )
+  expect(await screen.findByText('Customer message')).toBeVisible()
+  expect(get).toHaveBeenCalledWith(
+    '/api/demand-management/demand-fixture',
+    expect.anything()
+  )
+  expect(
+    get.mock.calls.some(([url]) =>
+      String(url).includes('other-demand/messages')
+    )
+  ).toBe(false)
+})
+
+test('a missing linked demand shows an error without opening the first row', async () => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 9, username: 'administrator', role: 100 })
+  const original = get.getMockImplementation()
+  if (!original) throw new Error('Expected initialized API mock')
+  get.mockImplementation((url: string, options: unknown) => {
+    if (url === '/api/demand-management') {
+      return Promise.resolve(
+        envelope({ items: [demand], next_before_id: '', has_more: false })
+      )
+    }
+    if (url === '/api/demand-management/engineers') {
+      return Promise.resolve(envelope({ items: [engineer] }))
+    }
+    if (url === '/api/demand-management/not-found') {
+      return Promise.reject(new Error('Not found'))
+    }
+    return original(url, options)
+  })
+  view(
+    <DemandManagementPage search={{ tab: 'demands', demandId: 'not-found' }} />
+  )
+  expect(await screen.findByText('Linked demand unavailable')).toBeVisible()
+  expect(
+    get.mock.calls.some(([url]) => String(url).endsWith('/messages'))
+  ).toBe(false)
+})

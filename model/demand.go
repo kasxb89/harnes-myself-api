@@ -154,6 +154,6 @@ type DemandProfileImport struct {
 	SkippedCustomerProfiles int    `json:"skipped_customer_profiles"`
 }
 
-func DemandTables() []interface{} {
-	return []interface{}{&Demand{}, &DemandEngineer{}, &DemandMessage{}, &DemandReadCursor{}, &DemandAudit{}, &DemandActionReceipt{}, &DemandConfiguration{}, &DemandAttachment{}, &DemandUploadPart{}, &DemandServiceProfile{}, &DemandCustomerProfile{}, &DemandProfileImport{}}
+func DemandTables() []any {
+	return append([]any{&Demand{}, &DemandEngineer{}, &DemandMessage{}, &DemandReadCursor{}, &DemandAudit{}, &DemandActionReceipt{}, &DemandConfiguration{}, &DemandAttachment{}, &DemandUploadPart{}, &DemandServiceProfile{}, &DemandCustomerProfile{}, &DemandProfileImport{}}, DemandEmailTables()...)
 }

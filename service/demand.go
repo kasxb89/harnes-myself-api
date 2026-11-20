@@ -533,7 +533,10 @@ func CreateDemand(db *gorm.DB, a DemandActor, in DemandCreate) (DemandSendReceip
 		if err := bindDemandAttachments(tx, a, d, m.ID, in.AttachmentIDs); err != nil {
 			return err
 		}
-		return demandAudit(tx, a, d.ID, "created", e.ID+profile.ID)
+		if err := demandAudit(tx, a, d.ID, "created", e.ID+profile.ID); err != nil {
+			return err
+		}
+		return queueOfficialCreatedEmail(tx, a, d)
 	})
 	// A concurrent identical first submission may have won a unique constraint.
 	if err != nil {
@@ -615,7 +618,10 @@ func SendDemandMessage(db *gorm.DB, a DemandActor, id string, in DemandSend) (De
 		if err := tx.Create(&m).Error; err != nil {
 			return err
 		}
-		return bindDemandAttachments(tx, a, d, m.ID, in.AttachmentIDs)
+		if err := bindDemandAttachments(tx, a, d, m.ID, in.AttachmentIDs); err != nil {
+			return err
+		}
+		return queueOfficialMessageEmail(tx, a, d, m, in.AttachmentIDs)
 	})
 	if err != nil {
 		return result, err

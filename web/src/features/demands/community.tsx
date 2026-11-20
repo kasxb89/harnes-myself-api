@@ -37,6 +37,7 @@ import {
   communityStatusLabels,
   loadCommunityConfig,
   loadCommunityOrders,
+  loadCommunityOrder,
   saveCommunityConfig,
   type CommunityOrder,
 } from './community-api'
@@ -45,6 +46,7 @@ import { CommunityConversation } from './community-conversation'
 export function CommunityInbox(props: {
   accountId: number
   canWrite: boolean
+  orderId?: string
 }) {
   const { t } = useTranslation()
   const cache = useQueryClient()
@@ -59,7 +61,16 @@ export function CommunityInbox(props: {
   })
   const [history, setHistory] = useState<string[]>([])
   const [selected, setSelected] = useState<CommunityOrder | null>(null)
-  const [mobileDetail, setMobileDetail] = useState(false)
+  const [mobileDetail, setMobileDetail] = useState(Boolean(props.orderId))
+  const [linkDismissed, setLinkDismissed] = useState(false)
+  const linked = useQuery({
+    queryKey: ['community-order-detail', props.accountId, props.orderId],
+    enabled: Boolean(props.orderId) && !linkDismissed,
+    queryFn: ({ signal }) => loadCommunityOrder(props.orderId ?? '', signal),
+    retry: false,
+  })
+  const current = selected ?? (!linkDismissed ? linked.data : undefined)
+  const linkActive = Boolean(props.orderId) && !linkDismissed && !selected
   const configKey = ['community-config', props.accountId]
   const config = useQuery({
     queryKey: configKey,
@@ -82,6 +93,32 @@ export function CommunityInbox(props: {
   const filter = (key: keyof typeof filters, value: string) => {
     setFilters((v) => ({ ...v, [key]: value, cursor: '' }))
     setHistory([])
+  }
+  let detail = (
+    <EmptyState title={t('Select an order to view all communication')} />
+  )
+  if (linkActive && linked.isPending) detail = <LoadingState />
+  else if (linkActive && linked.isError) {
+    detail = (
+      <ErrorState
+        title={t('Linked demand unavailable')}
+        description={t('This demand was not found or you do not have access.')}
+        onRetry={() => void linked.refetch()}
+      />
+    )
+  } else if (current) {
+    detail = (
+      <CommunityConversation
+        key={`${props.accountId}:${current.id}`}
+        initial={current}
+        accountId={props.accountId}
+        canWrite={props.canWrite}
+        onBack={() => {
+          setMobileDetail(false)
+          setLinkDismissed(true)
+        }}
+      />
+    )
   }
   return (
     <div className='flex h-full min-h-0 flex-col gap-3'>
@@ -182,10 +219,10 @@ export function CommunityInbox(props: {
                 key={order.id}
                 type='button'
                 variant='ghost'
-                aria-current={selected?.id === order.id ? 'true' : undefined}
+                aria-current={current?.id === order.id ? 'true' : undefined}
                 className={cn(
                   'hover:bg-muted/60 block h-auto w-full rounded-none border-b px-4 py-3.5 text-left whitespace-normal',
-                  selected?.id === order.id && 'bg-muted/60'
+                  current?.id === order.id && 'bg-muted/60'
                 )}
                 onClick={() => {
                   setSelected(order)
@@ -254,19 +291,7 @@ export function CommunityInbox(props: {
         <div
           className={cn('min-h-0 min-w-0', !mobileDetail && 'hidden md:block')}
         >
-          {selected ? (
-            <CommunityConversation
-              key={`${props.accountId}:${selected.id}`}
-              initial={selected}
-              accountId={props.accountId}
-              canWrite={props.canWrite}
-              onBack={() => setMobileDetail(false)}
-            />
-          ) : (
-            <EmptyState
-              title={t('Select an order to view all communication')}
-            />
-          )}
+          {detail}
         </div>
       </div>
     </div>

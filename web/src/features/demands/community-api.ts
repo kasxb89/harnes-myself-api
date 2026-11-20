@@ -166,6 +166,14 @@ export async function loadCommunityOrders(
     })
     .parse(requireServerSuccess(r.data).data)
 }
+export async function loadCommunityOrder(id: string, signal?: AbortSignal) {
+  const r = await api.get(orderPath(id), { signal, disableDuplicate: true })
+  const order = z
+    .object({ order: communityOrderSchema })
+    .parse(requireServerSuccess(r.data).data).order
+  if (order.id !== id) throw new Error('Order identifier mismatch')
+  return order
+}
 export async function loadCommunityConversation(
   id: string,
   after: number,

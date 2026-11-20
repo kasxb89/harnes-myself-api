@@ -204,6 +204,24 @@ export async function loadDemands(
   })
   return listSchema.parse(requireServerSuccess(r.data).data)
 }
+export async function loadDemandDetail(
+  mode: DemandMode,
+  id: string,
+  signal?: AbortSignal
+) {
+  const r = await api.get<Envelope>(
+    `${demandBase(mode)}/${encodeURIComponent(id)}`,
+    {
+      signal,
+      disableDuplicate: true,
+    }
+  )
+  const demand = z
+    .object({ demand: demandSchema })
+    .parse(requireServerSuccess(r.data).data).demand
+  if (demand.id !== id) throw new Error('Demand identifier mismatch')
+  return demand
+}
 export async function loadConversation(
   mode: DemandMode,
   id: string,
