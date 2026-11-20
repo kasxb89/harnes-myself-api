@@ -259,7 +259,11 @@ export function SignUpForm({
             <FormItem>
               <FormLabel>{t('Username')}</FormLabel>
               <FormControl>
-                <Input placeholder={t('Enter your username')} {...field} />
+                <Input
+                  autoComplete='username'
+                  placeholder={t('Enter your username')}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -275,6 +279,7 @@ export function SignUpForm({
               <FormLabel>{t('Password')}</FormLabel>
               <FormControl>
                 <PasswordInput
+                  autoComplete='new-password'
                   placeholder={t('Enter password (8–128 characters)')}
                   {...field}
                 />
@@ -292,7 +297,11 @@ export function SignUpForm({
             <FormItem>
               <FormLabel>{t('Confirm password')}</FormLabel>
               <FormControl>
-                <PasswordInput placeholder={t('Confirm password')} {...field} />
+                <PasswordInput
+                  autoComplete='new-password'
+                  placeholder={t('Confirm password')}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -315,6 +324,7 @@ export function SignUpForm({
                     <Input
                       placeholder={t('name@example.com')}
                       type='email'
+                      autoComplete='email'
                       {...field}
                     />
                   </FormControl>
@@ -325,8 +335,13 @@ export function SignUpForm({
 
             {/* Verification Code Field */}
             <div className='flex items-end gap-2'>
-              <div className='flex-1'>
+              <div className='flex-1 space-y-2'>
+                <Label htmlFor='registration-verification-code'>
+                  {t('Verification code')}
+                </Label>
                 <Input
+                  id='registration-verification-code'
+                  autoComplete='one-time-code'
                   placeholder={t('Verification code')}
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}

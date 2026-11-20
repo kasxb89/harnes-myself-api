@@ -13,11 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as authRouteRouteImport } from './routes/(auth)/route'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as PrivacyPolicyRouteImport } from './routes/privacy-policy'
+import { Route as RelayGuideRouteImport } from './routes/relay-guide'
 import { Route as UserAgreementRouteImport } from './routes/user-agreement'
 import { Route as authForgotPasswordRouteImport } from './routes/(auth)/forgot-password'
 import { Route as authOauthRouteImport } from './routes/(auth)/oauth'
 import { Route as authOtpRouteImport } from './routes/(auth)/otp'
 import { Route as authRegisterRouteImport } from './routes/(auth)/register'
+import { Route as authRelayDesignsRouteImport } from './routes/(auth)/relay-designs'
 import { Route as authResetRouteImport } from './routes/(auth)/reset'
 import { Route as authSignInRouteImport } from './routes/(auth)/sign-in'
 import { Route as authSignUpRouteImport } from './routes/(auth)/sign-up'
@@ -108,6 +110,11 @@ const PrivacyPolicyRoute = PrivacyPolicyRouteImport.update({
   path: '/privacy-policy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RelayGuideRoute = RelayGuideRouteImport.update({
+  id: '/relay-guide',
+  path: '/relay-guide',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UserAgreementRoute = UserAgreementRouteImport.update({
   id: '/user-agreement',
   path: '/user-agreement',
@@ -131,6 +138,11 @@ const authOtpRoute = authOtpRouteImport.update({
 const authRegisterRoute = authRegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => authRouteRoute,
+} as any)
+const authRelayDesignsRoute = authRelayDesignsRouteImport.update({
+  id: '/relay-designs',
+  path: '/relay-designs',
   getParentRoute: () => authRouteRoute,
 } as any)
 const authResetRoute = authResetRouteImport.update({
@@ -544,12 +556,14 @@ const AuthenticatedSystemSettingsSiteSectionRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
+  '/relay-guide': typeof RelayGuideRoute
   '/user-agreement': typeof UserAgreementRoute
   '/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   '/forgot-password': typeof authForgotPasswordRoute
   '/oauth': typeof authOauthRoute
   '/otp': typeof authOtpRoute
   '/register': typeof authRegisterRoute
+  '/relay-designs': typeof authRelayDesignsRoute
   '/reset': typeof authResetRoute
   '/sign-in': typeof authSignInRoute
   '/sign-up': typeof authSignUpRoute
@@ -624,11 +638,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/privacy-policy': typeof PrivacyPolicyRoute
+  '/relay-guide': typeof RelayGuideRoute
   '/user-agreement': typeof UserAgreementRoute
   '/forgot-password': typeof authForgotPasswordRoute
   '/oauth': typeof authOauthRoute
   '/otp': typeof authOtpRoute
   '/register': typeof authRegisterRoute
+  '/relay-designs': typeof authRelayDesignsRoute
   '/reset': typeof authResetRoute
   '/sign-in': typeof authSignInRoute
   '/sign-up': typeof authSignUpRoute
@@ -706,12 +722,14 @@ export interface FileRoutesById {
   '/(auth)': typeof authRouteRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/privacy-policy': typeof PrivacyPolicyRoute
+  '/relay-guide': typeof RelayGuideRoute
   '/user-agreement': typeof UserAgreementRoute
   '/_authenticated/system-settings': typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   '/(auth)/forgot-password': typeof authForgotPasswordRoute
   '/(auth)/oauth': typeof authOauthRoute
   '/(auth)/otp': typeof authOtpRoute
   '/(auth)/register': typeof authRegisterRoute
+  '/(auth)/relay-designs': typeof authRelayDesignsRoute
   '/(auth)/reset': typeof authResetRoute
   '/(auth)/sign-in': typeof authSignInRoute
   '/(auth)/sign-up': typeof authSignUpRoute
@@ -788,12 +806,14 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/privacy-policy'
+    | '/relay-guide'
     | '/user-agreement'
     | '/system-settings'
     | '/forgot-password'
     | '/oauth'
     | '/otp'
     | '/register'
+    | '/relay-designs'
     | '/reset'
     | '/sign-in'
     | '/sign-up'
@@ -868,11 +888,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/privacy-policy'
+    | '/relay-guide'
     | '/user-agreement'
     | '/forgot-password'
     | '/oauth'
     | '/otp'
     | '/register'
+    | '/relay-designs'
     | '/reset'
     | '/sign-in'
     | '/sign-up'
@@ -949,12 +971,14 @@ export interface FileRouteTypes {
     | '/(auth)'
     | '/_authenticated'
     | '/privacy-policy'
+    | '/relay-guide'
     | '/user-agreement'
     | '/_authenticated/system-settings'
     | '/(auth)/forgot-password'
     | '/(auth)/oauth'
     | '/(auth)/otp'
     | '/(auth)/register'
+    | '/(auth)/relay-designs'
     | '/(auth)/reset'
     | '/(auth)/sign-in'
     | '/(auth)/sign-up'
@@ -1032,6 +1056,7 @@ export interface RootRouteChildren {
   authRouteRoute: typeof authRouteRouteWithChildren
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   PrivacyPolicyRoute: typeof PrivacyPolicyRoute
+  RelayGuideRoute: typeof RelayGuideRoute
   UserAgreementRoute: typeof UserAgreementRoute
   errors401Route: typeof errors401Route
   errors403Route: typeof errors403Route
@@ -1076,6 +1101,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyPolicyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/relay-guide': {
+      id: '/relay-guide'
+      path: '/relay-guide'
+      fullPath: '/relay-guide'
+      preLoaderRoute: typeof RelayGuideRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/user-agreement': {
       id: '/user-agreement'
       path: '/user-agreement'
@@ -1109,6 +1141,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof authRegisterRouteImport
+      parentRoute: typeof authRouteRoute
+    }
+    '/(auth)/relay-designs': {
+      id: '/(auth)/relay-designs'
+      path: '/relay-designs'
+      fullPath: '/relay-designs'
+      preLoaderRoute: typeof authRelayDesignsRouteImport
       parentRoute: typeof authRouteRoute
     }
     '/(auth)/reset': {
@@ -1616,6 +1655,7 @@ interface authRouteRouteChildren {
   authOauthRoute: typeof authOauthRoute
   authOtpRoute: typeof authOtpRoute
   authRegisterRoute: typeof authRegisterRoute
+  authRelayDesignsRoute: typeof authRelayDesignsRoute
   authResetRoute: typeof authResetRoute
   authSignInRoute: typeof authSignInRoute
   authSignUpRoute: typeof authSignUpRoute
@@ -1627,6 +1667,7 @@ const authRouteRouteChildren: authRouteRouteChildren = {
   authOauthRoute: authOauthRoute,
   authOtpRoute: authOtpRoute,
   authRegisterRoute: authRegisterRoute,
+  authRelayDesignsRoute: authRelayDesignsRoute,
   authResetRoute: authResetRoute,
   authSignInRoute: authSignInRoute,
   authSignUpRoute: authSignUpRoute,
@@ -1804,6 +1845,7 @@ const rootRouteChildren: RootRouteChildren = {
   authRouteRoute: authRouteRouteWithChildren,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   PrivacyPolicyRoute: PrivacyPolicyRoute,
+  RelayGuideRoute: RelayGuideRoute,
   UserAgreementRoute: UserAgreementRoute,
   errors401Route: errors401Route,
   errors403Route: errors403Route,
