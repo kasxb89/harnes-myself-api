@@ -1,6 +1,15 @@
 package router
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"image"
+	"image/gif"
+	"image/jpeg"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -278,4 +287,305 @@ func TestForumMigrationKeepsExistingSessionsTasksAndFinance(t *testing.T) {
 		require.NoError(t, f.db.First(&now, original.Id).Error)
 		assert.Equal(t, original, now)
 	}
+}
+
+type forumUploadReceipt struct {
+	ID         string                       `json:"id"`
+	Offset     int64                        `json:"offset"`
+	Status     string                       `json:"status"`
+	Attachment *service.ForumAttachmentView `json:"attachment"`
+}
+
+func (f *demandFixture) forumUpload(t *testing.T, actor, key, kind, post, mime string, body []byte) string {
+	t.Helper()
+	in := service.ForumUploadCreate{ClientUploadID: key, TargetKind: kind, PostID: post, Name: "private-account-name.png", MimeType: mime, SizeBytes: int64(len(body))}
+	v := demandData[forumUploadReceipt](t, f.request(t, actor, "POST", "/api/product/forum/uploads", in, 200))
+	assert.Nil(t, v.Attachment)
+	replay := demandData[forumUploadReceipt](t, f.request(t, actor, "POST", "/api/product/forum/uploads", in, 200))
+	assert.Equal(t, v.ID, replay.ID)
+	req := httptest.NewRequest("PUT", "/api/product/forum/uploads/"+v.ID+"/chunks", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+f.tokens[actor])
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Upload-Offset", "0")
+	w := httptest.NewRecorder()
+	f.engine.ServeHTTP(w, req)
+	require.Equal(t, 200, w.Code, w.Body.String())
+	sum := sha256.Sum256(body)
+	complete := demandData[forumUploadReceipt](t, f.request(t, actor, "POST", "/api/product/forum/uploads/"+v.ID+"/complete", map[string]string{"sha256": hex.EncodeToString(sum[:])}, 200))
+	require.NotNil(t, complete.Attachment)
+	assert.Equal(t, hex.EncodeToString(sum[:]), complete.Attachment.SHA256)
+	f.request(t, actor, "POST", "/api/product/forum/uploads/"+v.ID+"/complete", map[string]string{"sha256": hex.EncodeToString(sum[:])}, 200)
+	return v.ID
+}
+func TestForumImagesBindAtomicallyAndRevokeSignedMedia(t *testing.T) {
+	f := newForumFixture(t)
+	f.enableForum(t)
+	data := communityPNG(t)
+	upload := f.forumUpload(t, "owner", "post-image", "post", "", "image/png", data)
+	f.request(t, "other", "GET", "/api/product/forum/uploads/"+upload, nil, 404)
+	in := service.ForumCreate{ClientRequestID: "image-publication", Title: "Images 😄", AttachmentIDs: []string{upload}}
+	f.request(t, "other", "POST", "/api/product/forum/posts", in, 400)
+	var count int64
+	require.NoError(t, f.db.Model(&model.ForumPost{}).Count(&count).Error)
+	assert.Zero(t, count)
+	first := demandData[forumPostReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/posts", in, 201))
+	require.Len(t, first.Post.Attachments, 1)
+	assert.Equal(t, "forum-image.png", first.Post.Attachments[0].Name)
+	again := demandData[forumPostReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/posts", in, 200))
+	assert.Equal(t, first.Post.ID, again.Post.ID)
+	assert.True(t, again.Replayed)
+	receipt := demandData[forumPostReceipt](t, f.request(t, "owner", "GET", "/api/product/forum/receipts?kind=post&client_request_id=image-publication", nil, 200))
+	assert.Equal(t, first.Post.ID, receipt.Post.ID)
+	f.request(t, "other", "GET", "/api/product/forum/receipts?kind=post&client_request_id=image-publication", nil, 404)
+	changed := in
+	changed.AttachmentIDs = nil
+	changed.Body = "changed"
+	f.request(t, "owner", "POST", "/api/product/forum/posts", changed, 409)
+	duplicate := in
+	duplicate.ClientRequestID = "different-publication"
+	f.request(t, "owner", "POST", "/api/product/forum/posts", duplicate, 400)
+	commentUpload := f.forumUpload(t, "other", "comment-image", "comment", first.Post.ID, "image/png", data)
+	comment := demandData[forumCommentReceipt](t, f.request(t, "other", "POST", "/api/product/forum/posts/"+first.Post.ID+"/comments", service.ForumCreate{ClientRequestID: "comment-image-request", AttachmentIDs: []string{commentUpload}}, 201))
+	require.Len(t, comment.Comment.Attachments, 1)
+	linkPath := "/api/product/forum/attachments/" + commentUpload + "/link"
+	link := demandData[service.ForumAttachmentLink](t, f.request(t, "owner", "POST", linkPath, map[string]string{"disposition": "inline"}, 200))
+	target, err := url.Parse(link.URL)
+	require.NoError(t, err)
+	for _, method := range []string{"GET", "HEAD"} {
+		req := httptest.NewRequest(method, target.RequestURI(), nil)
+		w := httptest.NewRecorder()
+		f.engine.ServeHTTP(w, req)
+		require.Equal(t, 200, w.Code, w.Body.String())
+		if method == "GET" {
+			assert.Equal(t, data, w.Body.Bytes())
+		}
+	}
+	req := httptest.NewRequest("GET", target.RequestURI(), nil)
+	req.Header.Set("Range", "bytes=0-31")
+	w := httptest.NewRecorder()
+	f.engine.ServeHTTP(w, req)
+	require.Equal(t, 206, w.Code)
+	assert.Equal(t, data[:32], w.Body.Bytes())
+	f.request(t, "admin", "DELETE", "/api/forum-management/comments/"+comment.Comment.ID, map[string]string{"reason": "remove"}, 200)
+	for _, method := range []string{"GET", "HEAD"} {
+		req := httptest.NewRequest(method, target.RequestURI(), nil)
+		req.Header.Set("Range", "bytes=0-31")
+		w := httptest.NewRecorder()
+		f.engine.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	}
+	f.request(t, "owner", "POST", linkPath, map[string]string{"disposition": "inline"}, 404)
+	f.request(t, "admin", "POST", "/api/forum-management/attachments/"+commentUpload+"/link", map[string]string{"disposition": "attachment"}, 200)
+	bad := service.ForumUploadCreate{ClientUploadID: "bad-mime", TargetKind: "post", Name: "bad.svg", MimeType: "image/svg+xml", SizeBytes: 10}
+	f.request(t, "owner", "POST", "/api/product/forum/uploads", bad, 415)
+	bad.ClientUploadID = "oversize"
+	bad.MimeType = "image/png"
+	bad.SizeBytes = 21 << 20
+	f.request(t, "owner", "POST", "/api/product/forum/uploads", bad, 413)
+	unready := demandData[forumUploadReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/uploads", service.ForumUploadCreate{ClientUploadID: "unready", TargetKind: "post", Name: "pending.png", MimeType: "image/png", SizeBytes: 20}, 200))
+	f.request(t, "owner", "POST", "/api/product/forum/posts", service.ForumCreate{ClientRequestID: "no-unready-bind", Title: "Not ready", AttachmentIDs: []string{unready.ID}}, 400)
+	expired := f.forumUpload(t, "owner", "expired", "post", "", "image/png", data)
+	require.NoError(t, f.db.Model(&model.ForumAttachment{}).Where("id = ?", expired).Update("expires_at", 1).Error)
+	f.request(t, "owner", "POST", "/api/product/forum/posts", service.ForumCreate{ClientRequestID: "no-expired-bind", Title: "Expired", AttachmentIDs: []string{expired}}, 400)
+	f.request(t, "owner", "POST", "/api/product/forum/attachments/"+expired+"/link", map[string]string{"disposition": "inline"}, 404)
+}
+func TestForumRepliesMyActivityNotificationsAndPublicIdentity(t *testing.T) {
+	f := newForumFixture(t)
+	f.enableForum(t)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", f.users["owner"].Id).Update("display_name", *f.users["owner"].PhoneE164).Error)
+	beforeUsers := []model.User{}
+	beforeSessions := []model.UserSession{}
+	require.NoError(t, f.db.Order("id").Find(&beforeUsers).Error)
+	require.NoError(t, f.db.Order("sid").Find(&beforeSessions).Error)
+	for _, name := range []string{*f.users["owner"].PhoneE164, "+60 1270 78625", "+86****5937", f.users["owner"].Username, "Bad\nName"} {
+		f.request(t, "owner", "PATCH", "/api/product/forum/profile", map[string]any{"revision": 0, "display_name": name}, 400)
+	}
+	profile := demandData[map[string]service.ForumProfileView](t, f.request(t, "owner", "PATCH", "/api/product/forum/profile", map[string]any{"revision": 0, "display_name": "云游者 😄"}, 200))["profile"]
+	assert.Equal(t, "云游者 😄", profile.DisplayName)
+	f.request(t, "owner", "PATCH", "/api/product/forum/profile", map[string]any{"revision": 0, "display_name": "云游者 😄"}, 200)
+	f.request(t, "owner", "PATCH", "/api/product/forum/profile", map[string]any{"revision": 0, "display_name": "Different"}, 409)
+	p := demandData[forumPostReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/posts", service.ForumCreate{ClientRequestID: "activity-post", Title: "Forum discussion", Body: "😀"}, 201)).Post
+	path := "/api/product/forum/posts/" + p.ID
+	root := demandData[forumCommentReceipt](t, f.request(t, "other", "POST", path+"/comments", service.ForumCreate{ClientRequestID: "root-comment", Body: "First comment"}, 201)).Comment
+	// A reply to the post author as well as that author's comment creates ONE notification.
+	own := demandData[forumCommentReceipt](t, f.request(t, "owner", "POST", path+"/comments", service.ForumCreate{ClientRequestID: "self-comment", Body: "Author's comment"}, 201)).Comment
+	replyInput := service.ForumCreate{ClientRequestID: "targeted-reply", Body: "Reply 😄", ReplyToCommentID: own.ID}
+	reply := demandData[forumCommentReceipt](t, f.request(t, "other", "POST", path+"/comments", replyInput, 201)).Comment
+	require.NotNil(t, reply.ReplyToAuthor)
+	assert.Equal(t, "云游者 😄", reply.ReplyToAuthor.DisplayName)
+	f.request(t, "other", "POST", path+"/comments", replyInput, 200)
+	modified := replyInput
+	modified.ReplyToCommentID = root.ID
+	f.request(t, "other", "POST", path+"/comments", modified, 409)
+	another := demandData[forumPostReceipt](t, f.request(t, "other", "POST", "/api/product/forum/posts", service.ForumCreate{ClientRequestID: "other-post", Title: "Another", Body: "Text"}, 201)).Post
+	f.request(t, "owner", "POST", "/api/product/forum/posts/"+another.ID+"/comments", service.ForumCreate{ClientRequestID: "cross-post-reply", Body: "Must fail", ReplyToCommentID: root.ID}, 404)
+	for range 2 {
+		f.request(t, "other", "PUT", path+"/like", map[string]bool{"liked": true}, 200)
+	}
+	f.request(t, "owner", "PUT", path+"/like", map[string]bool{"liked": true}, 200)
+	type notices struct {
+		Items  []service.ForumNotificationView `json:"items"`
+		Unread int64                           `json:"unread_count"`
+	}
+	raw := f.request(t, "owner", "GET", "/api/product/forum/notifications", nil, 200)
+	seen := demandData[notices](t, raw)
+	assert.EqualValues(t, 3, seen.Unread)
+	require.Len(t, seen.Items, 3)
+	for _, u := range f.users {
+		assert.NotContains(t, string(raw), u.Username)
+		assert.NotContains(t, string(raw), *u.PhoneE164)
+	}
+	id := seen.Items[0].ID
+	f.request(t, "other", "POST", "/api/product/forum/notifications/read", map[string]any{"notification_ids": []string{id}}, 200)
+	unchanged := demandData[notices](t, f.request(t, "owner", "GET", "/api/product/forum/notifications", nil, 200))
+	assert.EqualValues(t, 3, unchanged.Unread)
+	for range 2 {
+		f.request(t, "owner", "POST", "/api/product/forum/notifications/read", map[string]any{"notification_ids": []string{id}}, 200)
+	}
+	seen = demandData[notices](t, f.request(t, "owner", "GET", "/api/product/forum/notifications", nil, 200))
+	assert.EqualValues(t, 2, seen.Unread)
+	f.request(t, "other", "PUT", path+"/like", map[string]bool{"liked": false}, 200)
+	f.request(t, "other", "PUT", path+"/like", map[string]bool{"liked": true}, 200)
+	seen = demandData[notices](t, f.request(t, "owner", "GET", "/api/product/forum/notifications", nil, 200))
+	assert.Len(t, seen.Items, 3)
+	assert.EqualValues(t, 2, seen.Unread)
+	mine := demandData[forumPostPage](t, f.request(t, "owner", "GET", "/api/product/forum/me/posts?limit=1", nil, 200))
+	require.Len(t, mine.Items, 1)
+	assert.Equal(t, p.ID, mine.Items[0].ID)
+	comments := demandData[forumCommentPage](t, f.request(t, "other", "GET", "/api/product/forum/me/comments?limit=1", nil, 200))
+	require.Len(t, comments.Items, 1)
+	assert.True(t, comments.More)
+	next := demandData[forumCommentPage](t, f.request(t, "other", "GET", "/api/product/forum/me/comments?limit=1&cursor="+comments.Next, nil, 200))
+	require.Len(t, next.Items, 1)
+	assert.NotEqual(t, comments.Items[0].ID, next.Items[0].ID)
+	f.request(t, "owner", "GET", path+"/comments/"+reply.ID, nil, 200)
+	f.request(t, "admin", "DELETE", "/api/forum-management/posts/"+p.ID, map[string]string{"reason": "hidden"}, 200)
+	seen = demandData[notices](t, f.request(t, "owner", "GET", "/api/product/forum/notifications", nil, 200))
+	assert.Empty(t, seen.Items)
+	assert.Zero(t, seen.Unread)
+	afterUsers := []model.User{}
+	afterSessions := []model.UserSession{}
+	require.NoError(t, f.db.Order("id").Find(&afterUsers).Error)
+	require.NoError(t, f.db.Order("sid").Find(&afterSessions).Error)
+	assert.Equal(t, beforeUsers, afterUsers)
+	assert.Equal(t, beforeSessions, afterSessions)
+}
+
+// Representative released comment schema: no reply target column or forum media/profile tables.
+type releasedForumComment struct {
+	ID              string `gorm:"type:varchar(40);primaryKey"`
+	PostID          string `gorm:"type:varchar(40);index:idx_forum_comment_feed,priority:1"`
+	AuthorID        int    `gorm:"uniqueIndex:idx_forum_comment_request,priority:1"`
+	ClientRequestID string `gorm:"type:varchar(80);uniqueIndex:idx_forum_comment_request,priority:2"`
+	PayloadHash     string `gorm:"type:varchar(64)"`
+	Body            string `gorm:"type:text"`
+	CreatedAt       int64  `gorm:"autoCreateTime:false;index:idx_forum_comment_feed,priority:3"`
+	ReviewedAt      int64  `gorm:"index"`
+	ReviewedBy      int
+	DeletedAt       int64 `gorm:"index:idx_forum_comment_feed,priority:2"`
+	DeletedBy       int
+	DeleteReason    string `gorm:"type:varchar(1000)"`
+}
+
+func (releasedForumComment) TableName() string { return "forum_comments" }
+func TestForumReleasedSchemaUpgradePreservesFrozenTextReceipts(t *testing.T) {
+	f := newForumFixture(t)
+	f.enableForum(t)
+	postInput := service.ForumCreate{ClientRequestID: "released-post-key", Title: "Original", Body: "Text before forum media"}
+	post := demandData[forumPostReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/posts", postInput, 201)).Post
+	// Freeze the released exact wire bytes independently of the new optional fields.
+	raw := []byte(`{"client_request_id":"released-post-key","title":"Original","body":"Text before forum media"}`)
+	sum := sha256.Sum256(raw)
+	var row model.ForumPost
+	require.NoError(t, f.db.First(&row, "id = ?", post.ID).Error)
+	assert.Equal(t, hex.EncodeToString(sum[:]), row.PayloadHash)
+	require.NoError(t, f.db.Migrator().DropTable(&model.ForumComment{}, &model.ForumAttachment{}, &model.ForumUploadPart{}, &model.ForumProfile{}, &model.ForumNotification{}))
+	require.NoError(t, f.db.Migrator().CreateTable(&releasedForumComment{}))
+	commentRaw := []byte(`{"PostID":"` + post.ID + `","Input":{"client_request_id":"released-comment-key","title":"","body":"Original reply"}}`)
+	commentSum := sha256.Sum256(commentRaw)
+	old := releasedForumComment{ID: "frozen-released-comment", PostID: post.ID, AuthorID: f.users["other"].Id, ClientRequestID: "released-comment-key", Body: "Original reply", PayloadHash: hex.EncodeToString(commentSum[:]), CreatedAt: 100}
+	require.NoError(t, f.db.Create(&old).Error)
+	before := []model.UserSession{}
+	require.NoError(t, f.db.Order("sid").Find(&before).Error)
+	for range 2 {
+		require.NoError(t, f.db.AutoMigrate(model.ForumTables()...))
+	}
+	oldReplay := demandData[forumCommentReceipt](t, f.request(t, "other", "POST", "/api/product/forum/posts/"+post.ID+"/comments", service.ForumCreate{ClientRequestID: old.ClientRequestID, Body: old.Body}, 200))
+	assert.True(t, oldReplay.Replayed)
+	assert.Equal(t, old.ID, oldReplay.Comment.ID)
+	assert.Empty(t, oldReplay.Comment.ReplyToCommentID)
+	replay := demandData[forumPostReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/posts", postInput, 200))
+	assert.True(t, replay.Replayed)
+	assert.Equal(t, post.ID, replay.Post.ID)
+	var got model.ForumComment
+	require.NoError(t, f.db.First(&got, "id = ?", old.ID).Error)
+	assert.Equal(t, old.PayloadHash, got.PayloadHash)
+	require.NoError(t, f.db.First(&row, "id = ?", post.ID).Error)
+	assert.Equal(t, hex.EncodeToString(sum[:]), row.PayloadHash)
+	// Same title/body with an independent operation is a different legitimate post.
+	postInput.ClientRequestID = "independent-same-text"
+	separate := demandData[forumPostReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/posts", postInput, 201))
+	assert.NotEqual(t, post.ID, separate.Post.ID)
+	after := []model.UserSession{}
+	require.NoError(t, f.db.Order("sid").Find(&after).Error)
+	assert.Equal(t, before, after)
+}
+
+func TestForumDeclaredImageFormatsAndInvalidEncoding(t *testing.T) {
+	f := newForumFixture(t)
+	f.enableForum(t)
+	var jpegData, gifData bytes.Buffer
+	require.NoError(t, jpeg.Encode(&jpegData, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil))
+	require.NoError(t, gif.Encode(&gifData, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil))
+	// Lossless WebP fixture from golang.org/x/image's BSD-licensed testdata.
+	webpData, err := base64.StdEncoding.DecodeString("UklGRrIBAABXRUJQVlA4TKUBAAAvSsAYAA8w//M///MfeJAkbXvaSG7m8Q3GfYSBJekwQztm/IcZlgwnmWImn2BK7aFmBtnVir6q//8VOkFE/xm4baTIu8c48ArEo6+B3zFKYln3pqClSCKX0begFTAXFOLXHSyF8cCNcZEG4OywuA4KVVfJCiArU7GAgJI8+lJP/OKMT/fBAjevg1cYB7YVkFuWga2lyPi5I0HFy5YTpWIHg0RZpkniRVW9odHAKOwosWuOGdxIyn2OvaCDvhg/we6TwadPBPbqBV58MsLmMJ8yZnOWk8SRz4N+QoyPL+MnamzMvcE1rHNEr91F9GKZPVUcS9w7PhhH36suB9qPeYb/oLk6cuTiJ0wOK3m5h1cKjW6EVZCYMK7dxcKCBdgP9HkKr9gkAO2P8GKZGWVdIAatQa+1IDpt6qyorVwdy01xdW8Jkfk6xjEXmVQQ+HQdFr6OKhIN34dXWq0+0qr6EJSCeeVLH9+gvGTLyqM65PQ44ihzlTXxQKjKbAvshXgir7Lil9w4L2bvMycmjQcqXaMCO6BlY28i+FOLzbfI1vEqxAhotocAAA==")
+	require.NoError(t, err)
+	for _, v := range []struct {
+		mime string
+		data []byte
+	}{{"image/jpeg", jpegData.Bytes()}, {"image/gif", gifData.Bytes()}, {"image/webp", webpData}} {
+		t.Run(v.mime, func(t *testing.T) { f.forumUpload(t, "owner", v.mime, "post", "", v.mime, v.data) })
+	}
+	bad := []byte("not a png image")
+	init := demandData[forumUploadReceipt](t, f.request(t, "owner", "POST", "/api/product/forum/uploads", service.ForumUploadCreate{ClientUploadID: "invalid-content", TargetKind: "post", Name: "wrong.png", MimeType: "image/png", SizeBytes: int64(len(bad))}, 200))
+	req := httptest.NewRequest("PUT", "/api/product/forum/uploads/"+init.ID+"/chunks", bytes.NewReader(bad))
+	req.Header.Set("Authorization", "Bearer "+f.tokens["owner"])
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Upload-Offset", "0")
+	w := httptest.NewRecorder()
+	f.engine.ServeHTTP(w, req)
+	require.Equal(t, 200, w.Code)
+	hash := sha256.Sum256(bad)
+	f.request(t, "owner", "POST", "/api/product/forum/uploads/"+init.ID+"/complete", map[string]string{"sha256": hex.EncodeToString(hash[:])}, 415)
+	current := demandData[forumUploadReceipt](t, f.request(t, "owner", "GET", "/api/product/forum/uploads/"+init.ID, nil, 200))
+	assert.Equal(t, "uploading", current.Status)
+	assert.Nil(t, current.Attachment)
+}
+func TestForumConcurrentSamePublicationKeepsOneRowAndOneBinding(t *testing.T) {
+	f := newForumFixture(t)
+	f.enableForum(t)
+	id := f.forumUpload(t, "owner", "concurrent-image", "post", "", "image/png", communityPNG(t))
+	in := service.ForumCreate{ClientRequestID: "concurrent-original", Title: "One original publication", AttachmentIDs: []string{id}}
+	type result struct {
+		post     model.ForumPost
+		replayed bool
+		err      error
+	}
+	done := make(chan result, 2)
+	for range 2 {
+		go func() {
+			p, r, e := service.CreateForumPost(f.db, service.ForumActor{UserID: f.users["owner"].Id}, in)
+			done <- result{p, r, e}
+		}()
+	}
+	first, second := <-done, <-done
+	require.NoError(t, first.err)
+	require.NoError(t, second.err)
+	assert.Equal(t, first.post.ID, second.post.ID)
+	assert.NotEqual(t, first.replayed, second.replayed)
+	var n int64
+	require.NoError(t, f.db.Model(&model.ForumPost{}).Count(&n).Error)
+	assert.EqualValues(t, 1, n)
+	require.NoError(t, f.db.Model(&model.ForumAttachment{}).Where("bound = ?", true).Count(&n).Error)
+	assert.EqualValues(t, 1, n)
 }

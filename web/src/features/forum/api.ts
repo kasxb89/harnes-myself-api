@@ -25,10 +25,25 @@ const author = z.object({
   id: z.number().int().positive(),
   display_name: z.string(),
 })
+const attachmentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.literal('image'),
+  mime_type: z.string(),
+  size_bytes: z.number(),
+  sha256: z.string(),
+  status: z.literal('ready'),
+  preview_path: z.string(),
+  download_path: z.string(),
+})
+export type ForumAttachment = z.infer<typeof attachmentSchema>
 export const contentSchema = z.object({
   id: z.string(),
   title: z.string().optional(),
   body: z.string(),
+  attachments: z.array(attachmentSchema).optional().default([]),
+  reply_to_comment_id: z.string().optional(),
+  reply_to_author: author.optional(),
   author,
   post_id: z.string().optional(),
   post_title: z.string().optional(),
@@ -86,4 +101,17 @@ export async function loadConfig(signal?: AbortSignal) {
 export async function saveConfig(value: z.infer<typeof configSchema>) {
   const r = await api.put(`${base}/config`, value)
   return configSchema.parse(requireServerSuccess(r.data).data)
+}
+
+export async function forumImageLink(
+  id: string,
+  disposition: 'inline' | 'attachment'
+) {
+  const r = await api.post(
+    `${base}/attachments/${encodeURIComponent(id)}/link`,
+    { disposition }
+  )
+  return z
+    .object({ url: z.string().url(), expires_at: z.number() })
+    .parse(requireServerSuccess(r.data).data)
 }

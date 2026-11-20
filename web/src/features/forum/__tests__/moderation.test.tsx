@@ -30,12 +30,13 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { ForumManagementPage } from '..'
 
-const { get, put, remove } = vi.hoisted(() => ({
+const { get, put, remove, post } = vi.hoisted(() => ({
   get: vi.fn(),
+  post: vi.fn(),
   put: vi.fn(),
   remove: vi.fn(),
 }))
-vi.mock('@/lib/api', () => ({ api: { get, put, delete: remove } }))
+vi.mock('@/lib/api', () => ({ api: { get, put, post, delete: remove } }))
 const clients: QueryClient[] = []
 const row = {
   id: 'post-fixture',
@@ -117,4 +118,53 @@ test('read-only moderators see content without removal or review actions', async
   fireEvent.click(await screen.findByText(row.title))
   expect(screen.queryByRole('button', { name: 'Remove content' })).toBeNull()
   expect(screen.queryByRole('button', { name: 'Mark reviewed' })).toBeNull()
+})
+
+test('authorizes forum images only when preview is requested and shows expiry recovery', async () => {
+  const attachment = {
+    id: 'forum-image',
+    name: 'forum-image.png',
+    kind: 'image',
+    mime_type: 'image/png',
+    size_bytes: 123,
+    sha256: 'a'.repeat(64),
+    status: 'ready',
+    preview_path: '/attachments/forum-image/link',
+    download_path: '/attachments/forum-image/link',
+  }
+  get.mockResolvedValue(
+    envelope({
+      items: [
+        {
+          ...row,
+          attachments: [attachment],
+          reply_to_comment_id: 'parent',
+          reply_to_author: { id: 2, display_name: 'Other forum name' },
+        },
+      ],
+      next_cursor: '',
+      has_more: false,
+    })
+  )
+  post.mockResolvedValue(
+    envelope({
+      url: 'http://127.0.0.1:12345/api/product/forum/attachments/forum-image/content?token=synthetic',
+      expires_at: 9999999999,
+    })
+  )
+  view()
+  fireEvent.click(await screen.findByText(row.title))
+  expect(screen.getByText(/Other forum name/)).toBeTruthy()
+  expect(post).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+  const image = await screen.findByAltText('forum-image.png')
+  expect(post).toHaveBeenCalledWith(
+    '/api/forum-management/attachments/forum-image/link',
+    { disposition: 'inline' }
+  )
+  fireEvent.error(image)
+  expect(screen.getByRole('alert')).toBeTruthy()
+  expect(screen.queryByAltText('forum-image.png')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+  expect(await screen.findByAltText('forum-image.png')).toBeTruthy()
 })

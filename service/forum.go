@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -88,9 +89,11 @@ func ForumPostAccess(db *gorm.DB, actor ForumActor, id string) (model.ForumPost,
 }
 
 type ForumCreate struct {
-	ClientRequestID string `json:"client_request_id"`
-	Title           string `json:"title"`
-	Body            string `json:"body"`
+	ClientRequestID  string   `json:"client_request_id"`
+	Title            string   `json:"title"`
+	Body             string   `json:"body"`
+	AttachmentIDs    []string `json:"attachment_ids,omitempty"`
+	ReplyToCommentID string   `json:"reply_to_comment_id,omitempty"`
 }
 
 func forumPayloadHash(v any) string {
@@ -98,53 +101,61 @@ func forumPayloadHash(v any) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
-func forumRequestValid(key, body string, max int) bool {
-	return key != "" && utf8.RuneCountInString(key) <= 80 && strings.TrimSpace(body) != "" && utf8.RuneCountInString(body) <= max
+func forumCreateValid(in ForumCreate, maxBody int) bool {
+	return in.ClientRequestID != "" && utf8.RuneCountInString(in.ClientRequestID) <= 80 && utf8.RuneCountInString(in.Body) <= maxBody && (strings.TrimSpace(in.Body) != "" || len(in.AttachmentIDs) > 0)
 }
 func CreateForumPost(db *gorm.DB, actor ForumActor, in ForumCreate) (model.ForumPost, bool, error) {
-	if !forumRequestValid(in.ClientRequestID, in.Body, 20000) || strings.TrimSpace(in.Title) == "" || utf8.RuneCountInString(in.Title) > 200 {
+	if !forumCreateValid(in, 20000) || strings.TrimSpace(in.Title) == "" || utf8.RuneCountInString(in.Title) > 200 || in.ReplyToCommentID != "" {
 		return model.ForumPost{}, false, forumInvalid()
 	}
 	hash := forumPayloadHash(in)
-	var prior model.ForumPost
-	err := db.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&prior).Error
-	if err == nil {
-		if prior.PayloadHash != hash {
-			return prior, false, &ForumError{409, "FORUM_REQUEST_CONFLICT", "The publication key belongs to different content"}
+	var out model.ForumPost
+	replayed := false
+	err := db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&out).Error
+		if err == nil {
+			if out.PayloadHash != hash {
+				return forumConflict()
+			}
+			if out.DeletedAt != 0 {
+				return ForumMissing()
+			}
+			replayed = true
+			return nil
 		}
-		if prior.DeletedAt != 0 {
-			return prior, false, ForumMissing()
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
-		return prior, true, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return prior, false, err
-	}
-	if err = forumAccepting(db); err != nil {
-		return prior, false, err
-	}
-	p := model.ForumPost{ID: uuid.NewString(), AuthorID: actor.UserID, ClientRequestID: in.ClientRequestID, PayloadHash: hash, Title: strings.TrimSpace(in.Title), Body: strings.TrimSpace(in.Body), CreatedAt: time.Now().Unix()}
-	result := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&p)
-	if result.Error != nil {
-		return p, false, result.Error
-	}
-	if result.RowsAffected == 1 {
-		return p, false, nil
-	}
-	err = db.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&prior).Error
-	if err != nil {
-		return prior, false, err
-	}
-	if prior.PayloadHash != hash {
-		return prior, false, &ForumError{409, "FORUM_REQUEST_CONFLICT", "The publication key belongs to different content"}
-	}
-	if prior.DeletedAt != 0 {
-		return prior, false, ForumMissing()
-	}
-	return prior, true, nil
+		if err = forumAccepting(tx); err != nil {
+			return err
+		}
+		out = model.ForumPost{ID: uuid.NewString(), AuthorID: actor.UserID, ClientRequestID: in.ClientRequestID, PayloadHash: hash, Title: strings.TrimSpace(in.Title), Body: strings.TrimSpace(in.Body), CreatedAt: time.Now().Unix()}
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&out)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			if err = tx.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&out).Error; err != nil {
+				return err
+			}
+			if out.PayloadHash != hash {
+				return forumConflict()
+			}
+			if out.DeletedAt != 0 {
+				return ForumMissing()
+			}
+			replayed = true
+			return nil
+		}
+		return bindForumAttachments(tx, actor, in.AttachmentIDs, "post", out.ID, "")
+	})
+	return out, replayed, err
+}
+func forumConflict() error {
+	return &ForumError{409, "FORUM_REQUEST_CONFLICT", "The publication key belongs to different content"}
 }
 func CreateForumComment(db *gorm.DB, actor ForumActor, postID string, in ForumCreate) (model.ForumComment, bool, error) {
-	if !forumRequestValid(in.ClientRequestID, in.Body, 4000) {
+	if !forumCreateValid(in, 4000) {
 		return model.ForumComment{}, false, forumInvalid()
 	}
 	var out model.ForumComment
@@ -178,13 +189,25 @@ func CreateForumComment(db *gorm.DB, actor ForumActor, postID string, in ForumCr
 		if err = forumAccepting(tx); err != nil {
 			return err
 		}
-		out = model.ForumComment{ID: uuid.NewString(), PostID: postID, AuthorID: actor.UserID, ClientRequestID: in.ClientRequestID, PayloadHash: hash, Body: strings.TrimSpace(in.Body), CreatedAt: time.Now().Unix()}
+		if in.ReplyToCommentID != "" {
+			var target model.ForumComment
+			if err = tx.Where("id = ? AND post_id = ? AND deleted_at = 0", in.ReplyToCommentID, postID).First(&target).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ForumMissing()
+				}
+				return err
+			}
+		}
+		out = model.ForumComment{ReplyToCommentID: in.ReplyToCommentID, ID: uuid.NewString(), PostID: postID, AuthorID: actor.UserID, ClientRequestID: in.ClientRequestID, PayloadHash: hash, Body: strings.TrimSpace(in.Body), CreatedAt: time.Now().Unix()}
 		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&out)
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 1 {
-			return nil
+			if err = bindForumAttachments(tx, actor, in.AttachmentIDs, "comment", postID, out.ID); err != nil {
+				return err
+			}
+			return notifyForumComment(tx, p, out)
 		}
 		if err = tx.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&out).Error; err != nil {
 			return err
@@ -213,9 +236,19 @@ func SetForumLike(db *gorm.DB, actor ForumActor, postID string, liked bool) erro
 			return err
 		}
 		if liked {
-			return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.ForumLike{PostID: postID, UserID: actor.UserID, CreatedAt: time.Now().Unix()}).Error
+			res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&model.ForumLike{PostID: postID, UserID: actor.UserID, CreatedAt: time.Now().Unix()})
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 1 && p.AuthorID != actor.UserID {
+				return notifyForumLike(tx, p, actor.UserID)
+			}
+			return nil
 		}
-		return tx.Where("post_id = ? AND user_id = ?", postID, actor.UserID).Delete(&model.ForumLike{}).Error
+		if err = tx.Where("post_id = ? AND user_id = ?", postID, actor.UserID).Delete(&model.ForumLike{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&model.ForumNotification{}).Where("recipient_id = ? AND event_key = ?", p.AuthorID, forumLikeEvent(postID, actor.UserID)).Update("active", false).Error
 	})
 }
 
@@ -224,28 +257,32 @@ type ForumAuthor struct {
 	DisplayName string `json:"display_name"`
 }
 type ForumPostView struct {
-	ID           string      `json:"id"`
-	Title        string      `json:"title"`
-	Body         string      `json:"body"`
-	Author       ForumAuthor `json:"author"`
-	CreatedAt    int64       `json:"created_at"`
-	LikeCount    int64       `json:"like_count"`
-	CommentCount int64       `json:"comment_count"`
-	Liked        bool        `json:"liked"`
-	ReviewedAt   int64       `json:"reviewed_at,omitempty"`
-	DeletedAt    int64       `json:"deleted_at,omitempty"`
-	DeleteReason string      `json:"delete_reason,omitempty"`
+	ID           string                `json:"id"`
+	Title        string                `json:"title"`
+	Body         string                `json:"body"`
+	Author       ForumAuthor           `json:"author"`
+	CreatedAt    int64                 `json:"created_at"`
+	LikeCount    int64                 `json:"like_count"`
+	CommentCount int64                 `json:"comment_count"`
+	Liked        bool                  `json:"liked"`
+	ReviewedAt   int64                 `json:"reviewed_at,omitempty"`
+	DeletedAt    int64                 `json:"deleted_at,omitempty"`
+	DeleteReason string                `json:"delete_reason,omitempty"`
+	Attachments  []ForumAttachmentView `json:"attachments"`
 }
 type ForumCommentView struct {
-	ID           string      `json:"id"`
-	PostID       string      `json:"post_id"`
-	PostTitle    string      `json:"post_title,omitempty"`
-	Body         string      `json:"body"`
-	Author       ForumAuthor `json:"author"`
-	CreatedAt    int64       `json:"created_at"`
-	ReviewedAt   int64       `json:"reviewed_at,omitempty"`
-	DeletedAt    int64       `json:"deleted_at,omitempty"`
-	DeleteReason string      `json:"delete_reason,omitempty"`
+	ID               string                `json:"id"`
+	PostID           string                `json:"post_id"`
+	PostTitle        string                `json:"post_title,omitempty"`
+	Body             string                `json:"body"`
+	Author           ForumAuthor           `json:"author"`
+	CreatedAt        int64                 `json:"created_at"`
+	ReviewedAt       int64                 `json:"reviewed_at,omitempty"`
+	DeletedAt        int64                 `json:"deleted_at,omitempty"`
+	DeleteReason     string                `json:"delete_reason,omitempty"`
+	Attachments      []ForumAttachmentView `json:"attachments"`
+	ReplyToCommentID string                `json:"reply_to_comment_id"`
+	ReplyToAuthor    *ForumAuthor          `json:"reply_to_author,omitempty"`
 }
 
 func forumAuthors(db *gorm.DB, ids []int) (map[int]ForumAuthor, error) {
@@ -253,15 +290,23 @@ func forumAuthors(db *gorm.DB, ids []int) (map[int]ForumAuthor, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	var users []struct {
-		ID          int
-		DisplayName string
+	var users []model.User
+	if err := db.Select("id").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
 	}
-	err := db.Model(&model.User{}).Select("id, display_name").Where("id IN ?", ids).Find(&users).Error
 	for _, u := range users {
-		out[u.ID] = ForumAuthor{u.ID, u.DisplayName}
+		out[u.Id] = ForumAuthor{u.Id, fmt.Sprintf("论坛用户%d", u.Id)}
 	}
-	return out, err
+	var profiles []model.ForumProfile
+	if err := db.Where("user_id IN ?", ids).Find(&profiles).Error; err != nil {
+		return nil, err
+	}
+	for _, p := range profiles {
+		if _, ok := out[p.UserID]; ok {
+			out[p.UserID] = ForumAuthor{p.UserID, p.DisplayName}
+		}
+	}
+	return out, nil
 }
 func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost) ([]ForumPostView, error) {
 	views := make([]ForumPostView, 0, len(posts))
@@ -304,7 +349,11 @@ func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost) (
 		owned[x.PostID] = true
 	}
 	for _, p := range posts {
-		v := ForumPostView{ID: p.ID, Title: p.Title, Body: p.Body, Author: ForumAuthor{ID: p.AuthorID, DisplayName: names[p.AuthorID].DisplayName}, CreatedAt: p.CreatedAt, LikeCount: likeCounts[p.ID], CommentCount: commentCounts[p.ID], Liked: owned[p.ID]}
+		files, err := forumBoundAttachments(db, "post", p.ID, "")
+		if err != nil {
+			return nil, err
+		}
+		v := ForumPostView{Attachments: files, ID: p.ID, Title: p.Title, Body: p.Body, Author: ForumAuthor{ID: p.AuthorID, DisplayName: names[p.AuthorID].DisplayName}, CreatedAt: p.CreatedAt, LikeCount: likeCounts[p.ID], CommentCount: commentCounts[p.ID], Liked: owned[p.ID]}
 		if actor.Admin {
 			v.ReviewedAt = p.ReviewedAt
 			v.DeletedAt = p.DeletedAt
@@ -330,7 +379,7 @@ func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumC
 		return nil, err
 	}
 	titles := map[string]string{}
-	if actor.Admin {
+	{
 		var posts []model.ForumPost
 		if err = db.Select("id,title").Where("id IN ?", postIDs).Find(&posts).Error; err != nil {
 			return nil, err
@@ -340,7 +389,23 @@ func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumC
 		}
 	}
 	for _, c := range comments {
-		v := ForumCommentView{ID: c.ID, PostID: c.PostID, Body: c.Body, Author: ForumAuthor{ID: c.AuthorID, DisplayName: authors[c.AuthorID].DisplayName}, CreatedAt: c.CreatedAt}
+		files, err := forumBoundAttachments(db, "comment", c.PostID, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		v := ForumCommentView{Attachments: files, ReplyToCommentID: c.ReplyToCommentID, PostTitle: titles[c.PostID], ID: c.ID, PostID: c.PostID, Body: c.Body, Author: ForumAuthor{ID: c.AuthorID, DisplayName: authors[c.AuthorID].DisplayName}, CreatedAt: c.CreatedAt}
+		if c.ReplyToCommentID != "" {
+			var target model.ForumComment
+			if db.Where("id = ? AND post_id = ? AND deleted_at = 0", c.ReplyToCommentID, c.PostID).First(&target).Error == nil {
+				names, err := forumAuthors(db, []int{target.AuthorID})
+				if err != nil {
+					return nil, err
+				}
+				name := names[target.AuthorID]
+				name.ID = target.AuthorID
+				v.ReplyToAuthor = &name
+			}
+		}
 		if actor.Admin {
 			v.PostTitle = titles[c.PostID]
 			v.ReviewedAt = c.ReviewedAt

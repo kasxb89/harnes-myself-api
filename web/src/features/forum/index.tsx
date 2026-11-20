@@ -43,6 +43,8 @@ import { formatTimestampToDate } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
+  forumImageLink,
+  type ForumAttachment,
   loadConfig,
   loadContent,
   moderate,
@@ -315,6 +317,22 @@ function ContentList({
               <div className='text-sm leading-7 break-words whitespace-pre-wrap'>
                 {selected.body}
               </div>
+              {selected.reply_to_author ? (
+                <p className='text-muted-foreground text-sm'>
+                  {t('Replying to')}:{' '}
+                  {selected.reply_to_author.display_name || t('Forum member')}
+                </p>
+              ) : null}
+              {selected.attachments.length > 0 ? (
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  {selected.attachments.map((attachment) => (
+                    <ForumImage
+                      key={`${accountId}:${attachment.id}`}
+                      attachment={attachment}
+                    />
+                  ))}
+                </div>
+              ) : null}
               {selected.deleted_at ? (
                 <p className='text-muted-foreground text-sm'>
                   {t('Removal reason')}:{' '}
@@ -427,6 +445,72 @@ function ForumSettings({
           save.mutate({ revision: config.data.revision, enabled })
         }
       />
+    </div>
+  )
+}
+
+// Existing demand previews own demand-specific authorization and cannot sign forum assets.
+// Keep the same explicit preview/download interaction with the forum-only link API.
+function ForumImage(props: { attachment: ForumAttachment }) {
+  const { t } = useTranslation()
+  const [preview, setPreview] = useState('')
+  const [expired, setExpired] = useState(false)
+  const link = useMutation({
+    mutationFn: (disposition: 'inline' | 'attachment') =>
+      forumImageLink(props.attachment.id, disposition),
+    retry: false,
+    onSuccess: (result, disposition) => {
+      if (disposition === 'inline') {
+        setPreview(result.url)
+        setExpired(false)
+      } else {
+        const anchor = document.createElement('a')
+        anchor.href = result.url
+        anchor.download = props.attachment.name
+        anchor.rel = 'noreferrer'
+        anchor.click()
+      }
+    },
+  })
+  return (
+    <div className='min-w-0 space-y-2'>
+      <div className='flex flex-wrap gap-2'>
+        <Button
+          variant='outline'
+          size='sm'
+          disabled={link.isPending}
+          onClick={() => link.mutate('inline')}
+        >
+          {t(preview ? 'Refresh preview' : 'Preview')}
+        </Button>
+        <Button
+          variant='ghost'
+          size='sm'
+          disabled={link.isPending}
+          onClick={() => link.mutate('attachment')}
+        >
+          {t('Download original')}
+        </Button>
+      </div>
+      {link.isError || expired ? (
+        <p role='alert' className='text-destructive text-xs'>
+          {t('Unable to authorize this attachment')}
+        </p>
+      ) : null}
+      {preview ? (
+        <a href={preview} target='_blank' rel='noreferrer'>
+          <img
+            src={preview}
+            alt={props.attachment.name}
+            loading='lazy'
+            className='max-h-80 w-full rounded object-contain'
+            onError={() => {
+              setPreview('')
+              setExpired(true)
+            }}
+          />
+        </a>
+      ) : null}
     </div>
   )
 }

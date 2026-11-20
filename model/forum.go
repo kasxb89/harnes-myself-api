@@ -19,18 +19,19 @@ type ForumPost struct {
 }
 
 type ForumComment struct {
-	ID              string `gorm:"type:varchar(40);primaryKey"`
-	PostID          string `gorm:"type:varchar(40);index:idx_forum_comment_feed,priority:1"`
-	AuthorID        int    `gorm:"uniqueIndex:idx_forum_comment_request,priority:1"`
-	ClientRequestID string `gorm:"type:varchar(80);uniqueIndex:idx_forum_comment_request,priority:2"`
-	PayloadHash     string `gorm:"type:varchar(64)"`
-	Body            string `gorm:"type:text"`
-	CreatedAt       int64  `gorm:"autoCreateTime:false;index:idx_forum_comment_feed,priority:3"`
-	ReviewedAt      int64  `gorm:"index"`
-	ReviewedBy      int
-	DeletedAt       int64 `gorm:"index:idx_forum_comment_feed,priority:2"`
-	DeletedBy       int
-	DeleteReason    string `gorm:"type:varchar(1000)"`
+	ID               string `gorm:"type:varchar(40);primaryKey"`
+	PostID           string `gorm:"type:varchar(40);index:idx_forum_comment_feed,priority:1"`
+	AuthorID         int    `gorm:"uniqueIndex:idx_forum_comment_request,priority:1"`
+	ClientRequestID  string `gorm:"type:varchar(80);uniqueIndex:idx_forum_comment_request,priority:2"`
+	PayloadHash      string `gorm:"type:varchar(64)"`
+	Body             string `gorm:"type:text"`
+	ReplyToCommentID string `gorm:"type:varchar(40)"`
+	CreatedAt        int64  `gorm:"autoCreateTime:false;index:idx_forum_comment_feed,priority:3"`
+	ReviewedAt       int64  `gorm:"index"`
+	ReviewedBy       int
+	DeletedAt        int64 `gorm:"index:idx_forum_comment_feed,priority:2"`
+	DeletedBy        int
+	DeleteReason     string `gorm:"type:varchar(1000)"`
 }
 
 type ForumLike struct {
@@ -56,7 +57,7 @@ type ForumConfiguration struct {
 }
 
 func ForumTables() []any {
-	return []any{&ForumPost{}, &ForumComment{}, &ForumLike{}, &ForumAudit{}, &ForumConfiguration{}}
+	return []any{&ForumPost{}, &ForumComment{}, &ForumLike{}, &ForumAudit{}, &ForumConfiguration{}, &ForumProfile{}, &ForumNotification{}, &ForumAttachment{}, &ForumUploadPart{}}
 }
 
 // Forum mutations lock the parent before changing child comments or likes.
@@ -64,4 +65,54 @@ func LockForumPost(tx *gorm.DB, id string) (ForumPost, error) {
 	var p ForumPost
 	err := lockForUpdate(tx).Where("id = ?", id).First(&p).Error
 	return p, err
+}
+
+// Forum profiles are public identities, independent of account/login profiles.
+type ForumProfile struct {
+	UserID      int    `gorm:"primaryKey"`
+	DisplayName string `gorm:"type:varchar(160)"`
+	Revision    int64
+}
+
+type ForumNotification struct {
+	ID          uint64 `gorm:"primaryKey"`
+	RecipientID int    `gorm:"uniqueIndex:idx_forum_notice_event,priority:1;index:idx_forum_notice_feed,priority:1"`
+	EventKey    string `gorm:"type:varchar(100);uniqueIndex:idx_forum_notice_event,priority:2"`
+	Kind        string `gorm:"type:varchar(16)"`
+	ActorID     int
+	PostID      string `gorm:"type:varchar(40);index"`
+	CommentID   string `gorm:"type:varchar(40)"`
+	CreatedAt   int64  `gorm:"autoCreateTime:false"`
+	ReadAt      int64
+	Active      bool
+}
+
+type ForumAttachment struct {
+	ID             string `gorm:"type:varchar(40);primaryKey"`
+	OwnerID        int    `gorm:"uniqueIndex:idx_forum_upload,priority:1"`
+	ClientUploadID string `gorm:"type:varchar(80);uniqueIndex:idx_forum_upload,priority:2"`
+	MetadataHash   string `gorm:"type:varchar(64)"`
+	TargetKind     string `gorm:"type:varchar(16)"`
+	PostID         string `gorm:"type:varchar(40);index"`
+	CommentID      string `gorm:"type:varchar(40)"`
+	Position       int
+	Bound          bool
+	Name           string `gorm:"type:varchar(255)"`
+	Kind           string `gorm:"type:varchar(16)"`
+	MimeType       string `gorm:"type:varchar(80)"`
+	SizeBytes      int64
+	UploadedBytes  int64
+	Status         string `gorm:"type:varchar(16)"`
+	SHA256         string `gorm:"type:varchar(64)"`
+	ObjectKey      string `gorm:"type:varchar(80)"`
+	ExpiresAt      int64
+	AssemblyToken  string `gorm:"type:varchar(40)"`
+	AssemblyUntil  int64
+}
+type ForumUploadPart struct {
+	ID        string `gorm:"type:varchar(40);primaryKey"`
+	UploadID  string `gorm:"type:varchar(40);uniqueIndex:idx_forum_part,priority:1"`
+	Offset    int64  `gorm:"uniqueIndex:idx_forum_part,priority:2"`
+	Size      int64
+	ObjectKey string `gorm:"type:varchar(80)"`
 }

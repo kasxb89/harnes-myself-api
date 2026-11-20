@@ -49,7 +49,7 @@ func forumBind(c *gin.Context, v any) bool {
 }
 func GetForumConfig(c *gin.Context) {
 	v, err := service.LoadForumConfig(model.DB.WithContext(c.Request.Context()))
-	forumRespond(c, gin.H{"revision": v.Revision, "enabled": v.Enabled, "capabilities": gin.H{"immediate_publish": true, "likes": true, "comments": true}}, err)
+	forumRespond(c, gin.H{"revision": v.Revision, "enabled": v.Enabled, "capabilities": gin.H{"immediate_publish": true, "likes": true, "comments": true, "image_uploads": true, "my_activity": true, "comment_replies": true, "notifications": true, "forum_profile": true, "receipt_lookup": true}, "upload_rules": service.ForumUploadRules()}, err)
 }
 func PutForumConfig(c *gin.Context) {
 	var in service.ForumConfig
@@ -117,6 +117,9 @@ func ListForumPosts(c *gin.Context) {
 	if err != nil {
 		forumRespond(c, nil, err)
 		return
+	}
+	if c.GetBool("forum_me") {
+		q = q.Where("author_id = ?", forumActor(c).UserID)
 	}
 	if cursor.ID != "" {
 		q = q.Where("created_at < ? OR (created_at = ? AND id < ?)", cursor.At, cursor.At, cursor.ID)
@@ -219,6 +222,9 @@ func ListForumComments(c *gin.Context) {
 			return
 		}
 		q = q.Where("post_id = ?", postID)
+	}
+	if c.GetBool("forum_me") {
+		q = q.Where("author_id = ?", actor.UserID).Where("post_id IN (?)", db.Model(&model.ForumPost{}).Select("id").Where("deleted_at = 0"))
 	}
 	if cursor.ID != "" {
 		q = q.Where("created_at < ? OR (created_at = ? AND id < ?)", cursor.At, cursor.At, cursor.ID)
