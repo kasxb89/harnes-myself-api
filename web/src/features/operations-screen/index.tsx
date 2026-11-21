@@ -50,10 +50,8 @@ import { getServerErrorMessage } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { HologramCanvas } from './components/hologram-canvas'
 import { HolographicCore } from './components/holographic-core'
 import { OperationsObservationFilters } from './components/observation-filters'
-import { RobotBackground } from './components/robot-background'
 import { OperationsScienceCharts } from './components/science-charts'
 import { OperationsScreenToolbar } from './components/screen-toolbar'
 import { OperationsSnapshotContent } from './components/snapshot-content'
@@ -189,26 +187,23 @@ function OperationsScreenReport(props: {
   }[tab]
   return (
     <Main className='operations-screen-host'>
-      <div className='ops-screen-viewport min-h-0 flex-1 overflow-auto p-3 sm:p-4'>
+      <div className='ops-screen-viewport min-h-0 flex-1 overflow-auto'>
         <PortalContainerContext.Provider
           value={fullscreen.active ? fullscreen.ref : undefined}
         >
           <div
             ref={fullscreen.ref}
             data-paused={decorationPaused}
-            data-appearance='technology'
+            data-appearance='obsidian'
             className={cn(
-              'operations-screen min-w-0 max-w-full overflow-x-hidden p-3 sm:p-5',
-              fullscreen.active &&
-                'h-screen overflow-y-auto rounded-none p-4 sm:p-8'
+              'operations-screen min-w-0 max-w-full overflow-x-hidden',
+              fullscreen.active && 'h-screen overflow-y-auto rounded-none'
             )}
           >
-            <RobotBackground paused={decorationPaused} />
-            <div className='ops-scanline' aria-hidden='true' />
-            <div className='ops-perimeter-ticks' aria-hidden='true' />
             <div className='ops-screen-layer'>
               <OperationsScreenToolbar
                 observation={observation}
+                decorationPaused={decorationPaused}
                 fullscreen={fullscreen}
                 paused={paused}
                 onPause={() => setPaused((value) => !value)}
@@ -218,19 +213,6 @@ function OperationsScreenReport(props: {
                 onRangeChange={(next) => {
                   setRange(next)
                   setCustomWindow(undefined)
-                }}
-              />
-              <OperationsObservationFilters
-                key={`${tab}:${range}:${customWindow?.start_timestamp ?? ''}:${customWindow?.end_timestamp ?? ''}`}
-                tab={tab}
-                snapshot={snapshot}
-                window={observation.window ?? operationsWindow(range)}
-                customWindow={customWindow}
-                modelName={modelName}
-                loading={query.isFetching}
-                onApply={(filters) => {
-                  setModelName(filters.modelName)
-                  setCustomWindow(filters.customWindow)
                 }}
               />
               {fullscreen.failed && (
@@ -270,7 +252,7 @@ function OperationsScreenReport(props: {
                   >
                     {operationsTabs
                       .filter((item) => props.available.includes(item.value))
-                      .map((item, index) => {
+                      .map((item) => {
                         const Icon = tabIcons[item.value]
                         return (
                           <TabsTrigger
@@ -278,9 +260,6 @@ function OperationsScreenReport(props: {
                             value={item.value}
                             className='ops-tab min-h-10 min-w-24 flex-none px-3 sm:px-4'
                           >
-                            <span className='ops-tab-index' aria-hidden='true'>
-                              {String(index + 1).padStart(2, '0')}
-                            </span>
                             <Icon aria-hidden='true' />
                             {t(item.labelKey)}
                           </TabsTrigger>
@@ -288,58 +267,43 @@ function OperationsScreenReport(props: {
                       })}
                   </TabsList>
                 </div>
+                <OperationsObservationFilters
+                  key={`${tab}:${range}:${customWindow?.start_timestamp ?? ''}:${customWindow?.end_timestamp ?? ''}`}
+                  tab={tab}
+                  snapshot={snapshot}
+                  window={observation.window ?? operationsWindow(range)}
+                  customWindow={customWindow}
+                  modelName={modelName}
+                  loading={query.isFetching}
+                  onApply={(filters) => {
+                    setModelName(filters.modelName)
+                    setCustomWindow(filters.customWindow)
+                  }}
+                />
                 <TabsContent
                   value={tab}
                   className='ops-screen-panel min-w-0 space-y-5 pt-3'
                 >
                   <section
-                    className='ops-hud-deck'
+                    className='ops-observation-content'
                     aria-label={t('Operations screen')}
                   >
-                    <div className='ops-hud-core-slot'>
-                      <HolographicCore
-                        snapshot={snapshot}
-                        paused={decorationPaused}
-                        stale={observation.stale || query.isError}
-                      />
-                    </div>
-                    <div className='ops-hud-flank ops-hud-flank--left'>
-                      {snapshot ? (
-                        <OperationsScienceCharts
-                          snapshot={snapshot}
-                          slot='left'
-                        />
-                      ) : (
-                        <div className='ops-hud-pending'>
-                          {query.isPending && query.isFetching ? (
-                            <LoadingState inline />
-                          ) : (
-                            <EmptyState title={t('No successful sample yet')} />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <HologramCanvas paused={decorationPaused} />
-                    <div className='ops-hud-flank ops-hud-flank--right'>
-                      {snapshot ? (
-                        <OperationsScienceCharts
-                          snapshot={snapshot}
-                          slot='right'
-                        />
-                      ) : (
-                        <div className='ops-hud-pending'>
-                          {t('Awaiting data')}
-                        </div>
-                      )}
-                    </div>
-                    <span
-                      className='ops-hud-link ops-hud-link--left'
-                      aria-hidden='true'
+                    <HolographicCore
+                      snapshot={snapshot}
+                      paused={decorationPaused}
+                      stale={observation.stale || query.isError}
                     />
-                    <span
-                      className='ops-hud-link ops-hud-link--right'
-                      aria-hidden='true'
-                    />
+                    {snapshot ? (
+                      <OperationsScienceCharts snapshot={snapshot} />
+                    ) : (
+                      <div className='ops-empty-stage'>
+                        {query.isPending && query.isFetching ? (
+                          <LoadingState inline />
+                        ) : (
+                          <EmptyState title={t('No successful sample yet')} />
+                        )}
+                      </div>
+                    )}
                   </section>
                   {query.isError && query.data && (
                     <p className='text-muted-foreground text-xs'>

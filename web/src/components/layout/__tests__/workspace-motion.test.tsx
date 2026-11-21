@@ -45,7 +45,10 @@ test('pausing and resuming workspace effects keeps an edited draft mounted and u
   const user = userEvent.setup()
   render(
     <ObsidianWorkspace>
-      <label>Reply draft<input /></label>
+      <label>
+        Reply draft
+        <input />
+      </label>
     </ObsidianWorkspace>
   )
   const draft = screen.getByRole('textbox', { name: 'Reply draft' })
@@ -53,27 +56,44 @@ test('pausing and resuming workspace effects keeps an edited draft mounted and u
   const pause = screen.getByRole('button', { name: 'Pause effects' })
   expect(pause).toHaveAttribute('aria-pressed', 'true')
   await user.click(pause)
-  expect(screen.getByRole('button', { name: 'Enable effects' })).toHaveAttribute('aria-pressed', 'false')
+  expect(
+    screen.getByRole('button', { name: 'Enable effects' })
+  ).toHaveAttribute('aria-pressed', 'false')
   expect(draft).toHaveValue('Keep this original draft')
   await user.click(screen.getByRole('button', { name: 'Enable effects' }))
-  expect(screen.getByRole('button', { name: 'Pause effects' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'Pause effects' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
   expect(screen.getByRole('textbox', { name: 'Reply draft' })).toBe(draft)
   expect(draft).toHaveValue('Keep this original draft')
 })
 
 test('system reduced motion keeps the workspace static and disables the animation toggle', () => {
   motionPreference(true)
-  const { container } = render(<ObsidianWorkspace>Workspace content</ObsidianWorkspace>)
-  expect(screen.getByRole('button', { name: 'System reduced motion is enabled' })).toBeDisabled()
-  expect(container.querySelector('.obsidian-workspace')).toHaveAttribute('data-effects-running', 'false')
-  expect(container.querySelector('.relay-obsidian-object')).toHaveAttribute('data-paused', 'true')
+  const { container } = render(
+    <ObsidianWorkspace>Workspace content</ObsidianWorkspace>
+  )
+  expect(
+    screen.getByRole('button', { name: 'System reduced motion is enabled' })
+  ).toBeDisabled()
+  expect(container.querySelector('.obsidian-workspace')).toHaveAttribute(
+    'data-effects-running',
+    'false'
+  )
+  expect(container.querySelector('.relay-obsidian-object')).toHaveAttribute(
+    'data-paused',
+    'true'
+  )
 })
 
 test('a hidden document pauses decorations and becoming visible respects the manual pause', async () => {
   motionPreference(false)
   const visibility = vi.spyOn(document, 'visibilityState', 'get')
   visibility.mockReturnValue('visible')
-  const { container } = render(<ObsidianWorkspace>Workspace content</ObsidianWorkspace>)
+  const { container } = render(
+    <ObsidianWorkspace>Workspace content</ObsidianWorkspace>
+  )
   const workspace = container.querySelector('.obsidian-workspace')
   expect(workspace).toHaveAttribute('data-effects-running', 'true')
   act(() => {
@@ -93,5 +113,29 @@ test('a hidden document pauses decorations and becoming visible respects the man
     document.dispatchEvent(new Event('visibilitychange'))
   })
   expect(workspace).toHaveAttribute('data-effects-running', 'false')
-  expect(screen.getByRole('button', { name: 'Enable effects' })).toHaveAttribute('aria-pressed', 'false')
+  expect(
+    screen.getByRole('button', { name: 'Enable effects' })
+  ).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('a dedicated operations stage removes the shared canvas while keeping working content mounted', async () => {
+  motionPreference(false)
+  const content = (
+    <label>
+      Reply draft
+      <input />
+    </label>
+  )
+  const view = render(<ObsidianWorkspace>{content}</ObsidianWorkspace>)
+  const draft = screen.getByRole('textbox', { name: 'Reply draft' })
+  await userEvent.type(draft, 'Keep working content')
+  view.rerender(
+    <ObsidianWorkspace showStage={false}>{content}</ObsidianWorkspace>
+  )
+  expect(
+    screen.queryByRole('button', { name: 'Pause effects' })
+  ).not.toBeInTheDocument()
+  expect(view.container.querySelector('canvas')).not.toBeInTheDocument()
+  expect(screen.getByRole('textbox', { name: 'Reply draft' })).toBe(draft)
+  expect(draft).toHaveValue('Keep working content')
 })

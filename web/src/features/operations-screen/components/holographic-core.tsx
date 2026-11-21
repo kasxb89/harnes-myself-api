@@ -214,33 +214,30 @@ export function HolographicCore({
       aria-labelledby={labelId}
       aria-describedby={snapshot?.tab === 'profit' ? undefined : noteId}
     >
-      <div className='ops-holo-stage'>
-        <div className='ops-holo-accent' aria-hidden='true' />
-        <div className='ops-holo-readout'>
-          <h2 id={labelId} className='ops-holo-label'>
-            {t(data?.primary.labelKey ?? 'No successful sample yet')}
-          </h2>
-          <output className='ops-holo-value' aria-labelledby={labelId}>
-            {data ? format(data.primary) : '—'}
-          </output>
-          <p className='ops-holo-eyebrow'>{t(status)}</p>
-          <div className='ops-holo-readout__rule' aria-hidden='true'>
-            <i />
-            <i />
-            <i />
+      <div className='ops-holo-accent' aria-hidden='true' />
+      <div className='ops-holo-band'>
+        <div className='ops-holo-stage'>
+          <div className='ops-holo-readout'>
+            <h2 id={labelId} className='ops-holo-label'>
+              {t(data?.primary.labelKey ?? 'No successful sample yet')}
+            </h2>
+            <output className='ops-holo-value' aria-labelledby={labelId}>
+              {data ? format(data.primary) : '—'}
+            </output>
+            <p className='ops-holo-eyebrow'>{t(status)}</p>
           </div>
         </div>
+        {data && data.stats.length > 0 && (
+          <dl className='ops-holo-telemetry'>
+            {data.stats.map((stat) => (
+              <div key={stat.labelKey} className='ops-holo-stat'>
+                <dt>{t(stat.labelKey)}</dt>
+                <dd>{format(stat)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
-      {data && data.stats.length > 0 && (
-        <dl className='ops-holo-telemetry'>
-          {data.stats.map((stat) => (
-            <div key={stat.labelKey} className='ops-holo-stat'>
-              <dt>{t(stat.labelKey)}</dt>
-              <dd>{format(stat)}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
       {snapshot?.tab !== 'profit' && (
         <p id={noteId} className='ops-holo-note'>
           {t(data?.noteKey ?? 'No chart observations')}

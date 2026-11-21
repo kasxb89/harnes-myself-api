@@ -319,14 +319,12 @@ it('marks the retained sample stale and stops its animation after a failed refre
   const shell = screen
     .getByRole('heading', { name: 'Operations screen', level: 1 })
     .closest('.operations-screen')
-  const projection = shell?.querySelector('.ops-hud-projection')
+  const projection = shell?.querySelector(
+    '.ops-studio-art .relay-obsidian-object'
+  )
   expect(core).toHaveAttribute('data-stale', 'false')
   expect(shell).toHaveAttribute('data-paused', 'false')
   expect(projection).toHaveAttribute('data-paused', 'false')
-  expect(shell?.querySelector('.ops-robot-background')).toHaveAttribute(
-    'data-paused',
-    'false'
-  )
   api.defaults.adapter = async (config) => ({
     data: { success: false, message: 'Fixture refresh unavailable' },
     status: 200,
@@ -342,10 +340,6 @@ it('marks the retained sample stale and stops its animation after a failed refre
   expect(core).toHaveAttribute('data-paused', 'true')
   expect(shell).toHaveAttribute('data-paused', 'true')
   expect(projection).toHaveAttribute('data-paused', 'true')
-  expect(shell?.querySelector('.ops-robot-background')).toHaveAttribute(
-    'data-paused',
-    'true'
-  )
   expect(within(core).getByText('Stale sample')).toBeVisible()
 })
 it.each([false, true])(
@@ -359,21 +353,19 @@ it.each([false, true])(
     const shell = screen
       .getByRole('heading', { name: 'Operations screen', level: 1 })
       .closest('.operations-screen')
-    const projection = shell?.querySelector('.ops-hud-projection')
+    const projection = shell?.querySelector(
+      '.ops-studio-art .relay-obsidian-object'
+    )
     expect(shell).toHaveAttribute('data-paused', 'false')
     expect(projection).toHaveAttribute('data-paused', String(reducedMotion))
-    const robot = shell?.querySelector('.ops-robot-background')
-    expect(robot).toHaveAttribute('data-paused', String(reducedMotion))
-    expect(robot).toHaveAttribute('aria-hidden', 'true')
     expect(projection).toHaveAttribute('aria-hidden', 'true')
-    expect(shell?.querySelector('.ops-scanline')).toHaveAttribute(
+    expect(shell?.querySelector('.ops-studio-track')).toHaveAttribute(
       'aria-hidden',
       'true'
     )
     await userEvent.click(screen.getByRole('button', { name: 'Pause' }))
     expect(shell).toHaveAttribute('data-paused', 'true')
     expect(projection).toHaveAttribute('data-paused', 'true')
-    expect(robot).toHaveAttribute('data-paused', 'true')
     expect(
       screen.getByRole('region', { name: 'Occupied admission slots' })
     ).toHaveAttribute('data-paused', 'true')
@@ -395,7 +387,6 @@ it.each([false, true])(
     await userEvent.click(screen.getByRole('button', { name: 'Resume' }))
     expect(shell).toHaveAttribute('data-paused', 'false')
     expect(projection).toHaveAttribute('data-paused', String(reducedMotion))
-    expect(robot).toHaveAttribute('data-paused', String(reducedMotion))
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveAttribute(
       'aria-pressed',
       'false'
@@ -547,7 +538,9 @@ it('shows a failed first observation without presenting a successful zero sample
   const shell = screen
     .getByRole('heading', { name: 'Operations screen', level: 1 })
     .closest('.operations-screen')
-  const projection = shell?.querySelector('.ops-hud-projection')
+  const projection = shell?.querySelector(
+    '.ops-studio-art .relay-obsidian-object'
+  )
   expect(shell).toHaveAttribute('data-paused', 'true')
   expect(projection).toHaveAttribute('data-paused', 'true')
   expect(

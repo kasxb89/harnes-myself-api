@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import type { useProfitFullscreen } from '@/features/model-profits/lib/use-profit-fullscreen'
+import { ObsidianObject } from '@/features/relay-portal/obsidian-object'
 import { ActivityTimestamp } from '@/features/user-activity/display'
 import { cn } from '@/lib/utils'
 
@@ -40,6 +41,7 @@ export function OperationsScreenToolbar(props: {
   observation: ReturnType<typeof useOperationsQuery>
   fullscreen: ReturnType<typeof useProfitFullscreen>
   paused: boolean
+  decorationPaused: boolean
   onPause: () => void
   range: OperationsRange
   customRange?: boolean
@@ -66,22 +68,64 @@ export function OperationsScreenToolbar(props: {
   return (
     <>
       <header className='ops-command-header'>
-        <div className='ops-command-context'>
-          <span className='ops-kicker'>{t('Last successful update')}</span>
-          {query.dataUpdatedAt ? (
-            <ActivityTimestamp value={query.dataUpdatedAt / 1000} />
-          ) : (
-            <span className='ops-context-empty'>
-              {t('No successful sample yet')}
-            </span>
-          )}
-        </div>
         <div className='ops-brand'>
           <p className='ops-kicker'>{t('Platform operations')}</p>
           <h1 className='ops-command-title'>{t('Operations screen')}</h1>
-          <span className='ops-title-track' aria-hidden='true' />
+          <div className='ops-command-context'>
+            <span>{t('Last successful update')}</span>
+            {query.dataUpdatedAt ? (
+              <ActivityTimestamp value={query.dataUpdatedAt / 1000} />
+            ) : (
+              <span>{t('No successful sample yet')}</span>
+            )}
+          </div>
         </div>
-        <div className='ops-controls flex flex-wrap items-center gap-2'>
+        <div className='ops-studio-art' aria-hidden='true'>
+          <ObsidianObject running={!props.decorationPaused} />
+        </div>
+        <div className='ops-studio-track' aria-hidden='true' />
+      </header>
+      <div className='ops-command-bar'>
+        <div
+          className='ops-observation-status'
+          data-state={state}
+          role='status'
+          aria-label={t('Refresh status')}
+        >
+          <span className='ops-status-light' aria-hidden='true' />
+          <Badge className='ops-status-badge' variant='secondary'>
+            {status}
+          </Badge>
+          {props.observation.stale && status !== t('Stale sample') && (
+            <Badge variant='outline'>{t('Stale sample')}</Badge>
+          )}
+          <span className='ops-refresh-cadence'>
+            {t('Automatic refresh every {{seconds}} seconds', {
+              seconds: props.observation.interval / 1000,
+            })}
+          </span>
+        </div>
+        <div className='ops-controls'>
+          <Combobox
+            aria-label={t('Observation window')}
+            className='ops-window-picker'
+            popupClassName='ops-screen-popover'
+            disabled={props.timeFiltersSupported === false}
+            value={props.customRange ? 'custom' : props.range}
+            options={[
+              ...(props.customRange
+                ? [{ value: 'custom', label: t('Custom time range') }]
+                : []),
+              { value: '5m', label: t('Last 5 minutes') },
+              { value: '1h', label: t('Last hour') },
+              { value: '24h', label: t('Last 24 hours') },
+            ]}
+            onValueChange={(value) => {
+              if (value === '5m' || value === '1h' || value === '24h') {
+                props.onRangeChange(value)
+              }
+            }}
+          />
           <Button
             variant='outline'
             onClick={props.onPause}
@@ -121,56 +165,13 @@ export function OperationsScreenToolbar(props: {
               : t('Enter fullscreen')}
           </Button>
         </div>
-      </header>
-      <div className='ops-observation-rail flex min-w-0 flex-wrap items-center justify-between gap-3'>
-        <div
-          className='ops-observation-status flex min-w-0 flex-wrap items-center gap-2'
-          data-state={state}
-          role='status'
-          aria-label={t('Refresh status')}
-        >
-          <span className='ops-status-light' aria-hidden='true' />
-          <Badge className='ops-status-badge' variant='secondary'>
-            {status}
-          </Badge>
-          {props.observation.stale && status !== t('Stale sample') && (
-            <Badge variant='outline'>{t('Stale sample')}</Badge>
-          )}
-          <span className='ops-refresh-cadence text-muted-foreground text-xs'>
-            {t('Automatic refresh every {{seconds}} seconds', {
-              seconds: props.observation.interval / 1000,
-            })}
-          </span>
-        </div>
-        <Combobox
-          aria-label={t('Observation window')}
-          className='ops-window-picker w-full sm:w-44'
-          popupClassName='ops-screen-popover'
-          disabled={props.timeFiltersSupported === false}
-          value={props.customRange ? 'custom' : props.range}
-          options={[
-            ...(props.customRange
-              ? [{ value: 'custom', label: t('Custom time range') }]
-              : []),
-            { value: '5m', label: t('Last 5 minutes') },
-            { value: '1h', label: t('Last hour') },
-            { value: '24h', label: t('Last 24 hours') },
-          ]}
-          onValueChange={(value) => {
-            if (value === '5m' || value === '1h' || value === '24h') {
-              props.onRangeChange(value)
-            }
-          }}
-        />
       </div>
       <div className='ops-time-rail'>
         <div className='ops-time-cell'>
-          <span className='ops-time-label'>
-            <Clock3 aria-hidden='true' />
-            {t('Query time window')}
-          </span>
+          <Clock3 aria-hidden='true' />
+          <span>{t('Query time window')}</span>
           {props.observation.window ? (
-            <span className='inline-flex max-w-full flex-wrap gap-x-1'>
+            <span className='ops-time-range'>
               <ActivityTimestamp
                 value={props.observation.window.start_timestamp}
               />
@@ -183,11 +184,19 @@ export function OperationsScreenToolbar(props: {
             t('Awaiting data')
           )}
         </div>
-        <p className='ops-command-description'>
-          {t(
-            'Read-only operational samples. Only the selected tab refreshes; this is not an exact real-time stream.'
-          )}
-        </p>
+        <details className='ops-data-notes'>
+          <summary>{t('Data notes')}</summary>
+          <p>
+            {t(
+              'Read-only operational samples. Only the selected tab refreshes; this is not an exact real-time stream.'
+            )}
+          </p>
+          <p>
+            {t(
+              'Typed timestamps use your browser timezone. Future end times are capped at now. Confirm the time range, then apply filters.'
+            )}
+          </p>
+        </details>
       </div>
     </>
   )

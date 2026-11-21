@@ -19,221 +19,205 @@ For commercial licensing, please contact support@quantumnous.com
 .operations-screen .ops-holo-core {
   position: relative;
   isolation: isolate;
-  display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   overflow: hidden;
-  border: 1px solid #345b76;
-  border-radius: 8px;
-  color: #e6f5ff;
-  background:
-    radial-gradient(ellipse at 6% 0, #23729432, transparent 48%),
-    linear-gradient(110deg, #112c41eb, #0c1c30f2 60%);
-  box-shadow:
-    inset 0 1px #a4efff14,
-    0 7px 28px #0000001a;
+  border: 1px solid #333;
+  border-radius: 0;
+  background: #080808;
+  color: #fff;
+  box-shadow: none;
 }
-.operations-screen .ops-holo-core::before {
-  content: '';
-  position: absolute;
-  z-index: 2;
-  inset: 0 auto auto 0;
-  width: 25%;
-  height: 2px;
-  background: linear-gradient(90deg, #9bf1ff, #55c4e280, transparent);
-  box-shadow: 0 0 10px #5ad6ff40;
-  pointer-events: none;
+.operations-screen .ops-holo-band {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 2fr);
+  align-items: stretch;
 }
-.operations-screen .ops-holo-core .ops-holo-stage {
-  position: relative;
+.operations-screen .ops-holo-stage {
   display: flex;
   min-width: 0;
-  min-height: 138px;
   align-items: center;
-  padding: 14px 25px;
-  overflow: hidden;
+  padding: 28px 30px;
 }
-.operations-screen .ops-holo-core .ops-holo-stage::after {
-  content: '';
-  position: absolute;
-  inset: 23px 0;
-  width: 1px;
-  margin-left: auto;
-  background: linear-gradient(180deg, transparent, #4e93ac80, transparent);
-  pointer-events: none;
-}
-.operations-screen .ops-holo-core .ops-holo-accent {
-  position: absolute;
-  inset: 20px 12px 20px auto;
-  width: 112px;
-  opacity: 0.6;
-  background: repeating-linear-gradient(
-    130deg,
-    transparent 0 17px,
-    #64d9f914 17px 18px,
-    transparent 18px 35px
-  );
-  mask-image: linear-gradient(90deg, transparent, #000);
-  pointer-events: none;
-}
-.operations-screen .ops-holo-core .ops-holo-accent::after {
-  content: '';
-  position: absolute;
-  inset: 50% 10px auto auto;
-  width: 43px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #7ee1f5);
-  box-shadow:
-    0 8px #5cb9d333,
-    0 -8px #5cb9d333;
-}
-.operations-screen .ops-holo-core .ops-holo-readout {
-  position: relative;
-  z-index: 1;
+.operations-screen .ops-holo-readout {
   display: flex;
   min-width: 0;
   width: 100%;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: center;
-  gap: 5px;
+  gap: 13px;
 }
-.operations-screen .ops-holo-core .ops-holo-eyebrow {
-  display: flex;
-  margin: 0 0 2px;
-  align-items: center;
-  gap: 7px;
-  color: #a6dce9;
-  font-size: 10px;
-  line-height: 1.5;
-  letter-spacing: 0.12em;
-}
-.operations-screen .ops-holo-core .ops-holo-eyebrow::before {
-  content: '';
-  display: block;
-  width: 4px;
-  height: 4px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #84e8f3;
-  box-shadow: 0 0 6px #5ad6ff70;
-}
-.operations-screen .ops-holo-core .ops-holo-label {
+.operations-screen .ops-holo-label {
+  max-width: 100%;
   margin: 0;
-  max-width: 100%;
-  color: #c6e1f3;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.5;
+  color: #ccc;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 400;
   overflow-wrap: anywhere;
 }
-.operations-screen .ops-holo-core .ops-holo-value {
+.operations-screen .ops-holo-value {
   display: block;
   max-width: 100%;
-  overflow-wrap: anywhere;
-  color: #effcff;
+  color: #fff;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: clamp(30px, 3vw, 46px);
-  font-weight: 600;
+  font-size: clamp(40px, 4vw, 68px);
+  font-weight: 550;
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
-  letter-spacing: -0.05em;
-  text-shadow: 0 0 22px #62dbff30;
+  line-height: 1.12;
+  letter-spacing: -0.065em;
+  overflow-wrap: anywhere;
 }
-.operations-screen .ops-holo-core .ops-holo-readout__rule {
-  display: flex;
-  gap: 4px;
-  height: 2px;
-  margin-top: 1px;
+.operations-screen .ops-holo-eyebrow {
+  margin: 0;
+  color: #aaa;
+  font-size: 13px;
+  line-height: 1.6;
 }
-.operations-screen .ops-holo-core .ops-holo-readout__rule i {
-  width: 9px;
-  background: #4b8ba9;
-}
-.operations-screen .ops-holo-core .ops-holo-readout__rule i:nth-child(2) {
-  width: 36px;
-  background: #7ce4fa;
-}
-.operations-screen .ops-holo-core .ops-holo-telemetry {
+.operations-screen .ops-holo-telemetry {
   display: grid;
   min-width: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
   align-items: stretch;
   margin: 0;
+  border-left: 1px solid #333;
 }
-.operations-screen .ops-holo-core .ops-holo-stat {
-  position: relative;
+.operations-screen .ops-holo-stat {
   display: flex;
   min-width: 0;
   flex-direction: column;
   justify-content: center;
-  gap: 11px;
-  padding: 18px 27px;
+  gap: 18px;
+  padding: 28px 30px;
 }
-.operations-screen .ops-holo-core .ops-holo-stat + .ops-holo-stat::before {
-  content: '';
-  position: absolute;
-  inset: 25px auto 25px 0;
-  width: 1px;
-  background: linear-gradient(180deg, transparent, #4e93ac70, transparent);
-  pointer-events: none;
+.operations-screen .ops-holo-stat + .ops-holo-stat {
+  border-left: 1px solid #282828;
 }
-.operations-screen .ops-holo-core .ops-holo-stat dt {
-  color: #b9d5e9;
-  font-size: 12px;
+.operations-screen .ops-holo-stat dt {
+  color: #ccc;
+  font-size: 13px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
-.operations-screen .ops-holo-core .ops-holo-stat dd {
+.operations-screen .ops-holo-stat dd {
+  max-width: 100%;
   margin: 0;
-  color: #a4eaff;
+  color: #fff;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: clamp(21px, 2.1vw, 32px);
-  font-weight: 550;
+  font-size: clamp(25px, 2.3vw, 38px);
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-  letter-spacing: -0.04em;
+  line-height: 1.25;
+  letter-spacing: -0.045em;
   overflow-wrap: anywhere;
 }
-.operations-screen .ops-holo-core .ops-holo-note {
-  grid-column: 1 / -1;
+.operations-screen .ops-holo-note {
   margin: 0;
-  padding: 7px 20px;
-  border-top: 1px solid #2b4a62;
-  color: #aac3d8;
-  background: #08162680;
-  font-size: 11px;
+  padding: 13px 30px;
+  border-top: 1px solid #282828;
+  color: #aaa;
+  font-size: 13px;
   line-height: 1.7;
   text-wrap: pretty;
 }
-.operations-screen .ops-holo-core .ops-holo-note--funding {
-  color: #ecd3aa;
-  background: #2a292466;
-}
-.operations-screen .ops-holo-core[data-secondary-count='0'] {
+.operations-screen .ops-holo-core[data-secondary-count='0'] .ops-holo-band {
   grid-template-columns: minmax(0, 1fr);
 }
 .operations-screen
-  .ops-holo-core[data-secondary-count='0']
-  .ops-holo-stage::after {
-  display: none;
+  .ops-holo-core[data-secondary-count='3']
+  .ops-holo-telemetry {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .operations-screen .ops-holo-core[data-stale='true'] .ops-holo-eyebrow {
-  color: #f3cb8a;
+  color: #fc1c46;
   text-decoration: underline dotted;
   text-underline-offset: 4px;
 }
-.operations-screen .ops-holo-core[data-stale='true'] .ops-holo-eyebrow::before {
-  background: #f3cb8a;
-  box-shadow: none;
+.operations-screen .ops-holo-accent {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 32%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #fff 65%,
+    #fc1c46 85%,
+    transparent
+  );
+  pointer-events: none;
+  animation: ops-kpi-accent-travel 14s linear infinite;
 }
-.operations-screen .ops-holo-core[data-paused='true'] *,
-.operations-screen .ops-holo-core[data-paused='true'] *::before,
-.operations-screen .ops-holo-core[data-paused='true'] *::after {
-  animation-play-state: paused !important;
+.operations-screen .ops-holo-core[data-paused='true'] .ops-holo-accent,
+.obsidian-workspace[data-effects-running='false'] .ops-holo-accent {
+  animation-play-state: paused;
 }
+@keyframes ops-kpi-accent-travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(413%);
+  }
+}
+@container ops-dashboard (max-width: 900px) {
+  .operations-screen .ops-holo-band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .operations-screen .ops-holo-stage {
+    padding: 24px;
+  }
+  .operations-screen .ops-holo-telemetry {
+    border-top: 1px solid #333;
+    border-left: 0;
+  }
+  .operations-screen .ops-holo-stat {
+    padding: 22px 24px;
+    gap: 12px;
+  }
+  .operations-screen .ops-holo-note {
+    padding-inline: 24px;
+  }
+}
+@container ops-dashboard (max-width: 520px) {
+  .operations-screen .ops-holo-stage {
+    padding: 22px 20px;
+  }
+  .operations-screen .ops-holo-value {
+    font-size: 44px;
+  }
+  .operations-screen .ops-holo-stat {
+    padding: 20px;
+  }
+  .operations-screen .ops-holo-stat dd {
+    font-size: 27px;
+  }
+  .operations-screen
+    .ops-holo-core[data-secondary-count='3']
+    .ops-holo-telemetry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .operations-screen
+    .ops-holo-core[data-secondary-count='3']
+    .ops-holo-stat:last-child {
+    grid-column: 1 / -1;
+    border-top: 1px solid #282828;
+    border-left: 0;
+  }
+  .operations-screen .ops-holo-note {
+    padding-inline: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .operations-screen .ops-holo-accent {
+    animation: none;
+    transform: none;
+  }
+}
+
 /* Renderer state controls progressive enhancement; all geometry belongs to WebGL. */
 .operations-screen .ops-hud-projection {
   position: relative;
@@ -309,54 +293,10 @@ For commercial licensing, please contact support@quantumnous.com
   .ops-reactor-fallback {
   display: none;
 }
-@media (max-width: 799px) {
-  .operations-screen .ops-holo-core {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .operations-screen .ops-holo-core .ops-holo-stage {
-    min-height: 123px;
-    padding: 15px 20px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-stage::after {
-    display: none;
-  }
-  .operations-screen .ops-holo-core .ops-holo-accent {
-    width: 96px;
-    right: 16px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-readout {
-    gap: 5px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-value {
-    font-size: 34px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-telemetry {
-    border-top: 1px solid #29475f;
-    background: #0b1b2c80;
-  }
-  .operations-screen .ops-holo-core .ops-holo-stat {
-    gap: 5px;
-    padding: 12px 19px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-stat + .ops-holo-stat::before {
-    inset-block: 13px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-stat dt {
-    font-size: 11px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-stat dd {
-    font-size: 23px;
-  }
-  .operations-screen .ops-holo-core .ops-holo-note {
-    padding: 9px 16px;
-    font-size: 10px;
-    line-height: 1.65;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .operations-screen :is(.ops-holo-core, .ops-hud-projection) *,
-  .operations-screen :is(.ops-holo-core, .ops-hud-projection) *::before,
-  .operations-screen :is(.ops-holo-core, .ops-hud-projection) *::after {
+  .operations-screen .ops-hud-projection *,
+  .operations-screen .ops-hud-projection *::before,
+  .operations-screen .ops-hud-projection *::after {
     animation: none !important;
   }
 }

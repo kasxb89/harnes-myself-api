@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useRouterState } from '@tanstack/react-router'
+
 import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -36,6 +38,10 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const showWorkspaceStage = useRouterState({
+    select: (state) =>
+      !state.location.pathname.startsWith('/operations-screen'),
+  })
 
   return (
     <LayoutProvider>
@@ -56,7 +62,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              <ObsidianWorkspace>
+              <ObsidianWorkspace showStage={showWorkspaceStage}>
                 {props.children ?? <AnimatedOutlet />}
               </ObsidianWorkspace>
             </SidebarInset>

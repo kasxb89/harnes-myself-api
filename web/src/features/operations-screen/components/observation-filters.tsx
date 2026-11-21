@@ -159,13 +159,6 @@ export function OperationsObservationFilters(props: {
           )}
         </p>
       )}
-      {timeEnabled && (
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Typed timestamps use your browser timezone. Future end times are capped at now. Confirm the time range, then apply filters.'
-          )}
-        </p>
-      )}
       {timeEnabled && !valid && (
         <p role='alert' className='text-sm'>
           {t(

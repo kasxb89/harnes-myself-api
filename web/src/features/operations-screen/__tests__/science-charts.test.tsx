@@ -275,3 +275,45 @@ it('can mount one real chart per HUD flank without duplicating charts inside ret
     screen.getByRole('table', { name: 'Recent consumption records' })
   ).toBeVisible()
 })
+
+it('keeps the unit visible and the full sampling scope accessible before expanding chart values', () => {
+  render(<OperationsScienceCharts snapshot={usage} slot='left' />)
+  const panel = screen.getByRole('region', {
+    name: 'Model consumption records (page sample)',
+  })
+  expect(within(panel).getByLabelText('Unit: Log records')).toBeVisible()
+  const scope = within(panel).getByText(
+    'Chart sample: 2 returned log records of 123 matches. Settlement records are not distinct API calls.'
+  )
+  expect(scope).not.toBeVisible()
+  expect(panel).toHaveAccessibleDescription(
+    /2 returned log records of 123 matches/
+  )
+  fireEvent.click(within(panel).getByText('Chart values'))
+  expect(scope).toBeVisible()
+  expect(within(panel).getByText('Scope')).toBeVisible()
+  expect(within(panel).getByRole('table')).toBeVisible()
+})
+
+it('retains a complete long model label in chart values when its axis label is shortened', () => {
+  const modelName = 'long-model-name-with-an-exact-channel-suffix'
+  render(
+    <OperationsScienceCharts
+      snapshot={{
+        ...usage,
+        logs: { items: [{ ...row, model_name: modelName }], total: 123 },
+      }}
+      slot='left'
+    />
+  )
+  const panel = screen.getByRole('region', {
+    name: 'Model consumption records (page sample)',
+  })
+  fireEvent.click(within(panel).getByText('Chart values'))
+  const values = within(panel).getByRole('table')
+  expect(within(values).getByText(modelName)).toBeVisible()
+  expect(
+    within(values).getByRole('row', { name: `${modelName} 1` })
+  ).toBeVisible()
+  expect(within(values).queryByText('123')).not.toBeInTheDocument()
+})

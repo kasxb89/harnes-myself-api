@@ -233,6 +233,44 @@ it('shows total matching usage and error records without promoting returned-page
     )
   ).toBeVisible()
 })
+it('groups the primary and all three usage metrics in one readable band without shortening large counts or moving the accounting note into the metrics', () => {
+  const { container } = render(
+    <HolographicCore
+      snapshot={{
+        tab: 'usage',
+        window,
+        logs: { items: [], total: Number.MAX_SAFE_INTEGER },
+        stats: { quota: 100, rpm: 0, tpm: 120000, user_count: 1234567890 },
+      }}
+      paused={false}
+    />
+  )
+  const region = screen.getByRole('region', {
+    name: 'Consumption records in range',
+  })
+  const primary = screen.getByRole('status', {
+    name: 'Consumption records in range',
+  })
+  const band = container.querySelector('.ops-holo-band')
+  expect(band).toContainElement(primary)
+  expect(primary).toHaveTextContent('9,007,199,254,740,991')
+  expect(
+    [...region.querySelectorAll('dt')].map((item) => item.textContent)
+  ).toEqual([
+    'Calling users in range',
+    'Consumption records in the last 60 seconds',
+    'Tokens recorded in the last 60 seconds',
+  ])
+  expect(
+    [...region.querySelectorAll('dd')].map((item) => item.textContent)
+  ).toEqual(['1,234,567,890', '0', '120,000'])
+  const note = screen.getByText(
+    /Missing or delayed records are not a complete live count/
+  )
+  expect(band).not.toContainElement(note)
+  expect(region).toHaveAccessibleDescription(note.textContent ?? '')
+  expect(container.querySelector('canvas')).not.toBeInTheDocument()
+})
 it('counts the five observed persisted media states without implying an upstream capacity or complete live queue', () => {
   render(
     <HolographicCore

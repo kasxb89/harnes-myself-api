@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChartNoAxesCombined } from 'lucide-react'
+import { ChartNoAxesCombined, ChevronDown } from 'lucide-react'
 import { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -147,6 +147,10 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
     minimum,
     maximum === minimum ? minimum + 1 : maximum,
   ]
+  const chartHeight =
+    chart.kind === 'bar'
+      ? Math.max(260, rows.length * (chart.series.length > 2 ? 40 : 30) + 60)
+      : 260
   const columns: StaticDataTableColumn<(typeof rows)[number]>[] = [
     {
       id: 'category',
@@ -195,25 +199,26 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
   )
   return (
     <section
-      className='ops-chart-panel min-w-0 rounded-xl border p-4'
+      className='ops-chart-panel flex min-w-0 flex-col rounded-xl border p-4 sm:p-5'
       aria-labelledby={headingId}
       aria-describedby={noteId}
+      data-chart-kind={chart.kind}
     >
-      <header className='ops-chart-header flex flex-col gap-2'>
-        <h3 id={headingId} className='ops-chart-title font-semibold'>
-          {title}
-        </h3>
-        <p id={noteId} className='ops-chart-note text-xs'>
-          {t(chart.noteKey, noteValues)}
-        </p>
-        {chart.sample && chart.noteKey !== sampleKeys[chart.sample.kind] && (
-          <p className='ops-chart-note text-xs'>
-            {t(sampleKeys[chart.sample.kind], {
-              shown: formatNumber(chart.sample.shown, locale),
-              total: formatNumber(chart.sample.total, locale),
-            })}
-          </p>
-        )}
+      <header className='ops-chart-header flex flex-col gap-2.5'>
+        <div className='ops-chart-heading flex w-full items-start justify-between gap-4'>
+          <h3
+            id={headingId}
+            className='ops-chart-title min-w-0 text-sm leading-6 font-semibold'
+          >
+            {title}
+          </h3>
+          <span
+            className='ops-chart-unit shrink-0 rounded-full border border-(--ops-grid) px-2.5 py-1 text-xs leading-4'
+            aria-label={`${t('Unit')}: ${unit}`}
+          >
+            {unit}
+          </span>
+        </div>
         {chart.unknownPools !== undefined && chart.unknownPools > 0 && (
           <p className='ops-chart-note text-xs'>
             {t('Unknown upstream pools: {{count}}', {
@@ -230,9 +235,10 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
       </header>
       {hasPlot ? (
         <ChartContainer
-          className='ops-chart-canvas mt-4 aspect-auto h-80 w-full'
+          className='ops-chart-canvas mt-3 aspect-auto w-full'
+          style={{ height: chartHeight }}
           config={config}
-          initialDimension={{ width: 560, height: 320 }}
+          initialDimension={{ width: 560, height: chartHeight }}
           role='img'
           aria-label={`${title} · ${unit}`}
         >
@@ -240,18 +246,21 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
             <BarChart
               data={rows}
               layout='vertical'
-              margin={{ top: 12, right: 18, left: 8, bottom: 12 }}
+              margin={{ top: 8, right: 20, left: 0, bottom: 12 }}
+              barGap={3}
               accessibilityLayer
             >
               <CartesianGrid
                 horizontal={false}
                 stroke='var(--ops-grid)'
-                strokeDasharray='3 6'
+                strokeOpacity={0.55}
               />
               <XAxis
                 type='number'
                 domain={domain}
-                tick={{ fill: 'var(--ops-axis)', fontSize: 11 }}
+                allowDecimals={chart.unit === 'cny'}
+                minTickGap={28}
+                tick={{ fill: 'var(--ops-axis)', fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(number) =>
@@ -262,25 +271,26 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
                   position: 'insideBottomRight',
                   offset: -8,
                   fill: 'var(--ops-axis)',
-                  fontSize: 10,
+                  fontSize: 11,
                 }}
               />
               <YAxis
                 type='category'
                 dataKey='label'
-                width={112}
-                tick={{ fill: 'var(--ops-axis)', fontSize: 11 }}
+                width={140}
+                tick={{ fill: 'var(--ops-axis)', fontSize: 12 }}
                 tickLine={false}
                 axisLine={false}
+                interval={0}
                 tickFormatter={(text: string) =>
-                  text.length > 16 ? `${text.slice(0, 15)}…` : text
+                  text.length > 18 ? `${text.slice(0, 17)}…` : text
                 }
               />
               <ReferenceLine x={0} stroke='var(--ops-axis)' />
               {tooltip}
               <ChartLegend
                 content={
-                  <ChartLegendContent className='ops-chart-legend flex-wrap text-xs' />
+                  <ChartLegendContent className='ops-chart-legend flex-wrap justify-start text-xs leading-5' />
                 }
               />
               {chart.series.map((series) => (
@@ -288,10 +298,10 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
                   key={series.key}
                   dataKey={series.key}
                   fill={`var(--color-${series.key})`}
-                  radius={3}
-                  maxBarSize={20}
+                  radius={2}
+                  maxBarSize={16}
                   isAnimationActive={!reducedMotion}
-                  animationDuration={600}
+                  animationDuration={240}
                 />
               ))}
             </BarChart>
@@ -301,7 +311,7 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
               <ChartLegend
                 content={
                   <ChartLegendContent
-                    className='ops-chart-legend flex-wrap text-xs'
+                    className='ops-chart-legend flex-wrap text-xs leading-5'
                     nameKey='chartKey'
                   />
                 }
@@ -310,13 +320,14 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
                 data={rows}
                 dataKey='value'
                 nameKey='chartKey'
-                innerRadius='48%'
-                outerRadius='74%'
-                paddingAngle={3}
+                innerRadius='58%'
+                outerRadius='82%'
+                paddingAngle={2}
+                cornerRadius={3}
                 stroke='var(--ops-tooltip-bg)'
-                strokeWidth={3}
+                strokeWidth={2}
                 isAnimationActive={!reducedMotion}
-                animationDuration={600}
+                animationDuration={240}
               >
                 {rows.map((row) => (
                   <Cell key={row.id} fill={row.fill} />
@@ -327,7 +338,8 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
         </ChartContainer>
       ) : (
         <div
-          className='ops-chart-canvas flex h-80 items-center justify-center text-sm'
+          className='ops-chart-canvas flex items-center justify-center text-sm'
+          style={{ height: chartHeight }}
           role='status'
         >
           <EmptyState
@@ -337,15 +349,38 @@ function ScienceChart({ chart }: { chart: ScienceChartData }) {
           />
         </div>
       )}
-      <details className='mt-3 min-w-0 text-xs'>
-        <summary className='cursor-pointer py-2'>{t('Chart values')}</summary>
-        <StaticDataTable
-          columns={columns}
-          data={rows}
-          getRowKey={(row) => row.id}
-          tableProps={{ 'aria-label': `${t('Chart values')} · ${title}` }}
-          emptyContent={t(chart.emptyKey ?? 'No chart observations')}
-        />
+      <details className='ops-chart-details group mt-4 min-w-0 border-t border-(--ops-grid) text-xs'>
+        <summary className='flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-sm py-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--ops-axis)'>
+          <span>{t('Chart values')}</span>
+          <ChevronDown
+            className='size-3.5 shrink-0 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none'
+            aria-hidden='true'
+          />
+        </summary>
+        <div className='ops-chart-details-content space-y-4 pb-1'>
+          <div id={noteId} className='ops-chart-note space-y-2 text-xs'>
+            <p className='font-medium'>{t('Scope')}</p>
+            <p>{t(chart.noteKey, noteValues)}</p>
+            {chart.sample &&
+              chart.noteKey !== sampleKeys[chart.sample.kind] && (
+                <p>
+                  {t(sampleKeys[chart.sample.kind], {
+                    shown: formatNumber(chart.sample.shown, locale),
+                    total: formatNumber(chart.sample.total, locale),
+                  })}
+                </p>
+              )}
+          </div>
+          <StaticDataTable
+            columns={columns}
+            data={rows}
+            getRowKey={(row) => row.id}
+            tableProps={{
+              'aria-label': `${t('Chart values')} · ${title}`,
+            }}
+            emptyContent={t(chart.emptyKey ?? 'No chart observations')}
+          />
+        </div>
       </details>
     </section>
   )
