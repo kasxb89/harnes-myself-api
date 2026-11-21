@@ -296,6 +296,7 @@ For commercial licensing, please contact support@quantumnous.com
   bottom: 0;
   height: 2px;
   background: var(--primary);
+  opacity: 1;
   content: '';
 }
 .operations-screen .ops-tab > svg {
