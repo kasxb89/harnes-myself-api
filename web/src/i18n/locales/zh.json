@@ -9523,6 +9523,10 @@
     "Enable effects": "开启特效",
     "Obsidian studio": "曜黑工作室",
     "A dark stage. One clear signal.": "纯黑舞台，一处醒目信号。",
-    "One API. Your entire workflow.": "一个接口。\n你的工作流。"
+    "One API. Your entire workflow.": "一个接口。\n你的工作流。",
+    "Your workspace": "你的工作空间",
+    "Models, usage and requests, in one place.": "模型、用量与请求，尽在一处。",
+    "System reduced motion is enabled": "已跟随系统减少动态效果",
+    "Workspace effects": "工作空间特效"
   }
 }

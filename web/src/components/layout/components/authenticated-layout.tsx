@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
+import { ObsidianWorkspace } from './obsidian-workspace'
 
 import '@/styles/obsidian-shell.css'
 
@@ -55,7 +56,9 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              {props.children ?? <AnimatedOutlet />}
+              <ObsidianWorkspace>
+                {props.children ?? <AnimatedOutlet />}
+              </ObsidianWorkspace>
             </SidebarInset>
           </div>
         </SidebarProvider>

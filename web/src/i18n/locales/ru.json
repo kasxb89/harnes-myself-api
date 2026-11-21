@@ -9523,6 +9523,10 @@
     "Enable effects": "Включить эффекты",
     "Obsidian studio": "Обсидиановая студия",
     "A dark stage. One clear signal.": "Тёмная сцена. Один чёткий сигнал.",
-    "One API. Your entire workflow.": "Один API. Весь ваш рабочий процесс."
+    "One API. Your entire workflow.": "Один API. Весь ваш рабочий процесс.",
+    "Your workspace": "Ваше рабочее пространство",
+    "Models, usage and requests, in one place.": "Модели, расход и запросы в одном месте.",
+    "System reduced motion is enabled": "В системе включено уменьшение движения",
+    "Workspace effects": "Эффекты рабочего пространства"
   }
 }

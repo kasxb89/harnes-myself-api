@@ -9523,6 +9523,10 @@
     "Enable effects": "エフェクトを有効にする",
     "Obsidian studio": "オブシディアンスタジオ",
     "A dark stage. One clear signal.": "暗いステージ。ひとつの明確なシグナル。",
-    "One API. Your entire workflow.": "ひとつのAPI。\nすべてのワークフロー。"
+    "One API. Your entire workflow.": "ひとつのAPI。\nすべてのワークフロー。",
+    "Your workspace": "ワークスペース",
+    "Models, usage and requests, in one place.": "モデル、使用量、リクエストを一か所で管理。",
+    "System reduced motion is enabled": "システムの視差効果軽減が有効です",
+    "Workspace effects": "ワークスペースのエフェクト"
   }
 }

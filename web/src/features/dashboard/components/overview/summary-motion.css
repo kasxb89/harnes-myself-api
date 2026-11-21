@@ -1,0 +1,99 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+/* Decoration is separate from the numbers and shares the shell's pause state. */
+.obsidian-summary-frame {
+  position: relative;
+  isolation: isolate;
+  box-shadow: none;
+}
+.obsidian-summary-frame::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    rgb(255 255 255 / 3%),
+    transparent 42%,
+    rgb(255 255 255 / 2%)
+  );
+  opacity: 0;
+  transition: opacity 150ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+.obsidian-summary-frame:focus-within::before {
+  opacity: 1;
+}
+.obsidian-summary-content {
+  position: relative;
+  z-index: 1;
+}
+.obsidian-summary-credit {
+  background: #080808;
+}
+.obsidian-summary-trace {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.obsidian-summary-trace::before {
+  display: block;
+  width: 36%;
+  height: 1px;
+  content: '';
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 72%) 58%,
+    #fc1c46 78%,
+    transparent
+  );
+  animation: obsidian-summary-travel 14s linear infinite;
+}
+.obsidian-workspace[data-effects-running='false']
+  .obsidian-summary-trace::before {
+  animation-play-state: paused;
+}
+@keyframes obsidian-summary-travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(378%);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .obsidian-summary-frame:hover::before {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .obsidian-summary-frame::before {
+    transition: none;
+  }
+  .obsidian-summary-trace::before {
+    animation: none;
+    transform: none;
+  }
+}

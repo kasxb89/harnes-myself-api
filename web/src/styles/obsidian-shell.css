@@ -182,3 +182,145 @@ For commercial licensing, please contact support@quantumnous.com
     padding-bottom: 1rem;
   }
 }
+
+/* A single, bounded studio above the working surface. The original chrome
+   object owns its visibility/reduced-motion lifecycle; data never moves. */
+.obsidian-workspace-stage {
+  position: relative;
+  isolation: isolate;
+  flex: 0 0 164px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(ellipse at 71% 125%, #fc1c461a, transparent 58%),
+    linear-gradient(120deg, #101010, #030303 60%);
+}
+.obsidian-workspace-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 55%;
+  padding: 24px;
+}
+.obsidian-workspace-eyebrow {
+  margin: 0 0 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+}
+.obsidian-workspace-title {
+  margin: 0;
+  color: var(--foreground);
+  font-size: clamp(24px, 2.5vw, 34px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.045em;
+}
+.obsidian-workspace-description {
+  margin: 12px 0 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.obsidian-workspace-art {
+  position: absolute;
+  z-index: 0;
+  inset-inline-end: 110px;
+  top: -60px;
+  width: 330px;
+  height: 280px;
+  pointer-events: none;
+}
+.obsidian-workspace-art > .relay-obsidian-object {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.obsidian-workspace-art :is(canvas, .relay-obsidian-fallback) {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.obsidian-workspace-tracks {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.obsidian-workspace-track {
+  position: absolute;
+  inset-inline-start: 22%;
+  top: -130px;
+  width: 82%;
+  height: 350px;
+  border: 1px solid #ffffff1a;
+  border-radius: 50%;
+  transform: rotate(-18deg);
+}
+.obsidian-workspace-track-second {
+  top: -105px;
+  transform: rotate(-12deg);
+  border-color: #ffffff0c;
+}
+.obsidian-workspace-signal {
+  position: absolute;
+  inset-inline-start: 26%;
+  bottom: -66px;
+  width: 62%;
+  height: 140px;
+  border-top: 1px solid var(--primary);
+  border-radius: 50%;
+  opacity: 0.65;
+  transform: rotate(-12deg);
+  animation: obsidian-signal-drift 12s ease-in-out infinite alternate;
+}
+.obsidian-workspace-toggle[data-slot='button'] {
+  position: absolute;
+  z-index: 2;
+  inset-inline-end: 20px;
+  top: 16px;
+  min-height: 44px;
+  gap: 8px;
+  padding-inline: 14px;
+  border-color: #666;
+  background: #080808;
+  color: var(--foreground);
+  font-size: 12px;
+  transition: opacity 160ms ease, border-color 160ms ease;
+}
+.obsidian-workspace[data-effects-running='false'] .obsidian-workspace-signal {
+  animation-play-state: paused;
+}
+@keyframes obsidian-signal-drift {
+  from { transform: translateX(-12%) rotate(-12deg); opacity: 0.4; }
+  to { transform: translateX(8%) rotate(-5deg); opacity: 0.8; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .obsidian-workspace-toggle[data-slot='button']:hover {
+    border-color: var(--foreground);
+  }
+}
+@media (max-width: 767px) {
+  .obsidian-workspace-stage { flex-basis: 124px; }
+  .obsidian-workspace-copy { max-width: 65%; padding: 20px 16px; }
+  .obsidian-workspace-eyebrow { margin-bottom: 8px; font-size: 8px; }
+  .obsidian-workspace-title { font-size: 23px; }
+  .obsidian-workspace-description { margin-top: 8px; max-width: 24ch; font-size: 10px; }
+  .obsidian-workspace-art { inset-inline-end: -24px; top: -16px; width: 190px; height: 160px; }
+  .obsidian-workspace-toggle[data-slot='button'] { inset-inline-end: 10px; top: 8px; width: 44px; padding: 0; }
+  .obsidian-workspace-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@media (max-height: 650px) and (min-width: 768px) {
+  .obsidian-workspace-stage { flex-basis: 112px; }
+  .obsidian-workspace-copy { padding-block: 16px; }
+  .obsidian-workspace-title { font-size: 26px; }
+  .obsidian-workspace-description { margin-top: 6px; }
+  .obsidian-workspace-art { top: -82px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .obsidian-workspace-signal { animation: none; }
+}
