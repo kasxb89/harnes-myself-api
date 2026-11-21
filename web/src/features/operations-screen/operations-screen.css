@@ -479,6 +479,17 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 @media (max-width: 767px) {
+  .ops-filter-console > .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ops-filter-console [data-slot='field'],
+  .ops-filter-console .ops-custom-time {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ops-filter-console .ops-custom-time {
+    width: 100%;
+  }
   .operations-screen,
   .operations-screen:fullscreen {
     padding: 0 14px 18px;
