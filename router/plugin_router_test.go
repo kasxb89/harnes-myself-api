@@ -898,6 +898,17 @@ func TestWebFallbackDoesNotCacheMissingAPIOrAssets(t *testing.T) {
 			assert.NotContains(t, response.Header().Get("Cache-Control"), "604800")
 		})
 	}
+	for _, path := range []string{"/static", "/static/js/async/42.0123456789.js", "/static/css/async/42.0123456789.css", "/static/font/missing.0123456789.woff2"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			t.Run(method+path, func(t *testing.T) {
+				response := performPluginRequest(outer, method, path)
+				require.Equal(t, http.StatusNotFound, response.Code)
+				assert.Empty(t, response.Body.String())
+				assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+				assert.NotContains(t, response.Header().Get("Content-Type"), "text/html")
+			})
+		}
+	}
 	page := performPluginRequest(outer, http.MethodGet, "/security")
 	assert.Equal(t, http.StatusOK, page.Code)
 	assert.Equal(t, "dashboard", page.Body.String())

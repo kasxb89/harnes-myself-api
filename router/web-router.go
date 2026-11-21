@@ -36,6 +36,11 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.Han
 		middleware.Cache(),
 		middleware.ServeFrontendFiles(frontendFS),
 		func(c *gin.Context) {
+			if c.Request.URL.Path == "/static" || strings.HasPrefix(c.Request.URL.Path, "/static/") {
+				c.Header("Cache-Control", "no-store")
+				c.AbortWithStatus(http.StatusNotFound)
+				return
+			}
 			if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
 				controller.RelayNotFound(c)
 				return
