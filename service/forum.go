@@ -104,13 +104,33 @@ func forumPayloadHash(v any) string {
 func forumCreateValid(in ForumCreate, maxBody int) bool {
 	return in.ClientRequestID != "" && utf8.RuneCountInString(in.ClientRequestID) <= 80 && utf8.RuneCountInString(in.Body) <= maxBody && (strings.TrimSpace(in.Body) != "" || len(in.AttachmentIDs) > 0)
 }
-func CreateForumPost(db *gorm.DB, actor ForumActor, in ForumCreate) (model.ForumPost, bool, error) {
+func CreateForumPost(db *gorm.DB, actor ForumActor, in ForumCreate, mediaVersion ...bool) (model.ForumPost, bool, error) {
 	if !forumCreateValid(in, 20000) || strings.TrimSpace(in.Title) == "" || utf8.RuneCountInString(in.Title) > 200 || in.ReplyToCommentID != "" {
 		return model.ForumPost{}, false, forumInvalid()
 	}
 	hash := forumPayloadHash(in)
 	var out model.ForumPost
 	replayed := false
+	videoAllowed := len(mediaVersion) > 0 && mediaVersion[0]
+	needsVersion, gateErr := forumVideoNeedsVersion(db, actor, in.AttachmentIDs, videoAllowed)
+	if gateErr != nil {
+		return out, false, gateErr
+	}
+	if needsVersion {
+		// Resolve a previously accepted original before rejecting a new legacy
+		// video publication. Negotiation never changes the immutable body hash.
+		e := db.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&out).Error
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			return out, false, forumError(415, "UPLOAD_UNSUPPORTED", "Unsupported forum attachment")
+		}
+		if e != nil {
+			return out, false, e
+		}
+		if out.PayloadHash != hash {
+			return out, false, forumConflict()
+		}
+		videoAllowed = true
+	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		err := tx.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&out).Error
 		if err == nil {
@@ -147,14 +167,14 @@ func CreateForumPost(db *gorm.DB, actor ForumActor, in ForumCreate) (model.Forum
 			replayed = true
 			return nil
 		}
-		return bindForumAttachments(tx, actor, in.AttachmentIDs, "post", out.ID, "")
+		return bindForumAttachments(tx, actor, in.AttachmentIDs, "post", out.ID, "", videoAllowed)
 	})
 	return out, replayed, err
 }
 func forumConflict() error {
 	return &ForumError{409, "FORUM_REQUEST_CONFLICT", "The publication key belongs to different content"}
 }
-func CreateForumComment(db *gorm.DB, actor ForumActor, postID string, in ForumCreate) (model.ForumComment, bool, error) {
+func CreateForumComment(db *gorm.DB, actor ForumActor, postID string, in ForumCreate, mediaVersion ...bool) (model.ForumComment, bool, error) {
 	if !forumCreateValid(in, 4000) {
 		return model.ForumComment{}, false, forumInvalid()
 	}
@@ -164,6 +184,24 @@ func CreateForumComment(db *gorm.DB, actor ForumActor, postID string, in ForumCr
 		PostID string
 		Input  ForumCreate
 	}{postID, in})
+	videoAllowed := len(mediaVersion) > 0 && mediaVersion[0]
+	needsVersion, gateErr := forumVideoNeedsVersion(db, actor, in.AttachmentIDs, videoAllowed)
+	if gateErr != nil {
+		return out, false, gateErr
+	}
+	if needsVersion {
+		e := db.Where("author_id = ? AND client_request_id = ?", actor.UserID, in.ClientRequestID).First(&out).Error
+		if errors.Is(e, gorm.ErrRecordNotFound) {
+			return out, false, forumError(415, "UPLOAD_UNSUPPORTED", "Unsupported forum attachment")
+		}
+		if e != nil {
+			return out, false, e
+		}
+		if out.PayloadHash != hash {
+			return out, false, forumConflict()
+		}
+		videoAllowed = true
+	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		p, err := model.LockForumPost(tx, postID)
 		if errors.Is(err, gorm.ErrRecordNotFound) || p.DeletedAt != 0 {
@@ -204,7 +242,7 @@ func CreateForumComment(db *gorm.DB, actor ForumActor, postID string, in ForumCr
 			return res.Error
 		}
 		if res.RowsAffected == 1 {
-			if err = bindForumAttachments(tx, actor, in.AttachmentIDs, "comment", postID, out.ID); err != nil {
+			if err = bindForumAttachments(tx, actor, in.AttachmentIDs, "comment", postID, out.ID, videoAllowed); err != nil {
 				return err
 			}
 			return notifyForumComment(tx, p, out)
@@ -253,8 +291,9 @@ func SetForumLike(db *gorm.DB, actor ForumActor, postID string, liked bool) erro
 }
 
 type ForumAuthor struct {
-	ID          int    `json:"id"`
-	DisplayName string `json:"display_name"`
+	Avatar      *ForumAvatarView `json:"avatar,omitempty"`
+	ID          int              `json:"id"`
+	DisplayName string           `json:"display_name"`
 }
 type ForumPostView struct {
 	ID           string                `json:"id"`
@@ -269,6 +308,7 @@ type ForumPostView struct {
 	DeletedAt    int64                 `json:"deleted_at,omitempty"`
 	DeleteReason string                `json:"delete_reason,omitempty"`
 	Attachments  []ForumAttachmentView `json:"attachments"`
+	Media        []ForumAttachmentView `json:"media,omitempty"`
 }
 type ForumCommentView struct {
 	ID               string                `json:"id"`
@@ -281,11 +321,12 @@ type ForumCommentView struct {
 	DeletedAt        int64                 `json:"deleted_at,omitempty"`
 	DeleteReason     string                `json:"delete_reason,omitempty"`
 	Attachments      []ForumAttachmentView `json:"attachments"`
+	Media            []ForumAttachmentView `json:"media,omitempty"`
 	ReplyToCommentID string                `json:"reply_to_comment_id"`
 	ReplyToAuthor    *ForumAuthor          `json:"reply_to_author,omitempty"`
 }
 
-func forumAuthors(db *gorm.DB, ids []int) (map[int]ForumAuthor, error) {
+func forumAuthors(db *gorm.DB, ids []int, avatarViewer ...ForumActor) (map[int]ForumAuthor, error) {
 	out := map[int]ForumAuthor{}
 	if len(ids) == 0 {
 		return out, nil
@@ -295,7 +336,7 @@ func forumAuthors(db *gorm.DB, ids []int) (map[int]ForumAuthor, error) {
 		return nil, err
 	}
 	for _, u := range users {
-		out[u.Id] = ForumAuthor{u.Id, fmt.Sprintf("论坛用户%d", u.Id)}
+		out[u.Id] = ForumAuthor{ID: u.Id, DisplayName: fmt.Sprintf("论坛用户%d", u.Id)}
 	}
 	var profiles []model.ForumProfile
 	if err := db.Where("user_id IN ?", ids).Find(&profiles).Error; err != nil {
@@ -303,12 +344,17 @@ func forumAuthors(db *gorm.DB, ids []int) (map[int]ForumAuthor, error) {
 	}
 	for _, p := range profiles {
 		if _, ok := out[p.UserID]; ok {
-			out[p.UserID] = ForumAuthor{p.UserID, p.DisplayName}
+			out[p.UserID] = ForumAuthor{ID: p.UserID, DisplayName: p.DisplayName}
+		}
+	}
+	if len(avatarViewer) > 0 {
+		if err := attachForumAvatars(db, avatarViewer[0], out); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
 }
-func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost) ([]ForumPostView, error) {
+func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost, mediaV2 ...bool) ([]ForumPostView, error) {
 	views := make([]ForumPostView, 0, len(posts))
 	if len(posts) == 0 {
 		return views, nil
@@ -319,7 +365,7 @@ func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost) (
 		ids = append(ids, p.ID)
 		authors = append(authors, p.AuthorID)
 	}
-	names, err := forumAuthors(db, authors)
+	names, err := forumProjectionAuthors(db, actor, authors, mediaV2)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +399,12 @@ func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost) (
 		if err != nil {
 			return nil, err
 		}
-		v := ForumPostView{Attachments: files, ID: p.ID, Title: p.Title, Body: p.Body, Author: ForumAuthor{ID: p.AuthorID, DisplayName: names[p.AuthorID].DisplayName}, CreatedAt: p.CreatedAt, LikeCount: likeCounts[p.ID], CommentCount: commentCounts[p.ID], Liked: owned[p.ID]}
+		author := names[p.AuthorID]
+		author.ID = p.AuthorID
+		v := ForumPostView{Attachments: forumImageAttachments(files), ID: p.ID, Title: p.Title, Body: p.Body, Author: author, CreatedAt: p.CreatedAt, LikeCount: likeCounts[p.ID], CommentCount: commentCounts[p.ID], Liked: owned[p.ID]}
+		if len(mediaV2) > 0 && mediaV2[0] {
+			v.Media = files
+		}
 		if actor.Admin {
 			v.ReviewedAt = p.ReviewedAt
 			v.DeletedAt = p.DeletedAt
@@ -363,7 +414,7 @@ func ProjectForumPosts(db *gorm.DB, actor ForumActor, posts []model.ForumPost) (
 	}
 	return views, nil
 }
-func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumComment) ([]ForumCommentView, error) {
+func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumComment, mediaV2 ...bool) ([]ForumCommentView, error) {
 	views := make([]ForumCommentView, 0, len(comments))
 	if len(comments) == 0 {
 		return views, nil
@@ -374,7 +425,7 @@ func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumC
 		ids = append(ids, c.AuthorID)
 		postIDs = append(postIDs, c.PostID)
 	}
-	authors, err := forumAuthors(db, ids)
+	authors, err := forumProjectionAuthors(db, actor, ids, mediaV2)
 	if err != nil {
 		return nil, err
 	}
@@ -393,11 +444,13 @@ func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumC
 		if err != nil {
 			return nil, err
 		}
-		v := ForumCommentView{Attachments: files, ReplyToCommentID: c.ReplyToCommentID, PostTitle: titles[c.PostID], ID: c.ID, PostID: c.PostID, Body: c.Body, Author: ForumAuthor{ID: c.AuthorID, DisplayName: authors[c.AuthorID].DisplayName}, CreatedAt: c.CreatedAt}
+		author := authors[c.AuthorID]
+		author.ID = c.AuthorID
+		v := ForumCommentView{Attachments: forumImageAttachments(files), ReplyToCommentID: c.ReplyToCommentID, PostTitle: titles[c.PostID], ID: c.ID, PostID: c.PostID, Body: c.Body, Author: author, CreatedAt: c.CreatedAt}
 		if c.ReplyToCommentID != "" {
 			var target model.ForumComment
 			if db.Where("id = ? AND post_id = ? AND deleted_at = 0", c.ReplyToCommentID, c.PostID).First(&target).Error == nil {
-				names, err := forumAuthors(db, []int{target.AuthorID})
+				names, err := forumProjectionAuthors(db, actor, []int{target.AuthorID}, mediaV2)
 				if err != nil {
 					return nil, err
 				}
@@ -405,6 +458,9 @@ func ProjectForumComments(db *gorm.DB, actor ForumActor, comments []model.ForumC
 				name.ID = target.AuthorID
 				v.ReplyToAuthor = &name
 			}
+		}
+		if len(mediaV2) > 0 && mediaV2[0] {
+			v.Media = files
 		}
 		if actor.Admin {
 			v.PostTitle = titles[c.PostID]

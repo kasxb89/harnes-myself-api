@@ -14,17 +14,18 @@ import (
 )
 
 type ForumProfileView struct {
-	ID          int    `json:"id"`
-	DisplayName string `json:"display_name"`
-	Revision    int64  `json:"revision"`
+	Avatar      *ForumAvatarView `json:"avatar,omitempty"`
+	ID          int              `json:"id"`
+	DisplayName string           `json:"display_name"`
+	Revision    int64            `json:"revision"`
 }
 
-func GetForumProfile(db *gorm.DB, a ForumActor) (ForumProfileView, error) {
-	names, err := forumAuthors(db, []int{a.UserID})
+func GetForumProfile(db *gorm.DB, a ForumActor, avatarV1 ...bool) (ForumProfileView, error) {
+	names, err := forumProjectionAuthors(db, a, []int{a.UserID}, []bool{false, len(avatarV1) > 0 && avatarV1[0]})
 	if err != nil {
 		return ForumProfileView{}, err
 	}
-	out := ForumProfileView{ID: a.UserID, DisplayName: names[a.UserID].DisplayName}
+	out := ForumProfileView{ID: a.UserID, DisplayName: names[a.UserID].DisplayName, Avatar: names[a.UserID].Avatar}
 	var row model.ForumProfile
 	err = db.First(&row, "user_id = ?", a.UserID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -98,7 +99,7 @@ func SaveForumProfile(db *gorm.DB, a ForumActor, name string, revision int64) (F
 		}
 		return current, &ForumError{409, "FORUM_REVISION_CONFLICT", "Forum settings changed. Reload and try again"}
 	}
-	return ForumProfileView{a.UserID, name, revision + 1}, nil
+	return ForumProfileView{ID: a.UserID, DisplayName: name, Revision: revision + 1}, nil
 }
 func forumLikeEvent(post string, actor int) string { return fmt.Sprintf("like:%s:%d", post, actor) }
 func notifyForumLike(tx *gorm.DB, p model.ForumPost, actor int) error {
@@ -150,7 +151,7 @@ type ForumNotificationView struct {
 	ReadAt    int64       `json:"read_at"`
 }
 
-func ProjectForumNotifications(db *gorm.DB, rows []model.ForumNotification) ([]ForumNotificationView, error) {
+func ProjectForumNotifications(db *gorm.DB, rows []model.ForumNotification, avatarViewer ...ForumActor) ([]ForumNotificationView, error) {
 	out := make([]ForumNotificationView, 0, len(rows))
 	ids := []int{}
 	postIDs := []string{}
@@ -158,7 +159,7 @@ func ProjectForumNotifications(db *gorm.DB, rows []model.ForumNotification) ([]F
 		ids = append(ids, r.ActorID)
 		postIDs = append(postIDs, r.PostID)
 	}
-	names, err := forumAuthors(db, ids)
+	names, err := forumAuthors(db, ids, avatarViewer...)
 	if err != nil {
 		return nil, err
 	}

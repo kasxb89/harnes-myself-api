@@ -18,6 +18,7 @@ func SetForumRoutes(api *gin.RouterGroup) {
 	user.GET("/posts/:post_id/comments", controller.ListForumComments)
 	user.GET("/posts/:post_id/comments/:comment_id", controller.GetForumComment)
 	user.GET("/profile", controller.GetForumProfile)
+	registerForumProfileAvatar(user)
 	user.GET("/receipts", controller.GetForumReceipt)
 	user.GET("/me/posts", func(c *gin.Context) { c.Set("forum_me", true); controller.ListForumPosts(c) })
 	user.GET("/me/comments", func(c *gin.Context) { c.Set("forum_me", true); controller.ListForumComments(c) })

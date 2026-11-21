@@ -114,8 +114,20 @@ func GetDemandDirectory(c *gin.Context) {
 		if more {
 			items = items[:limit]
 		}
+		galleries := map[string]service.DemandServiceGalleryView{}
+		if c.Query("include_media") == "1" {
+			galleries, err = service.GetDemandServiceGalleryBatch(model.DB.WithContext(c.Request.Context()), demandActor(c), items)
+			if err != nil {
+				demandRespond(c, nil, err)
+				return
+			}
+		}
 		for _, p := range items {
-			views = append(views, service.ProjectDemandServiceProfile(p))
+			view := service.ProjectDemandServiceProfile(p)
+			if gallery, ok := galleries[p.ID]; ok {
+				view.Gallery = &gallery
+			}
+			views = append(views, view)
 			nextKey = p.Code
 		}
 	case "customer-profiles":

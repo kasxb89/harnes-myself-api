@@ -155,5 +155,7 @@ type DemandProfileImport struct {
 }
 
 func DemandTables() []any {
-	return append([]any{&Demand{}, &DemandEngineer{}, &DemandMessage{}, &DemandReadCursor{}, &DemandAudit{}, &DemandActionReceipt{}, &DemandConfiguration{}, &DemandAttachment{}, &DemandUploadPart{}, &DemandServiceProfile{}, &DemandCustomerProfile{}, &DemandProfileImport{}}, DemandEmailTables()...)
+	tables := append([]any{&Demand{}, &DemandEngineer{}, &DemandMessage{}, &DemandReadCursor{}, &DemandAudit{}, &DemandActionReceipt{}, &DemandConfiguration{}, &DemandAttachment{}, &DemandUploadPart{}, &DemandServiceProfile{}, &DemandCustomerProfile{}, &DemandProfileImport{}}, DemandEmailTables()...)
+	tables = append(tables, DemandShowcaseTables()...)
+	return append(tables, DemandServiceGalleryTables()...)
 }

@@ -14,10 +14,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Binary media must keep original bytes and Range semantics, independently of
+// Accept-Encoding. The same policy is used by isolated content fixture routers.
+func apiResponseCompression() gin.HandlerFunc {
+	return gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/creation/assets/", "/api/product/demands/attachments/", "/api/product/community-demands/attachments/", "/api/product/forum/attachments/", "/api/product/demand-showcases/assets/", "/api/product/demand-service-media/"}))
+}
+
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
-	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/creation/assets/", "/api/product/demands/attachments/"})))
+	apiRouter.Use(apiResponseCompression())
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())

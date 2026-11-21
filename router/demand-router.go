@@ -11,6 +11,8 @@ import (
 // It never installs AI relay, billing, SMS, or task dispatch routes.
 func SetDemandRoutes(api *gin.RouterGroup) {
 	SetDemandEmailRoutes(api)
+	SetDemandShowcaseRoutes(api)
+	SetDemandServiceMediaRoutes(api)
 	public := api.Group("/product/demands", middleware.DisableCache())
 	public.GET("/attachments/:attachment_id/content", controller.ServeDemandAttachment)
 	public.HEAD("/attachments/:attachment_id/content", controller.ServeDemandAttachment)
