@@ -47,9 +47,20 @@ func forumBind(c *gin.Context, v any) bool {
 	}
 	return true
 }
+func forumMediaV2(c *gin.Context) bool {
+	return c.Query("media_version") == "2" || c.GetHeader("X-Yunshu-Forum-Media-Version") == "2"
+}
 func GetForumConfig(c *gin.Context) {
 	v, err := service.LoadForumConfig(model.DB.WithContext(c.Request.Context()))
-	forumRespond(c, gin.H{"revision": v.Revision, "enabled": v.Enabled, "capabilities": gin.H{"immediate_publish": true, "likes": true, "comments": true, "image_uploads": true, "my_activity": true, "comment_replies": true, "notifications": true, "forum_profile": true, "receipt_lookup": true}, "upload_rules": service.ForumUploadRules()}, err)
+	caps := gin.H{"immediate_publish": true, "likes": true, "comments": true, "image_uploads": true, "my_activity": true, "comment_replies": true, "notifications": true, "forum_profile": true, "receipt_lookup": true}
+	if forumAvatarV1(c) {
+		caps["forum_profile_avatar_v1"] = true
+	}
+	if forumMediaV2(c) {
+		caps["forum_media_v2"] = true
+		caps["video_uploads"] = true
+	}
+	forumRespond(c, gin.H{"revision": v.Revision, "enabled": v.Enabled, "capabilities": caps, "upload_rules": service.ForumUploadRules(forumMediaV2(c))}, err)
 }
 func PutForumConfig(c *gin.Context) {
 	var in service.ForumConfig
@@ -138,7 +149,7 @@ func ListForumPosts(c *gin.Context) {
 		last := rows[len(rows)-1]
 		next = forumNext(last.CreatedAt, last.ID)
 	}
-	views, err := service.ProjectForumPosts(db, forumActor(c), rows)
+	views, err := service.ProjectForumPosts(db, forumActor(c), rows, forumMediaV2(c), forumAvatarV1(c))
 	forumRespond(c, gin.H{"items": views, "next_cursor": next, "has_more": more}, err)
 }
 func GetForumPost(c *gin.Context) {
@@ -149,7 +160,7 @@ func GetForumPost(c *gin.Context) {
 		forumRespond(c, nil, err)
 		return
 	}
-	views, err := service.ProjectForumPosts(db, actor, []model.ForumPost{p})
+	views, err := service.ProjectForumPosts(db, actor, []model.ForumPost{p}, forumMediaV2(c), forumAvatarV1(c))
 	if err != nil {
 		forumRespond(c, nil, err)
 		return
@@ -163,12 +174,12 @@ func CreateForumPost(c *gin.Context) {
 	}
 	db := model.DB.WithContext(c.Request.Context())
 	actor := forumActor(c)
-	p, replayed, err := service.CreateForumPost(db, actor, in)
+	p, replayed, err := service.CreateForumPost(db, actor, in, forumMediaV2(c))
 	if err != nil {
 		forumRespond(c, nil, err)
 		return
 	}
-	views, err := service.ProjectForumPosts(db, actor, []model.ForumPost{p})
+	views, err := service.ProjectForumPosts(db, actor, []model.ForumPost{p}, forumMediaV2(c), forumAvatarV1(c))
 	if err != nil {
 		forumRespond(c, nil, err)
 		return
@@ -244,7 +255,7 @@ func ListForumComments(c *gin.Context) {
 		last := rows[len(rows)-1]
 		next = forumNext(last.CreatedAt, last.ID)
 	}
-	views, err := service.ProjectForumComments(db, actor, rows)
+	views, err := service.ProjectForumComments(db, actor, rows, forumMediaV2(c), forumAvatarV1(c))
 	forumRespond(c, gin.H{"items": views, "next_cursor": next, "has_more": more}, err)
 }
 func CreateForumComment(c *gin.Context) {
@@ -254,12 +265,12 @@ func CreateForumComment(c *gin.Context) {
 	}
 	db := model.DB.WithContext(c.Request.Context())
 	actor := forumActor(c)
-	comment, replayed, err := service.CreateForumComment(db, actor, c.Param("post_id"), in)
+	comment, replayed, err := service.CreateForumComment(db, actor, c.Param("post_id"), in, forumMediaV2(c))
 	if err != nil {
 		forumRespond(c, nil, err)
 		return
 	}
-	views, err := service.ProjectForumComments(db, actor, []model.ForumComment{comment})
+	views, err := service.ProjectForumComments(db, actor, []model.ForumComment{comment}, forumMediaV2(c), forumAvatarV1(c))
 	if err != nil {
 		forumRespond(c, nil, err)
 		return

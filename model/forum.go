@@ -57,7 +57,7 @@ type ForumConfiguration struct {
 }
 
 func ForumTables() []any {
-	return []any{&ForumPost{}, &ForumComment{}, &ForumLike{}, &ForumAudit{}, &ForumConfiguration{}, &ForumProfile{}, &ForumNotification{}, &ForumAttachment{}, &ForumUploadPart{}}
+	return []any{&ForumPost{}, &ForumComment{}, &ForumLike{}, &ForumAudit{}, &ForumConfiguration{}, &ForumProfile{}, &ForumNotification{}, &ForumAttachment{}, &ForumUploadPart{}, &ForumProfileAvatarReceipt{}}
 }
 
 // Forum mutations lock the parent before changing child comments or likes.
@@ -69,9 +69,10 @@ func LockForumPost(tx *gorm.DB, id string) (ForumPost, error) {
 
 // Forum profiles are public identities, independent of account/login profiles.
 type ForumProfile struct {
-	UserID      int    `gorm:"primaryKey"`
-	DisplayName string `gorm:"type:varchar(160)"`
-	Revision    int64
+	AvatarAttachmentID string `gorm:"type:varchar(40)"`
+	UserID             int    `gorm:"primaryKey"`
+	DisplayName        string `gorm:"type:varchar(160)"`
+	Revision           int64
 }
 
 type ForumNotification struct {
@@ -115,4 +116,11 @@ type ForumUploadPart struct {
 	Offset    int64  `gorm:"uniqueIndex:idx_forum_part,priority:2"`
 	Size      int64
 	ObjectKey string `gorm:"type:varchar(80)"`
+}
+
+// Avatar purpose and receipts are independent of posts/comments and login identity.
+type ForumProfileAvatarReceipt struct {
+	UserID         int    `gorm:"primaryKey"`
+	ClientActionID string `gorm:"type:varchar(40);primaryKey"`
+	PayloadHash    string `gorm:"type:varchar(64)"`
 }

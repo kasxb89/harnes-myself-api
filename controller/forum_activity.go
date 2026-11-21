@@ -11,7 +11,7 @@ import (
 )
 
 func GetForumProfile(c *gin.Context) {
-	v, err := service.GetForumProfile(model.DB.WithContext(c.Request.Context()), forumActor(c))
+	v, err := service.GetForumProfile(model.DB.WithContext(c.Request.Context()), forumActor(c), forumAvatarV1(c))
 	forumRespond(c, gin.H{"profile": v}, err)
 }
 func PutForumProfile(c *gin.Context) {
@@ -27,6 +27,9 @@ func PutForumProfile(c *gin.Context) {
 		return
 	}
 	v, err := service.SaveForumProfile(model.DB.WithContext(c.Request.Context()), forumActor(c), in.DisplayName, *in.Revision)
+	if err == nil && forumAvatarV1(c) {
+		v, err = service.GetForumProfile(model.DB.WithContext(c.Request.Context()), forumActor(c), true)
+	}
 	forumRespond(c, gin.H{"profile": v}, err)
 }
 func GetForumComment(c *gin.Context) {
@@ -45,7 +48,7 @@ func GetForumComment(c *gin.Context) {
 		forumRespond(c, nil, service.ForumMissing())
 		return
 	}
-	views, err := service.ProjectForumComments(db, a, []model.ForumComment{row})
+	views, err := service.ProjectForumComments(db, a, []model.ForumComment{row}, forumMediaV2(c), forumAvatarV1(c))
 	if err != nil {
 		forumRespond(c, nil, err)
 		return
@@ -67,7 +70,7 @@ func GetForumReceipt(c *gin.Context) {
 			forumRespond(c, nil, err)
 			return
 		}
-		views, err := service.ProjectForumPosts(db, a, []model.ForumPost{row})
+		views, err := service.ProjectForumPosts(db, a, []model.ForumPost{row}, forumMediaV2(c), forumAvatarV1(c))
 		if err != nil {
 			forumRespond(c, nil, err)
 			return
@@ -87,7 +90,7 @@ func GetForumReceipt(c *gin.Context) {
 			forumRespond(c, nil, err)
 			return
 		}
-		views, err := service.ProjectForumComments(db, a, []model.ForumComment{row})
+		views, err := service.ProjectForumComments(db, a, []model.ForumComment{row}, forumMediaV2(c), forumAvatarV1(c))
 		if err != nil {
 			forumRespond(c, nil, err)
 			return
@@ -132,7 +135,7 @@ func ListForumNotifications(c *gin.Context) {
 		last := rows[len(rows)-1]
 		next = forumNext(last.CreatedAt, strconv.FormatUint(last.ID, 10))
 	}
-	views, err := service.ProjectForumNotifications(db, rows)
+	views, err := service.ProjectForumNotifications(db, rows, forumAvatarViewers(c)...)
 	if err != nil {
 		forumRespond(c, nil, err)
 		return

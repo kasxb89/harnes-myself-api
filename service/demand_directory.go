@@ -17,9 +17,10 @@ var demandProfileCode = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
 type DemandServiceProfileView struct {
 	model.DemandServiceProfile
-	CategoryIDs []string `json:"category_ids"`
-	IntakeMode  string   `json:"intake_mode"`
-	CanStart    bool     `json:"can_start"`
+	CategoryIDs []string                  `json:"category_ids"`
+	IntakeMode  string                    `json:"intake_mode"`
+	CanStart    bool                      `json:"can_start"`
+	Gallery     *DemandServiceGalleryView `json:"gallery,omitempty"`
 }
 
 func ProjectDemandServiceProfile(p model.DemandServiceProfile) DemandServiceProfileView {
@@ -28,7 +29,7 @@ func ProjectDemandServiceProfile(p model.DemandServiceProfile) DemandServiceProf
 	if categories == nil {
 		categories = []string{}
 	}
-	return DemandServiceProfileView{p, categories, "platform", p.Enabled && p.Published}
+	return DemandServiceProfileView{DemandServiceProfile: p, CategoryIDs: categories, IntakeMode: "platform", CanStart: p.Enabled && p.Published}
 }
 
 type DemandCustomerProfileView struct {

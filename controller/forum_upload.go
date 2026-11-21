@@ -16,6 +16,10 @@ func forumUploadReply(c *gin.Context, v service.ForumUploadResult, err error) {
 		forumRespond(c, nil, err)
 		return
 	}
+	if v.Attachment.Kind == "video" && !forumMediaV2(c) {
+		forumRespond(c, nil, &service.ForumError{Status: 415, Code: "FORUM_UPLOAD_UNSUPPORTED", Message: "Unsupported forum attachment"})
+		return
+	}
 	f := service.ProjectForumAttachment(v.Attachment)
 	var ready *service.ForumAttachmentView
 	if f.Status == "ready" {
@@ -28,6 +32,10 @@ func CreateForumUpload(c *gin.Context) {
 	if !forumBind(c, &in) {
 		return
 	}
+	if strings.HasPrefix(in.MimeType, "video/") && !forumMediaV2(c) {
+		forumRespond(c, nil, &service.ForumError{Status: 415, Code: "FORUM_UPLOAD_UNSUPPORTED", Message: "Unsupported forum attachment"})
+		return
+	}
 	v, err := service.CreateForumUpload(model.DB.WithContext(c.Request.Context()), forumActor(c), in)
 	forumUploadReply(c, v, err)
 }
@@ -36,6 +44,9 @@ func GetForumUpload(c *gin.Context) {
 	forumUploadReply(c, v, err)
 }
 func PutForumUploadChunk(c *gin.Context) {
+	if !forumUploadVersionBeforeWrite(c) {
+		return
+	}
 	offset, err := strconv.ParseInt(c.GetHeader("Upload-Offset"), 10, 64)
 	if err != nil || offset < 0 || !strings.HasPrefix(c.GetHeader("Content-Type"), "application/octet-stream") {
 		forumRespond(c, nil, &service.ForumError{Status: 400, Code: "FORUM_INVALID_INPUT", Message: "Invalid forum input"})
@@ -56,6 +67,9 @@ func PutForumUploadChunk(c *gin.Context) {
 	forumUploadReply(c, v, err)
 }
 func CompleteForumUpload(c *gin.Context) {
+	if !forumUploadVersionBeforeWrite(c) {
+		return
+	}
 	var in struct {
 		SHA256 string `json:"sha256"`
 	}
@@ -94,4 +108,20 @@ func ServeForumAttachment(c *gin.Context) {
 	c.Header("Referrer-Policy", "no-referrer")
 	c.Header("ETag", `"`+v.SHA256+`"`)
 	http.ServeContent(c.Writer, c.Request, service.ProjectForumAttachment(v).Name, info.ModTime(), f)
+}
+
+func forumUploadVersionBeforeWrite(c *gin.Context) bool {
+	if forumMediaV2(c) {
+		return true
+	}
+	v, err := service.GetForumUpload(model.DB.WithContext(c.Request.Context()), forumActor(c), c.Param("upload_id"))
+	if err != nil {
+		forumRespond(c, nil, err)
+		return false
+	}
+	if v.Attachment.Kind == "video" {
+		forumUploadReply(c, v, nil)
+		return false
+	}
+	return true
 }

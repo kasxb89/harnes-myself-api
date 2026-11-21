@@ -68,6 +68,9 @@ func ForumAttachmentAccess(db *gorm.DB, a ForumActor, id string) (model.ForumAtt
 	if err := db.First(&v, "id = ?", id).Error; err != nil {
 		return v, ForumMissing()
 	}
+	if v.TargetKind == "profile-avatar" {
+		return forumProfileAvatarAccess(db, a, v)
+	}
 	if !v.Bound {
 		if v.OwnerID == a.UserID && v.ExpiresAt > time.Now().Unix() {
 			return v, nil
@@ -103,8 +106,12 @@ func forumUploadWritable(db *gorm.DB, a ForumActor, v model.ForumAttachment) err
 	return nil
 }
 func CreateForumUpload(db *gorm.DB, a ForumActor, in ForumUploadCreate) (ForumUploadResult, error) {
+	return createForumUploadForPurpose(db, a, in, false)
+}
+
+func createForumUploadForPurpose(db *gorm.DB, a ForumActor, in ForumUploadCreate, avatar bool) (ForumUploadResult, error) {
 	var out ForumUploadResult
-	r := ForumUploadRules()
+	r := ForumUploadRules(true)
 	var err error
 	if (in.ClientUploadID == "" || utf8.RuneCountInString(in.ClientUploadID) > 80) || in.Name == "" || utf8.RuneCountInString(in.Name) > 255 || strings.ContainsAny(in.Name, "\r\n\x00/\\") || in.SizeBytes < 1 {
 		return out, forumError(400, "INVALID_INPUT", "Invalid forum image")
@@ -124,11 +131,14 @@ func CreateForumUpload(db *gorm.DB, a ForumActor, in ForumUploadCreate) (ForumUp
 	if !slices.Contains(r.AllowedMimeTypes, in.MimeType) {
 		return out, forumError(415, "UPLOAD_UNSUPPORTED", "Unsupported forum image type")
 	}
-	kind := "image"
-	if in.SizeBytes > r.MaxImageBytes {
+	kind, maximum := "image", r.MaxImageBytes
+	if in.MimeType == "video/mp4" {
+		kind, maximum = "video", r.MaxVideoBytes
+	}
+	if in.SizeBytes > maximum {
 		return out, forumError(413, "UPLOAD_TOO_LARGE", "Forum image exceeds the upload limit")
 	}
-	if in.TargetKind != "post" && in.TargetKind != "comment" || in.TargetKind == "post" && in.PostID != "" || in.TargetKind == "comment" && in.PostID == "" {
+	if avatar && (in.TargetKind != "profile-avatar" || in.PostID != "" || kind != "image") || !avatar && (in.TargetKind != "post" && in.TargetKind != "comment" || in.TargetKind == "post" && in.PostID != "" || in.TargetKind == "comment" && in.PostID == "") {
 		return out, forumInvalid()
 	}
 	if err = forumUploadWritable(db, a, model.ForumAttachment{TargetKind: in.TargetKind, PostID: in.PostID}); err != nil {
@@ -320,15 +330,17 @@ func CompleteForumUpload(db *gorm.DB, a ForumActor, id, expectedSHA string) (For
 	if _, err = f.Seek(0, io.SeekStart); err != nil {
 		return out, err
 	}
-	cfg, _, err := image.DecodeConfig(f)
-	if err != nil || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > 40000000 {
-		return out, forumError(415, "UPLOAD_UNSUPPORTED", "Invalid forum image dimensions or encoding")
-	}
-	if _, err = f.Seek(0, io.SeekStart); err != nil {
-		return out, err
-	}
-	if _, _, err = image.Decode(f); err != nil {
-		return out, forumError(415, "UPLOAD_UNSUPPORTED", "Invalid forum image encoding")
+	if v.Kind == "image" {
+		cfg, _, err := image.DecodeConfig(f)
+		if err != nil || cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width)*int64(cfg.Height) > 40000000 {
+			return out, forumError(415, "UPLOAD_UNSUPPORTED", "Invalid forum image dimensions or encoding")
+		}
+		if _, err = f.Seek(0, io.SeekStart); err != nil {
+			return out, err
+		}
+		if _, _, err = image.Decode(f); err != nil {
+			return out, forumError(415, "UPLOAD_UNSUPPORTED", "Invalid forum image encoding")
+		}
 	}
 	if err = f.Sync(); err != nil {
 		return out, err
@@ -356,12 +368,13 @@ func CompleteForumUpload(db *gorm.DB, a ForumActor, id, expectedSHA string) (For
 }
 
 type forumAttachmentCapability struct {
-	ID          string `json:"id"`
-	UserID      int    `json:"user_id"`
-	AuthVersion int64  `json:"uv"`
-	Admin       bool   `json:"admin"`
-	Expires     int64  `json:"exp"`
-	Disposition string `json:"disposition"`
+	ID             string `json:"id"`
+	UserID         int    `json:"user_id"`
+	AuthVersion    int64  `json:"uv"`
+	Admin          bool   `json:"admin"`
+	Expires        int64  `json:"exp"`
+	Disposition    string `json:"disposition"`
+	AvatarRevision int64  `json:"avatar_revision,omitempty"`
 }
 type ForumAttachmentLink struct {
 	URL       string `json:"url"`
@@ -382,7 +395,15 @@ func SignForumAttachmentLink(db *gorm.DB, a ForumActor, id, disposition string) 
 		return out, err
 	}
 	expires := time.Now().Unix() + 60
-	raw, _ := common.Marshal(forumAttachmentCapability{id, a.UserID, u.AuthVersion, a.Admin, expires, disposition})
+	capability := forumAttachmentCapability{ID: id, UserID: a.UserID, AuthVersion: u.AuthVersion, Admin: a.Admin, Expires: expires, Disposition: disposition}
+	if v.TargetKind == "profile-avatar" {
+		var profile model.ForumProfile
+		if db.Where("user_id = ? AND avatar_attachment_id = ?", v.OwnerID, v.ID).First(&profile).Error != nil || !v.Bound {
+			return out, ForumMissing()
+		}
+		capability.AvatarRevision = profile.Revision
+	}
+	raw, _ := common.Marshal(capability)
 	payload := base64.RawURLEncoding.EncodeToString(raw)
 	mac := hmac.New(sha256.New, []byte(common.CryptoSecret))
 	_, _ = mac.Write([]byte("forum-attachment-v1\x00" + payload))
@@ -428,6 +449,12 @@ func OpenForumAttachment(db *gorm.DB, id, token string) (model.ForumAttachment, 
 	if err != nil || v.Status != "ready" {
 		return empty, nil, "", fail
 	}
+	if v.TargetKind == "profile-avatar" {
+		var profile model.ForumProfile
+		if capability.AvatarRevision < 1 || db.Where("user_id = ? AND avatar_attachment_id = ? AND revision = ?", v.OwnerID, v.ID, capability.AvatarRevision).First(&profile).Error != nil {
+			return empty, nil, "", fail
+		}
+	}
 	path, err := forumStoragePath(v.ObjectKey)
 	if err != nil {
 		return empty, nil, "", err
@@ -442,13 +469,19 @@ func OpenForumAttachment(db *gorm.DB, id, token string) (model.ForumAttachment, 
 type ForumUploadRuleSet struct {
 	MaxAttachments   int      `json:"max_attachments"`
 	MaxImageBytes    int64    `json:"max_image_bytes"`
+	MaxVideoBytes    int64    `json:"max_video_bytes,omitempty"`
 	ChunkBytes       int64    `json:"chunk_bytes"`
 	UploadTTLSeconds int64    `json:"upload_ttl_seconds"`
 	AllowedMimeTypes []string `json:"allowed_mime_types"`
 }
 
-func ForumUploadRules() ForumUploadRuleSet {
-	return ForumUploadRuleSet{8, 20 << 20, 4 << 20, 86400, []string{"image/png", "image/jpeg", "image/gif", "image/webp"}}
+func ForumUploadRules(mediaV2 ...bool) ForumUploadRuleSet {
+	v := ForumUploadRuleSet{MaxAttachments: 8, MaxImageBytes: 20 << 20, ChunkBytes: 4 << 20, UploadTTLSeconds: 86400, AllowedMimeTypes: []string{"image/png", "image/jpeg", "image/gif", "image/webp"}}
+	if len(mediaV2) > 0 && mediaV2[0] {
+		v.MaxVideoBytes = 128 << 20
+		v.AllowedMimeTypes = append(v.AllowedMimeTypes, "video/mp4")
+	}
+	return v
 }
 func forumError(status int, code, message string) error {
 	return &ForumError{status, "FORUM_" + code, message}
@@ -467,9 +500,13 @@ type ForumAttachmentView struct {
 }
 
 func ProjectForumAttachment(v model.ForumAttachment) ForumAttachmentView {
-	ext := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"}[v.MimeType]
+	ext := map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "video/mp4": "mp4"}[v.MimeType]
+	kind := "image"
+	if v.Kind == "video" {
+		kind = "video"
+	}
 	path := "/attachments/" + v.ID + "/link"
-	return ForumAttachmentView{v.ID, "forum-image." + ext, "image", v.MimeType, v.SizeBytes, v.SHA256, v.Status, path, path}
+	return ForumAttachmentView{v.ID, "forum-" + kind + "." + ext, kind, v.MimeType, v.SizeBytes, v.SHA256, v.Status, path, path}
 }
 func forumBoundAttachments(db *gorm.DB, kind, post, comment string) ([]ForumAttachmentView, error) {
 	out := []ForumAttachmentView{}
@@ -482,7 +519,7 @@ func forumBoundAttachments(db *gorm.DB, kind, post, comment string) ([]ForumAtta
 	}
 	return out, nil
 }
-func bindForumAttachments(tx *gorm.DB, a ForumActor, ids []string, kind, post, comment string) error {
+func bindForumAttachments(tx *gorm.DB, a ForumActor, ids []string, kind, post, comment string, mediaV2 ...bool) error {
 	if len(ids) > ForumUploadRules().MaxAttachments {
 		return forumError(400, "ATTACHMENT_INVALID", "Too many forum images")
 	}
@@ -498,6 +535,9 @@ func bindForumAttachments(tx *gorm.DB, a ForumActor, ids []string, kind, post, c
 			expectedPost = post
 		}
 		q = q.Where("post_id = ?", expectedPost)
+		if len(mediaV2) == 0 || !mediaV2[0] {
+			q = q.Where("kind = ?", "image")
+		}
 		res := q.Updates(map[string]any{"post_id": post, "comment_id": comment, "bound": true, "position": position})
 		if res.Error != nil {
 			return res.Error
@@ -507,4 +547,27 @@ func bindForumAttachments(tx *gorm.DB, a ForumActor, ids []string, kind, post, c
 		}
 	}
 	return nil
+}
+
+// The legacy attachments array is always image-only. Negotiated clients read
+// the separate media array; old closed-enum decoders never receive video.
+func forumImageAttachments(all []ForumAttachmentView) []ForumAttachmentView {
+	images := make([]ForumAttachmentView, 0, len(all))
+	for _, v := range all {
+		if v.Kind == "image" {
+			images = append(images, v)
+		}
+	}
+	return images
+}
+
+// A legacy request may recover an existing publication, but cannot newly bind
+// video and receive an image-only receipt that conceals the accepted material.
+func forumVideoNeedsVersion(db *gorm.DB, a ForumActor, ids []string, allowed bool) (bool, error) {
+	if allowed || len(ids) == 0 {
+		return false, nil
+	}
+	var videos int64
+	err := db.Model(&model.ForumAttachment{}).Where("id IN ? AND owner_id = ? AND kind = ?", ids, a.UserID, "video").Count(&videos).Error
+	return videos > 0, err
 }

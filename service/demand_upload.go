@@ -94,6 +94,12 @@ func DemandAttachmentAccess(db *gorm.DB, a DemandActor, id string) (model.Demand
 	return v, demandError(404, "ATTACHMENT_NOT_FOUND", "Demand attachment not found")
 }
 func CreateDemandUpload(db *gorm.DB, a DemandActor, in DemandUploadCreate) (DemandUploadResult, error) {
+	return createDemandUploadForScope(db, a, in, "")
+}
+
+// New explicit public-media domains reserve purpose on the first insert. The
+// legacy empty-scope hash and behavior are unchanged. Scope is host-owned, not a wire field.
+func createDemandUploadForScope(db *gorm.DB, a DemandActor, in DemandUploadCreate, scope string) (DemandUploadResult, error) {
 	var out DemandUploadResult
 	cfg, err := LoadDemandConfig(db)
 	if err != nil {
@@ -104,6 +110,12 @@ func CreateDemandUpload(db *gorm.DB, a DemandActor, in DemandUploadCreate) (Dema
 		return out, demandError(400, "UPLOAD_INVALID", "Invalid demand attachment")
 	}
 	hash := demandHash(in)
+	if scope != "" {
+		hash = demandHash(struct {
+			Input DemandUploadCreate
+			Scope string
+		}{in, scope})
+	}
 	var v model.DemandAttachment
 	err = db.Where("owner_id = ? AND client_upload_id = ?", a.UserID, in.ClientUploadID).First(&v).Error
 	if err == nil {
@@ -142,7 +154,7 @@ func CreateDemandUpload(db *gorm.DB, a DemandActor, in DemandUploadCreate) (Dema
 	if _, err = demandStoragePath(""); err != nil {
 		return out, err
 	}
-	v = model.DemandAttachment{ID: uuid.NewString(), OwnerID: a.UserID, ClientUploadID: in.ClientUploadID, MetadataHash: hash, Name: in.Name, Kind: kind, MimeType: in.MimeType, SizeBytes: in.SizeBytes, Status: "uploading", ExpiresAt: time.Now().Unix() + r.UploadTTLSeconds}
+	v = model.DemandAttachment{ID: uuid.NewString(), OwnerID: a.UserID, ClientUploadID: in.ClientUploadID, MetadataHash: hash, Name: in.Name, Kind: kind, MimeType: in.MimeType, SizeBytes: in.SizeBytes, Status: "uploading", ExpiresAt: time.Now().Unix() + r.UploadTTLSeconds, AvatarReserved: scope != "", AvatarScope: scope}
 	if err = db.Create(&v).Error; err != nil {
 		var existing model.DemandAttachment
 		if db.Where("owner_id = ? AND client_upload_id = ?", a.UserID, in.ClientUploadID).First(&existing).Error == nil && existing.MetadataHash == hash {

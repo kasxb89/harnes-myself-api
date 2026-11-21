@@ -14,7 +14,7 @@ func TestCommunitySignedMediaQueryNeverEntersAccessLog(t *testing.T) {
 	before := gin.DefaultWriter
 	gin.DefaultWriter = &log
 	defer func() { gin.DefaultWriter = before }()
-	for _, path := range []string{"/api/product/community-demands/attachments/id/content", "/api/community-demand-management/attachments/id/content"} {
+	for _, path := range []string{"/api/product/community-demands/attachments/id/content", "/api/community-demand-management/attachments/id/content", "/api/product/forum/attachments/id/content", "/api/product/demand-service-media/profile/asset/content"} {
 		engine := gin.New()
 		SetUpLogger(engine)
 		engine.GET(path, func(c *gin.Context) { assert.Equal(t, "synthetic-short-lived-secret", c.Query("token")); c.Status(200) })

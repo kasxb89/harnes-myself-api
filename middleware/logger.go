@@ -30,6 +30,8 @@ func SetUpLogger(server *gin.Engine) {
 		}
 		path := param.Path
 		privateMedia := strings.Contains(path, "/content?") && (strings.HasPrefix(path, "/api/product/demands/attachments/") ||
+			strings.HasPrefix(path, "/api/product/forum/attachments/") ||
+			strings.HasPrefix(path, "/api/product/demand-service-media/") ||
 			strings.HasPrefix(path, "/api/product/community-demands/attachments/") ||
 			strings.HasPrefix(path, "/api/community-demand-management/attachments/"))
 		// OAuth callbacks carry one-time codes and state in the query string.

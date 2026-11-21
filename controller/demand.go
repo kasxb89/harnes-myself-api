@@ -73,7 +73,7 @@ func GetDemandConfiguration(c *gin.Context) {
 		demandRespond(c, v, err)
 		return
 	}
-	demandRespond(c, gin.H{"config": v.Config, "server_time": time.Now().Unix(), "capabilities": gin.H{"resumable_upload": true, "polling": true, "service_profiles": true, "engineer_pagination": true, "community_orders_v1": true}}, err)
+	demandRespond(c, gin.H{"config": v.Config, "server_time": time.Now().Unix(), "capabilities": gin.H{"resumable_upload": true, "polling": true, "service_profiles": true, "engineer_pagination": true, "community_orders_v1": true, "service_gallery_v1": true}}, err)
 }
 func SaveDemandConfiguration(c *gin.Context) {
 	var in service.DemandConfigVersion
