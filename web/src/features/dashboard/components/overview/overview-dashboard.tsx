@@ -189,7 +189,7 @@ function SetupGuideBackdrop(props: { compact?: boolean }) {
     <>
       <div
         className={cn(
-          'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_48%_120%_at_78%_0%,color-mix(in_oklch,var(--overview-accent-1)_14%,transparent)_0%,transparent_62%),linear-gradient(112deg,color-mix(in_oklch,var(--card)_94%,var(--overview-accent-2)_6%)_0%,color-mix(in_oklch,var(--card)_94%,var(--overview-accent-3)_6%)_48%,color-mix(in_oklch,var(--background)_90%,var(--overview-accent-1)_10%)_100%)] dark:opacity-60',
+          'obsidian-overview-backdrop pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_48%_120%_at_78%_0%,color-mix(in_oklch,var(--overview-accent-1)_14%,transparent)_0%,transparent_62%),linear-gradient(112deg,color-mix(in_oklch,var(--card)_94%,var(--overview-accent-2)_6%)_0%,color-mix(in_oklch,var(--card)_94%,var(--overview-accent-3)_6%)_48%,color-mix(in_oklch,var(--background)_90%,var(--overview-accent-1)_10%)_100%)] dark:opacity-60',
           props.compact
             ? '[mask-image:linear-gradient(90deg,black_0%,black_48%,transparent_74%)] opacity-55'
             : 'opacity-85'
@@ -198,7 +198,7 @@ function SetupGuideBackdrop(props: { compact?: boolean }) {
       />
       <div
         className={cn(
-          'text-foreground/5 dark:text-foreground/8 pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden font-mono sm:block',
+          'obsidian-overview-backdrop text-foreground/5 dark:text-foreground/8 pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden font-mono sm:block',
           props.compact ? 'w-1/2 opacity-45' : 'w-[58%] opacity-75'
         )}
         aria-hidden='true'
@@ -215,7 +215,7 @@ function SetupGuideBackdrop(props: { compact?: boolean }) {
         </pre>
       </div>
       <div
-        className='from-background/35 to-background/70 dark:from-background/20 dark:to-background/80 pointer-events-none absolute inset-0 bg-linear-to-b via-transparent'
+        className='obsidian-overview-backdrop from-background/35 to-background/70 dark:from-background/20 dark:to-background/80 pointer-events-none absolute inset-0 bg-linear-to-b via-transparent'
         aria-hidden='true'
       />
     </>
@@ -653,7 +653,7 @@ export function OverviewDashboard() {
         )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='flex flex-col gap-4'>
+        <div className='obsidian-dashboard flex flex-col gap-4'>
           <div id={setupGuideId} hidden={!setupGuideExpanded}>
             {setupGuideExpanded && (
               <CardStaggerContainer className='grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>

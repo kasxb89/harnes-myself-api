@@ -91,18 +91,18 @@ export function getBgColorClass(color?: string): string {
  * Uses HSL format for better theme adaptation
  */
 export const CHART_COLORS = [
-  'hsl(217, 91%, 60%)', // blue
-  'hsl(142, 76%, 36%)', // green
-  'hsl(38, 92%, 50%)', // amber
-  'hsl(258, 90%, 66%)', // violet
-  'hsl(330, 81%, 60%)', // pink
-  'hsl(189, 94%, 43%)', // cyan
-  'hsl(25, 95%, 53%)', // orange
-  'hsl(239, 84%, 67%)', // indigo
-  'hsl(173, 80%, 40%)', // teal
-  'hsl(271, 91%, 65%)', // purple
-  'hsl(199, 89%, 48%)', // sky
-  'hsl(280, 65%, 60%)', // fuchsia
+  '#fc1c46',
+  '#f2f2f2',
+  '#c7c7c7',
+  '#a0a0a0',
+  '#777777',
+  '#dedede',
+  '#b3b3b3',
+  '#929292',
+  '#707070',
+  '#d3d3d3',
+  '#bdbdbd',
+  '#878787',
 ] as const
 
 /**

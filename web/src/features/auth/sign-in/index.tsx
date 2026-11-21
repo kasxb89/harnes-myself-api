@@ -31,15 +31,13 @@ export function SignIn() {
   const { status } = useStatus()
 
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
-            {t('Sign in')}
-          </h2>
+    <AuthLayout variant='sign-in'>
+      <div className='auth-sign-in-content'>
+        <div className='auth-sign-in-heading'>
+          <h2>{t('Sign in')}</h2>
           {!status?.self_use_mode_enabled &&
             status?.register_enabled !== false && (
-              <p className='text-muted-foreground text-left text-sm sm:text-base'>
+              <p>
                 {t("Don't have an account?")}{' '}
                 <Link
                   to='/sign-up'

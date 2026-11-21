@@ -1,0 +1,145 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* Canonical Obsidian controls shared by public, authentication and operator pages. */
+html {
+  background: var(--background);
+  color-scheme: dark;
+}
+body {
+  font-family: var(--font-body);
+}
+::selection {
+  background: #fc1c46;
+  color: #000;
+}
+input,
+textarea {
+  caret-color: #fc1c46;
+}
+[data-slot='button'] {
+  border-radius: 9999px;
+  box-shadow: none;
+  transition-property: opacity, transform;
+  transition-duration: 160ms;
+}
+[data-slot='button']:focus-visible,
+[data-slot='input']:focus-visible,
+[data-slot='textarea']:focus-visible,
+[data-slot='form-control']:is(input, textarea, [role='combobox']):focus-visible,
+[data-slot='select-trigger']:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+[data-slot='input'],
+[data-slot='textarea'],
+[data-slot='form-control']:is(input, textarea):not([data-input-otp]):not(
+    [type='checkbox']
+  ):not([type='radio']):not([type='hidden']),
+[data-slot='form-control'][role='combobox'],
+[data-slot='select-trigger'] {
+  border-color: var(--input);
+  border-radius: 0;
+  background-color: transparent;
+  color: var(--foreground);
+  box-shadow: none;
+}
+[data-slot='input']::placeholder,
+[data-slot='form-control']:is(input, textarea)::placeholder,
+[data-slot='textarea']::placeholder {
+  color: #aaa;
+  opacity: 1;
+}
+[data-slot='form-control'][aria-invalid='true'],
+[data-slot='input'][aria-invalid='true'],
+[data-slot='textarea'][aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+[data-slot='card'] {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-slot='card']:hover {
+  transform: none;
+  box-shadow: none;
+}
+[data-slot='table'] {
+  font-size: 0.875rem;
+}
+[data-slot='table-header'] {
+  background: var(--table-header);
+  color: var(--foreground);
+}
+[data-slot='table-head'] {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+[data-slot='table-cell'] {
+  border-color: var(--border);
+  font-variant-numeric: tabular-nums;
+}
+[data-slot='table'] tbody tr {
+  animation: none;
+}
+[data-slot='dialog-content'],
+[data-slot='sheet-content'],
+[data-slot='popover-content'],
+[data-slot='dropdown-menu-content'],
+[data-slot='select-content'],
+[data-slot='command'] {
+  background-color: var(--popover);
+  color: var(--foreground);
+  border-color: #555;
+  border-radius: 8px;
+  box-shadow: none;
+}
+[data-slot='tabs-list'] {
+  background-color: transparent;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+[data-slot='tabs-trigger'] {
+  color: var(--muted-foreground);
+  border-radius: 0;
+}
+[data-slot='tabs-trigger'][data-state='active'],
+[data-slot='tabs-trigger'][data-active] {
+  color: #fff;
+  background-color: transparent;
+  border-bottom: 2px solid var(--primary);
+  box-shadow: none;
+}
+[data-slot='tooltip-content'] {
+  background: #eee;
+  color: #000;
+}
+[data-sonner-toaster] [data-sonner-toast] {
+  background: #101010;
+  color: #fff;
+  border-color: #555;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot='button'] {
+    transition: none;
+  }
+}

@@ -34,10 +34,10 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { SignUp } from '@/features/auth/sign-up'
+import { beforeLegacyDesignLoad } from '@/routes/(auth)/relay-designs'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { parseRelayDesignSearch } from '../search'
-import { relayThemes } from '../themes'
 
 const fixture = vi.hoisted(() => ({
   status: {} as Record<string, unknown>,
@@ -73,7 +73,7 @@ vi.mock('../obsidian-object', () => ({
   ObsidianObject: () => <div data-testid='local-3d-renderer-placeholder' />,
 }))
 const clients: QueryClient[] = []
-async function view() {
+async function view(initialEntry = '/sign-up?aff=preview-referral') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -81,9 +81,15 @@ async function view() {
   const root = createRootRoute()
   const page = createRoute({
     getParentRoute: () => root,
+    path: '/sign-up',
+    validateSearch: parseRelayDesignSearch,
+    component: SignUp,
+  })
+  const legacyDesign = createRoute({
+    getParentRoute: () => root,
     path: '/relay-designs',
     validateSearch: parseRelayDesignSearch,
-    component: () => <SignUp comparison />,
+    beforeLoad: beforeLegacyDesignLoad,
   })
   const signIn = createRoute({
     getParentRoute: () => root,
@@ -91,9 +97,9 @@ async function view() {
     component: () => <h1>Sign in destination</h1>,
   })
   const router = createRouter({
-    routeTree: root.addChildren([page, signIn]),
+    routeTree: root.addChildren([page, legacyDesign, signIn]),
     history: createMemoryHistory({
-      initialEntries: ['/relay-designs?design=signal&aff=preview-referral'],
+      initialEntries: [initialEntry],
     }),
   })
   await router.load()
@@ -136,50 +142,57 @@ afterEach(() => {
   useAuthStore.getState().auth.reset()
 })
 
-test('the selected reference is the default and all five previous designs and referrals remain usable', () => {
-  expect(relayThemes.map((theme) => theme.id)).toEqual([
-    'obsidian',
-    'signal',
-    'punch',
-    'circuit',
-    'tide',
-    'folio',
-  ])
+test('referral links remain intact while retired and invalid design parameters are ignored', () => {
+  expect(
+    parseRelayDesignSearch({ design: 'signal', aff: 'original-referral' })
+  ).toEqual({ aff: 'original-referral' })
   expect(
     parseRelayDesignSearch({ design: '<script>', aff: 'original-referral' })
-  ).toEqual({ design: 'obsidian', aff: 'original-referral' })
+  ).toEqual({ aff: 'original-referral' })
   expect(parseRelayDesignSearch({ aff: 'original-referral' })).toEqual({
-    design: 'obsidian',
     aff: 'original-referral',
   })
+  expect(parseRelayDesignSearch({ design: 'punch', aff: 123 })).toEqual({})
 })
 
-test('switching the reference and five previous layouts preserves one form and its draft without registration or verification requests', async () => {
-  const router = await view()
+test('the retired gallery redirects to registration and preserves the original referral without registration requests', async () => {
+  const router = await view(
+    '/relay-designs?design=signal&aff=original-referral'
+  )
   await screen.findByLabelText('Username')
-  fillForm()
-  const username = screen.getByLabelText('Username')
-  const password = screen.getByLabelText('Password')
-  for (const theme of relayThemes) {
-    fireEvent.click(screen.getByRole('button', { name: theme.nameKey }))
-    await waitFor(() =>
-      expect(router.state.location.search.design).toBe(theme.id)
-    )
-    expect(router.state.location.search.aff).toBe('preview-referral')
-    expect(screen.getByLabelText('Username')).toBe(username)
-    expect(screen.getByLabelText('Password')).toBe(password)
-    expect(username).toHaveValue('local_preview_user')
-    expect(password).toHaveValue('Preview-Password-123')
-    expect(document.querySelectorAll('form')).toHaveLength(1)
-  }
+  expect(router.state.location.pathname).toBe('/sign-up')
+  expect(router.state.location.search).toEqual({ aff: 'original-referral' })
   expect(fixture.register).not.toHaveBeenCalled()
   expect(fixture.sendEmailVerification).not.toHaveBeenCalled()
 })
 
-test('the embedded handbook preserves the registration draft', async () => {
+test('registration has one Obsidian presentation and one form without design switching controls', async () => {
+  await view('/sign-up?design=punch&aff=preview-referral')
+  await screen.findByLabelText('Username')
+  expect(
+    screen.getByRole('heading', { name: 'One API. Your entire workflow.' })
+  ).toBeVisible()
+  expect(
+    screen.queryByRole('navigation', { name: 'Compare registration designs' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Orange punch' })
+  ).not.toBeInTheDocument()
+  expect(document.querySelectorAll('form')).toHaveLength(1)
+  expect(fixture.register).not.toHaveBeenCalled()
+  expect(fixture.sendEmailVerification).not.toHaveBeenCalled()
+})
+
+test('pausing effects and opening the handbook preserve the same form and draft without sending requests', async () => {
   await view()
   const username = await screen.findByLabelText('Username')
+  const password = screen.getByLabelText('Password')
+  const form = username.closest('form')
   fillForm()
+  fireEvent.click(screen.getByRole('button', { name: 'Pause effects' }))
+  expect(
+    screen.getByRole('button', { name: 'Enable effects' })
+  ).toHaveAttribute('aria-pressed', 'false')
   fireEvent.click(screen.getByRole('button', { name: 'Connection handbook' }))
   expect(await screen.findByRole('dialog')).toBeVisible()
   await screen.findByRole('button', { name: 'Download Markdown' })
@@ -187,30 +200,14 @@ test('the embedded handbook preserves the registration draft', async () => {
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   )
-  expect(screen.getByLabelText('Username')).toBe(username)
-  expect(username).toHaveValue('local_preview_user')
-  expect(fixture.register).not.toHaveBeenCalled()
-  expect(fixture.sendEmailVerification).not.toHaveBeenCalled()
-})
-
-test('effects can be paused across design changes without disturbing the registration draft or sending requests', async () => {
-  await view()
-  const username = await screen.findByLabelText('Username')
-  fillForm()
-  fireEvent.click(screen.getByRole('button', { name: 'Pause effects' }))
   expect(
     screen.getByRole('button', { name: 'Enable effects' })
   ).toHaveAttribute('aria-pressed', 'false')
-  fireEvent.click(screen.getByRole('button', { name: 'Mint tide' }))
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Mint tide' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-  )
-  expect(screen.getByRole('button', { name: 'Enable effects' })).toBeVisible()
   expect(screen.getByLabelText('Username')).toBe(username)
+  expect(screen.getByLabelText('Password')).toBe(password)
+  expect(username.closest('form')).toBe(form)
   expect(username).toHaveValue('local_preview_user')
+  expect(password).toHaveValue('Preview-Password-123')
   fireEvent.click(screen.getByRole('button', { name: 'Enable effects' }))
   expect(screen.getByRole('button', { name: 'Pause effects' })).toHaveAttribute(
     'aria-pressed',

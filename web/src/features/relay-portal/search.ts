@@ -16,14 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { parseRelayTheme, type RelayTheme } from './themes'
+export type RelayDesignSearch = { aff?: string }
 
-export type RelayDesignSearch = { design?: RelayTheme; aff?: string }
-
+/** Preserve referral links while ignoring retired presentation parameters. */
 export function parseRelayDesignSearch(
   search: Record<string, unknown>
 ): RelayDesignSearch {
-  const design = parseRelayTheme(search.design)
   const aff = typeof search.aff === 'string' ? search.aff : undefined
-  return aff ? { design, aff } : { design }
+  return aff ? { aff } : {}
 }

@@ -103,9 +103,6 @@ For commercial licensing, please contact support@quantumnous.com
   font-weight: 400;
   letter-spacing: 0;
 }
-.relay-portal[data-theme='obsidian'] .relay-portal-eyebrow > span {
-  display: none;
-}
 .relay-portal[data-theme='obsidian'] .relay-portal-hero h1 {
   max-width: 12ch;
   font-size: clamp(78px, 7.6vw, 118px);
@@ -132,10 +129,6 @@ For commercial licensing, please contact support@quantumnous.com
   color: #fff;
   font-size: 15px;
   font-weight: 500;
-}
-.relay-portal[data-theme='obsidian'] .relay-portal-chapters,
-.relay-portal[data-theme='obsidian'] .relay-effect-stage {
-  display: none;
 }
 .relay-portal[data-theme='obsidian'] .relay-obsidian-visual {
   position: absolute;
@@ -291,10 +284,6 @@ For commercial licensing, please contact support@quantumnous.com
   font-weight: 450;
   letter-spacing: -0.035em;
 }
-.relay-portal[data-theme='obsidian'] .relay-protocol-title > svg,
-.relay-portal[data-theme='obsidian'] .relay-route-visual {
-  display: none;
-}
 .relay-portal[data-theme='obsidian'] .relay-request-example {
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -310,12 +299,6 @@ For commercial licensing, please contact support@quantumnous.com
   font-size: 13px;
   font-weight: 400;
 }
-.relay-portal[data-theme='obsidian']
-  .relay-request-example
-  > p
-  > span:last-child {
-  display: none;
-}
 .relay-portal[data-theme='obsidian'] .relay-request-example > pre {
   padding: 0;
   font-size: 14px;
@@ -330,44 +313,6 @@ For commercial licensing, please contact support@quantumnous.com
   max-width: 27ch;
   margin-top: 24px;
   color: #ccc;
-}
-.relay-portal[data-theme='obsidian'] .relay-theme-nav {
-  order: 2;
-  width: calc(100% - clamp(48px, 9vw, 152px));
-  max-width: 1528px;
-  align-items: flex-start;
-  margin-inline: auto;
-  padding: 22px 0;
-  border-top: 1px solid #333;
-  border-bottom: 0;
-  background: transparent;
-}
-.relay-portal[data-theme='obsidian'] .relay-theme-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-}
-.relay-portal[data-theme='obsidian'] .relay-theme-option {
-  padding-inline: 0;
-  border: 0;
-  border-bottom: 1px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: #aaa;
-  font-size: 13px;
-  font-weight: 400;
-}
-.relay-portal[data-theme='obsidian'] .relay-theme-option:hover,
-.relay-portal[data-theme='obsidian'] .relay-theme-option[aria-pressed='true'] {
-  border-bottom-color: #fff;
-  background: transparent;
-  color: #fff;
-}
-.relay-theme-swatch[data-swatch='obsidian'] {
-  background: #000;
-}
-.relay-portal[data-theme='obsidian'] .relay-theme-swatch {
-  display: none;
 }
 .relay-portal[data-theme='obsidian'] .relay-portal-footer {
   order: 3;
@@ -529,9 +474,6 @@ For commercial licensing, please contact support@quantumnous.com
   .relay-portal[data-theme='obsidian'] .relay-protocol {
     column-gap: 38px;
   }
-  .relay-portal[data-theme='obsidian'] .relay-theme-nav {
-    width: calc(100% - 64px);
-  }
 }
 @media (max-width: 520px) {
   .relay-portal[data-theme='obsidian'] .relay-portal-header {
@@ -626,16 +568,6 @@ For commercial licensing, please contact support@quantumnous.com
   .relay-portal[data-theme='obsidian'] .relay-protocol-note {
     max-width: 33ch;
     margin-top: 0;
-  }
-  .relay-portal[data-theme='obsidian'] .relay-theme-nav {
-    width: calc(100% - 48px);
-    flex-direction: column;
-    gap: 12px;
-    padding-block: 20px;
-  }
-  .relay-portal[data-theme='obsidian'] .relay-theme-options {
-    justify-content: flex-start;
-    gap: 4px 20px;
   }
   .relay-portal[data-theme='obsidian'] .relay-portal-footer {
     flex-direction: column;

@@ -27,6 +27,8 @@ import { cn } from '@/lib/utils'
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
 
+import '@/styles/obsidian-shell.css'
+
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
@@ -37,14 +39,17 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   return (
     <LayoutProvider>
       <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+        <SidebarProvider
+          defaultOpen={defaultOpen}
+          className='obsidian-app-shell flex-col'
+        >
           <SkipToMain />
           <AppHeader />
-          <div className='flex min-h-0 w-full flex-1'>
+          <div className='obsidian-app-workspace flex min-h-0 w-full flex-1'>
             <AppSidebar />
             <SidebarInset
               className={cn(
-                '@container/content',
+                'obsidian-app-inset @container/content',
                 'h-[calc(100svh-var(--app-header-height,0px))]',
                 'min-h-0 overflow-hidden',
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'

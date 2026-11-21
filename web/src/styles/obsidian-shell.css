@@ -1,0 +1,184 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+/* Internal application framing only. Content, media and status colors use
+   their existing semantic tokens; this sheet never recolors arbitrary children. */
+.obsidian-app-shell,
+.obsidian-app-workspace,
+.obsidian-app-inset,
+.obsidian-app-main {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.obsidian-app-shell .obsidian-app-header {
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.obsidian-app-shell .obsidian-app-header-row {
+  padding-inline: 0.75rem;
+}
+
+.obsidian-app-brand {
+  gap: 0.5rem;
+}
+
+.obsidian-app-shell .obsidian-app-header-actions {
+  gap: 0.375rem;
+}
+
+.obsidian-app-shell .obsidian-app-header-actions [data-slot='button'] {
+  border-radius: 999px;
+}
+
+.obsidian-app-shell .obsidian-app-header nav a {
+  position: relative;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.obsidian-app-shell .obsidian-app-header nav a:hover,
+.obsidian-app-shell .obsidian-app-header nav a[data-status='active'] {
+  color: var(--foreground);
+}
+
+.obsidian-app-shell .obsidian-app-header nav a[data-status='active']::after {
+  position: absolute;
+  inset-inline: 0;
+  bottom: -0.5rem;
+  height: 2px;
+  background: var(--primary);
+  content: '';
+}
+
+.obsidian-app-sidebar,
+.obsidian-app-sidebar [data-slot='sidebar-inner'],
+[data-slot='sidebar'][data-mobile='true']:has(.obsidian-sidebar-content) {
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  border-color: var(--sidebar-border);
+  box-shadow: none;
+}
+
+.obsidian-app-sidebar [data-slot='sidebar-inner'] {
+  border-radius: 0;
+}
+
+.obsidian-sidebar-content {
+  background: var(--sidebar);
+  padding-block: 0.625rem;
+}
+
+.obsidian-sidebar-content [data-slot='sidebar-group-label'] {
+  margin-block: 0.25rem;
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.obsidian-sidebar-content [data-sidebar='menu-button'],
+.obsidian-sidebar-content [data-sidebar='menu-sub-button'] {
+  position: relative;
+  border-radius: 0.375rem;
+  color: var(--sidebar-foreground);
+  font-weight: 400;
+}
+
+.obsidian-sidebar-content [data-sidebar='menu-button']:hover,
+.obsidian-sidebar-content [data-sidebar='menu-sub-button']:hover {
+  background: var(--sidebar-accent);
+}
+
+.obsidian-sidebar-content [data-sidebar='menu-button'][data-active],
+.obsidian-sidebar-content [data-sidebar='menu-sub-button'][data-active] {
+  background: var(--sidebar-accent);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.obsidian-sidebar-content
+  :is(
+    [data-sidebar='menu-button'][data-active],
+    [data-sidebar='menu-sub-button'][data-active]
+  )::before {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  width: 2px;
+  height: 0.875rem;
+  border-radius: 999px;
+  background: var(--primary);
+  transform: translateY(-50%);
+  content: '';
+}
+
+.obsidian-sidebar-content [data-slot='sidebar-menu-sub'] {
+  border-color: var(--sidebar-border);
+}
+
+.obsidian-app-shell .obsidian-app-inset {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.obsidian-app-shell .obsidian-page-heading {
+  padding-top: 1rem;
+  padding-bottom: 0.875rem;
+}
+
+.obsidian-app-shell .obsidian-page-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.025em;
+}
+
+.obsidian-app-shell .obsidian-page-content {
+  padding-top: 0;
+}
+
+.obsidian-app-shell .obsidian-page-footer {
+  background: var(--background);
+  border-color: var(--border);
+}
+
+.obsidian-app-shell .obsidian-overview-backdrop {
+  display: none;
+}
+
+.obsidian-app-shell .obsidian-dashboard-panel {
+  border-radius: 0.75rem;
+  background: var(--card);
+  box-shadow: none;
+}
+
+@media (min-width: 640px) {
+  .obsidian-app-shell .obsidian-app-header-row {
+    padding-inline: 1rem;
+  }
+
+  .obsidian-app-shell .obsidian-page-heading {
+    padding-top: 1.25rem;
+    padding-bottom: 1rem;
+  }
+}

@@ -49,10 +49,14 @@ export function AppSidebar() {
   const shouldReduce = useReducedMotion()
 
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
+    <Sidebar
+      className='obsidian-app-sidebar'
+      collapsible={collapsible}
+      variant={variant}
+    >
       {view && <SidebarViewHeader view={view} />}
 
-      <SidebarContent className='py-2'>
+      <SidebarContent className='obsidian-sidebar-content py-2'>
         <AnimatePresence mode='wait' initial={false}>
           <motion.div
             key={key}

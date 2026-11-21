@@ -18,14 +18,23 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { SignUp } from '@/features/auth/sign-up'
 import { parseRelayDesignSearch } from '@/features/relay-portal/search'
 import { useAuthStore } from '@/stores/auth-store'
 
+export function beforeLegacyDesignLoad({
+  search,
+}: {
+  search: Record<string, unknown>
+}): never {
+  if (useAuthStore.getState().auth.user) throw redirect({ to: '/dashboard' })
+  throw redirect({
+    to: '/sign-up',
+    search: parseRelayDesignSearch(search),
+    replace: true,
+  })
+}
+
 export const Route = createFileRoute('/(auth)/relay-designs')({
   validateSearch: parseRelayDesignSearch,
-  beforeLoad: () => {
-    if (useAuthStore.getState().auth.user) throw redirect({ to: '/dashboard' })
-  },
-  component: () => <SignUp comparison />,
+  beforeLoad: beforeLegacyDesignLoad,
 })

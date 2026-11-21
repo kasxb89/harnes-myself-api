@@ -40,9 +40,7 @@ export function RelayGuidePage() {
           <img src={logo} alt='' className='h-8 w-8 object-contain' />
           <span>{systemName}</span>
         </Link>
-        <Button render={<Link to='/sign-up' search={{ design: 'obsidian' }} />}>
-          {t('Create account')}
-        </Button>
+        <Button render={<Link to='/sign-up' />}>{t('Create account')}</Button>
       </header>
       <main className='mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12'>
         <RelayAccessGuide

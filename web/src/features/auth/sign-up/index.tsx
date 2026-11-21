@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -26,7 +26,6 @@ import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
 import { normalizeRelayRoot } from '@/features/relay-portal/guide-content'
 import { RelayPortal } from '@/features/relay-portal/portal'
-import { parseRelayDesignSearch } from '@/features/relay-portal/search'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { statusQueryOptions } from '@/lib/status-query'
 
@@ -40,11 +39,8 @@ const RelayAccessGuide = lazy(() =>
   }))
 )
 
-export function SignUp({ comparison = false }: { comparison?: boolean } = {}) {
+export function SignUp() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const search = useSearch({ strict: false })
-  const { design = 'obsidian', aff } = parseRelayDesignSearch(search)
   const { systemName, logo } = useSystemConfig()
   const query = useQuery(statusQueryOptions)
   const status = query.data as SystemStatus | null | undefined
@@ -93,25 +89,10 @@ export function SignUp({ comparison = false }: { comparison?: boolean } = {}) {
   return (
     <>
       <RelayPortal
-        theme={design}
-        comparison={comparison}
         systemName={systemName}
         logo={logo}
-        onThemeChange={(theme) =>
-          void navigate({
-            to: comparison ? '/relay-designs' : '/sign-up',
-            search: { design: theme, aff },
-          })
-        }
         onReadGuide={() => setGuideOpen(true)}
       >
-        {comparison && (
-          <p className='text-muted-foreground text-sm' role='status'>
-            {t(
-              'Local preview. Registration creates a local test account only.'
-            )}
-          </p>
-        )}
         {form}
         <TermsFooter
           variant='sign-up'
@@ -123,11 +104,7 @@ export function SignUp({ comparison = false }: { comparison?: boolean } = {}) {
         open={guideOpen}
         onOpenChange={setGuideOpen}
         title={t('Relay access guide')}
-        contentClassName={
-          design === 'obsidian'
-            ? 'relay-obsidian-guide sm:max-w-6xl'
-            : 'sm:max-w-6xl'
-        }
+        contentClassName='relay-obsidian-guide sm:max-w-6xl'
         contentHeight='min(74svh, 850px)'
       >
         {guideOpen && (
