@@ -119,7 +119,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	h3Submission := H3SubmissionFromContext(c)
 	mediaSubmission := MediaSubmissionFromContext(c)
 	refund := func() {
-		confirmed := true
+		confirmed := false
 		// 1) 退还资金来源
 		if err := funding.Refund(); err != nil {
 			confirmed = false
@@ -129,6 +129,18 @@ func (s *BillingSession) Refund(c *gin.Context) {
 				s.mu.Unlock()
 			}
 			common.SysLog(common.LogText("error refunding billing source: %s", err.Error()))
+		} else {
+			// Only the known synchronous funding implementations provide durable
+			// commit evidence. Redis invalidation or batch statistics do not decide
+			// whether the original wallet/token transaction has committed.
+			switch source := funding.(type) {
+			case *WalletFunding:
+				confirmed = source.userId == s.relayInfo.UserId && source.requestId != "" &&
+					source.requestId == s.relayInfo.FundingRequestId && source.purpose == s.relayInfo.FundingPurpose &&
+					source.consumed == 0 && source.snapshot != nil && source.snapshot.Quota == 0
+			case *SubscriptionFunding:
+				confirmed = source.userId == s.relayInfo.UserId && source.requestId != "" && source.requestId == s.relayInfo.RequestId
+			}
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
@@ -139,12 +151,18 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		// 2) 退还令牌额度
 		_, walletFunding := funding.(*WalletFunding)
 		if tokenConsumed > 0 && !isPlayground && !walletFunding {
-			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
+			var restoreErr error
+			if h3Submission != nil || mediaSubmission != nil {
+				restoreErr = model.RestoreBillingTokenQuota(s.relayInfo.UserId, tokenId, tokenKey, tokenConsumed)
+			} else {
+				restoreErr = model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed)
+			}
+			if restoreErr != nil {
 				confirmed = false
-				common.SysLog(common.LogText("error refunding token quota: %s", err.Error()))
+				common.SysLog(common.LogText("error refunding token quota: %s", restoreErr.Error()))
 			}
 		}
-		if h3Submission != nil && confirmed && !common.BatchUpdateEnabled {
+		if h3Submission != nil && confirmed {
 			persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := model.ConfirmH3Refund(persistCtx, h3Submission.Task); err != nil {
@@ -153,7 +171,7 @@ func (s *BillingSession) Refund(c *gin.Context) {
 				h3Submission.RefundConfirmed = true
 			}
 		}
-		if mediaSubmission != nil && confirmed && !common.BatchUpdateEnabled && !common.RedisEnabled {
+		if mediaSubmission != nil && confirmed {
 			persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := model.ConfirmMediaRefund(persistCtx, mediaSubmission.Task); err != nil {
@@ -303,11 +321,18 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		rollbackConfirmed := s.tokenConsumed == 0
 		// 预扣费失败，回滚令牌额度
 		if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
-			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
+			var rollbackErr error
+			durableRollback := H3SubmissionFromContext(c) != nil || MediaSubmissionFromContext(c) != nil
+			if durableRollback {
+				rollbackErr = model.RestoreBillingTokenQuota(s.relayInfo.UserId, s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed)
+			} else {
+				rollbackErr = model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed)
+			}
+			if rollbackErr != nil {
 				common.SysLog(common.LogText("error rolling back token quota (userId=%d, tokenId=%d, amount=%d, fundingErr=%s): %s",
 					s.relayInfo.UserId, s.relayInfo.TokenId, s.tokenConsumed, err.Error(), rollbackErr.Error()))
-			} else {
-				rollbackConfirmed = !common.BatchUpdateEnabled && !common.RedisEnabled
+			} else if durableRollback {
+				rollbackConfirmed = true
 			}
 			s.tokenConsumed = 0
 		}

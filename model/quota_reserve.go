@@ -112,3 +112,46 @@ func TryReserveTokenQuota(id int, key string, quota int, unlimited bool) (bool, 
 	}
 	return reserved, nil
 }
+
+// RestoreBillingTokenQuota is used only when a live H3/media rollback needs
+// proof that its original, user-bound token update reached the primary DB.
+// It is not a retry primitive: callers retain the original refund/send fence.
+// Ordinary token adjustments keep their existing compatibility semantics.
+func RestoreBillingTokenQuota(userID, tokenID int, key string, quota int) error {
+	if userID <= 0 || tokenID <= 0 || key == "" || quota <= 0 {
+		return errors.New("invalid billing token restoration")
+	}
+	if err := invalidateTokenCacheForMutation(key); err != nil {
+		common.SysLog(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var original Token
+		if err := lockForUpdate(tx).Select("id", "key").Where("id = ? AND user_id = ?", tokenID, userID).First(&original).Error; err != nil {
+			return err
+		}
+		// Compare bytes as well as the SQL predicate: a MySQL collation may
+		// otherwise treat a differently-cased credential as the original key.
+		if original.Key != key {
+			return gorm.ErrRecordNotFound
+		}
+		result := tx.Model(&Token{}).Where(map[string]any{"id": tokenID, "user_id": userID, "key": key}).Updates(map[string]any{
+			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
+			"used_quota":    gorm.Expr("used_quota - ?", quota),
+			"accessed_time": common.GetTimestamp(),
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if err := invalidateTokenCacheForMutation(key); err != nil {
+		common.SysLog(common.LogText("failed to invalidate token quota cache: %s", err.Error()))
+	}
+	return nil
+}

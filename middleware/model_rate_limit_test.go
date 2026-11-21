@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"sync/atomic"
@@ -18,28 +17,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestModelRedisRateLimitUsesUTCRegardlessOfLocalTimezone(t *testing.T) {
-	redisServer, redisClient := useRateLimitMiniRedis(t)
+func TestModelRedisRateLimitPreservesLegacyWindowRegardlessOfLocalTimezone(t *testing.T) {
+	redisServer, _ := useRateLimitMiniRedis(t)
 	previousLocation := time.Local
 	time.Local = time.FixedZone("test-utc-plus-eight", 8*60*60)
 	t.Cleanup(func() { time.Local = previousLocation })
-
-	ctx := context.Background()
-	recordKey := "rateLimit:model-utc-record"
-	recordRedisRequest(ctx, redisClient, recordKey, 2)
-	recorded, err := redisClient.LIndex(ctx, recordKey, 0).Result()
+	require.NoError(t, i18n.Init())
+	userID := 7200000 + int(modelRateLimitTestUsers.Add(1))
+	legacyKey := fmt.Sprintf("rateLimit:%s:%d", ModelRequestRateLimitSuccessCountMark, userID)
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	_, err := redisServer.Push(legacyKey, timestamp, timestamp)
 	require.NoError(t, err)
-	recordedAt, err := time.Parse(modelRateLimitTimeFormat, recorded)
-	require.NoError(t, err)
-	assert.WithinDuration(t, time.Now().UTC(), recordedAt, 2*time.Second)
-
-	checkKey := "rateLimit:model-utc-check"
-	withinWindow := time.Now().UTC().Add(-30 * time.Second).Format(modelRateLimitTimeFormat)
-	_, err = redisServer.Push(checkKey, withinWindow, withinWindow)
-	require.NoError(t, err)
-	allowed, err := checkRedisRateLimit(ctx, redisClient, checkKey, 2, 60)
-	require.NoError(t, err)
-	assert.False(t, allowed, "an existing UTC timestamp inside the window must remain limited on a non-UTC host")
+	router := gin.New()
+	router.GET("/", func(c *gin.Context) { c.Set("id", userID) }, redisRateLimitHandler(60, 0, 2), func(c *gin.Context) { c.Status(http.StatusOK) })
+	require.Equal(t, http.StatusTooManyRequests, performRateLimitRequest(router, "/", "127.0.0.1:1000").Code)
+	require.True(t, redisServer.Exists(legacyKey), "upgrade must not delete the old counting evidence")
+	redisServer.FastForward(61 * time.Second)
+	require.Equal(t, http.StatusOK, performRateLimitRequest(router, "/", "127.0.0.1:1000").Code)
 }
 
 var modelRateLimitTestUsers atomic.Int64
