@@ -32,7 +32,10 @@ func InitChannelCache() {
 	newChannelId2channel := make(map[int]*Channel)
 	newChannel2advancedCustomConfig := make(map[int]*kitdto.AdvancedCustomConfig)
 	var channels []*Channel
-	DB.Find(&channels)
+	if err := DB.Find(&channels).Error; err != nil {
+		common.SysError(common.LogText("channel cache refresh skipped: failed to read channels; keeping previous cache"))
+		return
+	}
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
 		if channel.Type == constant.ChannelTypeAdvancedCustom {
@@ -42,7 +45,10 @@ func InitChannelCache() {
 		}
 	}
 	var abilities []*Ability
-	DB.Find(&abilities)
+	if err := DB.Find(&abilities).Error; err != nil {
+		common.SysError(common.LogText("channel cache refresh skipped: failed to read abilities; keeping previous cache"))
+		return
+	}
 	newGroup2model2channels := make(map[string]map[string][]int)
 	// Ability is the exact per-group/model route grant. A channel may remain
 	// enabled for other models while one of its abilities has been disabled.
