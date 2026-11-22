@@ -498,6 +498,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (_ *TaskSubmit
 		noteTaskQuotaClamp(info, clamp)
 	}
 
+	if err := service.ValidateMediaGenerationQuotedPrice(c, info); err != nil {
+		return nil, service.TaskErrorWrapperLocal(err, "quote_changed", http.StatusConflict)
+	}
 	c.Set("model_configuration_billing_started", true)
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
 	if info.Billing == nil && !info.PriceData.FreeModel {

@@ -27,3 +27,23 @@ go test ./model -run 'Ycapi' -count=1
 ```
 
 目录与价格还需通过实际发布客户端的规格、偏好和价格消费者联调。离线 wire 测试与免费估价不等于逐模型收费出图实测。
+
+## 当前媒体合同与 V2 请求构造
+
+`media-contracts.json` 单独保留 2026-11-23 审查的 31 款图片和 42 款视频逻辑合同，不替换旧 58 条采购目录。`MediaContracts`、`LookupMediaContract` 返回独立副本；`Available` 只表示供应商目录声明，不代表生产路由授权、报价可用或生成资格。
+
+`ValidateMediaContractParams(modelID, params, assets)` 是报价与提交共用的逻辑校验入口。`params` 使用供应商原字段，素材统一规范化为 `[]string`；`assets` 按精确素材引用索引，由可信上传或媒体探测层提供类型、字节数、尺寸、时长、帧率及格式。不得拿请求自报的 metadata 或 URL 扩展名充当实际探测。素材超限直接拒绝，不截断、不忽略，也不把图生请求降为文生。适用的默认值会补入返回副本；原生 mode、枚举大小写、素材顺序和源约束均保持。
+
+`AssetFields(contract)` 明确给出字段名、素材类型、原生单值/数组形状、数量范围及源已声明的 MIME 类型。没有源格式限制时，`mime_types` 为空，不补猜测的白名单。`images/videos/audios` 始终是原生数组，即使最多只允许一份素材；`url` 的单值角色由三个确切超分/去字幕模型声明。Midjourney 的 `cref/sref` 是单值图片引用，也参与素材与意图校验。`MediaContractSchema` 的内部素材属性统一是字符串数组，`x-media-assets` 和 `x-media-native-shape` 声明构造原生信封时的形状。
+
+先调用 `ValidateMediaContractParams`，再将返回参数交给 `BuildMediaRuntimeRequest(modelID, params, laneID, publicTaskID, intent)`。`laneID` 和 `publicTaskID` 必须来自服务端已选报价路线及持久任务身份；这两个值不属于可编辑模型参数。
+
+`BuildMediaRuntimeRequest` 只返回 `MediaRuntimeRequest`，不发网络请求、不修改任务或账务。意图只接受 `text/reference/frames/transform`：文生不能夹带素材，其他意图必须保留素材；帧与处理意图必须匹配原模型操作。构造器重复逻辑检查，但不替代前一步真实素材 metadata 校验。返回 `model_id` 为合同的原 `native_id`，图片带 `operation=generate/edit`，视频省略 operation；`params.url/cref/sref` 转成单值字符串，`images/videos/audios` 保持有序数组，不新增 frame 字段或改写 mode。
+
+V2 原生统一入口与轮询路径来自保留的官方 OpenAPI：提交 `POST /api/v1/model-runtime/invoke`，读取 `GET /v1/tasks/{task_id}` 或原兼容 `GET /api/v1/model-runtime/tasks/{task_id}`。本包只构造信封，执行绑定及原任务恢复由 Host 适配器负责。逻辑校验通过不证明任意画幅、质量和清晰度组合能在当前采购 lane 路由；完整参数还需走同一份信封的免费 dry-run 和真实估价。
+
+内置插件 `1.0.4` 的 V2 路径仅接受 Host 注入的私有 `ctx.mediaGenerationV2`：`nativeRequest` 为上述构造器的完整信封，`usageFacts` 为服务端核验的事实，另带 `kind` 和十进制字符串 `retailCny`。客户端 JSON 中同名对象不会启用该路径。实际提交必须把 `client_request_id` 绑定到已持久化的公共任务 ID；新增媒体 ID 没有私有上下文便拒绝执行。旧模型的参数归一化、原 offer ID、采购 lane、表达式及旧任务查询路径保持。
+
+媒体 usageSchema 保留旧 `spec` 并增加 `media-v2`，按类型使用 `image_count` 或 `seconds`，另有 `input_image_count/input_video_seconds/input_audio_seconds`、`intent` 和 `resolution/quality/mode/aspect_ratio`。四个规格字段从原合同及旧 offer 的字符串枚举提取，并包含空串代表不适用。素材数量与时长来自可信探测，不能由客户端报价格事实。V2 原样使用 Host 已选的旧 offer 或新 `media-v2`，不走旧 offer 自动选择；报价与提交继续使用同一份已配置计费表达式。
+
+V2 只恢复原 native task ID，保留独立状态标记，并通过 `/v1/tasks/{task_id}` 继续读取。`data[]` 优先作为完整有序产物列表，最多 64 项；图片、视频、音频和普通文件均保留，SVG 作为 `file`。单产物沿用原键，多产物键的数字后缀保留全局顺序。渲染使用 Host 生成的产物内容 URL；读取远端产物不携带供应商凭据。任务用时不能充作输出视频时长，返回原生 usage 也不会覆盖 Host 冻结的 V2 事实。

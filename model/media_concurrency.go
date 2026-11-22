@@ -766,6 +766,9 @@ func (store MediaAdmissionStore) Acquire(ctx context.Context, task *Task, select
 		if err != nil {
 			return err
 		}
+		if err := validateMediaGenerationAdmissionQuote(ctx, tx, task, selectedKey, mediaKind); err != nil {
+			return err
+		}
 		var channel Channel
 		if err := tx.Where("id = ?", task.ChannelId).First(&channel).Error; err != nil || !mediaChannelHasKey(&channel, selectedKey, true) {
 			return ErrMediaAdmissionUnavailable
@@ -799,12 +802,35 @@ func (store MediaAdmissionStore) Acquire(ctx context.Context, task *Task, select
 		if err := tx.Create(task).Error; err != nil {
 			return err
 		}
+		if binding, ok := MediaGenerationQuoteBindingFromContext(ctx); ok {
+			if binding.UserID != task.UserId {
+				return ErrMediaGenerationQuoteInvalid
+			}
+			if err := (MediaGenerationQuoteStore{DB: store.DB}).BindQuoteToTaskTx(ctx, tx, binding, task.ID, task.TaskID); err != nil {
+				return err
+			}
+		}
 		return tx.Create(&MediaAdmission{ID: task.TaskID, TaskDBID: task.ID, PoolID: pool.ID, ChannelID: task.ChannelId, State: MediaReserved, BillingState: "not_started", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}).Error
 	})
 	if err == nil {
 		*target = candidate
 	}
 	return err
+}
+
+func validateMediaGenerationAdmissionQuote(ctx context.Context, tx *gorm.DB, task *Task, selectedKey, mediaKind string) error {
+	binding, ok := MediaGenerationQuoteBindingFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	quote, err := (MediaGenerationQuoteStore{DB: lockForUpdate(tx)}).GetUnclaimedQuote(ctx, binding)
+	if err != nil {
+		return err
+	}
+	if quote.UserID != task.UserId || quote.ChannelID != task.ChannelId || quote.Model != task.Properties.OriginModelName || quote.Kind != mediaKind || quote.UsingGroup != task.Group || quote.CredentialDigest != common.GenerateHMAC("media-v2-key:"+selectedKey) {
+		return ErrMediaGenerationQuoteConflict
+	}
+	return nil
 }
 
 // RecordMediaCapacityRejection records a final, proven-unsent refusal only
@@ -818,6 +844,9 @@ func RecordMediaCapacityRejection(ctx context.Context, task *Task, selectedKey, 
 	task = &candidate
 	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if _, err := mediaPolicyForUpdate(tx); err != nil {
+			return err
+		}
+		if err := validateMediaGenerationAdmissionQuote(ctx, tx, task, selectedKey, mediaKind); err != nil {
 			return err
 		}
 		var channel Channel
@@ -834,9 +863,14 @@ func RecordMediaCapacityRejection(ctx context.Context, task *Task, selectedKey, 
 		task.Progress = "100%"
 		task.FinishTime = time.Now().Unix()
 		task.FailReason = "Upstream media account capacity exhausted; submission was not sent"
-		task.PrivateData = TaskPrivateData{MediaAdmissionID: task.TaskID, MediaKind: mediaKind, Key: selectedKey, Execution: task.PrivateData.Execution}
+		task.PrivateData = TaskPrivateData{SubmissionErrorCode: "media_account_capacity_exhausted", MediaAdmissionID: task.TaskID, MediaKind: mediaKind, Key: selectedKey, Execution: task.PrivateData.Execution}
 		if err := tx.Create(task).Error; err != nil {
 			return err
+		}
+		if binding, ok := MediaGenerationQuoteBindingFromContext(ctx); ok {
+			if err := (MediaGenerationQuoteStore{DB: DB}).BindQuoteToTaskTx(ctx, tx, binding, task.ID, task.TaskID); err != nil {
+				return err
+			}
 		}
 		return tx.Create(&MediaAdmission{ID: task.TaskID, TaskDBID: task.ID, PoolID: pool.ID, ChannelID: task.ChannelId, State: MediaReleased, BillingState: "not_charged", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix()}).Error
 	})

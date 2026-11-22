@@ -52,6 +52,9 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 			result = append(result, raw)
 			continue
 		}
+		if mediaV2OnlyCatalogModel(name, record) {
+			continue
+		}
 		if !record.Definition.Enabled {
 			continue
 		}

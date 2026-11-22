@@ -598,19 +598,19 @@ func taskPluginParameterSchema(key, version, model string) map[string]any {
 		}
 		return codebloom.ClientParameters(model)
 	case "ycapi":
-		if version != "1.0.0" && version != "1.0.1" && version != "1.0.2" && version != "1.0.3" {
+		if version != "1.0.0" && version != "1.0.1" && version != "1.0.2" && version != "1.0.3" && version != "1.0.4" {
 			return nil
 		}
 		parameters := ycapi.LegacyClientParameters(model)
-		if version == "1.0.2" || version == "1.0.3" {
+		if version == "1.0.2" || version == "1.0.3" || version == "1.0.4" {
 			parameters = ycapi.ClientParameters(model)
 		}
-		if version == "1.0.3" {
+		if version == "1.0.3" || version == "1.0.4" {
 			parameters = ycapi.ImageEditClientParameters(model)
 		}
 		if parameters != nil {
 			parameters["x-task-plugin-runtime"] = map[string]any{"key": key, "version": version, "api_version": 1}
-			if version == "1.0.3" && parameters["x-model-kind"] == MediaImage {
+			if (version == "1.0.3" || version == "1.0.4") && parameters["x-model-kind"] == MediaImage {
 				parameters["x-image-task-submit"] = map[string]any{"schema_version": 1, "prefer": "respond-async"}
 			}
 		}

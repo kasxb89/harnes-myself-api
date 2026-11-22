@@ -3,7 +3,9 @@ package codebloom
 import (
 	_ "embed"
 	"fmt"
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -31,6 +33,11 @@ type imageQualification struct {
 	EditRequestSHA256      string `json:"edit_request_sha256,omitempty"`
 	EditResponseSHA256     string `json:"edit_response_sha256,omitempty"`
 	EditImageSHA256        string `json:"edit_image_sha256,omitempty"`
+	EditInputSHA256        string `json:"edit_input_sha256,omitempty"`
+	EditMeterSHA256        string `json:"edit_meter_evidence_sha256,omitempty"`
+	GenerationRequestID    string `json:"generation_request_id,omitempty"`
+	EditRequestID          string `json:"edit_request_id,omitempty"`
+	EvidenceRelativePath   string `json:"evidence_relative_path,omitempty"`
 }
 
 type imageQualificationSnapshot struct {
@@ -45,7 +52,7 @@ func loadImageQualifications(data []byte) (map[string]imageQualification, error)
 	if err := common.Unmarshal(data, &snapshot); err != nil {
 		return nil, err
 	}
-	if snapshot.SchemaVersion != 1 || snapshot.Models == nil || len(snapshot.Models) > 11 {
+	if snapshot.SchemaVersion != 1 || snapshot.Models == nil || len(snapshot.Models) > 14 {
 		return nil, fmt.Errorf("invalid live image qualification schema")
 	}
 	qualified := map[string]imageQualification{}
@@ -75,6 +82,15 @@ func loadImageQualifications(data []byte) (map[string]imageQualification, error)
 		}
 		if candidate.Transport == "images_generations" && (proof.Width != 1024 || proof.Height != 1024) {
 			return nil, fmt.Errorf("image response differs from the verified request size")
+		}
+		if isFreshImageProtocolModel(proof.ID) {
+			requestID := regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$`)
+			if proof.CheckedAt != candidate.CheckedAt || !hex.MatchString(proof.EditInputSHA256) || !hex.MatchString(proof.EditMeterSHA256) ||
+				!hex.MatchString(proof.EditImageSHA256) || !requestID.MatchString(proof.GenerationRequestID) || !requestID.MatchString(proof.EditRequestID) || proof.GenerationRequestID == proof.EditRequestID ||
+				!strings.HasPrefix(proof.EvidenceRelativePath, "output/diagnostics/media-complete-integration-20261123/qualification/") ||
+				path.Clean(proof.EvidenceRelativePath) != proof.EvidenceRelativePath || !strings.HasSuffix(proof.EvidenceRelativePath, "/QQ-RETAINED-SIX-REPLAY-REPORT.json") {
+				return nil, fmt.Errorf("missing fresh generation/edit source, meter or retained evidence")
+			}
 		}
 		qualified[proof.ID] = proof
 	}

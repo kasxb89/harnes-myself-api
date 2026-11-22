@@ -67,6 +67,7 @@ type ModelConfiguration struct {
 	Pricing             PricingValues                        `json:"pricing"`
 	CostRules           []ModelProfitCostRule                `json:"cost_rules,omitempty"`
 	OfficialReferences  *ModelOfficialReferenceConfiguration `json:"official_references,omitempty"`
+	MediaExecution      *ModelMediaExecutionConfiguration    `json:"media_execution,omitempty"`
 	Source              string                               `json:"source"`
 }
 
@@ -314,6 +315,9 @@ func validateModelConfiguration(def ModelConfiguration, previous PricingValues) 
 		}
 	} else if def.ContextWindow != nil || def.MaxOutputTokens != nil || def.DefaultOutputTokens != nil {
 		return errors.New("Image and video models use generation parameters instead of token capacities")
+	}
+	if err := ValidateModelMediaExecutionConfiguration(def); err != nil {
+		return err
 	}
 	if err := ValidateModelParameterSchema(def.Kind, def.Parameters); err != nil {
 		return err
@@ -623,6 +627,13 @@ func SaveModelConfigurationDraft(revision, baseVersion string, def ModelConfigur
 			previous = entry.Draft.Definition
 		}
 		inheritMissingTextRouteProtocols(&def, previous)
+		// Execution qualification is host-owned. An older dashboard saving a
+		// display/price field must not silently remove the native binding.
+		if def.MediaExecution == nil && previous.MediaExecution != nil && def.Kind == previous.Kind {
+			binding := *previous.MediaExecution
+			binding.Intents = slices.Clone(binding.Intents)
+			def.MediaExecution = &binding
+		}
 		if def.Kind == "text" && def.DefaultOutputTokens == nil && previous.DefaultOutputTokens != nil {
 			value := *previous.DefaultOutputTokens
 			if def.MaxOutputTokens != nil {

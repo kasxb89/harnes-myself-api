@@ -54,7 +54,16 @@ func Source(key string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "globalThis.ycapiApprovedCatalog = " + string(catalog) + ";\n" + imageInputSource + "\n" + string(source), nil
+		contracts, err := ycapi.MediaContracts()
+		if err != nil {
+			return "", err
+		}
+		media, err := common.Marshal(contracts)
+		if err != nil {
+			return "", err
+		}
+		return "globalThis.ycapiApprovedCatalog = " + string(catalog) + ";\n" +
+			"globalThis.ycapiMediaContracts = " + string(media) + ";\n" + imageInputSource + "\n" + string(source), nil
 	}
 	if key == "codebloom-image" {
 		models, err := common.Marshal(codebloom.ImageEditModels())

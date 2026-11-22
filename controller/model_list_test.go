@@ -11,7 +11,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -340,6 +342,132 @@ func TestListModelsIncludesTieredBillingModel(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, missingExprPricing.BillingMode)
 	require.Empty(t, missingExprPricing.BillingExpr)
+}
+
+func TestMediaV2OnlyCatalogClassificationPreservesLegacyModels(t *testing.T) {
+	record := model.PublishedModelConfiguration{Definition: model.ModelConfiguration{
+		MediaExecution: &model.ModelMediaExecutionConfiguration{SchemaVersion: 1},
+	}}
+	contracts, err := ycapi.MediaContracts()
+	require.NoError(t, err)
+	strictNew := 0
+	for _, contract := range contracts {
+		_, legacy := ycapi.Lookup(contract.ID)
+		assert.Equal(t, !legacy, mediaV2OnlyCatalogModel(contract.ID, record), contract.ID)
+		assert.False(t, mediaV2OnlyCatalogModel(contract.ID, model.PublishedModelConfiguration{}), "no published execution declaration: %s", contract.ID)
+		if !legacy {
+			strictNew++
+		}
+	}
+	assert.Positive(t, strictNew)
+	legacyModels, err := ycapi.Models()
+	require.NoError(t, err)
+	for _, legacy := range legacyModels {
+		assert.False(t, mediaV2OnlyCatalogModel(legacy.ID, record), legacy.ID)
+	}
+	for _, name := range []string{"ys-gpt-image-2", "qq-gpt-image-2", "gpt-image-2", "MiniMax-H3", "ycapi-not-a-declared-model", "ycapi-deepseek-flash"} {
+		assert.False(t, mediaV2OnlyCatalogModel(name, record), name)
+	}
+}
+
+func TestLegacySelectableCatalogsHideOnlyPublishedMediaV2Contracts(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	const newID = "ycapi-gpt-image-2.6-flare"
+	const draftID = "ycapi-gpt-image-2.5-flare"
+	_, legacy := ycapi.Lookup(newID)
+	require.False(t, legacy)
+	_, declared := ycapi.LookupMediaContract(newID)
+	require.True(t, declared)
+	names := []string{newID, draftID, "ycapi-flux-kontext", "ys-gpt-image-2", "gpt-image-2", "MiniMax-H3", "zz-ordinary-text"}
+	withModelListFixtureTariffs(t, names...)
+	require.NoError(t, db.Create(&model.User{Id: 1001, Username: "legacy-media-list-user", Password: "password", Group: "default", Status: common.UserStatusEnabled}).Error)
+	for _, name := range names {
+		require.NoError(t, db.Create(&model.Ability{Group: "default", Model: name, ChannelId: 1, Enabled: true}).Error)
+	}
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", 1).Update("models", strings.Join(names, ",")).Error)
+	definition := model.ModelConfiguration{ModelName: newID, Kind: "image", DisplayName: "New V2 image", Enabled: true, MediaExecution: &model.ModelMediaExecutionConfiguration{SchemaVersion: 1}}
+	document := model.ModelConfigurationDocument{
+		SchemaVersion: 1,
+		Published:     map[string]model.PublishedModelConfiguration{newID: {Version: "synthetic-published", Definition: definition}},
+		Drafts:        map[string]model.ModelConfigurationDraft{draftID: {Definition: model.ModelConfiguration{ModelName: draftID, MediaExecution: definition.MediaExecution}}},
+		History:       []model.ModelConfigurationHistory{},
+	}
+	encoded, err := common.Marshal(document)
+	require.NoError(t, err)
+	common.OptionMapRWMutex.Lock()
+	previousOptions := common.OptionMap
+	common.OptionMap = map[string]string{model.ModelConfigurationKey: string(encoded)}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+		model.InvalidatePricingCache()
+	})
+	model.InvalidatePricingCache()
+	beforePricing := model.GetPricing()
+	require.Contains(t, pricingByModelName(beforePricing), newID, "the unfiltered cache remains available to V2/admin projections")
+	filtered, err := legacySelectableModelNames(names)
+	require.NoError(t, err)
+	assert.NotContains(t, filtered, newID)
+	assert.ElementsMatch(t, names[1:], filtered, "draft-only and all original identities remain")
+	assert.Equal(t, newID, names[0], "filtering must not mutate its input")
+
+	for _, format := range []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic, constant.ChannelTypeGemini} {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		ctx.Request.Header.Set(service.ModelLimitsVersionHeader, "2")
+		ctx.Set("id", 1001)
+		ListModels(ctx, format)
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		assert.NotContains(t, recorder.Body.String(), newID)
+		for _, name := range names[1:] {
+			assert.Contains(t, recorder.Body.String(), name)
+		}
+	}
+
+	pricingRecorder := httptest.NewRecorder()
+	pricingContext, _ := gin.CreateTestContext(pricingRecorder)
+	pricingContext.Request = httptest.NewRequest(http.MethodGet, "/api/pricing", nil)
+	pricingContext.Request.Header.Set(service.ModelLimitsVersionHeader, "2")
+	pricingContext.Set("id", 1001)
+	GetPricing(pricingContext)
+	require.Equal(t, http.StatusOK, pricingRecorder.Code, pricingRecorder.Body.String())
+	var pricingPayload struct {
+		Success bool            `json:"success"`
+		Data    []model.Pricing `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(pricingRecorder.Body.Bytes(), &pricingPayload))
+	require.True(t, pricingPayload.Success)
+	assert.NotContains(t, pricingByModelName(pricingPayload.Data), newID)
+	for _, name := range names[1:] {
+		assert.Contains(t, pricingByModelName(pricingPayload.Data), name)
+	}
+	assert.Equal(t, beforePricing, model.GetPricing(), "public projections must not change cached prices")
+
+	pricebookRecorder := httptest.NewRecorder()
+	pricebookContext, _ := gin.CreateTestContext(pricebookRecorder)
+	pricebookContext.Request = httptest.NewRequest(http.MethodGet, "/api/model-pricebook", nil)
+	GetConfiguredModelPricebook(pricebookContext)
+	require.Equal(t, http.StatusOK, pricebookRecorder.Code, pricebookRecorder.Body.String())
+	var pricebookPayload struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Rows []configuredPricebookRow `json:"rows"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(pricebookRecorder.Body.Bytes(), &pricebookPayload))
+	require.True(t, pricebookPayload.Success)
+	assert.Contains(t, pricebookRecorder.Body.String(), newID, "backend inventory still shows the configured V2-only model")
+	rows := make(map[string]configuredPricebookRow, len(pricebookPayload.Data.Rows))
+	for _, row := range pricebookPayload.Data.Rows {
+		rows[row.ModelName] = row
+	}
+	require.Contains(t, rows, newID)
+	assert.NotNil(t, rows[newID].Pricing)
 }
 
 func TestListModelsAppliesSavedDisplayNameWithoutChangingIdentity(t *testing.T) {

@@ -11,6 +11,10 @@ import (
 // Approved user prices do not imply verified credentials or capabilities.
 // Existing providers retain their ordinary availability rules.
 func PubliclyAvailable(id string) bool {
+	if isFreshImageProtocolModel(id) {
+		m, ok := Lookup(id)
+		return ok && m.ActivationReady
+	}
 	if slices.Contains(liveText.ReviewedModelIDs, id) {
 		m, ok := Lookup(id)
 		return ok && m.ActivationReady
@@ -69,6 +73,11 @@ func ClientParameters(id string) map[string]any {
 	}
 	if m.Transport == "images_generations" {
 		properties["size"] = map[string]any{"type": "string", "enum": []string{"1024x1024"}, "default": "1024x1024"}
+	}
+	if isFreshImageProtocolModel(id) {
+		format := properties["response_format"].(map[string]any)
+		format["x-native-response-format"] = "url"
+		format["description"] = "Compatibility preference. Retained image results are returned as URLs."
 	}
 	return map[string]any{"type": "object", "additionalProperties": false, "properties": properties,
 		"x-model-kind": "image", "x-task-plugin": map[string]any{"key": "codebloom-image", "version": "1.0.0", "api_version": 1},

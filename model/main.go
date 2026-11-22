@@ -417,6 +417,15 @@ func migrateDB() error {
 	if err := MigrateMediaAdmission(DB); err != nil {
 		return err
 	}
+	if err := MigrateMediaGenerationQuote(DB); err != nil {
+		return err
+	}
+	if err := MigrateMediaGenerationAsset(DB); err != nil {
+		return err
+	}
+	if err := MigrateMediaGenerationUpload(DB); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}

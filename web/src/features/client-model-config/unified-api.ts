@@ -53,6 +53,17 @@ export type OfficialReferenceConfiguration = {
   mode: 'inherit' | 'override' | 'disabled'
   rows?: OfficialReferenceRow[]
 }
+// Host-owned qualification evidence. The editor preserves this binding rather
+// than treating it as an editable generation parameter or a pricing rule.
+export type UnifiedModelMediaExecution = {
+  schema_version: number
+  lane_id: string
+  intents: string[]
+  qualification_sha256: string
+  contract_sha256: string
+  checked_at: string
+  [key: string]: unknown
+}
 export type UnifiedModelDefinition = {
   model_name: string
   kind: 'text' | 'image' | 'video'
@@ -67,6 +78,7 @@ export type UnifiedModelDefinition = {
   pricing: PricingValues
   cost_rules?: Record<string, unknown>[]
   official_references?: OfficialReferenceConfiguration
+  media_execution?: UnifiedModelMediaExecution
   source: string
 }
 export type UnifiedModelEntry = {

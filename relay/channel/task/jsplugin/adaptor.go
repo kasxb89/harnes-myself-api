@@ -1555,6 +1555,11 @@ func (a *TaskAdaptor) submitContext(c *gin.Context, info *relaycommon.RelayInfo)
 			a.hookRequestSource, a.hookRequestBody = source, requestBody
 		}
 	}
+	if frozen, err := service.MediaGenerationPluginContext(c, info); err != nil {
+		ctx["mediaGenerationV2Error"] = err.Error()
+	} else if frozen != nil {
+		ctx["mediaGenerationV2"] = frozen
+	}
 	ctx["requestBody"] = requestBody
 	ctx["requestHeaders"] = requestHeaders
 	ctx["files"] = files

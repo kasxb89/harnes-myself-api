@@ -1,6 +1,47 @@
 // The host prepends the approved server-only catalog from pkg/ycapi. Neither
 // procurement lanes nor upstream responses are copied to public task results.
 const MODELS = globalThis.ycapiApprovedCatalog;
+const MEDIA_CONTRACTS = globalThis.ycapiMediaContracts || [];
+const NEW_MEDIA = MEDIA_CONTRACTS.filter((model) => !MODELS.some((legacy) => legacy.id === model.id));
+const ALL_MODELS = [...MODELS, ...NEW_MEDIA];
+const PRICE_CONTROLS = ["resolution", "quality", "mode", "aspect_ratio"];
+const PRICE_CONTROL_LABELS = { resolution: "分辨率", quality: "质量", mode: "模式", aspect_ratio: "画幅比例" };
+function usageMenu(model, name) {
+  const contract = MEDIA_CONTRACTS.find((entry) => entry.id === model.id);
+  const values = [""];
+  const add = (value) => { if (typeof value === "string" && !values.includes(value)) values.push(value); };
+  const field = contract && contract.param_schema[name];
+  if (field) {
+    for (const value of field.enum || []) add(value);
+    for (const option of field.options || []) add(option.value);
+    for (const menu of Object.values(field.enum_values_by_quality || {}))
+      if (Array.isArray(menu)) for (const value of menu) add(value);
+  }
+  if (contract && ["resolution", "aspect_ratio"].includes(name)) {
+    for (const value of (contract.param_schema.size || {}).enum || [])
+      if (typeof value === "string" && value.includes(":") === (name === "aspect_ratio")) add(value);
+  }
+  for (const offer of model.offers || []) {
+    add(offer.params[name]);
+    if (["resolution", "aspect_ratio"].includes(name) && typeof offer.params.size === "string" &&
+        offer.params.size.includes(":") === (name === "aspect_ratio")) add(offer.params.size);
+  }
+  return values;
+}
+function mediaBooleanFact(params, name) {
+  // An absent flag is false as a billing fact; this does not assert the
+  // supplier's default output is silent or that its default mode is draft.
+  if (params[name] === undefined) return false;
+  if (typeof params[name] !== "boolean") throw new Error("Invalid native media boolean: " + name);
+  return params[name];
+}
+function legacyMediaFacts(model, params, facts) {
+  const images = Array.isArray(params.images) ? params.images.length : 0;
+  return { ...facts, input_video_seconds: 0, input_audio_seconds: 0, input_image_count: images,
+    generate_audio: mediaBooleanFact(params, "generate_audio"), draft: mediaBooleanFact(params, "draft"),
+    intent: images ? "reference" : "text", resolution: params.resolution || (typeof params.size === "string" && !params.size.includes(":") ? params.size : ""),
+    quality: params.quality || "", mode: params.mode || "", aspect_ratio: params.aspect_ratio || (typeof params.size === "string" && params.size.includes(":") ? params.size : "") };
+}
 const schema = (model) => {
   if (model.kind === "audio")
     return {
@@ -17,7 +58,14 @@ const schema = (model) => {
         zh: model.kind === "video" ? "视频生成单价" : "图片生成单价",
       },
     },
-    spec: { enum: model.offers.map((offer) => offer.id), description: { en: "Generation specification", zh: "生成规格" } },
+    input_video_seconds: { type: "number", unit: "second", description: { en: "Reference video unit price", zh: "参考视频单价" } },
+    input_audio_seconds: { type: "number", unit: "second", description: { en: "Reference audio unit price", zh: "参考音频单价" } },
+    input_image_count: { type: "number", unit: "count", description: { en: "Reference image unit price", zh: "参考图片单价" } },
+    generate_audio: { type: "boolean", description: { en: "Generate output audio", zh: "生成视频原声" } },
+    draft: { type: "boolean", description: { en: "Draft generation", zh: "草稿生成" } },
+    intent: { enum: ["text", "reference", "frames", "transform"], description: { en: "Generation intent", zh: "生成意图" } },
+    ...Object.fromEntries(PRICE_CONTROLS.map((name) => [name, { enum: usageMenu(model, name), description: { en: name, zh: PRICE_CONTROL_LABELS[name] } }])),
+    spec: { enum: [...(model.offers || []).map((offer) => offer.id), "media-v2"], description: { en: "Generation specification", zh: "生成规格" } },
   };
 };
 
@@ -25,15 +73,15 @@ export const meta = {
   apiVersion: 1,
   key: "ycapi",
   name: "YCAPI",
-  version: "1.0.3",
+  version: "1.0.4",
   icon: "text:YC",
   author: { name: "Yunshu" },
   baseUrl: "https://ycapi.token6688.com",
   fetchMode: "per_task",
   description: { en: "Approved YCAPI image, video and speech generation", zh: "已批准的YCAPI图片、视频与语音生成" },
-  models: MODELS.map((model) => model.id),
+  models: ALL_MODELS.map((model) => model.id),
   usageSchema: {},
-  usageProfiles: MODELS.map((model) => ({
+  usageProfiles: [...MODELS.map((model) => ({
     models: [model.id],
     schema: schema(model),
     examples:
@@ -41,12 +89,12 @@ export const meta = {
         ? [{ label: "Speech", facts: { input_tokens: 1000, output_tokens: 8192 } }]
         : model.offers.map((offer) => ({
             label: offer.id,
-            facts: model.kind === "video" ? { seconds: Number(offer.params.duration), spec: offer.id } : { image_count: 1, spec: offer.id },
+            facts: legacyMediaFacts(model, offer.params, model.kind === "video" ? { seconds: Number(offer.params.duration), spec: offer.id } : { image_count: 1, spec: offer.id }),
           })),
-  })),
+  })), ...NEW_MEDIA.map((model) => ({ models: [model.id], schema: schema(model) }))],
   protocols: [
-    { name: "openai_image", models: MODELS.filter((m) => m.kind === "image").map((m) => m.id), retainResult: true },
-    { name: "openai_video", models: MODELS.filter((m) => m.kind === "video").map((m) => m.id) },
+    { name: "openai_image", models: ALL_MODELS.filter((m) => m.kind === "image").map((m) => m.id), retainResult: true },
+    { name: "openai_video", models: ALL_MODELS.filter((m) => m.kind === "video").map((m) => m.id) },
   ],
 };
 
@@ -65,6 +113,40 @@ function text(value, limit) {
 }
 function equal(a, b) {
   return String(a).toLowerCase() === String(b).toLowerCase();
+}
+
+// This context member is installed by the Host after quote, asset, intent and
+// exact native-envelope validation. No requestBody field can create this path.
+function mediaV2(ctx, requireTaskIdentity = false) {
+  if (ctx.mediaGenerationV2Error !== undefined) throw new Error("Invalid Host media generation context");
+  if (ctx.mediaGenerationV2 === undefined) return null;
+  const frozen = object(ctx.mediaGenerationV2);
+  const request = frozen && object(frozen.nativeRequest);
+  const contract = MEDIA_CONTRACTS.find((model) => model.id === ctx.model);
+  if (!frozen || !request || !contract || frozen.kind !== contract.kind || request.modality !== contract.kind ||
+      request.model_id !== contract.native_id || !object(request.params) || typeof request.lane_id !== "string" || !request.lane_id ||
+      typeof request.client_request_id !== "string" || !request.client_request_id || !object(frozen.usageFacts) ||
+      typeof frozen.retailCny !== "string" || !/^\d+(?:\.\d+)?$/.test(frozen.retailCny))
+    throw new Error("Invalid Host media generation context");
+  if (Object.keys(request).some((key) => !["model_id", "modality", "operation", "params", "lane_id", "client_request_id"].includes(key)))
+    throw new Error("Invalid Host native request envelope");
+  if (contract.kind === "image" ? !["generate", "edit"].includes(request.operation) : request.operation !== undefined)
+    throw new Error("Invalid Host media operation");
+  if (requireTaskIdentity && (typeof ctx.publicTaskId !== "string" || !ctx.publicTaskId || request.client_request_id !== ctx.publicTaskId))
+    throw new Error("Host media task identity mismatch");
+  const quantity = contract.kind === "video" ? "seconds" : "image_count";
+  const profile = schema(MODELS.find((model) => model.id === contract.id) || contract);
+  if (Object.keys(frozen.usageFacts).length !== Object.keys(profile).length ||
+      Object.keys(frozen.usageFacts).some((key) => !Object.prototype.hasOwnProperty.call(profile, key)))
+    throw new Error("Invalid Host media usage facts");
+  for (const key of Object.keys(profile)) {
+    const value = frozen.usageFacts[key], field = profile[key];
+    if (field.enum ? !field.enum.includes(value) : field.type === "boolean" ? typeof value !== "boolean" : typeof value !== "number" || !Number.isFinite(value) || value < 0 ||
+        value > (field.unit === "count" ? 128 : 3600) || field.unit === "count" && !Number.isInteger(value))
+      throw new Error("Invalid Host media usage facts");
+  }
+  if (frozen.usageFacts[quantity] <= 0) throw new Error("Invalid Host media usage facts");
+  return { contract, request, facts: { ...frozen.usageFacts } };
 }
 
 function normalize(source, model) {
@@ -173,12 +255,17 @@ function normalize(source, model) {
   return {
     offer,
     params,
-    facts: model.kind === "video" ? { seconds: Number(offer.params.duration), spec: offer.id } : { image_count: 1, spec: offer.id },
+    facts: legacyMediaFacts(model, params, model.kind === "video" ? { seconds: Number(offer.params.duration), spec: offer.id } : { image_count: 1, spec: offer.id }),
   };
 }
 
 function decode(ctx, kind) {
   if (!ctx.body || ctx.body.kind !== "json") throw new Error("A JSON request is required");
+  const v2 = mediaV2(ctx);
+  if (v2) {
+    if (v2.contract.kind !== kind) throw new Error("This model does not support the requested operation");
+    return { kind: "submit", model: ctx.model, action: kind, requestBody: ctx.body.value };
+  }
   const model = modelFor(ctx);
   if (model.kind !== kind) throw new Error("This model does not support the requested operation");
   normalize(ctx.body.value, model);
@@ -186,6 +273,12 @@ function decode(ctx, kind) {
 }
 
 export function buildSubmitRequest(ctx) {
+  const v2 = mediaV2(ctx, true);
+  if (v2) return {
+    url: ctx.baseUrl + "/api/v1/model-runtime/invoke", method: "POST",
+    headers: { Authorization: "Bearer " + ctx.apiKey, "Content-Type": "application/json" },
+    body: JSON.parse(JSON.stringify(v2.request)),
+  };
   const model = modelFor(ctx);
   const normalized = normalize(ctx.requestBody, model);
   if (typeof ctx.publicTaskId !== "string" || !ctx.publicTaskId) throw new Error("A durable task identity is required");
@@ -212,14 +305,92 @@ function outputs(body, kind) {
   const result = object(body.result) || {};
   for (const list of [body.outputs, result.outputs, result[kind + "s"], body[kind + "s"], body.output_urls, body.result_urls]) {
     if (!Array.isArray(list)) continue;
-    const urls = list.map((v) => publicURL(typeof v === "string" ? v : (object(v) || {}).url || v.output_url || v.result_url)).filter(Boolean);
-    if (urls.length) return urls.slice(0, 1);
+    if (list.length > 64) throw new Error("Too many upstream media outputs");
+    const urls = list.map((v) => publicURL(typeof v === "string" ? v : (object(v) || {}).url || v.output_url || v.result_url));
+    if (urls.some((url) => !url)) throw new Error("Invalid upstream media output");
+    if (urls.length) return urls;
   }
   for (const value of [body.output_url, body.result_url, result.output_url, result.result_url, body.audio_url, result.audio_url]) {
     const url = publicURL(value);
     if (url) return [url];
   }
   return [];
+}
+
+function mediaOutputList(body, kind) {
+  const result = object(body.result) || {};
+  // data[] is the documented complete ordered carrier. Scalar aliases point
+  // only at its first result and must never replace or duplicate that list.
+  for (const list of [body.data, body.outputs, result.data, result.outputs, body.output_urls, body.result_urls]) {
+    if (Array.isArray(list) && list.length) return list;
+  }
+  for (const container of [result, body]) {
+    const grouped = [];
+    for (const key of Object.keys(container)) {
+      if (!["images", "videos", "audios", "files"].includes(key) || !Array.isArray(container[key])) continue;
+      for (const entry of container[key]) grouped.push(typeof entry === "string" ? { url: entry, type: key.slice(0, -1) }
+        : { type: key.slice(0, -1), ...(object(entry) || {}) });
+    }
+    if (grouped.length) return grouped;
+  }
+  const url = body.output_url || body.result_url || body.url || result.output_url || result.result_url || body[kind + "_url"];
+  return url ? [{ url, type: body.result_type || body.type || kind }] : [];
+}
+
+function mediaArtifacts(body, kind, outputFormat) {
+  const entries = mediaOutputList(body, kind);
+  if (entries.length > 64) throw new Error("Too many upstream media outputs");
+  const defaults = { image: "image/png", video: "video/mp4", audio: "audio/mpeg", file: "application/octet-stream" };
+  const formats = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", svg: "image/svg+xml" };
+  return entries.map((entry, index) => {
+    const value = typeof entry === "string" ? { url: entry } : object(entry);
+    const url = value && publicURL(value.url || value.output_url || value.result_url);
+    if (!url) throw new Error("Invalid upstream media output");
+    let mime = value.mime_type || value.mimeType || value.content_type || "";
+    if (mime && (typeof mime !== "string" || !/^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/.test(mime)))
+      throw new Error("Invalid upstream media MIME type");
+    mime = mime.toLowerCase();
+    const mimeKind = mime.split("/")[0];
+    let type = value.type || value.kind || value.modality || (mime ? ["image", "video", "audio"].includes(mimeKind) ? mimeKind : "file" : kind);
+    if (mime === "image/svg+xml" || !mime && outputFormat === "svg") type = "file";
+    if (!["image", "video", "audio", "file"].includes(type)) throw new Error("Unsupported upstream media output type");
+    if (!mime) mime = type === "image" || outputFormat === "svg" ? formats[outputFormat] || defaults[type] : defaults[type];
+    if (type !== "file" && !mime.startsWith(type + "/")) throw new Error("Upstream media type mismatch");
+    return { key: entries.length === 1 ? type : type + "-" + (index + 1), type, mimeType: mime, url };
+  });
+}
+
+function mediaSnapshot(body, contract, expectedId, outputFormat) {
+  if (!object(body)) throw new Error("Invalid upstream media task response");
+  const result = object(body.result) || {};
+  const id = body.task_id || body.id || result.task_id;
+  if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(id) || expectedId && id !== expectedId)
+    throw new Error("Upstream task identity mismatch");
+  for (const alias of [body.task_id, body.id, result.task_id]) if (alias !== undefined && alias !== id)
+    throw new Error("Upstream task identity mismatch");
+  const model = object(body.model);
+  const responseModel = model ? model.public_model : body.model || body.model_id;
+  if (responseModel && ![contract.id, contract.native_id, contract.upstream_public_id].includes(responseModel))
+    throw new Error("Upstream task model mismatch");
+  const artifacts = mediaArtifacts(body, contract.kind, outputFormat);
+  const status = typeof body.status === "string" ? body.status.toLowerCase() : "unknown";
+  return { id, kind: contract.kind, status, is_final: body.is_final === true, artifacts, outputs: artifacts.map((entry) => entry.url) };
+}
+
+function mediaState(ctx) {
+  const state = object(ctx.state);
+  if (!state || state.mediaGenerationV2 !== true) return null;
+  const contract = MEDIA_CONTRACTS.find((model) => model.id === state.gatewayModel);
+  if (!contract || contract.kind !== state.kind || contract.native_id !== state.nativeModel ||
+      ctx.model !== undefined && ctx.model !== contract.id) throw new Error("Invalid retained media task identity");
+  return { state, contract };
+}
+
+function mediaTaskResult(data) {
+  if (!data.is_final && ["pending", "queued", "processing", "running", "needs_review"].includes(data.status))
+    return { status: "IN_PROGRESS", progress: "0%" };
+  if (data.is_final && data.status === "completed" && !data.artifacts.length) return { status: "UNKNOWN", reason: "Upstream media artifacts are unavailable" };
+  return taskResult(data);
 }
 
 function snapshot(body, model, expectedId) {
@@ -261,6 +432,13 @@ function taskResult(data) {
 }
 
 export function parseSubmitResponse(ctx, response) {
+  const v2 = mediaV2(ctx, true);
+  if (v2) {
+    const outputFormat = v2.request.params.output_format || v2.request.params.format || "";
+    const data = mediaSnapshot(response.body, v2.contract, undefined, outputFormat);
+    return { taskId: data.id, taskData: data, state: { mediaGenerationV2: true, gatewayModel: v2.contract.id,
+      nativeModel: v2.contract.native_id, kind: v2.contract.kind, outputFormat, facts: v2.facts, snapshot: data } };
+  }
   const model = modelFor(ctx);
   const data = snapshot(response.body, model);
   const normalized = normalize(ctx.requestBody, model);
@@ -275,9 +453,16 @@ export function parseSubmitResponse(ctx, response) {
 }
 
 export function extractUsage(ctx) {
+  const v2 = mediaV2(ctx);
+  if (v2) return v2.facts;
   return normalize(ctx.requestBody, modelFor(ctx)).facts;
 }
 export function buildQueryRequest(ctx) {
+  const retained = mediaState(ctx);
+  if (retained) {
+    if (!retained.state.snapshot || retained.state.snapshot.id !== ctx.taskId) throw new Error("Retained task identity mismatch");
+    return { url: ctx.baseUrl + "/v1/tasks/" + encodeURIComponent(ctx.taskId), method: "GET", headers: { Authorization: "Bearer " + ctx.apiKey } };
+  }
   const model = modelFor(ctx);
   return {
     url: ctx.baseUrl + (model.kind === "video" ? "/v1/tasks/" : "/api/v1/model-runtime/tasks/") + encodeURIComponent(ctx.taskId),
@@ -286,6 +471,11 @@ export function buildQueryRequest(ctx) {
   };
 }
 export function parseTaskResult(ctx, body) {
+  const retained = mediaState(ctx);
+  if (retained) {
+    const data = mediaSnapshot(body, retained.contract, ctx.taskId, retained.state.outputFormat);
+    return { ...mediaTaskResult(data), state: { ...retained.state, snapshot: data } };
+  }
   const data = snapshot(body, modelFor(ctx), ctx.taskId);
   if (data.kind === "audio" && ctx.state) data.format = ctx.state.format;
   // The host owns task.data and stores the raw poll response. Normalized safe
@@ -293,6 +483,7 @@ export function parseTaskResult(ctx, body) {
   return { ...taskResult(data), state: { ...(object(ctx.state) || {}), snapshot: data } };
 }
 export function extractUsageOnComplete(ctx, _result, body) {
+  if (mediaState(ctx)) return {};
   if (modelFor(ctx).kind === "audio") {
     const usage = object(body.usage);
     if (!usage) return {};
@@ -303,23 +494,43 @@ export function extractUsageOnComplete(ctx, _result, body) {
   return {};
 }
 export function listArtifacts(task) {
+  const retained = mediaState(task);
+  if (retained) {
+    const data = retained.state.snapshot;
+    if (task.status !== "SUCCESS" || !data || !Array.isArray(data.artifacts)) return [];
+    if (data.artifacts.length > 64) throw new Error("Too many retained media artifacts");
+    return data.artifacts.map((entry) => ({ key: entry.key, type: entry.type, mimeType: entry.mimeType }));
+  }
   const data = task.state && task.state.snapshot;
   if (task.status !== "SUCCESS" || !data || !data.outputs || !publicURL(data.outputs[0])) return [];
   const kind = data.kind;
   let mimeType = "image/png";
   if (kind === "video") mimeType = "video/mp4";
   if (kind === "audio") mimeType = data.format === "wav" ? "audio/wav" : "audio/mpeg";
-  return [{ key: kind, type: kind, mimeType }];
+  if (data.outputs.length > 64) throw new Error("Too many retained media artifacts");
+  return data.outputs.map((_url, index) => ({ key: data.outputs.length === 1 ? kind : kind + "-" + (index + 1), type: kind, mimeType }));
 }
 export function buildContentRequest(ctx) {
+  const retained = mediaState(ctx);
+  if (retained) {
+    const artifacts = retained.state.snapshot && retained.state.snapshot.artifacts;
+    const artifact = Array.isArray(artifacts) && artifacts.find((entry) => entry.key === ctx.artifactKey);
+    if (!artifact || !publicURL(artifact.url) || !ctx.clientRequest || !["GET", "HEAD"].includes(ctx.clientRequest.method)) throw new Error("artifact_not_found");
+    return { url: artifact.url, method: ctx.clientRequest.method, credentialless: true };
+  }
   const data = ctx.state && ctx.state.snapshot;
-  const url = data && data.outputs && publicURL(data.outputs[0]);
-  if (!url || ctx.artifactKey !== data.kind) throw new Error("artifact_not_found");
+  const key = typeof ctx.artifactKey === "string" ? ctx.artifactKey : "";
+  const index = data && data.outputs && data.outputs.length === 1 ? (key === data.kind ? 0 : -1)
+    : data && key.startsWith(data.kind + "-") ? Number(key.slice(data.kind.length + 1)) - 1 : -1;
+  const url = data && data.outputs && Number.isInteger(index) && index >= 0 && publicURL(data.outputs[index]);
+  if (!url) throw new Error("artifact_not_found");
   return { url, method: ctx.clientRequest.method, credentialless: true };
 }
 export const protocols = {
   openai_image: {
     decodeRequest: function (ctx) {
+      const v2 = mediaV2(ctx);
+      if (v2) return decode(ctx, "image");
       const model = modelFor(ctx);
       if (model.kind !== "image") throw new Error("This model does not support image generation");
       const edit = object(model.image_edit);
@@ -328,8 +539,19 @@ export const protocols = {
       return { kind: "submit", model: ctx.model, action: body.reference_images ? "image_edit" : "image", requestBody: body };
     },
     render: function (ctx, _task) {
-      if (!ctx.artifacts || !ctx.artifacts.image) throw new Error("Image artifact is unavailable");
-      return { data: [{ url: ctx.artifacts.image.url }] };
+      const artifacts = object(ctx.artifacts);
+      const keys = artifacts && Object.keys(artifacts);
+      if (!keys || !keys.length) throw new Error("Image artifact is unavailable");
+      if (keys.length > 64) throw new Error("Too many retained media artifacts");
+      // Host projection is a map. Multi-result keys carry the original global
+      // output position; restore that order instead of relying on map order.
+      const position = (key) => Number((/-([1-9][0-9]*)$/.exec(key) || [])[1] || 0);
+      keys.sort((a, b) => position(a) - position(b));
+      return { data: keys.map((key) => {
+        const artifact = object(artifacts[key]);
+        if (!artifact || typeof artifact.url !== "string" || !artifact.url) throw new Error("Image artifact is unavailable");
+        return { url: artifact.url };
+      }) };
     },
   },
   openai_video: {

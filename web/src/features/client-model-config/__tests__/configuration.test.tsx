@@ -261,6 +261,61 @@ test('unified form saves the default independently and blocks a reservation abov
   })
 })
 
+test('editing a media display name preserves the qualified execution binding, parameters and prices', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  const mediaExecution = {
+    schema_version: 1,
+    lane_id: 'local-qualified-lane',
+    intents: ['text', 'reference'],
+    qualification_sha256: 'a'.repeat(64),
+    contract_sha256: 'b'.repeat(64),
+    checked_at: '2026-11-23T00:00:00+08:00',
+    future_evidence: { version: 2 },
+  }
+  const definition: UnifiedModelDefinition = {
+    model_name: 'local-qualified-image',
+    display_name: 'Qualified image',
+    kind: 'image',
+    enabled: true,
+    source: 'Local synthetic qualification',
+    routes: [],
+    parameters: {},
+    pricing: { ModelPrice: 0.25 },
+    media_execution: mediaExecution,
+  }
+  const save = vi.fn(async (_definition: UnifiedModelDefinition) => {})
+  render(
+    <QueryClientProvider client={client}>
+      <UnifiedModelForm
+        entry={{
+          model_name: definition.model_name,
+          base_version: 'fixture',
+          definition,
+        }}
+        channels={[]}
+        pending={false}
+        onSave={save}
+        onDirtyChange={vi.fn()}
+      />
+    </QueryClientProvider>
+  )
+  fireEvent.change(screen.getByLabelText('Display name'), {
+    target: { value: 'Renamed image' },
+  })
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Validate and save draft' })
+  )
+  await waitFor(() => expect(save).toHaveBeenCalledOnce())
+  expect(save.mock.calls[0]?.[0]).toEqual({
+    ...definition,
+    display_name: 'Renamed image',
+    cost_rules: [],
+  })
+})
+
 async function setup(): Promise<QueryClient> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

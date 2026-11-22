@@ -66,6 +66,9 @@ func MediaSubmissionFromContext(c *gin.Context) *MediaSubmission {
 // reads enabled keys without advancing the channel's polling cursor and refuses
 // a changed channel configuration instead of combining two request snapshots.
 func NextMediaAdmissionKey(c *gin.Context, current *model.Channel, info *relaycommon.RelayInfo, attempted map[string]bool) (string, int, error) {
+	if _, quoted := c.Get(mediaGenerationPrivateContextKey); quoted {
+		return "", 0, nil
+	}
 	channel, err := model.GetChannelById(current.Id, true)
 	if err != nil {
 		return "", 0, err
@@ -122,6 +125,11 @@ func TaskMediaKind(c *gin.Context, info *relaycommon.RelayInfo) string {
 	pinned, _ := value.(jsplugin.PinnedPlugin)
 	if pinned.Plugin == nil {
 		return ""
+	}
+	if value, exists := c.Get(mediaGenerationPrivateContextKey); exists {
+		if private, ok := value.(mediaGenerationContext); ok && (private.Quote.Kind == model.MediaImage || private.Quote.Kind == model.MediaVideo) {
+			return private.Quote.Kind
+		}
 	}
 	if pinned.Plugin.Meta.Key == "ycapi" {
 		if m, ok := ycapi.Lookup(info.OriginModelName); ok && m.Kind != "text" {
@@ -190,6 +198,9 @@ func RecordMediaCapacityRejection(c *gin.Context) *dto.TaskError {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if binding, ok := model.MediaGenerationQuoteBindingFromContext(c.Request.Context()); ok {
+		ctx = model.WithMediaGenerationQuoteBinding(ctx, binding)
+	}
 	if err := model.RecordMediaCapacityRejection(ctx, submission.Task, submission.Task.PrivateData.Key, submission.MediaKind); err != nil {
 		return TaskErrorWrapperLocal(errors.New("Failed to persist media capacity rejection"), "media_admission_unavailable", http.StatusServiceUnavailable)
 	}

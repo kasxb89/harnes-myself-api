@@ -1,10 +1,14 @@
-// CodeBloom's verified image-only transports. A model's name does not grant
-// reference, editing, quality or resolution controls that its route did not test.
+// CodeBloom image protocol adapters. Activation is gated separately by exact
+// route evidence; a model name does not qualify generation, editing or pricing.
 const IMAGE_TRANSPORTS = {
   "gpt-image-2.5": "images_generations",
   "gpt-image-2.5-sunburst": "images_generations",
   "gpt-image-2.5-flare": "images_generations",
   "gpt-image-2k": "images_generations",
+  // Exact generation and single-reference edit qualified on 2026-11-23.
+  "gpt-image-2.6": "images_generations",
+  "gpt-image-2.6-sunburst": "images_generations",
+  "gpt-image-2.6-flare": "images_generations",
   "grok-imagine-image-2.0": "chat_completions",
   "grok-imagine-image": "chat_completions",
   "gemini-3.1-flash-image-preview": "chat_completions",
@@ -15,6 +19,7 @@ const IMAGE_TRANSPORTS = {
 };
 const MODELS = Object.keys(IMAGE_TRANSPORTS).map((id) => "ys-" + id);
 const EDIT_MODELS = globalThis.codebloomImageEditModels || [];
+const FRESH_IMAGE_MODELS = ["ys-gpt-image-2.6", "ys-gpt-image-2.6-sunburst", "ys-gpt-image-2.6-flare"];
 
 export const meta = {
   apiVersion: 1,
@@ -24,7 +29,7 @@ export const meta = {
   icon: "text:CB",
   author: { name: "Yunshu" },
   baseUrl: "https://codebloom.club",
-  description: { en: "Verified CodeBloom synchronous image transports", zh: "已核验的 CodeBloom 同步图片协议" },
+  description: { en: "CodeBloom synchronous image protocol adapters", zh: "CodeBloom 同步图片协议适配" },
   models: MODELS,
   fetchMode: "per_task",
   usageSchema: {
@@ -150,6 +155,8 @@ export function parseSubmitResponse(ctx, response) {
     throw new Error("Image upstream returned a different model");
   let urls = [];
   if (normalized.model.transport === "images_generations") {
+    if (FRESH_IMAGE_MODELS.includes(normalized.model.id) && (!Array.isArray(body.data) || body.data.length !== 1 || !object(body.data[0]) || !publicImageURL(body.data[0].url)))
+      throw new Error("This image route requires exactly one qualified image URL");
     urls = uniqueURLs((Array.isArray(body.data) ? body.data : []).filter(object).map((item) => item.url));
   } else {
     const choices = Array.isArray(body.choices) ? body.choices : [];

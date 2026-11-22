@@ -244,6 +244,11 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 	models := service.GetGroupsEnabledModels(ownerGroups)
 	models = service.FilterUnavailableCatalogModels(models, ownerGroups)
+	models, err = legacySelectableModelNames(models)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{"code": "model_config_unavailable", "message": "Model configuration is unavailable"}})
+		return
+	}
 	for _, modelName := range models {
 		if modelLimitEnable {
 			matchingName := ratio_setting.RoutingMatchModelName(modelName)

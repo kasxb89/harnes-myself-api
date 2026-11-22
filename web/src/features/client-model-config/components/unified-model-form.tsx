@@ -202,6 +202,9 @@ export function UnifiedModelForm(props: {
         cost_rules: costs as Record<string, unknown>[],
         official_references: officialReferences,
       }
+      if (definition.media_execution !== undefined) {
+        next.media_execution = definition.media_execution
+      }
       if (values.kind === 'text') {
         next.context_window = Number.isFinite(values.context_window)
           ? values.context_window

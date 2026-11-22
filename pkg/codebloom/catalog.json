@@ -3,7 +3,7 @@
   "supplier": "CodeBloom",
   "version": "codebloom-account-credit-and-retail-candidates-20261102-v2",
   "checked_at": "2026-11-01",
-  "count": 38,
+  "count": 41,
   "strict_multimodal_gate": true,
   "generation_enabled": false,
   "retail_pricing_status": "approved",
@@ -3575,6 +3575,249 @@
         "Unlisted cache/usage components are not confirmed free."
       ],
       "retail_checked_at": "2026-11-09",
+      "retail_pricing_status": "approved_image_cost_plus_0_10",
+      "retail_account_multiplier": null,
+      "retail_markup_cny": 0.1
+    },
+    {
+      "id": "ys-gpt-image-2.6",
+      "name": "ys-gpt-image-2.6",
+      "upstream_id": "gpt-image-2.6",
+      "kind": "image",
+      "transport": "images_generations",
+      "credential_env": "CODEBLOOM_IMAGE_KEY",
+      "account_multiplier": 0.75,
+      "base_billing_expression": "tier(\"image\", fixed(0.1)) * image_count",
+      "checked_at": "2026-11-23",
+      "currency": "CNY_ACCOUNT_CREDIT",
+      "cost_basis": "account_credit_snapshot",
+      "cash_cost_cny": null,
+      "retail_cny": 0.175,
+      "activation_ready": false,
+      "pending_reasons": [
+        "cash_procurement_conversion_unknown"
+      ],
+      "reasoning_observed": false,
+      "capability_status": {
+        "text_input": "verified",
+        "vision_input": "unverified",
+        "audio_input": "unverified",
+        "tools": "unverified",
+        "reasoning_controls": "unverified",
+        "context_window": "unverified",
+        "max_output_tokens": "unverified",
+        "async_polling": "unverified",
+        "image_output": "verified",
+        "text_to_image": "verified",
+        "reference_image_input": "unverified",
+        "image_edit": "unverified",
+        "image_upload": "verified",
+        "size_control": "verified_exact_payload_only",
+        "multi_image_output": "unverified",
+        "quality_control": "unverified",
+        "image_decoded": "verified",
+        "retained_protocol": "verified"
+      },
+      "verified_request_options": {
+        "size": "1024x1024",
+        "n": 1,
+        "response_format": "url"
+      },
+      "observed_output": {
+        "width": 1024,
+        "height": 1024,
+        "format": "png"
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "cost_components": [
+        {
+          "params": {
+            "size": "1024x1024",
+            "n": 1
+          },
+          "direction": "image",
+          "unit": "CNY / image",
+          "account_credit_cny": 0.075,
+          "retail_cny": 0.175
+        }
+      ],
+      "cost_conditions": {
+        "qualified_operations": [
+          "generation",
+          "edit"
+        ],
+        "max_reference_images": 1,
+        "max_reference_bytes": 5242880
+      },
+      "cost_notes": [
+        "Exact new generation and multipart single-image edit each consumed 37500 / 500000 = 0.075 CNY account credit on 2026-11-23; their own meter group ratio was 0.75.",
+        "Retail reference is the verified account-credit cost plus the user-approved 0.10 CNY, for exactly n=1 and 1024x1024 on either qualified operation.",
+        "Cash credit-purchase conversion is unknown. Other sizes, quality controls, masks, multiple references and multiple outputs are not qualified."
+      ],
+      "retail_checked_at": "2026-11-23",
+      "retail_pricing_status": "approved_image_cost_plus_0_10",
+      "retail_account_multiplier": null,
+      "retail_markup_cny": 0.1
+    },
+    {
+      "id": "ys-gpt-image-2.6-sunburst",
+      "name": "ys-gpt-image-2.6-sunburst",
+      "upstream_id": "gpt-image-2.6-sunburst",
+      "kind": "image",
+      "transport": "images_generations",
+      "credential_env": "CODEBLOOM_IMAGE_KEY",
+      "account_multiplier": 0.75,
+      "base_billing_expression": "tier(\"image\", fixed(0.1)) * image_count",
+      "checked_at": "2026-11-23",
+      "currency": "CNY_ACCOUNT_CREDIT",
+      "cost_basis": "account_credit_snapshot",
+      "cash_cost_cny": null,
+      "retail_cny": 0.175,
+      "activation_ready": false,
+      "pending_reasons": [
+        "cash_procurement_conversion_unknown"
+      ],
+      "reasoning_observed": false,
+      "capability_status": {
+        "text_input": "verified",
+        "vision_input": "unverified",
+        "audio_input": "unverified",
+        "tools": "unverified",
+        "reasoning_controls": "unverified",
+        "context_window": "unverified",
+        "max_output_tokens": "unverified",
+        "async_polling": "unverified",
+        "image_output": "verified",
+        "text_to_image": "verified",
+        "reference_image_input": "unverified",
+        "image_edit": "unverified",
+        "image_upload": "verified",
+        "size_control": "verified_exact_payload_only",
+        "multi_image_output": "unverified",
+        "quality_control": "unverified",
+        "image_decoded": "verified",
+        "retained_protocol": "verified"
+      },
+      "verified_request_options": {
+        "size": "1024x1024",
+        "n": 1,
+        "response_format": "url"
+      },
+      "observed_output": {
+        "width": 1024,
+        "height": 1024,
+        "format": "png"
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "cost_components": [
+        {
+          "params": {
+            "size": "1024x1024",
+            "n": 1
+          },
+          "direction": "image",
+          "unit": "CNY / image",
+          "account_credit_cny": 0.075,
+          "retail_cny": 0.175
+        }
+      ],
+      "cost_conditions": {
+        "qualified_operations": [
+          "generation",
+          "edit"
+        ],
+        "max_reference_images": 1,
+        "max_reference_bytes": 5242880
+      },
+      "cost_notes": [
+        "Exact new generation and multipart single-image edit each consumed 37500 / 500000 = 0.075 CNY account credit on 2026-11-23; their own meter group ratio was 0.75.",
+        "Retail reference is the verified account-credit cost plus the user-approved 0.10 CNY, for exactly n=1 and 1024x1024 on either qualified operation.",
+        "Cash credit-purchase conversion is unknown. Other sizes, quality controls, masks, multiple references and multiple outputs are not qualified."
+      ],
+      "retail_checked_at": "2026-11-23",
+      "retail_pricing_status": "approved_image_cost_plus_0_10",
+      "retail_account_multiplier": null,
+      "retail_markup_cny": 0.1
+    },
+    {
+      "id": "ys-gpt-image-2.6-flare",
+      "name": "ys-gpt-image-2.6-flare",
+      "upstream_id": "gpt-image-2.6-flare",
+      "kind": "image",
+      "transport": "images_generations",
+      "credential_env": "CODEBLOOM_IMAGE_KEY",
+      "account_multiplier": 0.75,
+      "base_billing_expression": "tier(\"image\", fixed(0.1)) * image_count",
+      "checked_at": "2026-11-23",
+      "currency": "CNY_ACCOUNT_CREDIT",
+      "cost_basis": "account_credit_snapshot",
+      "cash_cost_cny": null,
+      "retail_cny": 0.175,
+      "activation_ready": false,
+      "pending_reasons": [
+        "cash_procurement_conversion_unknown"
+      ],
+      "reasoning_observed": false,
+      "capability_status": {
+        "text_input": "verified",
+        "vision_input": "unverified",
+        "audio_input": "unverified",
+        "tools": "unverified",
+        "reasoning_controls": "unverified",
+        "context_window": "unverified",
+        "max_output_tokens": "unverified",
+        "async_polling": "unverified",
+        "image_output": "verified",
+        "text_to_image": "verified",
+        "reference_image_input": "unverified",
+        "image_edit": "unverified",
+        "image_upload": "verified",
+        "size_control": "verified_exact_payload_only",
+        "multi_image_output": "unverified",
+        "quality_control": "unverified",
+        "image_decoded": "verified",
+        "retained_protocol": "verified"
+      },
+      "verified_request_options": {
+        "size": "1024x1024",
+        "n": 1,
+        "response_format": "url"
+      },
+      "observed_output": {
+        "width": 1024,
+        "height": 1024,
+        "format": "png"
+      },
+      "context_window": null,
+      "max_output_tokens": null,
+      "cost_components": [
+        {
+          "params": {
+            "size": "1024x1024",
+            "n": 1
+          },
+          "direction": "image",
+          "unit": "CNY / image",
+          "account_credit_cny": 0.075,
+          "retail_cny": 0.175
+        }
+      ],
+      "cost_conditions": {
+        "qualified_operations": [
+          "generation",
+          "edit"
+        ],
+        "max_reference_images": 1,
+        "max_reference_bytes": 5242880
+      },
+      "cost_notes": [
+        "Exact new generation and multipart single-image edit each consumed 37500 / 500000 = 0.075 CNY account credit on 2026-11-23; their own meter group ratio was 0.75.",
+        "Retail reference is the verified account-credit cost plus the user-approved 0.10 CNY, for exactly n=1 and 1024x1024 on either qualified operation.",
+        "Cash credit-purchase conversion is unknown. Other sizes, quality controls, masks, multiple references and multiple outputs are not qualified."
+      ],
+      "retail_checked_at": "2026-11-23",
       "retail_pricing_status": "approved_image_cost_plus_0_10",
       "retail_account_multiplier": null,
       "retail_markup_cny": 0.1

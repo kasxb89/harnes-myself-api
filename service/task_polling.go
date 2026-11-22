@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,6 +68,7 @@ type BatchTaskResult struct {
 var GetTaskAdaptorFunc func(platform constant.TaskPlatform) TaskPollingAdaptor
 
 var taskPollingCursor atomic.Int64
+var mediaAssetCleanupNext atomic.Int64
 
 // sweepTimedOutTasks 在主轮询之前独立清理超时任务。
 // 每次最多处理 100 条，剩余的下个周期继续处理。
@@ -157,6 +159,17 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	// Only the new, expired private input assets are eligible. Keep the sweep
+	// bounded and infrequent; original task artifacts and financial rows stay.
+	now := time.Now().Unix()
+	if next := mediaAssetCleanupNext.Load(); now >= next && mediaAssetCleanupNext.CompareAndSwap(next, now+300) {
+		cleanupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		_, cleanupErr := CleanupExpiredMediaGenerationAssets(cleanupCtx, model.DB, 20)
+		cancel()
+		if cleanupErr != nil && !errors.Is(cleanupErr, context.Canceled) && !errors.Is(cleanupErr, context.DeadlineExceeded) {
+			logger.LogError(ctx, "Failed to expire private media input assets")
+		}
 	}
 
 	common.SysLog(common.LogText("task progress polling started"))

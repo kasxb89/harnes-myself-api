@@ -61,7 +61,7 @@ func codebloomHook(t *testing.T, p *jsplugin.LoadedPlugin, name string, args ...
 
 func TestCodeBloomImageRequestTransports(t *testing.T) {
 	registry, plugin := newCodeBloomImagePlugin(t)
-	require.Len(t, plugin.Meta.Models, 11)
+	require.Len(t, plugin.Meta.Models, 14)
 	require.Len(t, plugin.Meta.Protocols, 1)
 	require.NotNil(t, plugin.Meta.Protocols[0].RetainResult)
 	assert.True(t, *plugin.Meta.Protocols[0].RetainResult)
