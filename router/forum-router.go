@@ -45,6 +45,7 @@ func SetForumRoutes(api *gin.RouterGroup) {
 	read.POST("/attachments/:attachment_id/link", controller.DemandOriginGuard, controller.GetForumAttachmentLink)
 	moderate := admin.Group("", middleware.RequirePermission(authz.ForumWrite), controller.DemandOriginGuard)
 	moderate.PUT("/config", controller.PutForumConfig)
+	moderate.POST("/posts", controller.CreateForumPost)
 	moderate.PUT("/posts/:post_id/review", controller.ModerateForumContent)
 	moderate.DELETE("/posts/:post_id", controller.ModerateForumContent)
 	moderate.PUT("/comments/:comment_id/review", controller.ModerateForumContent)

@@ -16,9 +16,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,6 +59,61 @@ type forumCommentPage struct {
 	Items []service.ForumCommentView `json:"items"`
 	Next  string                     `json:"next_cursor"`
 	More  bool                       `json:"has_more"`
+}
+
+func TestForumAdministratorPublicationUsesOriginalReceiptsAndUserLimits(t *testing.T) {
+	f := newForumFixture(t)
+	f.enableForum(t)
+	oldNum, oldDuration := common.CriticalRateLimitNum, common.CriticalRateLimitDuration
+	common.CriticalRateLimitEnable = true
+	common.CriticalRateLimitNum, common.CriticalRateLimitDuration = 1, 1200
+	t.Cleanup(func() {
+		common.CriticalRateLimitNum, common.CriticalRateLimitDuration = oldNum, oldDuration
+	})
+	f.engine = gin.New()
+	f.engine.Use(middleware.RequestId())
+	SetForumRoutes(f.engine.Group("/api"))
+	path := "/api/forum-management/posts"
+	in := service.ForumCreate{ClientRequestID: "admin-forum-original", Title: "Platform discussion", Body: "A concrete platform topic"}
+	f.request(t, "", "POST", path, in, 401)
+	f.request(t, "owner", "POST", path, in, 403)
+	rawToken := "nap_synthetic_forum_admin_publish"
+	pat := model.UserAccessToken{Name: "synthetic-admin-publication", TokenHash: model.AccessTokenFingerprint(rawToken), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	require.NoError(t, pat.SetScopes([]string{"*"}))
+	require.NoError(t, model.CreateUserAccessToken(f.users["admin"].Id, &pat, 10))
+	f.tokens["pat"] = rawToken
+	f.request(t, "pat", "POST", path, in, 403)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", f.users["admin"].Id).Update("role", common.RoleAdminUser).Error)
+	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"forum": {"read": true, "write": false}}))
+	f.request(t, "admin", "POST", path, in, 403)
+	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"forum": {"read": true, "write": true}}))
+	first := demandData[forumPostReceipt](t, f.request(t, "admin", "POST", path, in, 201))
+	assert.Equal(t, f.users["admin"].Id, first.Post.Author.ID)
+	assert.Zero(t, first.Post.ReviewedAt)
+	again := demandData[forumPostReceipt](t, f.request(t, "admin", "POST", path, in, 200))
+	assert.True(t, again.Replayed)
+	assert.Equal(t, first.Post.ID, again.Post.ID)
+	changed := in
+	changed.Body = "Different content with original key"
+	f.request(t, "admin", "POST", path, changed, 409)
+	changed.ClientRequestID = "admin-forum-independent"
+	f.request(t, "admin", "POST", path, changed, 201)
+	public := f.request(t, "other", "GET", "/api/product/forum/posts", nil, 200)
+	page := demandData[forumPostPage](t, public)
+	require.Len(t, page.Items, 2)
+	for _, row := range page.Items {
+		assert.Equal(t, f.users["admin"].Id, row.Author.ID)
+	}
+	assert.NotContains(t, string(public), f.users["admin"].Username)
+	assert.NotContains(t, string(public), "phone_e164")
+	in.ClientRequestID = "ordinary-forum-original"
+	f.request(t, "owner", "POST", "/api/product/forum/posts", in, 201)
+	in.ClientRequestID = "ordinary-forum-over-limit"
+	f.request(t, "owner", "POST", "/api/product/forum/posts", in, 429)
+	var count int64
+	require.NoError(t, f.db.Model(&model.ForumPost{}).Count(&count).Error)
+	assert.EqualValues(t, 3, count)
+	assert.True(t, common.CriticalRateLimitEnable)
 }
 
 func TestForumImmediatePublicationLikesAndPublicationReceipts(t *testing.T) {

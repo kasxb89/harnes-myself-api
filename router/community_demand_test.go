@@ -15,9 +15,11 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -57,6 +59,67 @@ func (f *demandFixture) communityApprove(t *testing.T, created communityReceipt)
 	return created
 }
 func communityPath(id string) string { return "/api/product/community-demands/orders/" + id }
+
+func TestCommunityAdministratorPublicationUsesOriginalReceiptsAndUserLimits(t *testing.T) {
+	f := newCommunityFixture(t)
+	oldNum, oldDuration := common.CriticalRateLimitNum, common.CriticalRateLimitDuration
+	common.CriticalRateLimitEnable = true
+	common.CriticalRateLimitNum, common.CriticalRateLimitDuration = 1, 1200
+	t.Cleanup(func() {
+		common.CriticalRateLimitNum, common.CriticalRateLimitDuration = oldNum, oldDuration
+	})
+	f.engine = gin.New()
+	f.engine.Use(middleware.RequestId())
+	SetCommunityDemandRoutes(f.engine.Group("/api"))
+	path := "/api/community-demand-management/orders"
+	in := service.CommunityCreate{ClientRequestID: "admin-publication-original", PublishToCommunity: true,
+		Title: "Platform project", PublicSummary: "Public project scope", PrivateText: "Private platform notes"}
+	f.request(t, "", "POST", path, in, 401)
+	f.request(t, "owner", "POST", path, in, 403)
+	rawToken := "nap_synthetic_community_admin_publish"
+	pat := model.UserAccessToken{Name: "synthetic-admin-publication", TokenHash: model.AccessTokenFingerprint(rawToken), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	require.NoError(t, pat.SetScopes([]string{"*"}))
+	require.NoError(t, model.CreateUserAccessToken(f.users["admin"].Id, &pat, 10))
+	f.tokens["pat"] = rawToken
+	f.request(t, "pat", "POST", path, in, 403)
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", f.users["admin"].Id).Update("role", common.RoleAdminUser).Error)
+	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"community_demands": {"read": true, "write": false}}))
+	f.request(t, "admin", "POST", path, in, 403)
+	require.NoError(t, authz.SetUserPermissions(f.users["admin"].Id, authz.PermissionsMap{"community_demands": {"read": true, "write": true}}))
+	first := demandData[communityReceipt](t, f.request(t, "admin", "POST", path, in, 201))
+	assert.Equal(t, f.users["admin"].Id, first.Order.Publisher.ID)
+	assert.Equal(t, "admin", first.Order.MyRole)
+	assert.Equal(t, "pending", first.Order.Listing.ApprovalStatus)
+	require.NotNil(t, first.Message)
+	assert.Equal(t, "publisher", first.Message.AuthorKind)
+	again := demandData[communityReceipt](t, f.request(t, "admin", "POST", path, in, 200))
+	assert.True(t, again.Replayed)
+	assert.Equal(t, first.Order.ID, again.Order.ID)
+	require.NotNil(t, again.Message)
+	assert.Equal(t, first.Message.ID, again.Message.ID)
+	changed := in
+	changed.Title = "Different content with the original key"
+	f.request(t, "admin", "POST", path, changed, 409)
+	changed.ClientRequestID = "admin-publication-independent"
+	f.request(t, "admin", "POST", path, changed, 201)
+	first = f.communityApprove(t, first)
+	public := f.request(t, "other", "GET", "/api/product/community-demands/listings", nil, 200)
+	assert.NotContains(t, string(public), "Private platform notes")
+	assert.NotContains(t, string(public), "phone_e164")
+	assert.NotContains(t, string(public), f.users["admin"].Username)
+	accepted := demandData[communityReceipt](t, f.request(t, "other", "POST", communityPath(first.Order.ID)+"/accept", map[string]string{"client_action_id": "accept-platform-order"}, 200))
+	require.NotNil(t, accepted.Order.Acceptor)
+	assert.Equal(t, f.users["other"].Id, accepted.Order.Acceptor.ID)
+	in.ClientRequestID = "ordinary-user-original"
+	f.request(t, "owner", "POST", "/api/product/community-demands/orders", in, 201)
+	in.ClientRequestID = "ordinary-user-over-limit"
+	f.request(t, "owner", "POST", "/api/product/community-demands/orders", in, 429)
+	var count int64
+	require.NoError(t, f.db.Model(&model.CommunityOrder{}).Count(&count).Error)
+	assert.EqualValues(t, 3, count)
+	assert.True(t, common.CriticalRateLimitEnable)
+}
+
 func TestCommunityExplicitPublicationPreservesLegacyPrivacy(t *testing.T) {
 	f := newCommunityFixture(t)
 	original := f.create(t, "original-official-private")

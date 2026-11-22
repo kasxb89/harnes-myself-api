@@ -39,6 +39,7 @@ func SetCommunityDemandRoutes(api *gin.RouterGroup) {
 	read.POST("/attachments/:attachment_id/link", controller.DemandOriginGuard, controller.GetCommunityAttachmentLink)
 	write := admin.Group("", middleware.RequirePermission(authz.CommunityDemandsWrite), controller.DemandOriginGuard)
 	write.PUT("/config", controller.PutCommunityConfig)
+	write.POST("/orders", controller.CreateCommunityOrder)
 	write.POST("/orders/:id/messages", controller.SendCommunityMessage)
 	write.POST("/orders/:id/actions", controller.PostCommunityAction)
 	write.POST("/uploads", controller.CreateCommunityUpload)
