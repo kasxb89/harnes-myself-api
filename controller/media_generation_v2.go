@@ -320,7 +320,7 @@ func SubmitMediaGeneration(c *gin.Context) {
 		return
 	}
 	var frozen service.MediaGenerationFrozen
-	if common.UnmarshalJsonStr(q.UsageFactsJSON, &frozen) != nil {
+	if common.UnmarshalJsonStr(string(q.UsageFactsJSON), &frozen) != nil {
 		mediaV2Error(c, errors.New("quote unavailable"))
 		return
 	}

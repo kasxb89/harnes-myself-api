@@ -27,7 +27,7 @@ func AttachMediaGenerationQuote(c *gin.Context, q *model.MediaGenerationQuote) e
 		return errors.New("quote unavailable")
 	}
 	var frozen MediaGenerationFrozen
-	if common.UnmarshalJsonStr(q.UsageFactsJSON, &frozen) != nil || frozen.Request.Model != q.Model || MediaGenerationRequestDigest(frozen.Request) != q.RequestSHA256 {
+	if common.UnmarshalJsonStr(string(q.UsageFactsJSON), &frozen) != nil || frozen.Request.Model != q.Model || MediaGenerationRequestDigest(frozen.Request) != q.RequestSHA256 {
 		return errors.New("quote unavailable")
 	}
 	route, err := MediaGenerationRouteFromContext(c)
@@ -63,7 +63,7 @@ func MediaGenerationPluginContext(c *gin.Context, info *relaycommon.RelayInfo) (
 		return nil, errors.New("invalid media quote context")
 	}
 	var params map[string]any
-	if common.UnmarshalJsonStr(private.Quote.NativeParamsJSON, &params) != nil {
+	if common.UnmarshalJsonStr(string(private.Quote.NativeParamsJSON), &params) != nil {
 		return nil, errors.New("invalid media quote parameters")
 	}
 	native, err := ycapi.BuildMediaRuntimeRequest(private.Quote.Model, params, private.Quote.SupplierLane, info.PublicTaskID, private.Frozen.Request.Intent)

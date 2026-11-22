@@ -1,9 +1,11 @@
 package model
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,6 +120,48 @@ func TestMediaGenerationQuoteAssetUploadRepeatedMigrationPreservesReceipts(t *te
 	actualQuote, err := store.GetUnclaimedQuote(t.Context(), mediaGenerationQuoteTestBinding(quote))
 	require.NoError(t, err)
 	assert.Equal(t, quote, actualQuote)
+}
+
+func TestMediaGenerationQuoteLargeUnicodeSnapshotsSurviveMigration(t *testing.T) {
+	store := mediaGenerationQuoteTestStore(t)
+	prompt := strings.Repeat("云枢", 16_384)
+	native, err := common.Marshal(map[string]any{"prompt": prompt, "duration": 8})
+	require.NoError(t, err)
+	frozen, err := common.Marshal(map[string]any{"request": map[string]any{"parameters": map[string]any{"prompt": prompt}}, "parameters": map[string]any{"prompt": prompt}, "facts": map[string]any{"seconds": 8}})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(native), 90<<10)
+	require.GreaterOrEqual(t, len(frozen), 180<<10)
+	require.Less(t, len(native), 256<<10, "original semantic request stays within the existing HTTP input bound")
+	input := mediaGenerationQuoteFixture("operation-large-unicode")
+	input.NativeParamsJSON, input.UsageFactsJSON = LongText(native), LongText(frozen)
+	saved, err := store.SaveQuote(t.Context(), &input)
+	require.NoError(t, err)
+	var migrations bytes.Buffer
+	db := store.DB.Session(&gorm.Session{Logger: logger.New(log.New(&migrations, "", 0), logger.Config{LogLevel: logger.Info, ParameterizedQueries: true})})
+	for range 2 {
+		require.NoError(t, MigrateMediaGenerationQuote(db))
+	}
+	assert.NotContains(t, strings.ToUpper(migrations.String()), "ALTER TABLE", "an already migrated LongText column must not repeatedly change type")
+	actual, err := store.GetUnclaimedQuote(t.Context(), mediaGenerationQuoteTestBinding(saved))
+	require.NoError(t, err)
+	assert.Equal(t, input.NativeParamsJSON, actual.NativeParamsJSON)
+	assert.Equal(t, input.UsageFactsJSON, actual.UsageFactsJSON)
+	assert.Equal(t, saved, actual)
+	columns, err := store.DB.Migrator().ColumnTypes(&MediaGenerationQuote{})
+	require.NoError(t, err)
+	expectedType := "text"
+	if store.DB.Dialector.Name() == "mysql" {
+		expectedType = "longtext"
+	}
+	checked := 0
+	for _, column := range columns {
+		if column.Name() == "native_params_json" || column.Name() == "usage_facts_json" {
+			assert.Equal(t, expectedType, strings.ToLower(column.DatabaseTypeName()))
+			checked++
+		}
+	}
+	assert.Equal(t, 2, checked)
+	t.Logf("Unicode quote preserved native=%d bytes frozen=%d bytes as %s", len(native), len(frozen), expectedType)
 }
 
 func TestMediaGenerationQuoteImmutableOperationAndIsolation(t *testing.T) {

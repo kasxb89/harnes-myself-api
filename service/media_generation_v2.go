@@ -545,7 +545,7 @@ func MediaGenerationBinding(q *model.MediaGenerationQuote) model.MediaGeneration
 }
 func MediaGenerationQuoteProjection(q *model.MediaGenerationQuote) (MediaGenerationQuoteReply, error) {
 	var frozen MediaGenerationFrozen
-	if q == nil || common.UnmarshalJsonStr(q.UsageFactsJSON, &frozen) != nil || frozen.Request.Model != q.Model {
+	if q == nil || common.UnmarshalJsonStr(string(q.UsageFactsJSON), &frozen) != nil || frozen.Request.Model != q.Model {
 		return MediaGenerationQuoteReply{}, errors.New("quote unavailable")
 	}
 	state := "quoted"
@@ -697,7 +697,7 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA}
 	rawFacts, _ := common.Marshal(frozen)
 	rawParams, _ := common.Marshal(normalized)
-	candidate := &model.MediaGenerationQuote{QuoteID: "mgq_" + uuid.NewString(), UserID: a.UserID, TokenID: a.TokenID, OwnerDigest: a.OwnerDigest, ClientOpID: request.ClientOperationID, RequestSHA256: requestSHA, MaterialSHA256: materialSHA, Model: request.Model, Kind: contract.Kind, ChannelID: route.ChannelID, UsingGroup: usingGroup, CredentialDigest: route.CredentialDigest, ChannelConfigHash: route.ConfigHash, ModelConfigVersion: version, PricingVersion: pricingVersion, PluginKey: "ycapi", PluginVersion: plugin.Meta.Version, PluginSourceHash: plugin.SourceHash, SupplierLane: native.LaneID, NativeParamsJSON: string(rawParams), UsageFactsJSON: string(rawFacts), CostCNY: cost.String(), RetailCNY: retail.String(), ReserveQuota: int64(quota), ExpiresAt: time.Now().Add(2 * time.Minute).Unix()}
+	candidate := &model.MediaGenerationQuote{QuoteID: "mgq_" + uuid.NewString(), UserID: a.UserID, TokenID: a.TokenID, OwnerDigest: a.OwnerDigest, ClientOpID: request.ClientOperationID, RequestSHA256: requestSHA, MaterialSHA256: materialSHA, Model: request.Model, Kind: contract.Kind, ChannelID: route.ChannelID, UsingGroup: usingGroup, CredentialDigest: route.CredentialDigest, ChannelConfigHash: route.ConfigHash, ModelConfigVersion: version, PricingVersion: pricingVersion, PluginKey: "ycapi", PluginVersion: plugin.Meta.Version, PluginSourceHash: plugin.SourceHash, SupplierLane: native.LaneID, NativeParamsJSON: model.LongText(rawParams), UsageFactsJSON: model.LongText(rawFacts), CostCNY: cost.String(), RetailCNY: retail.String(), ReserveQuota: int64(quota), ExpiresAt: time.Now().Add(2 * time.Minute).Unix()}
 	// No price/default version may change while this request was quoted.
 	records, err := model.CurrentPublishedModelConfigurations()
 	if err != nil || model.ModelExecutionConfigurationVersion(request.Model, records[request.Model]) != version {

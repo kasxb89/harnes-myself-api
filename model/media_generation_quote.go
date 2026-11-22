@@ -30,37 +30,37 @@ var (
 // It owns no wallet balance, reservation or provider-send state. All fields are
 // private; callers must explicitly project the public quote response.
 type MediaGenerationQuote struct {
-	QuoteID            string `gorm:"primaryKey;type:varchar(64)" json:"-"`
-	OperationKey       string `gorm:"type:varchar(64);uniqueIndex" json:"-"`
-	UserID             int    `gorm:"index" json:"-"`
-	TokenID            int    `json:"-"`
-	OwnerDigest        string `gorm:"type:varchar(64)" json:"-"`
-	ClientOpID         string `gorm:"type:varchar(128)" json:"-"`
-	RequestSHA256      string `gorm:"type:varchar(64)" json:"-"`
-	MaterialSHA256     string `gorm:"type:varchar(64)" json:"-"`
-	Model              string `gorm:"type:varchar(191)" json:"-"`
-	Kind               string `gorm:"type:varchar(16)" json:"-"`
-	ChannelID          int    `json:"-"`
-	UsingGroup         string `gorm:"type:varchar(64)" json:"-"`
-	CredentialDigest   string `gorm:"type:varchar(64)" json:"-"`
-	ChannelConfigHash  string `gorm:"type:varchar(64)" json:"-"`
-	ModelConfigVersion string `gorm:"type:varchar(64)" json:"-"`
-	PricingVersion     string `gorm:"type:varchar(64)" json:"-"`
-	PluginKey          string `gorm:"type:varchar(64)" json:"-"`
-	PluginVersion      string `gorm:"type:varchar(64)" json:"-"`
-	PluginSourceHash   string `gorm:"type:varchar(64)" json:"-"`
-	SupplierLane       string `gorm:"type:varchar(512)" json:"-"`
-	NativeParamsJSON   string `gorm:"type:text" json:"-"`
-	UsageFactsJSON     string `gorm:"type:text" json:"-"`
-	CostCNY            string `gorm:"type:varchar(64)" json:"-"`
-	RetailCNY          string `gorm:"type:varchar(64)" json:"-"`
-	ReserveQuota       int64  `json:"-"`
-	ExpiresAt          int64  `gorm:"index" json:"-"`
-	TaskDBID           int64  `gorm:"index" json:"-"`
-	TaskID             string `gorm:"type:varchar(191);index" json:"-"`
-	BoundAt            int64  `json:"-"`
-	CreatedAt          int64  `json:"-"`
-	UpdatedAt          int64  `json:"-"`
+	QuoteID            string   `gorm:"primaryKey;type:varchar(64)" json:"-"`
+	OperationKey       string   `gorm:"type:varchar(64);uniqueIndex" json:"-"`
+	UserID             int      `gorm:"index" json:"-"`
+	TokenID            int      `json:"-"`
+	OwnerDigest        string   `gorm:"type:varchar(64)" json:"-"`
+	ClientOpID         string   `gorm:"type:varchar(128)" json:"-"`
+	RequestSHA256      string   `gorm:"type:varchar(64)" json:"-"`
+	MaterialSHA256     string   `gorm:"type:varchar(64)" json:"-"`
+	Model              string   `gorm:"type:varchar(191)" json:"-"`
+	Kind               string   `gorm:"type:varchar(16)" json:"-"`
+	ChannelID          int      `json:"-"`
+	UsingGroup         string   `gorm:"type:varchar(64)" json:"-"`
+	CredentialDigest   string   `gorm:"type:varchar(64)" json:"-"`
+	ChannelConfigHash  string   `gorm:"type:varchar(64)" json:"-"`
+	ModelConfigVersion string   `gorm:"type:varchar(64)" json:"-"`
+	PricingVersion     string   `gorm:"type:varchar(64)" json:"-"`
+	PluginKey          string   `gorm:"type:varchar(64)" json:"-"`
+	PluginVersion      string   `gorm:"type:varchar(64)" json:"-"`
+	PluginSourceHash   string   `gorm:"type:varchar(64)" json:"-"`
+	SupplierLane       string   `gorm:"type:varchar(512)" json:"-"`
+	NativeParamsJSON   LongText `json:"-"`
+	UsageFactsJSON     LongText `json:"-"`
+	CostCNY            string   `gorm:"type:varchar(64)" json:"-"`
+	RetailCNY          string   `gorm:"type:varchar(64)" json:"-"`
+	ReserveQuota       int64    `json:"-"`
+	ExpiresAt          int64    `gorm:"index" json:"-"`
+	TaskDBID           int64    `gorm:"index" json:"-"`
+	TaskID             string   `gorm:"type:varchar(191);index" json:"-"`
+	BoundAt            int64    `json:"-"`
+	CreatedAt          int64    `json:"-"`
+	UpdatedAt          int64    `json:"-"`
 }
 
 // Binding is supplied only after authentication and request/material hashing.
@@ -108,7 +108,8 @@ func MediaGenerationQuoteBindingFromContext(ctx context.Context) (MediaGeneratio
 	return binding, ok
 }
 
-// MigrateMediaGenerationQuote is deliberately not wired into global migration.
+// MigrateMediaGenerationQuote migrates only the new quote/receipt table. It
+// does not backfill historical task or financial data.
 func MigrateMediaGenerationQuote(db *gorm.DB) error {
 	if db == nil {
 		return ErrMediaGenerationQuoteUnavailable
@@ -298,7 +299,8 @@ func validateMediaGenerationQuote(quote MediaGenerationQuote) error {
 		quote.ReserveQuota < 0 || quote.ReserveQuota > common.MaxQuota || quote.TaskDBID != 0 || quote.TaskID != "" || quote.BoundAt != 0 {
 		return ErrMediaGenerationQuoteInvalid
 	}
-	for _, raw := range []string{quote.NativeParamsJSON, quote.UsageFactsJSON} {
+	for _, snapshot := range []LongText{quote.NativeParamsJSON, quote.UsageFactsJSON} {
+		raw := string(snapshot)
 		var value map[string]common.RawMessage
 		if len(raw) == 0 || len(raw) > 1<<20 || common.UnmarshalJsonStr(raw, &value) != nil || value == nil {
 			return ErrMediaGenerationQuoteInvalid
