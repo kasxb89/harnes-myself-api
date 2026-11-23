@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	builtinplugins "github.com/QuantumNous/new-api/plugins"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -191,33 +193,102 @@ func TestYCAPIMediaV2RejectsOversizedOutputSetsAndWaitsForFinality(t *testing.T)
 	for index := 0; index < 65; index++ {
 		outputs = append(outputs, map[string]any{"url": fmt.Sprintf("https://cdn.invalid/%d.png", index), "type": "image"})
 	}
-	_, err := plugin.Engine.Call(t.Context(), "parseTaskResult", query, map[string]any{"task_id": "native-v2-task", "status": "completed", "is_final": true, "data": outputs})
+	complete := codebloomHook(t, plugin, "parseTaskResult", query, map[string]any{"task_id": "native-v2-task", "status": "completed", "is_final": true, "data": outputs[:64]})
+	value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": complete["state"]})
+	require.NoError(t, err)
+	require.Len(t, value, 64)
+	content := codebloomHook(t, plugin, "buildContentRequest", map[string]any{"state": complete["state"], "artifactKey": "image-64", "clientRequest": map[string]any{"method": "GET"}})
+	assert.Equal(t, "https://cdn.invalid/63.png", content["url"])
+	_, err = plugin.Engine.Call(t.Context(), "parseTaskResult", query, map[string]any{"task_id": "native-v2-task", "status": "completed", "is_final": true, "data": outputs})
 	require.ErrorContains(t, err, "Too many upstream media outputs")
+	for _, invalid := range []map[string]any{
+		{"url": "http://cdn.invalid/insecure.png", "type": "image"},
+		{"url": "https://cdn.invalid/wrong.png", "type": "image", "mime_type": "video/mp4"},
+	} {
+		_, err = plugin.Engine.Call(t.Context(), "parseTaskResult", query, map[string]any{"task_id": "native-v2-task", "status": "completed", "is_final": true, "data": []any{outputs[0], invalid}})
+		require.Error(t, err, "V2 must reject an invalid member instead of silently keeping only the first output")
+	}
 	missing := codebloomHook(t, plugin, "parseTaskResult", query, map[string]any{"task_id": "native-v2-task", "status": "completed", "is_final": true})
 	assert.Equal(t, "UNKNOWN", missing["status"])
 }
 
 func TestYCAPIMediaV2KeepsLegacyQueryArtifactKeyAndOriginalOffer(t *testing.T) {
 	plugin := newYCAPIMediaV2Plugin(t)
+	for _, test := range []struct {
+		model, kind, mime, queryPath string
+		offer                        int
+		body                         map[string]any
+		facts                        map[string]any
+	}{
+		{"ycapi-flux-kontext", "image", "image/png", "/api/v1/model-runtime/tasks/", 1,
+			map[string]any{"prompt": "A cat", "size": "1:1", "quality": "pro"}, map[string]any{"image_count": float64(1)}},
+		{"ycapi-minimax-h3", "video", "video/mp4", "/v1/tasks/", 0,
+			map[string]any{"prompt": "A cat", "resolution": "2k", "seconds": 5, "ratio": "16:9"}, map[string]any{"seconds": float64(5)}},
+		{"ycapi-gpt-4o-mini-tts", "audio", "audio/wav", "/api/v1/model-runtime/tasks/", 0,
+			map[string]any{"input": "Hello", "voice": "alloy", "response_format": "wav"}, map[string]any{"input_tokens": float64(5), "output_tokens": float64(8192)}},
+	} {
+		t.Run(test.kind, func(t *testing.T) {
+			model, ok := ycapi.Lookup(test.model)
+			require.True(t, ok)
+			if test.kind != "audio" {
+				test.facts["spec"] = model.Offers[test.offer].ID
+			}
+			ctx := map[string]any{"model": model.ID, "upstreamModel": model.ID, "publicTaskId": "task-old", "baseUrl": "https://ycapi.invalid", "apiKey": "synthetic-secret", "requestBody": test.body}
+			wire := codebloomHook(t, plugin, "buildSubmitRequest", ctx)
+			expectedSubmit := "/api/v1/model-runtime/invoke"
+			if test.kind == "video" {
+				expectedSubmit = "/v1/videos/generations"
+			}
+			assert.Equal(t, "https://ycapi.invalid"+expectedSubmit, wire["url"])
+			assert.Equal(t, model.Prices[test.offer].LaneID, codebloomObject(t, wire["body"])["lane_id"])
+			assert.Equal(t, "task-old", codebloomObject(t, wire["body"])["client_request_id"])
+			legacyFacts := codebloomHook(t, plugin, "extractUsage", ctx)
+			assert.Subset(t, legacyFacts, test.facts)
+			expression, err := ycapi.BillingExpression(model.ID, decimal.RequireFromString("7.3"))
+			require.NoError(t, err)
+			oldUSD, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: test.facts})
+			require.NoError(t, err)
+			newUSD, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: legacyFacts})
+			require.NoError(t, err)
+			assert.Equal(t, oldUSD, newUSD, "added metadata must not change the original offer price")
+
+			parsed := codebloomHook(t, plugin, "parseSubmitResponse", ctx, map[string]any{"body": map[string]any{"task_id": "native-legacy", "status": "pending"}})
+			state := codebloomObject(t, parsed["state"])
+			state["facts"] = test.facts // The pending task was persisted by 1.0.3.
+			queryCtx := map[string]any{"model": model.ID, "upstreamModel": model.ID, "taskId": "native-legacy", "state": state, "baseUrl": ctx["baseUrl"], "apiKey": ctx["apiKey"]}
+			query := codebloomHook(t, plugin, "buildQueryRequest", queryCtx)
+			assert.Equal(t, "https://ycapi.invalid"+test.queryPath+"native-legacy", query["url"])
+			pending := codebloomHook(t, plugin, "parseTaskResult", queryCtx, map[string]any{"task_id": "native-legacy", "status": "processing", "is_final": false})
+			assert.Equal(t, "IN_PROGRESS", pending["status"])
+			queryCtx["state"] = pending["state"]
+			assert.Equal(t, query, codebloomHook(t, plugin, "buildQueryRequest", queryCtx))
+			url := "https://cdn.invalid/original"
+			final := codebloomHook(t, plugin, "parseTaskResult", queryCtx, map[string]any{"task_id": "native-legacy", "status": "completed", "is_final": true,
+				"outputs": []any{url, "https://cdn.invalid/additional", "http://cdn.invalid/invalid"}, "usage": map[string]any{"input_tokens": 4, "output_tokens": 9}})
+			assert.Equal(t, "SUCCESS", final["status"])
+			finalState := codebloomObject(t, final["state"])
+			assert.Equal(t, test.facts, codebloomObject(t, finalState["facts"]))
+			assert.Equal(t, []any{url}, codebloomObject(t, finalState["snapshot"])["outputs"])
+			value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": finalState})
+			require.NoError(t, err)
+			assert.Equal(t, []any{map[string]any{"key": test.kind, "type": test.kind, "mimeType": test.mime}}, value)
+			queryCtx["state"], queryCtx["artifactKey"], queryCtx["clientRequest"] = finalState, test.kind, map[string]any{"method": "HEAD"}
+			content := codebloomHook(t, plugin, "buildContentRequest", queryCtx)
+			assert.Equal(t, map[string]any{"url": url, "method": "HEAD", "credentialless": true}, content)
+			queryCtx["artifactKey"] = test.kind + "-1"
+			_, err = plugin.Engine.Call(t.Context(), "buildContentRequest", queryCtx)
+			require.ErrorContains(t, err, "artifact_not_found", "the original key must not become an indexed key after a poll")
+			completeFacts := codebloomHook(t, plugin, "extractUsageOnComplete", queryCtx, final, map[string]any{"usage": map[string]any{"input_tokens": 4, "output_tokens": 9}})
+			if test.kind == "audio" {
+				assert.Equal(t, map[string]any{"input_tokens": float64(4), "output_tokens": float64(9)}, completeFacts)
+			} else {
+				assert.Empty(t, completeFacts, "additional output links must not change the original quantity")
+			}
+		})
+	}
+
 	model, ok := ycapi.Lookup("ycapi-flux-kontext")
 	require.True(t, ok)
-	ctx := map[string]any{"model": model.ID, "upstreamModel": model.ID, "publicTaskId": "task-old", "baseUrl": "https://ycapi.invalid", "apiKey": "synthetic-secret",
-		"requestBody": map[string]any{"prompt": "A cat", "size": "1:1", "quality": "pro"}}
-	wire := codebloomHook(t, plugin, "buildSubmitRequest", ctx)
-	assert.Equal(t, "https://ycapi.invalid/api/v1/model-runtime/invoke", wire["url"])
-	legacyFacts := codebloomHook(t, plugin, "extractUsage", ctx)
-	assert.Equal(t, false, legacyFacts["generate_audio"])
-	assert.Equal(t, false, legacyFacts["draft"])
-	parsed := codebloomHook(t, plugin, "parseSubmitResponse", ctx, map[string]any{"body": map[string]any{"task_id": "native-legacy", "status": "pending"}})
-	queryCtx := map[string]any{"model": model.ID, "upstreamModel": model.ID, "taskId": "native-legacy", "state": parsed["state"], "baseUrl": "https://ycapi.invalid", "apiKey": "synthetic-secret"}
-	query := codebloomHook(t, plugin, "buildQueryRequest", queryCtx)
-	assert.Equal(t, "https://ycapi.invalid/api/v1/model-runtime/tasks/native-legacy", query["url"])
-	final := codebloomHook(t, plugin, "parseTaskResult", queryCtx, map[string]any{"task_id": "native-legacy", "status": "completed", "is_final": true, "outputs": []any{"https://cdn.invalid/old.png"}})
-	value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": final["state"]})
-	require.NoError(t, err)
-	artifacts := value.([]any)
-	require.Len(t, artifacts, 1)
-	assert.Equal(t, "image", codebloomObject(t, artifacts[0])["key"])
 	v2 := ycapiV2FixtureContext()
 	v2["model"] = model.ID
 	private := v2["mediaGenerationV2"].(map[string]any)

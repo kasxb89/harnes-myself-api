@@ -302,13 +302,13 @@ function publicURL(value) {
 }
 
 function outputs(body, kind) {
+  // Legacy tasks retain their original single artifact and stable content key.
+  // The separately marked V2 state uses mediaArtifacts for complete output sets.
   const result = object(body.result) || {};
   for (const list of [body.outputs, result.outputs, result[kind + "s"], body[kind + "s"], body.output_urls, body.result_urls]) {
     if (!Array.isArray(list)) continue;
-    if (list.length > 64) throw new Error("Too many upstream media outputs");
-    const urls = list.map((v) => publicURL(typeof v === "string" ? v : (object(v) || {}).url || v.output_url || v.result_url));
-    if (urls.some((url) => !url)) throw new Error("Invalid upstream media output");
-    if (urls.length) return urls;
+    const urls = list.map((v) => publicURL(typeof v === "string" ? v : (object(v) || {}).url || v.output_url || v.result_url)).filter(Boolean);
+    if (urls.length) return urls.slice(0, 1);
   }
   for (const value of [body.output_url, body.result_url, result.output_url, result.result_url, body.audio_url, result.audio_url]) {
     const url = publicURL(value);
@@ -507,8 +507,7 @@ export function listArtifacts(task) {
   let mimeType = "image/png";
   if (kind === "video") mimeType = "video/mp4";
   if (kind === "audio") mimeType = data.format === "wav" ? "audio/wav" : "audio/mpeg";
-  if (data.outputs.length > 64) throw new Error("Too many retained media artifacts");
-  return data.outputs.map((_url, index) => ({ key: data.outputs.length === 1 ? kind : kind + "-" + (index + 1), type: kind, mimeType }));
+  return [{ key: kind, type: kind, mimeType }];
 }
 export function buildContentRequest(ctx) {
   const retained = mediaState(ctx);
@@ -519,11 +518,8 @@ export function buildContentRequest(ctx) {
     return { url: artifact.url, method: ctx.clientRequest.method, credentialless: true };
   }
   const data = ctx.state && ctx.state.snapshot;
-  const key = typeof ctx.artifactKey === "string" ? ctx.artifactKey : "";
-  const index = data && data.outputs && data.outputs.length === 1 ? (key === data.kind ? 0 : -1)
-    : data && key.startsWith(data.kind + "-") ? Number(key.slice(data.kind.length + 1)) - 1 : -1;
-  const url = data && data.outputs && Number.isInteger(index) && index >= 0 && publicURL(data.outputs[index]);
-  if (!url) throw new Error("artifact_not_found");
+  const url = data && data.outputs && publicURL(data.outputs[0]);
+  if (!url || ctx.artifactKey !== data.kind) throw new Error("artifact_not_found");
   return { url, method: ctx.clientRequest.method, credentialless: true };
 }
 export const protocols = {
