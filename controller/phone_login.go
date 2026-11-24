@@ -348,6 +348,11 @@ func findOrCreatePhoneUserWithTx(tx *gorm.DB, phoneE164 string) (*model.User, bo
 		return nil, false, err
 	}
 
+	if common.PhoneLoginDefaultGroup == model.BossPhoneGroup {
+		// Boss is provisioned only by an administrator, never by public signup.
+		return nil, false, model.ErrBossPhoneUnqualified
+	}
+
 	// A shadow account created earlier for this number may exist under the
 	// derived username; adopt it instead of creating a duplicate identity.
 	username := phoneUsername(phoneE164)
@@ -356,6 +361,9 @@ func findOrCreatePhoneUserWithTx(tx *gorm.DB, phoneE164 string) (*model.User, bo
 	if err == nil {
 		if byUsername.Status != common.UserStatusEnabled {
 			return nil, false, errPhoneAccountDisabled
+		}
+		if byUsername.Group == model.BossPhoneGroup {
+			return nil, false, model.ErrBossPhoneUnqualified
 		}
 		if byUsername.PhoneE164 != nil && *byUsername.PhoneE164 != phoneE164 {
 			return nil, false, errPhoneAccountConflict

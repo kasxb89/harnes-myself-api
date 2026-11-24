@@ -18,16 +18,21 @@ import (
 // PhoneLoginResult is sealed for a short replay window. Only ciphertext is
 // persisted; a replay must still match the current authoritative security state.
 type PhoneLoginResult struct {
-	UserID       int             `json:"user_id"`
-	AuthVersion  int64           `json:"auth_version"`
-	Bundle       *AuthBundle     `json:"bundle,omitempty"`
-	RefreshToken string          `json:"refresh,omitempty"`
-	RelayKey     string          `json:"relay_key,omitempty"`
-	RelayKeyID   int             `json:"relay_key_id,omitempty"`
-	Verification *LoginChallenge `json:"verification,omitempty"`
+	UserID       int                     `json:"user_id"`
+	AuthVersion  int64                   `json:"auth_version"`
+	Bundle       *AuthBundle             `json:"bundle,omitempty"`
+	RefreshToken string                  `json:"refresh,omitempty"`
+	RelayKey     string                  `json:"relay_key,omitempty"`
+	RelayKeyID   int                     `json:"relay_key_id,omitempty"`
+	Verification *LoginChallenge         `json:"verification,omitempty"`
+	BossBinding  *model.BossPhoneBinding `json:"boss_binding,omitempty"`
 }
 
 func PreparePhoneLoginWithTx(tx *gorm.DB, user *model.User, ip, userAgent string) (*PhoneLoginResult, error) {
+	return preparePhoneLoginWithTx(tx, user, nil, ip, userAgent)
+}
+
+func preparePhoneLoginWithTx(tx *gorm.DB, user *model.User, binding *model.BossPhoneBinding, ip, userAgent string) (*PhoneLoginResult, error) {
 	current, err := model.PhoneAuthUserWithTx(tx, user.Id)
 	if err != nil {
 		return nil, err
@@ -43,44 +48,62 @@ func PreparePhoneLoginWithTx(tx *gorm.DB, user *model.User, ip, userAgent string
 	if err != nil {
 		return nil, err
 	}
-	result := &PhoneLoginResult{UserID: user.Id, AuthVersion: user.AuthVersion}
+	result := &PhoneLoginResult{UserID: user.Id, AuthVersion: user.AuthVersion, BossBinding: binding}
 	if len(methods) > 0 {
 		available := false
 		for _, method := range methods {
 			available = available || method.Available
 		}
-		if !available {
+		if !available && binding == nil {
 			return nil, ErrVerificationUnavailable
 		}
 		encoded, err := common.Marshal(loginFlowPayload{AuthVersion: user.AuthVersion, LoginMethod: "phone"})
+		purpose, provider := model.AuthFlowPurposeLoginVerification, ""
+		if binding != nil {
+			encoded, err = common.Marshal(model.BossPhoneVerificationPayload{Binding: *binding})
+			purpose, provider = model.BossPhoneVerificationPurpose, model.BossPhoneLoginMethod
+			methods = bossPhoneVerificationMethods(methods)
+		}
 		if err != nil {
 			return nil, err
 		}
 		expires := time.Now().Add(LoginVerificationTTL)
-		token, _, err := model.CreatePhoneLoginVerificationWithTx(tx, model.AuthFlowCreate{Purpose: model.AuthFlowPurposeLoginVerification, UserId: user.Id, Payload: string(encoded), ExpiresAt: expires})
+		token, _, err := model.CreatePhoneLoginVerificationWithTx(tx, model.AuthFlowCreate{Purpose: purpose, Provider: provider, UserId: user.Id, Payload: string(encoded), ExpiresAt: expires})
 		if err != nil {
 			return nil, err
 		}
 		result.Verification = &LoginChallenge{RequireVerification: true, FlowToken: token, ExpiresAt: expires.Unix(), Methods: methods}
 		return result, nil
 	}
+	return issuePhoneLoginSessionWithTx(tx, user, binding, ip, userAgent)
+}
+
+func issuePhoneLoginSessionWithTx(tx *gorm.DB, user *model.User, binding *model.BossPhoneBinding, ip, userAgent string) (*PhoneLoginResult, error) {
 	key, keyID, err := model.EnsurePhoneRelayTokenWithTx(tx, user.Id)
 	if err != nil {
 		return nil, err
 	}
-	session, secret, err := newLoginSession(user.Id, user.AuthVersion, "phone", ip, userAgent)
+	method := "phone"
+	if binding != nil {
+		method = model.BossPhoneLoginMethod
+	}
+	session, secret, err := newLoginSession(user.Id, user.AuthVersion, method, ip, userAgent)
 	if err != nil {
 		return nil, err
 	}
 	if err := model.CreatePhoneAuthSessionWithTx(tx, session); err != nil {
 		return nil, err
 	}
+	if binding != nil {
+		if err := model.CreateBossPhoneSessionBindingWithTx(tx, session, binding); err != nil {
+			return nil, err
+		}
+	}
 	bundle, err := issueAuthBundle(session, session.SID+"."+secret, true)
 	if err != nil {
 		return nil, err
 	}
-	result.Bundle, result.RefreshToken, result.RelayKey, result.RelayKeyID = bundle, bundle.RefreshToken, "sk-"+key, keyID
-	return result, nil
+	return &PhoneLoginResult{UserID: user.Id, AuthVersion: user.AuthVersion, BossBinding: binding, Bundle: bundle, RefreshToken: bundle.RefreshToken, RelayKey: "sk-" + key, RelayKeyID: keyID}, nil
 }
 
 // SealPhoneLoginResult binds the encrypted receipt to the client's high-entropy
@@ -103,6 +126,10 @@ func SealPhoneLoginResult(result *PhoneLoginResult, key string) (string, error) 
 }
 
 func ReplayPhoneLoginResultWithTx(tx *gorm.DB, flow *model.AuthFlow, sealed, key string) (*PhoneLoginResult, error) {
+	return replayPhoneLoginResultWithTx(tx, flow, sealed, key, false)
+}
+
+func replayPhoneLoginResultWithTx(tx *gorm.DB, flow *model.AuthFlow, sealed, key string, boss bool) (*PhoneLoginResult, error) {
 	aead, err := phoneReceiptCipher(key)
 	if err != nil {
 		return nil, err
@@ -123,17 +150,35 @@ func ReplayPhoneLoginResultWithTx(tx *gorm.DB, flow *model.AuthFlow, sealed, key
 	if err != nil {
 		return nil, err
 	}
-	if result.UserID != user.Id || user.Status != common.UserStatusEnabled || user.AuthVersion != result.AuthVersion {
+	if result.UserID != user.Id || user.Status != common.UserStatusEnabled || user.AuthVersion != result.AuthVersion || boss != (result.BossBinding != nil) {
 		return nil, model.ErrPhoneChallengeConsumed
+	}
+	if boss {
+		if result.BossBinding.UserID != user.Id || result.BossBinding.AuthVersion != user.AuthVersion {
+			return nil, model.ErrPhoneChallengeConsumed
+		}
+		if _, err := model.ValidateBossPhoneBindingWithTx(tx, result.BossBinding); err != nil {
+			return nil, model.ErrPhoneChallengeConsumed
+		}
 	}
 	if result.Verification != nil {
 		pending, err := model.GetPhoneLoginVerificationWithTx(tx, result.Verification.FlowToken, user.Id)
+		if boss {
+			pending, err = model.GetBossPhoneVerificationWithTx(tx, result.Verification.FlowToken, user.Id)
+		}
 		if err != nil || pending.ConsumedAt != nil || !pending.ExpiresAt.After(time.Now()) {
 			return nil, model.ErrPhoneChallengeConsumed
 		}
-		var bound loginFlowPayload
-		if common.UnmarshalJsonStr(pending.Payload, &bound) != nil || bound.AuthVersion != user.AuthVersion || bound.LoginMethod != "phone" {
-			return nil, model.ErrPhoneChallengeConsumed
+		if boss {
+			var bound model.BossPhoneVerificationPayload
+			if common.UnmarshalJsonStr(pending.Payload, &bound) != nil || bound.Binding != *result.BossBinding {
+				return nil, model.ErrPhoneChallengeConsumed
+			}
+		} else {
+			var bound loginFlowPayload
+			if common.UnmarshalJsonStr(pending.Payload, &bound) != nil || bound.AuthVersion != user.AuthVersion || bound.LoginMethod != "phone" {
+				return nil, model.ErrPhoneChallengeConsumed
+			}
 		}
 		state, err := model.PhoneAuthVerificationStateWithTx(tx, user.Id)
 		if err != nil {
@@ -147,8 +192,11 @@ func ReplayPhoneLoginResultWithTx(tx *gorm.DB, flow *model.AuthFlow, sealed, key
 		for _, method := range methods {
 			available = available || method.Available
 		}
-		if !available {
+		if !available && !boss {
 			return nil, model.ErrPhoneChallengeConsumed
+		}
+		if boss {
+			methods = bossPhoneVerificationMethods(methods)
 		}
 		result.Verification.Methods = methods
 		return &result, nil
@@ -167,6 +215,11 @@ func ReplayPhoneLoginResultWithTx(tx *gorm.DB, flow *model.AuthFlow, sealed, key
 	sid, secret, ok := splitRefreshToken(result.RefreshToken)
 	if !ok || sid != session.SID || session.UserID != user.Id || session.Status != model.UserSessionStatusActive || session.RevokedAt != 0 || session.ExpiresAt <= time.Now().Unix() || session.UserAuthVersion != user.AuthVersion || !hmac.Equal([]byte(session.RefreshHash), []byte(hashRefreshSecret(secret))) {
 		return nil, model.ErrPhoneChallengeConsumed
+	}
+	if boss {
+		if err := model.ValidateBossPhoneSessionBindingWithTx(tx, user, session); err != nil {
+			return nil, model.ErrPhoneChallengeConsumed
+		}
 	}
 	var token model.Token
 	if err := tx.Where("id = ? AND user_id = ?", result.RelayKeyID, user.Id).First(&token).Error; err != nil {

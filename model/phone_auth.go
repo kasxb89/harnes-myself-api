@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	gomysql "github.com/go-sql-driver/mysql"
 	"github.com/pquerna/otp/totp"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -38,14 +39,15 @@ func (e *PhoneRateLimitError) Error() string { return "phone rate limited" }
 // PhoneChallenge contains no usable verification code. Provider and token_hash
 // hold purpose-separated HMACs; a database read cannot guess a six-digit code.
 type PhoneChallenge struct {
-	ID             string `json:"challenge_id"`
-	DeliveryStatus string `json:"delivery_status"`
-	ExpiresAt      int64  `json:"expires_at"`
-	ResendAt       int64  `json:"resend_at"`
-	CodeHash       string `json:"code_hash"`
-	Attempts       int    `json:"attempts"`
-	FailureCode    string `json:"failure_code,omitempty"`
-	ManualCode     bool   `json:"manual_code,omitempty"`
+	ID             string            `json:"challenge_id"`
+	DeliveryStatus string            `json:"delivery_status"`
+	ExpiresAt      int64             `json:"expires_at"`
+	ResendAt       int64             `json:"resend_at"`
+	CodeHash       string            `json:"code_hash"`
+	Attempts       int               `json:"attempts"`
+	FailureCode    string            `json:"failure_code,omitempty"`
+	BossBinding    *BossPhoneBinding `json:"boss_binding,omitempty"`
+	ManualCode     bool              `json:"manual_code,omitempty"`
 }
 
 type phoneExchangePayload struct {
@@ -58,13 +60,20 @@ func phoneAuthHash(purpose, value string) string {
 	return common.GenerateHMACWithKey([]byte("phone-auth/"+purpose+"/v1:"+common.SessionSecret), value)
 }
 
-func phoneChallengeID(key string) string { return phoneAuthHash("challenge", key) }
-
 // bindPhoneAuthRequest makes client key identity global within one purpose.
 // The binding commits before business work and is never rewritten on failure.
 func bindPhoneAuthRequest(flow *AuthFlow) error {
-	if err := DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "token_hash"}}, DoNothing: true}).Create(flow).Error; err != nil {
-		return err
+	for attempt := range 2 {
+		err := DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "token_hash"}}, DoNothing: true}).Create(flow).Error
+		if err == nil {
+			break
+		}
+		var deadlock *gomysql.MySQLError
+		if attempt != 0 || !errors.As(err, &deadlock) || deadlock.Number != 1213 {
+			return err
+		}
+		// InnoDB has rolled back only this immutable pre-authentication binding.
+		// Retry it once, never the OTP/MFA action, session issuance or SMS dispatch.
 	}
 	var existing AuthFlow
 	if err := DB.Where("token_hash = ?", flow.TokenHash).First(&existing).Error; err != nil {
@@ -96,33 +105,43 @@ func WithPhoneAuthTransaction(phone string, action func(*gorm.DB) error) error {
 // ReservePhoneChallenge commits the code digest before dispatch. Once reserved,
 // the same dispatch key only reads state, even after a definite not-sent error.
 func ReservePhoneChallenge(phone, key, code string, expiresAt time.Time) (*PhoneChallenge, bool, error) {
-	return reservePhoneChallenge(phone, key, code, expiresAt, false)
+	return reservePhoneChallenge(phoneScope, phone, key, code, expiresAt, false)
 }
 
 func ReserveManualPhoneChallenge(phone, key string, expiresAt time.Time) (*PhoneChallenge, bool, error) {
-	return reservePhoneChallenge(phone, key, "", expiresAt, true)
+	return reservePhoneChallenge(phoneScope, phone, key, "", expiresAt, true)
 }
 
-func reservePhoneChallenge(phone, key, code string, expiresAt time.Time, manual bool) (*PhoneChallenge, bool, error) {
-	id := phoneChallengeID(key)
-	provider := phoneAuthHash("phone", phone)
-	binding := AuthFlow{TokenHash: phoneAuthHash("dispatch-key", key), Purpose: "phone_dispatch_binding", Provider: provider, ExpiresAt: time.Now().Add(PhoneSendWindow + PhoneLoginReplayTTL)}
+func reservePhoneChallenge(scope phoneAuthScope, phone, key, code string, expiresAt time.Time, manual bool) (*PhoneChallenge, bool, error) {
+	id := scope.hash("challenge", key)
+	provider := scope.hash("phone", phone)
+	binding := AuthFlow{TokenHash: scope.hash("dispatch-key", key), Purpose: scope.dispatchPurpose, Provider: provider, ExpiresAt: time.Now().Add(PhoneSendWindow + PhoneLoginReplayTTL)}
 	if err := bindPhoneAuthRequest(&binding); err != nil {
 		return nil, false, err
 	}
 	var challenge PhoneChallenge
 	created := false
 	err := WithPhoneAuthTransaction(phone, func(tx *gorm.DB) error {
+		var bossUser *User
+		if scope.boss {
+			var err error
+			bossUser, err = BossPhoneUserWithTx(tx, phone)
+			if err != nil && !errors.Is(err, ErrBossPhoneUnqualified) {
+				return err
+			}
+		}
 		var flow AuthFlow
-		err := tx.Where("token_hash = ?", authFlowTokenHash(id)).First(&flow).Error
+		err := lockForUpdate(tx).Where("token_hash = ?", authFlowTokenHash(id)).First(&flow).Error
 		if err == nil {
-			if flow.Purpose != phoneChallengePurpose || flow.Provider != provider {
+			if flow.Purpose != scope.challengePurpose || flow.Provider != provider {
 				return ErrPhoneIdempotencyConflict
 			}
 			if err := common.UnmarshalJsonStr(flow.Payload, &challenge); err != nil {
 				return err
 			}
-			challenge.ExpiresAt = flow.ExpiresAt.Unix()
+			if !scope.boss {
+				challenge.ExpiresAt = flow.ExpiresAt.Unix()
+			}
 			// A crashed sender cannot safely decide whether the provider accepted.
 			if challenge.DeliveryStatus == "sending" && time.Since(flow.CreatedAt) > 15*time.Second {
 				challenge.DeliveryStatus = "unknown"
@@ -145,7 +164,9 @@ func reservePhoneChallenge(phone, key, code string, expiresAt time.Time, manual 
 			window, cooldown, limit = PhoneManualChallengeWindow, PhoneManualChallengeCooldown, 20
 		}
 		var prior []AuthFlow
-		if err := tx.Where("purpose = ? AND provider = ? AND created_at > ? AND intent IN ?", phoneChallengePurpose, provider, now.Add(-window), []string{"sending", "accepted", "unknown"}).Order("created_at DESC").Find(&prior).Error; err != nil {
+		// Rate budgets are shared even though challenge/code/key hashes are
+		// product-separated. A second product must not double SMS throughput.
+		if err := tx.Where("((purpose = ? AND provider = ?) OR (purpose = ? AND provider = ?)) AND created_at > ? AND intent IN ?", phoneScope.challengePurpose, phoneScope.hash("phone", phone), bossPhoneScope.challengePurpose, bossPhoneScope.hash("phone", phone), now.Add(-window), []string{"sending", "accepted", "unknown"}).Order("created_at DESC").Find(&prior).Error; err != nil {
 			return err
 		}
 		var retryAt time.Time
@@ -162,9 +183,24 @@ func reservePhoneChallenge(phone, key, code string, expiresAt time.Time, manual 
 			}
 		}
 		if retryAt.After(now) {
-			return &PhoneRateLimitError{RetryAfterSeconds: max(1, int(time.Until(retryAt).Seconds())+1)}
+			if !scope.boss {
+				return &PhoneRateLimitError{RetryAfterSeconds: max(1, int(time.Until(retryAt).Seconds())+1)}
+			}
+			// Boss always reserves the same public challenge shape, including
+			// throttled and unprovisioned numbers. Neither path dispatches SMS.
+			bossUser = nil
 		}
-		challenge = PhoneChallenge{ID: id, DeliveryStatus: "sending", ExpiresAt: expiresAt.Unix(), ResendAt: expiresAt.Unix(), CodeHash: phoneAuthHash("code", phone+":"+id+":"+code)}
+		challenge = PhoneChallenge{ID: id, DeliveryStatus: "sending", ExpiresAt: expiresAt.Unix(), ResendAt: expiresAt.Unix(), CodeHash: scope.hash("code", phone+":"+id+":"+code)}
+		userID, intent := 0, "sending"
+		if scope.boss {
+			challenge.BossBinding = &BossPhoneBinding{Scope: BossPhoneLoginMethod, PhoneHash: provider}
+			if bossUser != nil {
+				userID = bossUser.Id
+				challenge.BossBinding.UserID, challenge.BossBinding.AuthVersion = bossUser.Id, bossUser.AuthVersion
+			} else {
+				challenge.DeliveryStatus, intent = "masked", "accepted"
+			}
+		}
 		if manual {
 			// Identical admission for approved and unknown international numbers.
 			// Verification checks the current grant under the same phone guard.
@@ -175,11 +211,11 @@ func reservePhoneChallenge(phone, key, code string, expiresAt time.Time, manual 
 		if err != nil {
 			return err
 		}
-		flow = AuthFlow{TokenHash: authFlowTokenHash(id), Purpose: phoneChallengePurpose, Provider: provider, Intent: "sending", Payload: string(encoded), ExpiresAt: expiresAt}
+		flow = AuthFlow{TokenHash: authFlowTokenHash(id), Purpose: scope.challengePurpose, Provider: provider, UserId: userID, Intent: intent, Payload: string(encoded), ExpiresAt: expiresAt}
 		if err := tx.Create(&flow).Error; err != nil {
 			return err
 		}
-		created = true
+		created = !scope.boss || bossUser != nil
 		return nil
 	})
 	return &challenge, created, err
@@ -263,9 +299,15 @@ func LegacyPhoneChallenge(phone string) (string, error) {
 // login action. A downstream failure rolls all writes back, leaving the code
 // retryable. Receipt contains authenticated ciphertext, never bearer plaintext.
 func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (string, int, string, error), replay func(*gorm.DB, *AuthFlow, string) error) (bool, error) {
-	provider := phoneAuthHash("phone", phone)
-	fingerprint := phoneAuthHash("exchange-request", phone+":"+id+":"+code)
-	exchangeHash := phoneAuthHash("exchange-key", key)
+	return exchangePhoneChallenge(phoneScope, phone, id, key, code, func(tx *gorm.DB, _ *User, _ *BossPhoneBinding) (string, int, string, error) {
+		return action(tx)
+	}, replay)
+}
+
+func exchangePhoneChallenge(scope phoneAuthScope, phone, id, key, code string, action func(*gorm.DB, *User, *BossPhoneBinding) (string, int, string, error), replay func(*gorm.DB, *AuthFlow, string) error) (bool, error) {
+	provider := scope.hash("phone", phone)
+	fingerprint := scope.hash("exchange-request", phone+":"+id+":"+code)
+	exchangeHash := scope.hash("exchange-key", key)
 	// Reserve the immutable request binding in its own short transaction. It
 	// survives a subsequent business rollback: the same key cannot change its
 	// phone, challenge or code after a transient account/session failure.
@@ -273,21 +315,31 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 	if err != nil {
 		return false, err
 	}
-	bound := AuthFlow{TokenHash: exchangeHash, Purpose: phoneExchangePurpose, Provider: provider, Payload: string(initial), ExpiresAt: time.Now().Add(PhoneLoginReplayTTL)}
+	bound := AuthFlow{TokenHash: exchangeHash, Purpose: scope.exchangePurpose, Provider: provider, Payload: string(initial), ExpiresAt: time.Now().Add(PhoneLoginReplayTTL)}
 	if err := bindPhoneAuthRequest(&bound); err != nil {
 		return false, err
 	}
 	replayed := false
 	var outcome error
 	err = WithPhoneAuthTransaction(phone, func(tx *gorm.DB) error {
+		// Lock the authoritative user before any proof row. Mutation fences use
+		// the same user -> flow order, including on MySQL REPEATABLE READ.
+		var bossUser *User
+		if scope.boss {
+			var err error
+			bossUser, err = BossPhoneUserWithTx(tx, phone)
+			if err != nil {
+				return err
+			}
+		}
 		var exchange AuthFlow
-		err := tx.Where("token_hash = ?", exchangeHash).First(&exchange).Error
+		err := lockForUpdate(tx).Where("token_hash = ?", exchangeHash).First(&exchange).Error
 		if err == nil {
 			var payload phoneExchangePayload
 			if err := common.UnmarshalJsonStr(exchange.Payload, &payload); err != nil {
 				return err
 			}
-			if exchange.Purpose != phoneExchangePurpose || exchange.Provider != provider || payload.Fingerprint != fingerprint {
+			if exchange.Purpose != scope.exchangePurpose || exchange.Provider != provider || payload.Fingerprint != fingerprint {
 				return ErrPhoneIdempotencyConflict
 			}
 			if payload.Invalid {
@@ -297,6 +349,9 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 				return ErrPhoneChallengeConsumed
 			}
 			if payload.Receipt != "" {
+				if scope.boss && exchange.UserId != bossUser.Id {
+					return ErrPhoneChallengeConsumed
+				}
 				if err := replay(tx, &exchange, payload.Receipt); err != nil {
 					return err
 				}
@@ -308,7 +363,7 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 			return err
 		}
 		var flow AuthFlow
-		if err := tx.Where("token_hash = ? AND purpose = ? AND provider = ?", authFlowTokenHash(id), phoneChallengePurpose, provider).First(&flow).Error; err != nil {
+		if err := lockForUpdate(tx).Where("token_hash = ? AND purpose = ? AND provider = ?", authFlowTokenHash(id), scope.challengePurpose, provider).First(&flow).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrPhoneCodeInvalid
 			}
@@ -324,9 +379,15 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 		if !flow.ExpiresAt.After(time.Now()) || challenge.Attempts >= phoneCodeAttemptLimit || challenge.DeliveryStatus == "not_sent" {
 			return ErrPhoneCodeInvalid
 		}
+		if scope.boss && (challenge.BossBinding == nil || challenge.BossBinding.Scope != BossPhoneLoginMethod || challenge.BossBinding.UserID != bossUser.Id || flow.UserId != bossUser.Id || challenge.BossBinding.AuthVersion != bossUser.AuthVersion || challenge.BossBinding.PhoneHash != provider) {
+			return ErrPhoneCodeInvalid
+		}
 		payload := phoneExchangePayload{Fingerprint: fingerprint}
-		valid := hmac.Equal([]byte(challenge.CodeHash), []byte(phoneAuthHash("code", phone+":"+id+":"+code)))
+		valid := hmac.Equal([]byte(challenge.CodeHash), []byte(scope.hash("code", phone+":"+id+":"+code)))
 		if challenge.ManualCode {
+			if scope.boss {
+				return ErrPhoneCodeInvalid
+			}
 			var err error
 			valid, err = verifyPhoneLoginGrant(tx, phone, code)
 			if err != nil {
@@ -345,9 +406,12 @@ func ExchangePhoneChallenge(phone, id, key, code string, action func(*gorm.DB) (
 			payload.Invalid = true
 			outcome = ErrPhoneCodeInvalid
 		} else {
-			receipt, userID, sid, err := action(tx)
+			receipt, userID, sid, err := action(tx, bossUser, challenge.BossBinding)
 			if err != nil {
 				return err
+			}
+			if scope.boss && userID != bossUser.Id {
+				return ErrBossPhoneUnqualified
 			}
 			payload.Receipt = receipt
 			exchange.UserId, exchange.SessionId = userID, sid

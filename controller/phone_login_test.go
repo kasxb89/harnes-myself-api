@@ -65,8 +65,15 @@ func setupPhoneAuthRecovery(t *testing.T) (*gorm.DB, common.DatabaseType) {
 		require.NoError(t, db.Raw("SELECT sqlite_version()").Scan(&version).Error)
 		t.Logf("database: sqlite %s", version)
 	} else {
-		db, _ = newAuditTestDatabase(t, string(dialect), os.Getenv("TEST_"+strings.ToUpper(string(dialect))+"_DSN"))
-		require.NoError(t, db.AutoMigrate(models...))
+		if os.Getenv("BOSS_TEST_PRIVATE_DATABASES") == "1" {
+			// The offline Boss helper validates a dedicated private database and
+			// supplies a Unix socket for MySQL. Reset only its explicitly owned
+			// test tables; never ask that restricted account to create databases.
+			db = bossPrivatePhoneDatabase(t, dialect, models...)
+		} else {
+			db, _ = newAuditTestDatabase(t, string(dialect), os.Getenv("TEST_"+strings.ToUpper(string(dialect))+"_DSN"))
+			require.NoError(t, db.AutoMigrate(models...))
+		}
 	}
 	previousDB, previousLog := model.DB, model.LOG_DB
 	previousMain, previousLogType := common.MainDatabaseType(), common.LogDatabaseType()

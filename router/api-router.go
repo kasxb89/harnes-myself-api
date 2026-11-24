@@ -26,12 +26,22 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(apiResponseCompression())
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
-	apiRouter.Use(middleware.GlobalAPIRateLimit())
-	SetDemandRoutes(apiRouter)
-	SetForumRoutes(apiRouter)
-	SetCommunityDemandRoutes(apiRouter)
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
+		// Boss wraps the existing limits too, so their aborted responses retain
+		// the product's error envelope without changing any other API contract.
+		bossRoute := apiRouter.Group("/boss", controller.BossAuthEnvelope(), middleware.GlobalAPIRateLimit(), middleware.DisableCache())
+		bossRoute.GET("/capabilities", controller.BossCapabilities)
+		bossRoute.POST("/phone/challenge", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.BossPhoneChallenge)
+		bossRoute.POST("/phone/login", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.BossPhoneLogin)
+		bossRoute.POST("/phone/verify", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.BossPhoneVerify)
+		// Do not use UserAuth: it also accepts PATs and cached session state.
+		bossRoute.GET("/auth/state", controller.BossAuthState)
+
+		apiRouter.Use(middleware.GlobalAPIRateLimit())
+		SetDemandRoutes(apiRouter)
+		SetForumRoutes(apiRouter)
+		SetCommunityDemandRoutes(apiRouter)
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
