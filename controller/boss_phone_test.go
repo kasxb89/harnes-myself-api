@@ -16,8 +16,12 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -234,7 +238,7 @@ func TestBossContractVersionsAndStrictFields(t *testing.T) {
 	assert.Len(t, capabilities, 2)
 	var data map[string]any
 	require.NoError(t, common.Unmarshal(capabilities["data"], &data))
-	assert.Equal(t, map[string]any{"contract_version": float64(1), "phone_contract_version": float64(2), "required_group": "Boss", "registration_enabled": false}, data)
+	assert.Equal(t, map[string]any{"contract_version": float64(1), "phone_contract_version": float64(2), "required_group": "Boss", "registration_enabled": false, "max_active_sessions": float64(1)}, data)
 	for _, endpoint := range []struct {
 		name    string
 		handler gin.HandlerFunc
@@ -927,4 +931,358 @@ func TestBossStateRejectsOtherCredentialsAndStaleCaches(t *testing.T) {
 			assert.False(t, denied.Success)
 		}
 	})
+}
+
+func bossRelayRequest(t *testing.T, key string, readOnly bool, sids ...string) *httptest.ResponseRecorder {
+	t.Helper()
+	router := gin.New()
+	auth := middleware.TokenAuth()
+	if readOnly {
+		auth = middleware.TokenAuthReadOnly()
+	}
+	router.POST("/v1/test", auth, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	request := httptest.NewRequest(http.MethodPost, "/v1/test", nil)
+	request.Header.Set("Authorization", "Bearer "+key)
+	for _, sid := range sids {
+		request.Header.Add("X-Auth-Session", sid)
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	return response
+}
+
+func TestBossSingleClientLoginReplacesOnlyAfterSuccessfulMFA(t *testing.T) {
+	f := setupBossPhone(t)
+	require.NoError(t, i18n.Init())
+	phone := "+8613800101021"
+	user := bossTestUser(t, f.db, &phone, "Boss", common.UserStatusEnabled)
+	request := bossTestChallenge(t, phone)
+	request.Code = f.code
+	firstResponse, first := bossRequest(t, BossPhoneLogin, request)
+	require.True(t, first.Success)
+	var oldRefresh string
+	for _, cookie := range firstResponse.Result().Cookies() {
+		if cookie.Name == service.RefreshCookieName {
+			oldRefresh = cookie.Value
+		}
+	}
+	require.NotEmpty(t, oldRefresh)
+	identity, err := service.ParseAccessToken(first.Data.AccessToken)
+	require.NoError(t, err)
+	originalToken, err := model.GetTokenByKey(strings.TrimPrefix(first.Data.RelayKey, "sk-"), false)
+	require.NoError(t, err)
+
+	server := miniredis.RunT(t)
+	previousRDB := common.RDB
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
+	common.RedisEnabled = true
+	t.Cleanup(func() { _ = common.RDB.Close(); common.RDB = previousRDB })
+	_, err = model.GetUserCache(user.Id)
+	require.NoError(t, err)
+	_, err = model.GetUserSessionCached(first.Data.Session.SID)
+	require.NoError(t, err)
+	factor := model.TwoFA{UserId: user.Id, IsEnabled: true, Secret: "JBSWY3DPEHPK3PXP"}
+	require.NoError(t, f.db.Create(&factor).Error)
+	// Advance only this fixture's completed SMS cooldown, not production policy.
+	require.NoError(t, f.db.Model(&model.AuthFlow{}).Where("purpose = ? AND user_id = ?", "boss_phone_challenge", user.Id).Update("created_at", time.Now().Add(-2*time.Minute)).Error)
+	next := bossTestChallenge(t, phone)
+	next.Code = f.code
+	wrong := next
+	wrong.Code = "000000"
+	if wrong.Code == next.Code {
+		wrong.Code = "111111"
+	}
+	wrong.IdempotencyKey = uuid.NewString()
+	_, failedOTP := bossRequest(t, BossPhoneLogin, wrong)
+	assert.False(t, failedOTP.Success)
+	_, _, err = service.ValidateLoginSession(identity)
+	require.NoError(t, err, "failed OTP must not replace the signed-in client")
+	_, pending := bossRequest(t, BossPhoneLogin, next)
+	require.True(t, pending.Data.RequireVerification)
+	_, _, err = service.ValidateLoginSession(identity)
+	require.NoError(t, err, "an unfinished MFA flow must not replace the signed-in client")
+	code, err := totp.GenerateCode(factor.Secret, time.Now())
+	require.NoError(t, err)
+	badCode := "000000"
+	if badCode == code {
+		badCode = "111111"
+	}
+	_, failedMFA := bossRequest(t, BossPhoneVerify, bossPhoneVerifyRequest{FlowToken: pending.Data.FlowToken, Method: "totp", Code: badCode, IdempotencyKey: uuid.NewString(), ContractVersion: 2})
+	assert.False(t, failedMFA.Success)
+	_, _, err = service.ValidateLoginSession(identity)
+	require.NoError(t, err, "failed MFA must preserve the current client")
+	originalSealer := bossPhoneLoginSealer
+	bossPhoneLoginSealer = func(*service.PhoneLoginResult, string) (string, error) {
+		return "", errors.New("single-client fixture rollback after session creation")
+	}
+	_, rolledBack := bossRequest(t, BossPhoneVerify, bossPhoneVerifyRequest{FlowToken: pending.Data.FlowToken, Method: "totp", Code: code, IdempotencyKey: uuid.NewString(), ContractVersion: 2})
+	bossPhoneLoginSealer = originalSealer
+	assert.False(t, rolledBack.Success)
+	_, _, err = service.ValidateLoginSession(identity)
+	require.NoError(t, err, "downstream receipt failure must roll back the new SID and the old SID revocation")
+	common.UserSessionActiveLimit = 1
+	secondResponse, second := bossRequest(t, BossPhoneVerify, bossPhoneVerifyRequest{FlowToken: pending.Data.FlowToken, Method: "totp", Code: code, IdempotencyKey: uuid.NewString(), ContractVersion: 2})
+	require.True(t, second.Success)
+	assert.NotEqual(t, first.Data.Session.SID, second.Data.Session.SID)
+	assert.Equal(t, first.Data.RelayKey, second.Data.RelayKey, "the existing account relay key is preserved")
+	active, err := model.CountActiveUserSessions(user.Id, time.Now().Unix())
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, active)
+	stale, err := model.GetUserSessionCached(first.Data.Session.SID)
+	require.NoError(t, err)
+	assert.Equal(t, model.UserSessionStatusActive, stale.Status, "fixture retains the old active cache intentionally")
+	_, _, err = service.ValidateLoginSession(identity)
+	assert.ErrorIs(t, err, service.ErrLoginSessionRevoked)
+	stateResponse, oldState := bossRequest(t, BossAuthState, nil, first.Data.AccessToken)
+	assert.Equal(t, http.StatusUnauthorized, stateResponse.Code)
+	assert.False(t, oldState.Success)
+	_, _, err = service.RefreshLoginSession(oldRefresh, first.Data.Session.SID, "", "")
+	assert.ErrorIs(t, err, service.ErrLoginSessionRevoked)
+	stateResponse, newState := bossRequest(t, BossAuthState, nil, second.Data.AccessToken)
+	assert.Equal(t, http.StatusOK, stateResponse.Code)
+	assert.True(t, newState.Success)
+	self := gin.New()
+	self.GET("/api/user/self", middleware.UserAuth(), GetSelf)
+	for _, item := range []struct {
+		token  string
+		status int
+	}{{first.Data.AccessToken, http.StatusUnauthorized}, {second.Data.AccessToken, http.StatusOK}} {
+		request := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+		request.Header.Set("Authorization", "Bearer "+item.token)
+		response := httptest.NewRecorder()
+		self.ServeHTTP(response, request)
+		assert.Equal(t, item.status, response.Code)
+		if item.status == http.StatusOK {
+			var body struct {
+				Data struct {
+					Role     int    `json:"role"`
+					Group    string `json:"group"`
+					Username string `json:"username"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+			assert.Equal(t, user.Role, body.Data.Role)
+			assert.Equal(t, user.Username, body.Data.Username)
+			assert.Equal(t, model.BossPhoneGroup, body.Data.Group)
+		}
+	}
+	for _, readOnly := range []bool{false, true} {
+		assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, first.Data.RelayKey, readOnly, first.Data.Session.SID).Code)
+		assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, first.Data.RelayKey, readOnly).Code)
+		assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, first.Data.RelayKey, readOnly, second.Data.Session.SID, second.Data.Session.SID).Code)
+		// The normal account default group is empty on its persistent relay key.
+		assert.Equal(t, http.StatusNoContent, bossRelayRequest(t, first.Data.RelayKey, readOnly, second.Data.Session.SID).Code)
+	}
+	for _, cookie := range secondResponse.Result().Cookies() {
+		if cookie.Name == service.RefreshCookieName {
+			refreshed, _, refreshErr := service.RefreshLoginSession(cookie.Value, second.Data.Session.SID, "", "")
+			require.NoError(t, refreshErr)
+			assert.Equal(t, second.Data.Session.SID, refreshed.Session.SID, "refresh preserves the same active client")
+		}
+	}
+	var unchanged model.User
+	require.NoError(t, f.db.First(&unchanged, user.Id).Error)
+	assert.Equal(t, user.AuthVersion, unchanged.AuthVersion)
+	assert.Equal(t, user.Quota, unchanged.Quota)
+	assert.Equal(t, user.UsedQuota, unchanged.UsedQuota)
+	currentToken, err := model.GetTokenByKey(strings.TrimPrefix(first.Data.RelayKey, "sk-"), false)
+	require.NoError(t, err)
+	assert.Equal(t, originalToken.Id, currentToken.Id)
+	assert.Equal(t, originalToken.Key, currentToken.Key)
+}
+
+func TestBossSingleClientConcurrentNativeLoginsAndProductCompatibility(t *testing.T) {
+	f := setupBossPhone(t)
+	phone := "+8613800101022"
+	user := bossTestUser(t, f.db, &phone, "Boss", common.UserStatusEnabled)
+	first := bossTestChallenge(t, phone)
+	first.Code = f.code
+	require.NoError(t, f.db.Model(&model.AuthFlow{}).Where("purpose = ? AND user_id = ?", "boss_phone_challenge", user.Id).Update("created_at", time.Now().Add(-2*time.Minute)).Error)
+	second := bossTestChallenge(t, phone)
+	second.Code = f.code
+	requests := []phoneLoginRequest{first, second}
+	type outcome struct {
+		status int
+		result bossAuthResponse
+		err    error
+	}
+	results := make(chan outcome, 2)
+	start := make(chan struct{})
+	for _, input := range requests {
+		encoded, err := common.Marshal(input)
+		require.NoError(t, err)
+		go func() {
+			<-start
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/boss/phone/login", strings.NewReader(string(encoded)))
+			c.Request.Header.Set("Content-Type", "application/json")
+			BossPhoneLogin(c)
+			var response bossAuthResponse
+			err := common.Unmarshal(recorder.Body.Bytes(), &response)
+			results <- outcome{status: recorder.Code, result: response, err: err}
+		}()
+	}
+	close(start)
+	observed := make([]outcome, 0, 2)
+	for range 2 {
+		observed = append(observed, <-results)
+	}
+	var issued []bossAuthResponse
+	for _, result := range observed {
+		require.NoError(t, result.err)
+		require.Contains(t, []int{http.StatusOK, http.StatusUnauthorized}, result.status)
+		t.Logf("BOSS_SINGLE_NATIVE_OUTCOME status=%d success=%t code=%s", result.status, result.result.Success, result.result.Error.Code)
+		if result.result.Success {
+			issued = append(issued, result.result)
+		}
+	}
+	require.NotEmpty(t, issued)
+	var sessions, tokens int64
+	require.NoError(t, f.db.Model(&model.UserSession{}).Where("user_id = ?", user.Id).Count(&sessions).Error)
+	require.NoError(t, f.db.Model(&model.Token{}).Where("user_id = ?", user.Id).Count(&tokens).Error)
+	assert.EqualValues(t, 1, sessions, "the provider-accepted newer challenge invalidates the predecessor under the existing OTP policy")
+	assert.EqualValues(t, 1, tokens)
+	active, err := model.CountActiveUserSessions(user.Id, time.Now().Unix())
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, active)
+	valid := 0
+	for _, result := range issued {
+		_, _, err := service.BossPhoneAuthState(result.Data.AccessToken)
+		if err == nil {
+			valid++
+		}
+	}
+	assert.Equal(t, 1, valid)
+	direct := bossTestUser(t, f.db, nil, "Boss", common.UserStatusEnabled)
+	type loginOutcome struct {
+		bundle *service.AuthBundle
+		err    error
+	}
+	directStart := make(chan struct{})
+	directResults := make(chan loginOutcome, 2)
+	for range 2 {
+		go func() {
+			<-directStart
+			bundle, err := service.CreateLoginSession(direct.Id, "password", "", "")
+			directResults <- loginOutcome{bundle, err}
+		}()
+	}
+	close(directStart)
+	directOutcomes := []loginOutcome{<-directResults, <-directResults}
+	valid = 0
+	for _, result := range directOutcomes {
+		require.NoError(t, result.err)
+		require.NotNil(t, result.bundle)
+		identity, err := service.ParseAccessToken(result.bundle.AccessToken)
+		require.NoError(t, err)
+		_, _, err = service.ValidateLoginSession(identity)
+		if err == nil {
+			valid++
+		} else {
+			assert.ErrorIs(t, err, service.ErrLoginSessionRevoked)
+		}
+	}
+	assert.Equal(t, 1, valid)
+	require.NoError(t, f.db.Model(&model.UserSession{}).Where("user_id = ?", direct.Id).Count(&sessions).Error)
+	assert.EqualValues(t, 2, sessions, "both independent successful login ceremonies commit serially")
+	active, err = model.CountActiveUserSessions(direct.Id, time.Now().Unix())
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, active)
+	ordinary := bossTestUser(t, f.db, nil, "product", common.UserStatusEnabled)
+	for range 2 {
+		_, err := service.CreateLoginSession(ordinary.Id, "phone", "", "")
+		require.NoError(t, err)
+	}
+	active, err = model.CountActiveUserSessions(ordinary.Id, time.Now().Unix())
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, active, "ordinary product clients retain multiple sessions")
+	limited := bossTestUser(t, f.db, nil, "Boss", common.UserStatusEnabled)
+	common.UserSessionIssuanceLimit = 1
+	budgetStart := make(chan struct{})
+	budgetResults := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-budgetStart
+			_, err := service.CreateLoginSession(limited.Id, "phone", "", "")
+			budgetResults <- err
+		}()
+	}
+	close(budgetStart)
+	budgetErrors := []error{<-budgetResults, <-budgetResults}
+	succeeded := 0
+	for _, err := range budgetErrors {
+		if err == nil {
+			succeeded++
+		} else {
+			assert.ErrorIs(t, err, model.ErrUserSessionIssuanceLimit)
+		}
+	}
+	assert.Equal(t, 1, succeeded, "Boss replacement cannot bypass the issuance budget")
+	require.NoError(t, f.db.Model(&model.UserSession{}).Where("user_id = ?", limited.Id).Count(&sessions).Error)
+	assert.EqualValues(t, 1, sessions)
+}
+
+func TestBossSingleClientRelayRejectsGroupOverrideAndForgedSID(t *testing.T) {
+	f := setupBossPhone(t)
+	require.NoError(t, i18n.Init())
+	originalGroups := ratio_setting.GroupRatio2JSONString()
+	originalUsable := setting.UserUsableGroups2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"Boss":1,"product":1,"default":1}`))
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"Boss":"Boss","product":"Product","default":"Default"}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalGroups))
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsable))
+	})
+	boss := bossTestUser(t, f.db, nil, "Boss", common.UserStatusEnabled)
+	other := bossTestUser(t, f.db, nil, "Boss", common.UserStatusEnabled)
+	ordinary := bossTestUser(t, f.db, nil, "product", common.UserStatusEnabled)
+	current, err := service.CreateLoginSession(boss.Id, "phone", "", "")
+	require.NoError(t, err)
+	foreign, err := service.CreateLoginSession(other.Id, "phone", "", "")
+	require.NoError(t, err)
+	bossKey, ordinaryKey := strings.Repeat("b", 48), strings.Repeat("c", 48)
+	for _, token := range []*model.Token{
+		{UserId: boss.Id, Name: "boss-product-override", Key: bossKey, Group: "product", Status: common.TokenStatusEnabled, UnlimitedQuota: true, ExpiredTime: -1},
+		{UserId: ordinary.Id, Name: "ordinary-product", Key: ordinaryKey, Group: "product", Status: common.TokenStatusEnabled, UnlimitedQuota: true, ExpiredTime: -1},
+	} {
+		require.NoError(t, f.db.Create(token).Error)
+	}
+	for _, readOnly := range []bool{false, true} {
+		assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, "sk-"+bossKey, readOnly).Code)
+		assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, "sk-"+bossKey, readOnly, foreign.Session.SID).Code)
+		assert.Equal(t, http.StatusNoContent, bossRelayRequest(t, "sk-"+bossKey, readOnly, current.Session.SID).Code)
+		assert.Equal(t, http.StatusNoContent, bossRelayRequest(t, "sk-"+ordinaryKey, readOnly).Code)
+	}
+	self := gin.New()
+	self.GET("/api/user/self", middleware.UserAuth(), GetSelf)
+	for _, item := range []struct {
+		user   *model.User
+		suffix string
+		status int
+	}{{boss, "d", http.StatusUnauthorized}, {ordinary, "e", http.StatusOK}} {
+		raw := model.AccessTokenPrefix + strings.Repeat(item.suffix, 43)
+		pat := &model.UserAccessToken{UserId: item.user.Id, Name: "single-session-fixture", TokenHash: model.AccessTokenFingerprint(raw), TokenHint: model.AccessTokenHint(raw), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+		require.NoError(t, pat.SetScopes([]string{"profile:read"}))
+		require.NoError(t, f.db.Create(pat).Error)
+		request := httptest.NewRequest(http.MethodGet, "/api/user/self", nil)
+		request.Header.Set("Authorization", "Bearer "+raw)
+		request.Header.Set("X-Auth-Session", current.Session.SID)
+		response := httptest.NewRecorder()
+		self.ServeHTTP(response, request)
+		assert.Equal(t, item.status, response.Code, "Boss PAT cannot replace native session authentication; ordinary PAT remains compatible")
+	}
+	server := miniredis.RunT(t)
+	previousRDB := common.RDB
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
+	common.RedisEnabled = true
+	t.Cleanup(func() { _ = common.RDB.Close(); common.RDB = previousRDB })
+	_, err = model.GetUserCache(ordinary.Id)
+	require.NoError(t, err)
+	// Deliberately bypass cache hooks in the fixture: classification still reads
+	// the actual account group, rather than the warm ordinary-group cache.
+	require.NoError(t, f.db.Model(&model.User{}).Where("id = ?", ordinary.Id).UpdateColumn("group", model.BossPhoneGroup).Error)
+	assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, "sk-"+ordinaryKey, false).Code)
+	require.NoError(t, f.db.Model(&model.UserSession{}).Where("sid = ?", current.Session.SID).Update("expires_at", time.Now().Add(-time.Second).Unix()).Error)
+	assert.Equal(t, http.StatusUnauthorized, bossRelayRequest(t, "sk-"+bossKey, false, current.Session.SID).Code)
 }

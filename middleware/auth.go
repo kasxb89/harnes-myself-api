@@ -293,6 +293,14 @@ func classifyDashboardCredential(c *gin.Context) (*model.UserBase, service.AuthI
 	if lookup.user == nil {
 		return nil, service.AuthIdentity{}, dashboardCredentialUnmatched, nil
 	}
+	// Boss dashboard access requires its native client session; a standalone PAT
+	// cannot outlive the single-client replacement policy.
+	if _, _, err := model.BossAccountSessionState(lookup.user.Id, ""); err != nil {
+		if errors.Is(err, model.ErrUserSessionInactive) || errors.Is(err, gorm.ErrRecordNotFound) {
+			err = service.ErrLoginSessionRevoked
+		}
+		return nil, service.AuthIdentity{}, dashboardCredentialPAT, err
+	}
 	return lookup.user, service.AuthIdentity{UserID: lookup.user.Id, UserAuthVersion: lookup.user.AuthVersion}, dashboardCredentialPAT, nil
 }
 
@@ -552,6 +560,9 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 			c.Abort()
 			return
 		}
+		if !requireBossTokenSession(c, token.UserId) {
+			return
+		}
 
 		if allowIps := token.GetIpLimits(); len(allowIps) > 0 {
 			ip := net.ParseIP(c.ClientIP())
@@ -650,6 +661,10 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
+		if !requireBossTokenSession(c, token.UserId) {
+			return
+		}
+
 		allowIps := token.GetIpLimits()
 		if len(allowIps) > 0 {
 			clientIp := c.ClientIP()
@@ -706,6 +721,25 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		c.Next()
 	}
+}
+
+// Gate the actual account group before token/effective-group overrides. Boss
+// admissions read primary session state so replaced clients cannot use a cache.
+func requireBossTokenSession(c *gin.Context, userID int) bool {
+	sid := ""
+	if values := c.Request.Header.Values("X-Auth-Session"); len(values) == 1 {
+		sid = strings.TrimSpace(values[0])
+	}
+	_, _, err := model.BossAccountSessionState(userID, sid)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, model.ErrUserSessionInactive) || errors.Is(err, gorm.ErrRecordNotFound) {
+		abortWithOpenAiMessage(c, http.StatusUnauthorized, common.TranslateMessage(c, i18n.MsgTokenInvalid), types.ErrorCode("BOSS_SESSION_INVALID"))
+	} else {
+		abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
+	}
+	return false
 }
 
 func applyWebSocketSubprotocolAuthorization(header http.Header) bool {

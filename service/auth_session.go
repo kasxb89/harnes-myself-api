@@ -82,7 +82,7 @@ func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, 
 	if err != nil {
 		return nil, err
 	}
-	if activeCount >= int64(common.UserSessionActiveLimit) {
+	if activeCount >= int64(common.UserSessionActiveLimit) && user.Group != model.BossPhoneGroup {
 		return nil, model.ErrUserSessionLimit
 	}
 	issuanceCount, err := model.CountUserSessionsCreatedSince(userID, now-common.UserSessionIssuanceWindowSeconds)
@@ -96,12 +96,11 @@ func createLoginSession(userID int, expectedAuthVersion int64, loginMethod, ip, 
 	if err != nil {
 		return nil, err
 	}
-	if err := model.CreateUserSession(session); err != nil {
-		return nil, err
-	}
 	bundle, err := issueAuthBundle(session, session.SID+"."+refreshSecret, true)
 	if err != nil {
-		_, _ = model.RevokeUserSession(userID, session.SID, "token_issue_failed")
+		return nil, err
+	}
+	if err := model.CreateUserSession(session); err != nil {
 		return nil, err
 	}
 	return bundle, nil
@@ -134,6 +133,26 @@ func newLoginSession(userID int, authVersion int64, loginMethod, ip, userAgent s
 }
 
 func ValidateLoginSession(identity AuthIdentity) (*model.UserSession, *model.UserBase, error) {
+	account, current, err := model.BossAccountSessionState(identity.UserID, identity.SessionID)
+	if err != nil {
+		if errors.Is(err, model.ErrUserSessionInactive) || errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, ErrLoginSessionRevoked
+		}
+		return nil, nil, err
+	}
+	if account.Group == model.BossPhoneGroup {
+		if current == nil || current.Version != identity.SessionVersion || current.UserAuthVersion != identity.UserAuthVersion {
+			return nil, nil, ErrLoginSessionRevoked
+		}
+		user, err := model.GetUserCache(identity.UserID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if user.Group != model.BossPhoneGroup || user.Status != common.UserStatusEnabled || user.AuthVersion != account.AuthVersion {
+			return nil, nil, ErrLoginSessionRevoked
+		}
+		return current, user, nil
+	}
 	session, err := model.GetUserSessionCached(identity.SessionID)
 	if err != nil {
 		if errors.Is(err, model.ErrUserSessionInactive) {

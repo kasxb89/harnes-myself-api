@@ -163,6 +163,10 @@ func completeLoginVerification(token string, verification *LoginVerification, me
 	if err != nil {
 		return nil, nil, err
 	}
+	preparedBundle, err := issueAuthBundle(session, session.SID+"."+refreshSecret, true)
+	if err != nil {
+		return nil, nil, err
+	}
 	var migration *LegacyGitHubMigration
 	var phoneRelayKey string
 	var phoneRelayKeyID int
@@ -224,11 +228,6 @@ func completeLoginVerification(token string, verification *LoginVerification, me
 		phoneBundle.RelayKey, phoneBundle.RelayKeyID = phoneRelayKey, phoneRelayKeyID
 		return phoneBundle, migration, nil
 	}
-	bundle, err := issueAuthBundle(session, session.SID+"."+refreshSecret, true)
-	if err != nil {
-		_, _ = model.RevokeUserSession(session.UserID, session.SID, "token_issue_failed")
-		return nil, nil, err
-	}
-	bundle.RelayKey, bundle.RelayKeyID = phoneRelayKey, phoneRelayKeyID
-	return bundle, migration, nil
+	preparedBundle.RelayKey, preparedBundle.RelayKeyID = phoneRelayKey, phoneRelayKeyID
+	return preparedBundle, migration, nil
 }

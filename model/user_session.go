@@ -132,7 +132,7 @@ func userSessionCacheDeadline() time.Time {
 
 func CreateUserSession(session *UserSession) error {
 	cacheDeadline := userSessionCacheDeadline()
-	if err := createUserSessionWithTx(DB, session); err != nil {
+	if err := DB.Transaction(func(tx *gorm.DB) error { return createUserSessionWithTx(tx, session) }); err != nil {
 		return err
 	}
 	return publishCreatedUserSession(session, cacheDeadline)
@@ -158,7 +158,72 @@ func createUserSessionWithTx(tx *gorm.DB, session *UserSession) error {
 	if session.CreatedAt == 0 {
 		session.CreatedAt = now
 	}
-	return tx.Create(session).Error
+	// A successful Boss login replaces its previous client session in the same
+	// transaction. SQLite needs a write lock, since FOR UPDATE is unsupported.
+	if tx.Dialector.Name() == "sqlite" {
+		if err := tx.Model(&User{}).Where(map[string]any{"id": session.UserID, "group": BossPhoneGroup}).
+			UpdateColumn("auth_version", gorm.Expr("auth_version")).Error; err != nil {
+			return err
+		}
+	}
+	var user User
+	err := lockForUpdate(tx).Select("id", "group", "status", "auth_version").First(&user, session.UserID).Error
+	if err != nil {
+		return err
+	}
+	if user.Group != BossPhoneGroup {
+		return tx.Create(session).Error
+	}
+	if user.Status != common.UserStatusEnabled || user.AuthVersion != session.UserAuthVersion {
+		return ErrUserSessionInactive
+	}
+	var issued int64
+	if err := tx.Model(&UserSession{}).Where("user_id = ? AND created_at > ?", user.Id, now-common.UserSessionIssuanceWindowSeconds).Count(&issued).Error; err != nil {
+		return err
+	}
+	if issued >= int64(common.UserSessionIssuanceLimit) {
+		return ErrUserSessionIssuanceLimit
+	}
+	if err := tx.Create(session).Error; err != nil {
+		return err
+	}
+	return tx.Model(&UserSession{}).Where("user_id = ? AND sid <> ? AND status = ?", user.Id, session.SID, UserSessionStatusActive).
+		Updates(map[string]any{"status": UserSessionStatusRevoked, "revoked_at": now, "revoked_reason": "boss_new_login", "version": gorm.Expr("version + 1")}).Error
+}
+
+// BossAccountSessionState reads the primary database on every admission. Cached
+// active sessions cannot authorize a replaced Boss client or a group override.
+// Non-Boss accounts retain their ordinary multi-session authentication policy.
+func BossAccountSessionState(userID int, sid string) (*User, *UserSession, error) {
+	var user User
+	if err := DB.Select("id", "group").First(&user, userID).Error; err != nil {
+		return nil, nil, err
+	}
+	if user.Group != BossPhoneGroup {
+		return &user, nil, nil
+	}
+	var session *UserSession
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Select("id", "group", "status", "auth_version").First(&user, userID).Error; err != nil {
+			return err
+		}
+		if user.Group != BossPhoneGroup {
+			return ErrUserSessionInactive
+		}
+		if user.Status != common.UserStatusEnabled || user.AuthVersion <= 0 || sid == "" {
+			return ErrUserSessionInactive
+		}
+		var current UserSession
+		if err := lockForUpdate(tx).Where("sid = ? AND user_id = ?", sid, userID).First(&current).Error; err != nil {
+			return err
+		}
+		if current.Status != UserSessionStatusActive || current.RevokedAt != 0 || current.ExpiresAt <= time.Now().Unix() || current.UserAuthVersion != user.AuthVersion {
+			return ErrUserSessionInactive
+		}
+		session = &current
+		return nil
+	})
+	return &user, session, err
 }
 
 func publishCreatedUserSession(session *UserSession, cacheDeadline time.Time) error {

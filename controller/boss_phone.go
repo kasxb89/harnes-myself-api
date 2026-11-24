@@ -112,7 +112,7 @@ func BossCapabilities(c *gin.Context) {
 	if !bossPhoneAvailable(c) {
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"contract_version": bossContractVersion, "phone_contract_version": bossPhoneContractVersion, "required_group": model.BossPhoneGroup, "registration_enabled": false}})
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"contract_version": bossContractVersion, "phone_contract_version": bossPhoneContractVersion, "required_group": model.BossPhoneGroup, "registration_enabled": false, "max_active_sessions": 1}})
 }
 
 func bossPhoneAvailable(c *gin.Context) bool {

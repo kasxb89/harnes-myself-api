@@ -57,6 +57,10 @@ func CreateUserSessionFromLoginFlow(token string, session *UserSession, validate
 	_, err := ConsumeAuthFlowWithAction(token, AuthFlowMatch{
 		Purpose: AuthFlowPurposeLoginVerification, UserId: session.UserID,
 	}, func(tx *gorm.DB, flow *AuthFlow) error {
+		user, err := PhoneAuthUserWithTx(tx, session.UserID)
+		if err != nil {
+			return err
+		}
 		state, err := getUserVerificationState(tx, session.UserID, true)
 		if err != nil {
 			return err
@@ -72,7 +76,7 @@ func CreateUserSessionFromLoginFlow(token string, session *UserSession, validate
 		if err := tx.Model(&UserSession{}).Where("user_id = ? AND status = ? AND expires_at > ?", session.UserID, UserSessionStatusActive, now).Count(&activeCount).Error; err != nil {
 			return err
 		}
-		if activeCount >= int64(common.UserSessionActiveLimit) {
+		if activeCount >= int64(common.UserSessionActiveLimit) && user.Group != BossPhoneGroup {
 			return ErrUserSessionLimit
 		}
 		if err := tx.Model(&UserSession{}).Where("user_id = ? AND created_at > ?", session.UserID, now-common.UserSessionIssuanceWindowSeconds).Count(&issuanceCount).Error; err != nil {

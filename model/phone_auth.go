@@ -452,11 +452,15 @@ func PhoneAuthVerificationStateWithTx(tx *gorm.DB, userID int) (*UserVerificatio
 
 func CreatePhoneAuthSessionWithTx(tx *gorm.DB, session *UserSession) error {
 	now := time.Now().Unix()
+	user, err := PhoneAuthUserWithTx(tx, session.UserID)
+	if err != nil {
+		return err
+	}
 	var active, issued int64
 	if err := tx.Model(&UserSession{}).Where("user_id = ? AND status = ? AND expires_at > ?", session.UserID, UserSessionStatusActive, now).Count(&active).Error; err != nil {
 		return err
 	}
-	if active >= int64(common.UserSessionActiveLimit) {
+	if active >= int64(common.UserSessionActiveLimit) && user.Group != BossPhoneGroup {
 		return ErrUserSessionLimit
 	}
 	if err := tx.Model(&UserSession{}).Where("user_id = ? AND created_at > ?", session.UserID, now-common.UserSessionIssuanceWindowSeconds).Count(&issued).Error; err != nil {
