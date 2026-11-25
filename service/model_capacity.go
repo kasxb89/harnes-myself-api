@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/tokenkit"
@@ -85,6 +86,55 @@ func capacityError(c *gin.Context, code, message string) *types.NewAPIError {
 	return types.WithOpenAIError(types.OpenAIError{Message: i18n.T(c, message), Type: "invalid_request_error", Code: code}, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 }
 
+// The Chat converter intentionally omits unknown Claude blocks. Reject them
+// before conversion so unsupported input cannot silently become a text request.
+func ycapiClaudeContentSupported(value any, toolResult bool) bool {
+	if value == nil {
+		return true
+	}
+	if _, ok := value.(string); ok {
+		return true
+	}
+	content, ok := value.([]any)
+	if !ok {
+		return false
+	}
+	for _, value := range content {
+		block, ok := value.(map[string]any)
+		if !ok {
+			return false
+		}
+		switch block["type"] {
+		case "text", "input_text":
+			continue
+		case "image":
+			source, ok := block["source"].(map[string]any)
+			if !ok || source["type"] == "file" {
+				return false
+			}
+			url, _ := source["url"].(string)
+			data, _ := source["data"].(string)
+			if url == "" && data == "" {
+				return false
+			}
+			continue
+		}
+		if toolResult {
+			return false
+		}
+		switch block["type"] {
+		case "document", "tool_use", "thinking", "redacted_thinking":
+		case "tool_result":
+			if !ycapiClaudeContentSupported(block["content"], true) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // Clamp before quota reservation. Unknown metadata leaves the old path alone.
 func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	BindCapturedTextRoutes(c, info)
@@ -103,7 +153,8 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 	}
 	if catalogued {
 		_, isText := info.Request.(*dto.GeneralOpenAIRequest)
-		if approved.Kind != "text" || !isText {
+		claudeRequest, isClaude := info.Request.(*dto.ClaudeRequest)
+		if approved.Kind != "text" || (!isText && !isClaude) {
 			return types.NewErrorWithStatusCode(errors.New("This model requires its declared generation endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		capability, err := ycapi.LookupTextCapability(approved.ID)
@@ -123,6 +174,47 @@ func ClampModelCapacityRequest(c *gin.Context, info *relaycommon.RelayInfo) *typ
 				continue
 			}
 			return capacityError(c, "model_route_override_not_allowed", "The model procurement route cannot be overridden")
+		}
+		if isClaude {
+			messages, _ := body["messages"].([]any)
+			for _, value := range messages {
+				message, ok := value.(map[string]any)
+				if !ok || !ycapiClaudeContentSupported(message["content"], false) {
+					return capacityError(c, "model_input_modality_unavailable", "The input modality is unavailable on the selected model route")
+				}
+			}
+			// Validate the same Chat shape the existing adapter will send, without
+			// replacing the Claude request or recording a second conversion hop.
+			validationInfo := *info
+			validationInfo.RequestConversionChain = slices.Clone(info.RequestConversionChain)
+			converted, err := relayconvert.ConvertRequest(c, &validationInfo, types.RelayFormatOpenAI, claudeRequest)
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			for _, diagnostic := range converted.Diagnostics {
+				if diagnostic.Severity == types.ConversionDiagnosticError {
+					return capacityError(c, "model_input_modality_unavailable", "The input modality is unavailable on the selected model route")
+				}
+			}
+			raw, err := common.Marshal(converted.Value)
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			var normalized map[string]any
+			if err = common.Unmarshal(raw, &normalized); err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			for _, key := range []string{"messages", "tools", "tool_choice"} {
+				body[key] = normalized[key]
+			}
+			delete(body, "thinking")
+			// Keep foreign raw controls visible to the guard; only translate
+			// native thinking/output_config into an otherwise absent control.
+			for _, key := range []string{"reasoning", "reasoning_effort"} {
+				if body[key] == nil && normalized[key] != nil {
+					body[key] = normalized[key]
+				}
+			}
 		}
 		for _, key := range []string{"tools", "functions", "tool_choice", "function_call"} {
 			value, present := body[key]

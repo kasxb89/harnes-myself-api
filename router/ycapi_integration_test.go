@@ -509,6 +509,173 @@ func TestYcapiTextPinsRuntimeLaneClampsBudgetAndRejectsRouteOverrides(t *testing
 	assert.NotContains(t, quote.Body.String(), "synthetic-ycapi-only")
 }
 
+func TestYcapiNativeClaudeBasicStream(t *testing.T) {
+	for _, modelID := range []string{"ycapi-claude-sonnet-4-6", "ycapi-claude-opus-5"} {
+		t.Run(modelID, func(t *testing.T) {
+			f := newYcapiRouterFixture(t)
+			approved, ok := ycapi.Lookup(modelID)
+			require.True(t, ok)
+			posts := 0
+			var wire map[string]any
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				posts++
+				require.Equal(t, "/api/v1/model-runtime/invoke", r.URL.Path)
+				require.NoError(t, common.DecodeJson(r.Body, &wire))
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "data: {\"id\":\"synthetic-native-claude\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"local\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":50,\"completion_tokens\":30,\"total_tokens\":80}}\n\ndata: [DONE]\n\n")
+			}))
+			t.Cleanup(upstream.Close)
+			base, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
+			body, err := common.Marshal(map[string]any{"model": modelID, "messages": []map[string]any{{"role": "user", "content": "Hello"}}, "max_tokens": 16384, "stream": true})
+			require.NoError(t, err)
+			response := f.request(t, http.MethodPost, "/v1/messages", string(body), "h3routermember")
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.Equal(t, 1, posts)
+			assert.Equal(t, approved.UpstreamID, wire["model_id"])
+			assert.Equal(t, approved.Prices[0].LaneID, wire["lane_id"])
+			params := wire["params"].(map[string]any)
+			assert.EqualValues(t, approved.MaxOutputTokens, params["max_tokens"])
+			assert.NotContains(t, params, "thinking")
+			assert.NotContains(t, params, "reasoning")
+			assert.NotContains(t, params, "reasoning_effort", "an unrequested control must not be invented")
+			assert.Contains(t, response.Body.String(), "local")
+			assert.Contains(t, response.Body.String(), "message_stop")
+			var consumed int64
+			require.NoError(t, f.logDB.Model(&model.Log{}).Where("model_name = ? AND type = ?", modelID, model.LogTypeConsume).Count(&consumed).Error)
+			assert.EqualValues(t, 1, consumed)
+		})
+	}
+}
+
+func TestYcapiNativeClaudeImageAndToolRoundtrip(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	var pngBytes bytes.Buffer
+	require.NoError(t, png.Encode(&pngBytes, image.NewRGBA(image.Rect(0, 0, 1, 1))))
+	imageData := base64.StdEncoding.EncodeToString(pngBytes.Bytes())
+	posts := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts++
+		require.Equal(t, "/api/v1/model-runtime/invoke", r.URL.Path)
+		var wire map[string]any
+		require.NoError(t, common.DecodeJson(r.Body, &wire))
+		assert.Equal(t, "claude-sonnet-4-6", wire["model_id"])
+		assert.Equal(t, "claude-sonnet-4-6@952:kiro", wire["lane_id"])
+		params := wire["params"].(map[string]any)
+		assert.EqualValues(t, 2048, params["max_tokens"])
+		tools := params["tools"].([]any)
+		require.Len(t, tools, 1)
+		assert.Equal(t, "echo", tools[0].(map[string]any)["function"].(map[string]any)["name"])
+		messages := wire["messages"].([]any)
+		w.Header().Set("Content-Type", "text/event-stream")
+		if posts == 1 {
+			assert.Equal(t, "none", params["reasoning_effort"], "native disabled thinking must use the reviewed off control")
+			parts := messages[0].(map[string]any)["content"].([]any)
+			require.Len(t, parts, 2)
+			assert.Equal(t, "data:image/png;base64,"+imageData, parts[1].(map[string]any)["image_url"].(map[string]any)["url"])
+			_, _ = io.WriteString(w, "data: {\"id\":\"native-tool\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_native_echo\",\"type\":\"function\",\"function\":{\"name\":\"echo\",\"arguments\":\"{\\\"value\\\":\\\"fixture\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":23,\"total_tokens\":40}}\n\n")
+		} else {
+			assert.NotContains(t, params, "reasoning_effort", "an omitted native control must remain omitted")
+			assert.Equal(t, "call_native_echo", messages[1].(map[string]any)["tool_calls"].([]any)[0].(map[string]any)["id"])
+			assert.Equal(t, "tool", messages[2].(map[string]any)["role"])
+			assert.Equal(t, "call_native_echo", messages[2].(map[string]any)["tool_call_id"])
+			assert.Equal(t, "fixture-echo-ack", messages[2].(map[string]any)["content"])
+			_, _ = io.WriteString(w, "data: {\"id\":\"native-tool\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"fixture-echo-ack\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":23,\"total_tokens\":40}}\n\n")
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	t.Cleanup(provider.Close)
+	base, err := url.Parse(provider.URL)
+	require.NoError(t, err)
+	service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
+	request := map[string]any{
+		"model": "ycapi-claude-sonnet-4-6", "max_tokens": 2048, "stream": true,
+		"thinking": map[string]any{"type": "disabled"},
+		"tools":    []map[string]any{{"name": "echo", "input_schema": map[string]any{"type": "object", "properties": map[string]any{"value": map[string]any{"type": "string"}}}}},
+		"messages": []map[string]any{{"role": "user", "content": []map[string]any{{"type": "text", "text": "Read the image using echo"}, {"type": "image", "source": map[string]any{"type": "base64", "media_type": "image/png", "data": imageData}}}}},
+	}
+	raw, err := common.Marshal(request)
+	require.NoError(t, err)
+	first := f.request(t, http.MethodPost, "/v1/messages", string(raw), "h3routermember")
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	assert.Equal(t, 1, posts, "one submitted turn must produce one upstream attempt")
+	assert.Contains(t, first.Body.String(), `"type":"tool_use"`)
+	assert.Contains(t, first.Body.String(), "call_native_echo")
+	assert.Contains(t, first.Body.String(), "input_json_delta")
+	assert.Contains(t, first.Body.String(), "message_stop")
+	request["messages"] = []map[string]any{
+		{"role": "user", "content": "Use echo"},
+		{"role": "assistant", "content": []map[string]any{{"type": "tool_use", "id": "call_native_echo", "name": "echo", "input": map[string]any{"value": "fixture"}}}},
+		{"role": "user", "content": []map[string]any{{"type": "tool_result", "tool_use_id": "call_native_echo", "content": "fixture-echo-ack"}}},
+	}
+	delete(request, "thinking")
+	raw, err = common.Marshal(request)
+	require.NoError(t, err)
+	second := f.request(t, http.MethodPost, "/v1/messages", string(raw), "h3routermember")
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	assert.Equal(t, 2, posts, "a tool result is a separate turn, never a replay of the first")
+	assert.Contains(t, second.Body.String(), "fixture-echo-ack")
+	assert.Contains(t, second.Body.String(), "message_stop")
+	for _, response := range []*httptest.ResponseRecorder{first, second} {
+		assert.NotContains(t, response.Body.String(), `"choices"`)
+		assert.NotContains(t, response.Body.String(), "[DONE]")
+	}
+	var logs []model.Log
+	require.NoError(t, f.logDB.Where("model_name = ? AND type = ?", "ycapi-claude-sonnet-4-6", model.LogTypeConsume).Find(&logs).Error)
+	require.Len(t, logs, 2, "each accepted turn must settle exactly once")
+	for _, log := range logs {
+		assert.Equal(t, 17, log.PromptTokens)
+		assert.Equal(t, 23, log.CompletionTokens)
+	}
+}
+
+func TestYcapiNativeClaudeRejectsUnsupportedControlsAndMediaBeforeBilling(t *testing.T) {
+	f := newYcapiRouterFixture(t)
+	posts := 0
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posts++
+		w.WriteHeader(http.StatusTeapot)
+	}))
+	t.Cleanup(provider.Close)
+	base, err := url.Parse(provider.URL)
+	require.NoError(t, err)
+	service.GetHttpClient().Transport = ycapiFixtureTransport{base: base}
+	var before, after model.User
+	require.NoError(t, f.db.First(&before, 792).Error)
+	for _, tc := range []struct {
+		name, fields, code string
+	}{
+		{"lane_override", `"lane_id":"forged-lane"`, "model_route_override_not_allowed"},
+		{"pinned_lane_override", `"pinned_lane_id":"forged-lane"`, "model_route_override_not_allowed"},
+		{"unverified_native_effort", `"thinking":{"type":"adaptive"},"output_config":{"effort":"high"}`, "model_reasoning_control_unavailable"},
+		{"unverified_chat_effort", `"reasoning_effort":"none"`, "model_reasoning_control_unavailable"},
+		{"extra_body", `"extra_body":{"lane_id":"forged-lane"}`, "model_reasoning_control_unavailable"},
+		{"mixed_video", `"messages":[{"role":"user","content":[{"type":"text","text":"Do not discard the video"},{"type":"video","source":{"type":"url","url":"https://media.invalid/local.mp4"}}]}]`, "model_input_modality_unavailable"},
+		{"tool_result_video", `"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_fixture","name":"echo","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_fixture","content":[{"type":"text","text":"Do not discard the video"},{"type":"video","source":{"type":"url","url":"https://media.invalid/local.mp4"}}]}]}]`, "model_input_modality_unavailable"},
+		{"tool_result_file_image", `"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_fixture","name":"echo","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_fixture","content":[{"type":"text","text":"Do not discard the image"},{"type":"image","source":{"type":"file","file_id":"file_fixture"}}]}]}]`, "model_input_modality_unavailable"},
+		{"tool_result_empty_image", `"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_fixture","name":"echo","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_fixture","content":[{"type":"text","text":"Do not discard the image"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":""}}]}]}]`, "model_input_modality_unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := map[string]any{"model": "ycapi-claude-opus-5", "max_tokens": 64, "stream": true, "messages": []map[string]any{{"role": "user", "content": "Hello"}}}
+			var extra map[string]any
+			require.NoError(t, common.Unmarshal([]byte("{"+tc.fields+"}"), &extra))
+			maps.Copy(request, extra)
+			raw, err := common.Marshal(request)
+			require.NoError(t, err)
+			response := f.request(t, http.MethodPost, "/v1/messages", string(raw), "h3routermember")
+			assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), tc.code)
+			assert.Zero(t, posts, "unsupported native intent must fail before any attempt")
+		})
+	}
+	require.NoError(t, f.db.First(&after, 792).Error)
+	assert.Equal(t, before.Quota, after.Quota)
+	var consumed int64
+	require.NoError(t, f.logDB.Model(&model.Log{}).Where("model_name = ? AND type = ?", "ycapi-claude-opus-5", model.LogTypeConsume).Count(&consumed).Error)
+	assert.Zero(t, consumed)
+}
+
 func TestYcapiTextToolRoundtripImageControlsAndPrivateUsage(t *testing.T) {
 	for _, includeUsage := range []bool{true, false} {
 		t.Run(fmt.Sprintf("include_usage_%t", includeUsage), func(t *testing.T) {
