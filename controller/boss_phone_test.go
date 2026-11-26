@@ -517,6 +517,116 @@ func TestBossDeliveryShapesScopeAndSharedRateBudget(t *testing.T) {
 	})
 }
 
+func TestBossMaskedChallengesPreserveActualSmsBudget(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		accepted  int
+		pending   string
+		badLegacy bool
+		wantSends int
+	}{
+		{name: "four_shared_sends_allow_one_more", accepted: 4, wantSends: 1},
+		{name: "five_shared_sends_remain_limited", accepted: 5},
+		{name: "unknown_dispatch_still_waits", pending: "unknown"},
+		{name: "sending_dispatch_still_waits", pending: "sending"},
+		{name: "unreadable_legacy_record_still_counts", accepted: 4, badLegacy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setupBossPhone(t)
+			phone, now := "+8613800101088", time.Now()
+			var history []model.AuthFlow
+			// Both legacy accepted/masked and the new masked intent must leave
+			// room for genuine SMS attempts without rewriting old challenge rows.
+			for i := range 3 {
+				request := phoneChallengeRequest{PhoneE164: phone, IdempotencyKey: uuid.NewString(), ContractVersion: 2}
+				response, challenge := bossRequest(t, BossPhoneChallenge, request)
+				require.Equal(t, http.StatusAccepted, response.Code)
+				require.True(t, challenge.Success)
+				require.Equal(t, 60, challenge.Data.Resend)
+				var row model.AuthFlow
+				require.NoError(t, f.db.Where("purpose = ?", "boss_phone_challenge").Order("id DESC").First(&row).Error)
+				require.Equal(t, "masked", row.Intent)
+				require.Zero(t, row.UserId)
+				if i < 2 {
+					updates := map[string]any{"intent": "accepted", "expires_at": now.Add(-time.Minute)}
+					require.NoError(t, f.db.Model(&row).Updates(updates).Error)
+				} else {
+					require.NoError(t, f.db.Model(&row).Update("expires_at", now.Add(-time.Minute)).Error)
+				}
+				require.NoError(t, f.db.First(&row, row.Id).Error)
+				history = append(history, row)
+				_, replay := bossRequest(t, BossPhoneChallenge, request)
+				assert.Equal(t, challenge.Data.ChallengeID, replay.Data.ChallengeID)
+			}
+			require.Zero(t, f.sends, "masked and replayed challenges must never dispatch SMS")
+			bossTestUser(t, f.db, &phone, "Boss", common.UserStatusEnabled)
+			for i := range tc.accepted {
+				history = append(history, bossSmsBudgetHistory(t, f, phone, i%2 == 1, "accepted", now.Add(-time.Duration(i+2)*time.Minute)))
+			}
+			if tc.pending != "" {
+				history = append(history, bossSmsBudgetHistory(t, f, phone, false, tc.pending, now.Add(-2*time.Minute)))
+			}
+			if tc.badLegacy {
+				require.NoError(t, f.db.Model(&history[0]).Update("payload", "invalid historical payload").Error)
+				require.NoError(t, f.db.First(&history[0], history[0].Id).Error)
+			}
+			request := phoneChallengeRequest{PhoneE164: phone, IdempotencyKey: uuid.NewString(), ContractVersion: 2}
+			response, challenge := bossRequest(t, BossPhoneChallenge, request)
+			require.Equal(t, http.StatusAccepted, response.Code)
+			require.True(t, challenge.Success)
+			assert.Equal(t, tc.wantSends, f.sends)
+			_, replay := bossRequest(t, BossPhoneChallenge, request)
+			assert.Equal(t, challenge.Data.ChallengeID, replay.Data.ChallengeID)
+			assert.Equal(t, tc.wantSends, f.sends, "idempotent replay cannot dispatch another SMS")
+			if tc.wantSends == 1 {
+				_, _, err := model.ReservePhoneChallenge(phone, uuid.NewString(), "654321", now.Add(time.Minute))
+				var limited *model.PhoneRateLimitError
+				assert.ErrorAs(t, err, &limited, "ordinary phone login cannot add a sixth shared SMS")
+			}
+			for _, before := range history {
+				var after model.AuthFlow
+				require.NoError(t, f.db.First(&after, before.Id).Error)
+				assert.Equal(t, before, after, "budget admission must not rewrite historical challenges")
+			}
+		})
+	}
+}
+
+func bossSmsBudgetHistory(t *testing.T, f *bossPhoneFixture, phone string, boss bool, status string, createdAt time.Time) model.AuthFlow {
+	t.Helper()
+	var challenge *model.PhoneChallenge
+	var created bool
+	var err error
+	purpose := "phone_challenge"
+	if boss {
+		purpose = "boss_phone_challenge"
+		challenge, created, err = model.ReserveBossPhoneChallenge(phone, uuid.NewString(), "654321", time.Now().Add(10*time.Minute))
+	} else {
+		challenge, created, err = model.ReservePhoneChallenge(phone, uuid.NewString(), "654321", time.Now().Add(10*time.Minute))
+	}
+	require.NoError(t, err)
+	require.True(t, created)
+	if status != "sending" {
+		if boss {
+			require.NoError(t, model.DispatchBossPhoneChallenge(phone, challenge.ID, func() (string, int) { return status, 0 }))
+		} else {
+			_, err = model.FinishPhoneChallenge(phone, challenge.ID, status)
+			require.NoError(t, err)
+		}
+	}
+	var row model.AuthFlow
+	require.NoError(t, f.db.Where("purpose = ?", purpose).Order("id DESC").First(&row).Error)
+	updates := map[string]any{"created_at": createdAt}
+	if status == "accepted" {
+		// Expired or consumed accepted sends still consume the five-hour quota.
+		updates["expires_at"] = time.Now().Add(-time.Minute)
+		updates["consumed_at"] = time.Now().Add(-time.Minute)
+	}
+	require.NoError(t, f.db.Model(&row).Updates(updates).Error)
+	require.NoError(t, f.db.First(&row, row.Id).Error)
+	return row
+}
+
 func TestBossOTPAndMFADownstreamRollbackAndReplay(t *testing.T) {
 	for _, mfa := range []bool{false, true} {
 		for _, failure := range []string{"relay", "session", "seal", "receipt"} {

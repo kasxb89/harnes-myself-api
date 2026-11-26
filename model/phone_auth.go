@@ -169,6 +169,18 @@ func reservePhoneChallenge(scope phoneAuthScope, phone, key, code string, expire
 		if err := tx.Where("((purpose = ? AND provider = ?) OR (purpose = ? AND provider = ?)) AND created_at > ? AND intent IN ?", phoneScope.challengePurpose, phoneScope.hash("phone", phone), bossPhoneScope.challengePurpose, bossPhoneScope.hash("phone", phone), now.Add(-window), []string{"sending", "accepted", "unknown"}).Order("created_at DESC").Find(&prior).Error; err != nil {
 			return err
 		}
+		// Older Boss challenges used accepted for masked, unassigned requests
+		// that never dispatched SMS. Exclude those without rewriting receipts.
+		counted := prior[:0]
+		for _, previous := range prior {
+			var previousChallenge PhoneChallenge
+			if previous.Purpose == bossPhoneScope.challengePurpose && previous.UserId == 0 && previous.Intent == "accepted" &&
+				common.UnmarshalJsonStr(previous.Payload, &previousChallenge) == nil && previousChallenge.DeliveryStatus == "masked" {
+				continue
+			}
+			counted = append(counted, previous)
+		}
+		prior = counted
 		var retryAt time.Time
 		if len(prior) >= limit {
 			retryAt = prior[len(prior)-1].CreatedAt.Add(window)
@@ -198,7 +210,7 @@ func reservePhoneChallenge(scope phoneAuthScope, phone, key, code string, expire
 				userID = bossUser.Id
 				challenge.BossBinding.UserID, challenge.BossBinding.AuthVersion = bossUser.Id, bossUser.AuthVersion
 			} else {
-				challenge.DeliveryStatus, intent = "masked", "accepted"
+				challenge.DeliveryStatus, intent = "masked", "masked"
 			}
 		}
 		if manual {
