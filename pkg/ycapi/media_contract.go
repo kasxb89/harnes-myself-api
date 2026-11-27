@@ -112,11 +112,24 @@ func (p *MediaParameter) UnmarshalJSON(data []byte) error {
 func (p MediaParameter) MarshalJSON() ([]byte, error) { return common.Marshal(p.Native) }
 
 type mediaContractSnapshot struct {
-	SchemaVersion int             `json:"schema_version"`
-	CheckedAt     string          `json:"checked_at"`
-	SourceSHA256  string          `json:"source_sha256"`
-	Models        []MediaContract `json:"models"`
+	SchemaVersion int                   `json:"schema_version"`
+	CheckedAt     string                `json:"checked_at"`
+	SourceSHA256  string                `json:"source_sha256"`
+	Sources       []mediaContractSource `json:"sources"`
+	Models        []MediaContract       `json:"models"`
 }
+
+type mediaContractSource struct {
+	URL       string `json:"url"`
+	Bytes     int    `json:"bytes"`
+	SHA256    string `json:"sha256"`
+	CheckedAt string `json:"checked_at"`
+}
+
+// Binds the reviewed declarations to SHA256(image response || video response),
+// preserving the original response bytes in that order. This is source
+// evidence, not account availability or a paid-generation qualification.
+const reviewedMediaContractSourceSHA256 = "4773ab714964864c114ba8b6005ee6a48a869c809e247dc6c3003c67b56a3d84"
 
 var mediaContracts, mediaContractError = loadMediaContracts()
 
@@ -125,8 +138,13 @@ func loadMediaContracts() (mediaContractSnapshot, error) {
 	if err := common.Unmarshal(mediaContractData, &snapshot); err != nil {
 		return snapshot, err
 	}
-	if snapshot.SchemaVersion != 1 || snapshot.CheckedAt == "" || len(snapshot.SourceSHA256) != 64 || len(snapshot.Models) != 73 {
+	if snapshot.SchemaVersion != 1 || snapshot.CheckedAt == "" || snapshot.SourceSHA256 != reviewedMediaContractSourceSHA256 || len(snapshot.Sources) != 2 || len(snapshot.Models) != 75 {
 		return snapshot, errors.New("invalid YCAPI media contract snapshot")
+	}
+	for _, source := range snapshot.Sources {
+		if source.URL == "" || source.Bytes <= 0 || len(source.SHA256) != 64 || source.CheckedAt == "" {
+			return snapshot, errors.New("invalid YCAPI media contract source")
+		}
 	}
 	seen, kinds := map[string]bool{}, map[string]int{}
 	for _, contract := range snapshot.Models {
@@ -141,7 +159,7 @@ func loadMediaContracts() (mediaContractSnapshot, error) {
 			}
 		}
 	}
-	if kinds["image"] != 31 || kinds["video"] != 42 {
+	if kinds["image"] != 31 || kinds["video"] != 44 {
 		return snapshot, errors.New("invalid YCAPI media contract kinds")
 	}
 	return snapshot, nil

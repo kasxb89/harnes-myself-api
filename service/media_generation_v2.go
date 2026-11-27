@@ -309,6 +309,13 @@ func mediaGenerationConfiguredSchema(contract ycapi.MediaContract, controls map[
 	if !ok {
 		return nil, errors.New("model_not_available")
 	}
+	// Native declarations retain the supplier's batch range. Executable video
+	// controls stay single-item until the billing facts meter a video batch.
+	if contract.Kind == "video" {
+		if count, exists := schema["properties"].(map[string]any)["count"].(map[string]any); exists {
+			count["maximum"] = float64(1)
+		}
+	}
 	if controls == nil {
 		return schema, nil
 	}
@@ -620,6 +627,11 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	}
 	if !slices.Contains(record.Definition.MediaExecution.Intents, string(request.Intent)) {
 		return nil, errors.New("invalid_parameters")
+	}
+	// Receipt-first recovery above remains independent of today's qualification.
+	// Reject an unmetered batch before even uploading its materials to a vendor.
+	if err = ycapi.ValidateMediaRuntimeQuantity(contract, request.Parameters); err != nil {
+		return nil, err
 	}
 	route, err := MediaGenerationRouteFromContext(c)
 	if err != nil {

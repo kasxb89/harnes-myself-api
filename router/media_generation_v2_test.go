@@ -37,7 +37,168 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+func TestMediaGenerationV2CapturedOldContractReceiptAfterRefresh(t *testing.T) {
+	f := newH3RouterFixture(t, 0)
+	isolateNativeMediaFixtureOptions(t)
+	isolateNativeMediaFixtureTables(t, f)
+	data, err := os.ReadFile("testdata/yc-replica-old-omni-96d99485.json")
+	require.NoError(t, err)
+	var capture struct {
+		SourceCommit       string                         `json:"source_commit"`
+		SourceFileSHA      string                         `json:"source_file_sha256"`
+		ContractRaw        string                         `json:"contract_raw"`
+		ContractRawSHA     string                         `json:"contract_raw_sha256"`
+		Request            service.MediaGenerationRequest `json:"request"`
+		RequestSHA         string                         `json:"request_sha256"`
+		NativeParameters   map[string]any                 `json:"native_parameters"`
+		NativeParameterSHA string                         `json:"native_parameters_sha256"`
+		TaskID             string                         `json:"task_id"`
+		FundingRequestID   string                         `json:"funding_request_id"`
+		ReserveQuota       int                            `json:"synthetic_reserve_quota"`
+	}
+	require.NoError(t, common.Unmarshal(data, &capture))
+	require.Equal(t, "96d99485cacde8aba3f7d55794cfe28d364d3086", capture.SourceCommit)
+	require.Equal(t, "a540c38073040ed094db89da758d52808b8137f75783a445d0425c31ad65d9cf", capture.SourceFileSHA)
+	require.Equal(t, capture.ContractRawSHA, fmt.Sprintf("%x", sha256.Sum256([]byte(capture.ContractRaw))))
+	var oldContract ycapi.MediaContract
+	require.NoError(t, common.UnmarshalJsonStr(capture.ContractRaw, &oldContract))
+	currentContract, ok := ycapi.LookupMediaContract(oldContract.ID)
+	require.True(t, ok)
+	require.Equal(t, 3, *oldContract.Parameters["videos"].MaxItems)
+	require.Equal(t, 1, *currentContract.Parameters["videos"].MaxItems)
+	require.NotEqual(t, service.MediaGenerationDigest(oldContract), service.MediaGenerationDigest(currentContract))
+	require.Equal(t, capture.RequestSHA, service.MediaGenerationRequestDigest(capture.Request), "the prior request digest is fixed, not rewritten for the new schema")
+	native, err := common.Marshal(capture.NativeParameters)
+	require.NoError(t, err)
+	require.Equal(t, capture.NativeParameterSHA, fmt.Sprintf("%x", sha256.Sum256(native)))
+	_, err = ycapi.ValidateMediaContractParams(currentContract.ID, capture.NativeParameters, nil)
+	require.Error(t, err, "a new request cannot use the captured two-video selection under the refreshed one-video limit")
+	require.Error(t, ycapi.ValidateMediaRuntimeQuantity(currentContract, capture.Request.Parameters), "new video batches are not execution qualified")
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+	base := "https://ycapi.token6688.com"
+	channel := model.Channel{Id: 981, Type: constant.ChannelTypeTaskPlugin, Key: "synthetic-replica-b016-provider", Name: "Synthetic old-layout receipt", Models: oldContract.ID, Group: "default", Status: common.ChannelStatusEnabled, BaseURL: &base}
+	channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "ycapi"})
+	require.NoError(t, channel.Insert())
+	model.InitChannelCache()
+	snapshot, err := model.GetModelConfigurationSnapshot(oldContract.ID)
+	require.NoError(t, err)
+	definition := snapshot.Entries[0].Definition
+	definition.Kind, definition.Enabled, definition.DisplayName = "video", true, oldContract.Name
+	definition.Source, definition.Parameters = "synthetic96d layout compatibility only; not old-binary or paid evidence", nil
+	definition.Routes = []model.ModelConfigurationRoute{{ChannelID: channel.Id, Group: "default", UpstreamModel: oldContract.ID, Enabled: true}}
+	definition.Pricing = model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": `tier("synthetic-old-layout", 0.2 / 7.3)`}
+	definition.MediaExecution = &model.ModelMediaExecutionConfiguration{SchemaVersion: 1, LaneID: oldContract.NativeID + "@fixture:only", Intents: ycapi.MediaContractIntents(oldContract), ContractSHA256: service.MediaGenerationDigest(oldContract), QualificationSHA256: service.MediaGenerationDigest("synthetic-old-b016-layout"), CheckedAt: "2026-11-27"}
+	require.NoError(t, model.SaveModelConfigurationDraft(snapshot.Revision, snapshot.Entries[0].BaseVersion, definition))
+	snapshot, err = model.GetModelConfigurationSnapshot(oldContract.ID)
+	require.NoError(t, err)
+	require.NoError(t, model.PublishModelConfigurations(snapshot.Revision, []string{oldContract.ID}, ""))
+	frozen := service.MediaGenerationFrozen{Request: capture.Request, Parameters: capture.NativeParameters, Facts: map[string]any{"seconds": float64(3), "input_video_seconds": float64(6), "intent": "reference", "spec": "media-v2"}, CostCNY: "0.02", DryRunSHA256: service.MediaGenerationDigest("synthetic-old-layout-no-vendor-call")}
+	frozenBytes, err := common.Marshal(frozen)
+	require.NoError(t, err)
+	quote := model.MediaGenerationQuote{UserID: 792, TokenID: 792, OwnerDigest: common.GenerateHMAC("media-generation-owner:h3routermember"), ClientOpID: capture.Request.ClientOperationID, RequestSHA256: capture.RequestSHA, MaterialSHA256: service.MediaGenerationDigest(capture.Request.Assets), Model: oldContract.ID, Kind: "video", ChannelID: channel.Id, UsingGroup: "default", CredentialDigest: common.GenerateHMAC("media-v2-key:" + channel.Key), ChannelConfigHash: service.MediaGenerationDigest("synthetic-old-route-b016"), ModelConfigVersion: capture.Request.ModelVersion, PricingVersion: service.MediaGenerationDigest("synthetic-old-price-b016"), PluginKey: "ycapi", PluginVersion: "1.0.4", PluginSourceHash: service.MediaGenerationDigest("synthetic-old-plugin-b016"), SupplierLane: definition.MediaExecution.LaneID, NativeParamsJSON: model.LongText(native), UsageFactsJSON: model.LongText(frozenBytes), CostCNY: "0.02", RetailCNY: "0.2000054", ReserveQuota: int64(capture.ReserveQuota), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+	store := model.MediaGenerationQuoteStore{DB: f.db}
+	stored, err := store.SaveQuote(t.Context(), &quote)
+	require.NoError(t, err)
+	require.NoError(t, model.PrepareWalletFundingRequest(792, capture.FundingRequestID, "relay", oldContract.ID, channel.Id))
+	task := model.Task{TaskID: capture.TaskID, Platform: "ycapi", UserId: 792, Group: "default", ChannelId: channel.Id, Quota: capture.ReserveQuota, Status: model.TaskStatusInProgress, Progress: "25%", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix(), Properties: model.Properties{OriginModelName: oldContract.ID, UpstreamModelName: oldContract.NativeID}, PrivateData: model.TaskPrivateData{Key: channel.Key, UpstreamTaskID: "synthetic-accepted-before-contract-refresh", BillingSource: "wallet", FundingRequestId: capture.FundingRequestID, TokenId: 792, Execution: &model.TaskExecutionSnapshot{ModelConfigVersion: capture.Request.ModelVersion, RequestID: capture.FundingRequestID, RequestPath: "/v1/media-v2/tasks"}}}
+	require.NoError(t, f.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&task).Error; err != nil {
+			return err
+		}
+		if err := store.BindQuoteToTaskTx(t.Context(), tx, service.MediaGenerationBinding(stored), task.ID, task.TaskID); err != nil {
+			return err
+		}
+		_, err := model.ApplyWalletFundingTargetWithTx(tx, 792, capture.FundingRequestID, "relay", capture.ReserveQuota, true)
+		return err
+	}))
+	var beforeQuote model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", stored.QuoteID).Take(&beforeQuote).Error)
+	beforeTask := f.task(t, task.TaskID)
+	walletBefore, tokenBefore := f.balance(t)
+	var beforeFunding []model.WalletFundingRequest
+	var beforeEvents []model.WalletFundingEvent
+	require.NoError(t, f.db.Order("id").Find(&beforeFunding).Error)
+	require.NoError(t, f.db.Order("id").Find(&beforeEvents).Error)
+	require.Len(t, beforeFunding, 1)
+	require.Len(t, beforeEvents, 1)
+	// Publish the refreshed contract through the normal CAS path. It cannot
+	// rewrite a previously accepted request, quote, task or wallet target.
+	snapshot, err = model.GetModelConfigurationSnapshot(oldContract.ID)
+	require.NoError(t, err)
+	definition = snapshot.Entries[0].Definition
+	definition.MediaExecution.ContractSHA256 = service.MediaGenerationDigest(currentContract)
+	definition.MediaExecution.QualificationSHA256 = service.MediaGenerationDigest("synthetic-new-b016-contract")
+	require.NoError(t, model.SaveModelConfigurationDraft(snapshot.Revision, snapshot.Entries[0].BaseVersion, definition))
+	snapshot, err = model.GetModelConfigurationSnapshot(oldContract.ID)
+	require.NoError(t, err)
+	require.NoError(t, model.PublishModelConfigurations(snapshot.Revision, []string{oldContract.ID}, ""))
+	records, err := model.CurrentPublishedModelConfigurations()
+	require.NoError(t, err)
+	require.NotEqual(t, capture.Request.ModelVersion, model.ModelExecutionConfigurationVersion(oldContract.ID, records[oldContract.ID]))
+	var outbound atomic.Int64
+	client, previous := service.GetHttpClient(), service.GetHttpClient().Transport
+	client.Transport = imageUploadRoundTripper(func(request *http.Request) (*http.Response, error) {
+		outbound.Add(1)
+		return nil, fmt.Errorf("captured-receipt recovery forbids outbound %s", request.Method)
+	})
+	t.Cleanup(func() { client.Transport = previous })
+	operation := f.request(t, http.MethodGet, "/v1/media-v2/operations/"+capture.Request.ClientOperationID, "", "h3routermember")
+	require.Equal(t, http.StatusOK, operation.Code, operation.Body.String())
+	var receipt map[string]any
+	require.NoError(t, common.Unmarshal(operation.Body.Bytes(), &receipt))
+	oldQuote := receipt["data"].(map[string]any)["quote"].(map[string]any)
+	assert.Equal(t, capture.RequestSHA, oldQuote["request_sha256"])
+	assert.Equal(t, capture.Request.ModelVersion, oldQuote["model_version"])
+	assert.Len(t, oldQuote["assets"].(map[string]any)["videos"], 2)
+	assert.EqualValues(t, 2, oldQuote["parameters"].(map[string]any)["count"])
+	status := f.request(t, http.MethodGet, "/v1/media-v2/tasks/"+capture.TaskID, "", "h3routermember")
+	require.Equal(t, http.StatusOK, status.Code, status.Body.String())
+	require.Contains(t, status.Body.String(), capture.TaskID)
+	requestBytes, err := common.Marshal(capture.Request)
+	require.NoError(t, err)
+	originalQuote := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(requestBytes), "h3routermember")
+	require.Equal(t, http.StatusOK, originalQuote.Code, originalQuote.Body.String())
+	require.Contains(t, originalQuote.Body.String(), stored.QuoteID)
+	submit, err := common.Marshal(map[string]any{"quote_id": stored.QuoteID, "client_operation_id": capture.Request.ClientOperationID, "request_sha256": capture.RequestSHA})
+	require.NoError(t, err)
+	for range 2 {
+		recovery := f.request(t, http.MethodPost, "/v1/media-v2/tasks", string(submit), "h3routermember")
+		require.Equal(t, http.StatusOK, recovery.Code, recovery.Body.String())
+		require.Contains(t, recovery.Body.String(), `"replayed":true`)
+		require.Contains(t, recovery.Body.String(), capture.TaskID)
+	}
+	wrongDigest, err := common.Marshal(map[string]any{"quote_id": stored.QuoteID, "client_operation_id": capture.Request.ClientOperationID, "request_sha256": strings.Repeat("0", 64)})
+	require.NoError(t, err)
+	rejected := f.request(t, http.MethodPost, "/v1/media-v2/tasks", string(wrongDigest), "h3routermember")
+	assert.Equal(t, http.StatusConflict, rejected.Code, "receipt-first must still reject an incorrect original request digest")
+	var afterQuote model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", stored.QuoteID).Take(&afterQuote).Error)
+	assert.Equal(t, beforeQuote, afterQuote)
+	assert.Equal(t, beforeTask, f.task(t, task.TaskID))
+	var afterFunding []model.WalletFundingRequest
+	var afterEvents []model.WalletFundingEvent
+	require.NoError(t, f.db.Order("id").Find(&afterFunding).Error)
+	require.NoError(t, f.db.Order("id").Find(&afterEvents).Error)
+	assert.Equal(t, beforeFunding, afterFunding)
+	assert.Equal(t, beforeEvents, afterEvents)
+	walletAfter, tokenAfter := f.balance(t)
+	assert.Equal(t, walletBefore, walletAfter)
+	assert.Equal(t, tokenBefore, tokenAfter)
+	assert.Zero(t, outbound.Load())
+	for _, table := range []any{&model.Task{}, &model.MediaGenerationQuote{}} {
+		var count int64
+		require.NoError(t, f.db.Model(table).Count(&count).Error)
+		assert.EqualValues(t, 1, count)
+	}
+	t.Logf("new75 Go read synthetic96d contract/layout sha=%s request=%s native=%s; not an old-binary or paid receipt", capture.ContractRawSHA, capture.RequestSHA, capture.NativeParameterSHA)
+}
 
 func TestMediaGenerationV2AssetReceiptPersistenceBounds(t *testing.T) {
 	f := newH3RouterFixture(t, 0)
@@ -74,6 +235,49 @@ func TestMediaGenerationV2AssetReceiptPersistenceBounds(t *testing.T) {
 	assert.EqualValues(t, 2, count, "same UUID and rejected metadata cannot multiply stored rows")
 }
 
+func TestMediaGenerationV2UnqualifiedVideoBatchBeforeSupplierEffects(t *testing.T) {
+	f := newH3RouterFixture(t, 0)
+	isolateNativeMediaFixtureOptions(t)
+	isolateNativeMediaFixtureTables(t, f)
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+	contract, ok := ycapi.LookupMediaContract("ycapi-magi-2")
+	require.True(t, ok)
+	publishSyntheticNativeMediaContracts(t, []ycapi.MediaContract{contract})
+	parameters := map[string]any{"mode": "text-to-video", "count": float64(2), "duration": "5", "resolution": "1080p", "prompt": "New synthetic batch boundary"}
+	_, err = ycapi.ValidateMediaContractParams(contract.ID, parameters, nil)
+	require.NoError(t, err, "native max50 is preserved as declaration, separately from one-output execution qualification")
+	require.Error(t, ycapi.ValidateMediaRuntimeQuantity(contract, parameters))
+	records, err := model.CurrentPublishedModelConfigurations()
+	require.NoError(t, err)
+	request := service.MediaGenerationRequest{ClientOperationID: "31694f92-7347-4614-acbc-b495c9834bc4", Model: contract.ID, ModelVersion: model.ModelExecutionConfigurationVersion(contract.ID, records[contract.ID]), Intent: ycapi.MediaIntentText, Parameters: parameters, Assets: map[string][]string{}}
+	encoded, err := common.Marshal(request)
+	require.NoError(t, err)
+	var outbound atomic.Int64
+	client, previous := service.GetHttpClient(), service.GetHttpClient().Transport
+	client.Transport = imageUploadRoundTripper(func(request *http.Request) (*http.Response, error) {
+		outbound.Add(1)
+		return nil, fmt.Errorf("batch boundary blocks supplier file/estimate/invoke %s", request.URL.Path)
+	})
+	t.Cleanup(func() { client.Transport = previous })
+	walletBefore, tokenBefore := f.balance(t)
+	response := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(encoded), "h3routermember")
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), `"code":"invalid_parameters"`)
+	assert.Zero(t, outbound.Load())
+	for _, table := range []any{&model.Task{}, &model.MediaGenerationQuote{}, &model.MediaGenerationUpload{}, &model.WalletFundingRequest{}, &model.WalletFundingEvent{}} {
+		var count int64
+		require.NoError(t, f.db.Model(table).Count(&count).Error)
+		assert.Zero(t, count)
+	}
+	walletAfter, tokenAfter := f.balance(t)
+	assert.Equal(t, walletBefore, walletAfter)
+	assert.Equal(t, tokenBefore, tokenAfter)
+}
+
 // The exported catalog is the normal handler's original response bytes. Its
 // local lane/qualification/tariff bindings must never be mistaken for upstream
 // paid qualification, production configuration or an audio-model inventory.
@@ -88,7 +292,7 @@ func TestMediaGenerationV2NativeCatalogProjectionAndMatrix(t *testing.T) {
 	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
 	contracts, err := ycapi.MediaContracts()
 	require.NoError(t, err)
-	require.Len(t, contracts, 73)
+	require.Len(t, contracts, 75)
 	var outbound atomic.Int64
 	client, oldTransport := service.GetHttpClient(), service.GetHttpClient().Transport
 	client.Transport = imageUploadRoundTripper(func(request *http.Request) (*http.Response, error) {
@@ -99,7 +303,7 @@ func TestMediaGenerationV2NativeCatalogProjectionAndMatrix(t *testing.T) {
 	walletBefore, tokenBefore := f.balance(t)
 	names := publishSyntheticNativeMediaContracts(t, contracts)
 	catalog, matrix := nativeMediaFixtureProjection(t, f, contracts)
-	require.Len(t, names, 73)
+	require.Len(t, names, 75)
 	// Normal token restrictions and publication changes must affect the actual
 	// handler, rather than being simulated by editing the exported JSON.
 	chosen := names[0]
@@ -149,7 +353,7 @@ func TestMediaGenerationV2NativeCatalogProjectionAndMatrix(t *testing.T) {
 				} `json:"data"`
 			}
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
-			assert.Len(t, result.Data.Models, 72)
+			assert.Len(t, result.Data.Models, len(contracts)-1)
 			assert.False(t, slices.ContainsFunc(result.Data.Models, func(row struct {
 				ID string `json:"id"`
 			}) bool {
@@ -299,6 +503,16 @@ func nativeMediaFixtureProjection(t *testing.T, f *h3RouterFixture, contracts []
 			require.True(t, present, contract.ID)
 			assert.Equal(t, contract.Kind, visible["kind"])
 			properties := visible["parameters_schema"].(map[string]any)["properties"].(map[string]any)
+			if contract.Kind == "video" {
+				if _, declared := contract.Parameters["count"]; declared {
+					countField, exists := properties["count"].(map[string]any)
+					require.True(t, exists, contract.ID)
+					assert.EqualValues(t, 1, countField["maximum"], "video batch metering is not qualified")
+				} else {
+					assert.NotContains(t, properties, "count", "a fixed single-source processor must not gain an invented batch control")
+				}
+				row["qualified_count_maximum"], row["video_batch_qualified"] = 1, false
+			}
 			for name, parameter := range contract.Parameters {
 				field, exists := properties[name].(map[string]any)
 				require.True(t, exists, "%s.%s", contract.ID, name)
@@ -326,19 +540,25 @@ func nativeMediaFixtureProjection(t *testing.T, f *h3RouterFixture, contracts []
 			}
 			row["projected_intents"], row["asset_fields"] = visible["intents"], visible["asset_fields"]
 			if contract.NativeID == "grok-imagine-video" {
-				assert.NotContains(t, record.Definition.MediaExecution.Intents, "transform", "unavailable extend is not a synthetic qualification")
+				assert.Contains(t, record.Definition.MediaExecution.Intents, "transform", "fresh public extend with a video role may have an explicit synthetic binding")
+				assert.Contains(t, properties["mode"].(map[string]any)["enum"], "extend")
+				assert.True(t, slices.ContainsFunc(fields, func(field ycapi.MediaAssetField) bool { return field.Name == "videos" && field.MediaKind == "video" }))
 			}
 		}
 		rows = append(rows, row)
 	}
 	assert.Equal(t, 31, kinds["image"])
-	assert.Equal(t, 42, kinds["video"])
+	assert.Equal(t, 44, kinds["video"])
 	assert.Zero(t, kinds["audio"], "decoder forward compatibility cannot invent an audio contract")
 	assert.Len(t, public, availability["available"])
-	return bytes.Clone(response.Body.Bytes()), map[string]any{"schema": 1, "scope": "yc-native-media-19e03d29",
+	for _, name := range []string{"ycapi-magi-2", "ycapi-magi-2-special"} {
+		require.Contains(t, public, name)
+		assert.Equal(t, "video", public[name]["kind"], "new Magi declarations are video candidates only")
+	}
+	return bytes.Clone(response.Body.Bytes()), map[string]any{"schema": 1, "scope": "yc-replica-b016cea5",
 		"status": "ACTUAL_GO_SYNTHETIC_CATALOG_NOT_PAID_QUALIFICATION", "model_count": len(contracts),
 		"kinds": kinds, "source_availability": availability, "capabilities": payload.Data.Capabilities,
-		"plugin_version": plugin.Meta.Version, "models": rows, "conditions_source": "Current native73 has no top-level conditions; per-field unknown native JSON is compared losslessly"}
+		"plugin_version": plugin.Meta.Version, "models": rows, "conditions_source": "Fresh native75 has no top-level conditions; per-field unknown native JSON is compared losslessly"}
 }
 
 func writeNativeMediaProjection(t *testing.T, output string, catalog []byte, matrix map[string]any) {

@@ -150,6 +150,24 @@ func mediaAssetKind(contract MediaContract, name string) (string, bool) {
 	return "", false
 }
 
+// ValidateMediaRuntimeQuantity separates public native quantity support from
+// the gateway's qualified meter. Video batch settlement is not qualified yet.
+func ValidateMediaRuntimeQuantity(contract MediaContract, params map[string]any) error {
+	if contract.Kind != "video" {
+		return nil
+	}
+	value, present := params["count"]
+	if !present {
+		return nil
+	}
+	// Normal request JSON numbers are decoded as float64. Strings, booleans,
+	// null and every quantity other than one must fail before asset uploads.
+	if count, ok := value.(float64); !ok || count != 1 {
+		return mediaInvalid("count", "video batch billing is not qualified; exactly one output is required")
+	}
+	return nil
+}
+
 // BuildMediaRuntimeRequest creates a native V2 envelope without sending it.
 // normalizedParams must first pass ValidateMediaContractParams with trusted
 // asset metadata. This builder repeats logical checks and enforces intent and
@@ -173,6 +191,9 @@ func BuildMediaRuntimeRequest(modelID string, normalizedParams map[string]any, l
 	}
 	params, err := validateMediaContractParams(modelID, normalizedParams, nil, false)
 	if err != nil {
+		return invalid, err
+	}
+	if err := ValidateMediaRuntimeQuantity(contract, params); err != nil {
 		return invalid, err
 	}
 	fields, err := AssetFields(contract)
@@ -210,6 +231,9 @@ func BuildMediaRuntimeRequest(modelID string, normalizedParams map[string]any, l
 		contract.NativeID == "flux-3-video" && mode == "reference" || contract.NativeID == "grok-imagine-1.5-special"
 	transform := slices.Contains([]string{"edit", "extend", "layer-decompose", "avatar", "lip-sync"}, mode) ||
 		slices.Contains([]string{"aliyun-image-superres", "aliyun-video-superres", "video-desubtitle", "face-repaint", "kling-v3-motion-control", "veo-4-omni-v2v"}, contract.NativeID)
+	if slices.Contains([]string{"reference", "multi-reference"}, mode) && !frames && intent != MediaIntentReference {
+		return invalid, mediaInvalid("intent", "reference intent must match the declared native reference operation")
+	}
 	if intent == MediaIntentFrames && (!frames || counts["images"] == 0) || frames && intent != MediaIntentFrames {
 		return invalid, mediaInvalid("intent", "frame intent must match the declared native frame operation")
 	}

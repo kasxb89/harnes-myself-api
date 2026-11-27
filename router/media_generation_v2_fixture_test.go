@@ -70,14 +70,21 @@ func publishSyntheticNativeMediaContracts(t *testing.T, contracts []ycapi.MediaC
 		definition.Routes = []model.ModelConfigurationRoute{{ChannelID: channel.Id, Group: "default", UpstreamModel: contract.ID, Enabled: contract.Available}}
 		qualifiedIntents := slices.Clone(ycapi.MediaContractIntents(contract))
 		if contract.NativeID == "grok-imagine-video" {
-			// Its only transform enum is explicitly unavailable and it declares
-			// no video source role. Do not manufacture an executable extend.
-			qualifiedIntents = slices.DeleteFunc(qualifiedIntents, func(intent string) bool { return intent == "transform" })
+			_, videoRole := contract.Parameters["videos"]
+			extendAvailable := slices.Contains(contract.Parameters["mode"].Enum, any("extend"))
+			for _, option := range contract.Parameters["mode"].Options {
+				if option.Value == "extend" && option.Available != nil && !*option.Available {
+					extendAvailable = false
+				}
+			}
+			if !extendAvailable || !videoRole {
+				qualifiedIntents = slices.DeleteFunc(qualifiedIntents, func(intent string) bool { return intent == "transform" })
+			}
 		}
 		if contract.Available && len(qualifiedIntents) > 0 {
 			definition.MediaExecution = &model.ModelMediaExecutionConfiguration{SchemaVersion: 1,
 				LaneID: contract.NativeID + "@fixture:only", Intents: qualifiedIntents,
-				QualificationSHA256: service.MediaGenerationDigest(map[string]any{"scope": "yc-native-media-19e03d29", "model": contract.ID, "kind": "synthetic-contract-only", "contract": contract}),
+				QualificationSHA256: service.MediaGenerationDigest(map[string]any{"scope": "yc-replica-b016cea5", "model": contract.ID, "kind": "synthetic-contract-only", "contract": contract}),
 				ContractSHA256:      service.MediaGenerationDigest(contract), CheckedAt: "2026-11-27"}
 		} else {
 			definition.Enabled, definition.MediaExecution = false, nil
@@ -158,7 +165,7 @@ func TestMediaGenerationV2LocalFixtureServer(t *testing.T) {
 	defer jsplugin.DefaultRegistry.Unregister("ycapi")
 	contracts, err := ycapi.MediaContracts()
 	require.NoError(t, err)
-	allNative := os.Getenv("MEDIA_V2_FIXTURE_CATALOG") == "all-native-73"
+	allNative := os.Getenv("MEDIA_V2_FIXTURE_CATALOG") == "all-native-75"
 	if !allNative {
 		contracts = slices.DeleteFunc(contracts, func(contract ycapi.MediaContract) bool {
 			return contract.ID != "ycapi-gpt-image-2.6-flare" && contract.ID != "ycapi-seedance-2-5"

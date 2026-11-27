@@ -58,6 +58,20 @@ func TestMediaGenerationConfiguredCatalogKeepsNativeContracts(t *testing.T) {
 		_, err = mediaGenerationConfiguredSchema(imageContract, controls)
 		assert.Error(t, err, "configuration cannot broaden the native 1..50 count")
 	})
+	t.Run("video batch declaration does not grant unmetered batch execution", func(t *testing.T) {
+		native, ok := ycapi.MediaContractSchema(videoContract.ID)
+		require.True(t, ok)
+		assert.Equal(t, float64(50), native["properties"].(map[string]any)["count"].(map[string]any)["maximum"])
+		qualified, err := mediaGenerationConfiguredSchema(videoContract, nil)
+		require.NoError(t, err)
+		count := qualified["properties"].(map[string]any)["count"].(map[string]any)
+		assert.Equal(t, float64(1), count["maximum"])
+		assert.Equal(t, float64(50), count["x-ycapi-contract"].(map[string]any)["max"], "supplier declaration remains lossless")
+		var controls map[string]any
+		require.NoError(t, common.UnmarshalJsonStr(`{"properties":{"count":{"type":"integer","const":2}}}`, &controls))
+		_, err = mediaGenerationConfiguredSchema(videoContract, controls)
+		assert.Error(t, err, "administrator controls cannot bypass missing batch metering")
+	})
 	t.Run("disabled references disappear from all catalog declarations", func(t *testing.T) {
 		for _, raw := range []string{`{"properties":{"reference_images":false}}`, `{"properties":{"reference_images":{"type":"array","items":{"type":"string"},"maxItems":0}}}`} {
 			var controls map[string]any

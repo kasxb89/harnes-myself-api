@@ -323,6 +323,11 @@ func validateMediaAsset(contract MediaContract, name string, field MediaParamete
 
 func validateMediaRelationships(contract MediaContract, params map[string]any, counts map[string]int, durations map[string]float64, verifyDurations bool) error {
 	mode := mediaString(params["mode"])
+	// This card documents that one image is always treated as a first frame.
+	// Do not let an explicit reference request silently acquire frame intent.
+	if contract.NativeID == "magi-2-special" && mode == "reference" && counts["images"] == 1 {
+		return mediaInvalid("images", "a single source image requires explicit first-frame mode on this model")
+	}
 	for _, option := range contract.Parameters["mode"].Options {
 		if !mediaValuesEqual(option.Value, params["mode"]) {
 			continue
