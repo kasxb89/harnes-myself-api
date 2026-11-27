@@ -9528,6 +9528,10 @@
     "Models, usage and requests, in one place.": "模型、用量与请求，尽在一处。",
     "System reduced motion is enabled": "已跟随系统减少动态效果",
     "Workspace effects": "工作空间特效",
-    "Data notes": "数据说明"
+    "Data notes": "数据说明",
+    "Select a supported media retail policy": "请选择支持的媒体售价政策",
+    "A disabled media retail policy cannot retain an exception": "已停用的媒体售价政策不能保留例外规则",
+    "Bind the media retail policy to the current price, route, qualification, and reviewed evidence": "请将媒体售价政策绑定到当前价格、渠道、能力核验及审核证据",
+    "Media retail exceptions require distinct exact specifications and a same-model official total": "媒体售价例外须逐项匹配具体规格，并提供同型号官方总价"
   }
 }

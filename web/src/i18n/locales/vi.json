@@ -9528,6 +9528,10 @@
     "Models, usage and requests, in one place.": "Mô hình, mức sử dụng và yêu cầu ở cùng một nơi.",
     "System reduced motion is enabled": "Hệ thống đã bật chế độ giảm chuyển động",
     "Workspace effects": "Hiệu ứng không gian làm việc",
-    "Data notes": "Ghi chú dữ liệu"
+    "Data notes": "Ghi chú dữ liệu",
+    "Select a supported media retail policy": "Chọn chính sách giá bán nội dung đa phương tiện được hỗ trợ",
+    "A disabled media retail policy cannot retain an exception": "Chính sách giá bán đã tắt không thể giữ lại ngoại lệ",
+    "Bind the media retail policy to the current price, route, qualification, and reviewed evidence": "Liên kết chính sách giá bán với giá, kênh, kết quả xác minh khả năng và bằng chứng đã duyệt hiện tại",
+    "Media retail exceptions require distinct exact specifications and a same-model official total": "Ngoại lệ giá bán cần thông số chính xác riêng biệt và tổng giá chính thức của cùng mẫu"
   }
 }

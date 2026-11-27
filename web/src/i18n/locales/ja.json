@@ -9528,6 +9528,10 @@
     "Models, usage and requests, in one place.": "モデル、使用量、リクエストを一か所で管理。",
     "System reduced motion is enabled": "システムの視差効果軽減が有効です",
     "Workspace effects": "ワークスペースのエフェクト",
-    "Data notes": "データについて"
+    "Data notes": "データについて",
+    "Select a supported media retail policy": "対応するメディア販売価格ポリシーを選択してください",
+    "A disabled media retail policy cannot retain an exception": "無効なメディア販売価格ポリシーに例外を残すことはできません",
+    "Bind the media retail policy to the current price, route, qualification, and reviewed evidence": "メディア販売価格ポリシーを現在の価格、チャネル、能力検証、審査済みの根拠に紐付けてください",
+    "Media retail exceptions require distinct exact specifications and a same-model official total": "メディア販売価格の例外には、重複しない正確な仕様と同一モデルの公式合計価格が必要です"
   }
 }

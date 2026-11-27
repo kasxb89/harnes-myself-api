@@ -10,7 +10,9 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"math"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -31,19 +33,45 @@ type Metadata struct {
 }
 
 func Inspect(ctx context.Context, _ string, content []byte) (Metadata, error) {
+	return inspect(ctx, bytes.NewReader(content), int64(len(content)), MaxBytes)
+}
+
+// InspectFile measures a private regular file without loading it into memory.
+// Only its bounded bytes reach the decoders and ffprobe's pipe; the file path
+// never grants ffprobe permission to open external files or network URLs.
+func InspectFile(ctx context.Context, file *os.File, maxBytes int64) (Metadata, error) {
+	if file == nil {
+		return Metadata{}, ErrUnsupported
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return Metadata{}, ErrUnsupported
+	}
+	return inspect(ctx, file, info.Size(), maxBytes)
+}
+
+func inspect(ctx context.Context, content io.ReadSeeker, size, maxBytes int64) (Metadata, error) {
 	var m Metadata
 	if err := ctx.Err(); err != nil {
 		return m, err
 	}
-	if len(content) == 0 || len(content) > MaxBytes {
+	if size <= 0 || maxBytes <= 0 || size > maxBytes {
 		return m, ErrUnsupported
 	}
-	if cfg, format, err := image.DecodeConfig(bytes.NewReader(content)); err == nil {
+	reader, err := mediaProbeReader(ctx, content, size)
+	if err != nil {
+		return m, err
+	}
+	if cfg, format, err := image.DecodeConfig(reader); err == nil {
 		mime := map[string]string{"jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif", "webp": "image/webp"}[format]
 		if mime == "" || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > 16384 || cfg.Height > 16384 || int64(cfg.Width)*int64(cfg.Height) > 50_000_000 {
 			return m, ErrUnsupported
 		}
-		decoded, actualFormat, decodeErr := image.Decode(bytes.NewReader(content))
+		reader, err = mediaProbeReader(ctx, content, size)
+		if err != nil {
+			return m, err
+		}
+		decoded, actualFormat, decodeErr := image.Decode(reader)
 		if decodeErr != nil || decoded == nil || actualFormat != format || decoded.Bounds().Dx() != cfg.Width || decoded.Bounds().Dy() != cfg.Height {
 			return m, ErrUnsupported
 		}
@@ -54,7 +82,11 @@ func Inspect(ctx context.Context, _ string, content []byte) (Metadata, error) {
 	// expand the measured input. Context, output and allocation remain bounded.
 	bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	cmd := byteProbeCommand(bounded, content, "-show_entries", "format=format_name,duration:stream=codec_type,codec_name,width,height,duration,avg_frame_rate,time_base", "-of", "json", "pipe:0")
+	reader, err = mediaProbeReader(bounded, content, size)
+	if err != nil {
+		return m, err
+	}
+	cmd := byteProbeCommand(bounded, reader, "-show_entries", "format=format_name,duration:stream=codec_type,codec_name,width,height,duration,avg_frame_rate,time_base", "-of", "json", "pipe:0")
 	var out cappedWriter
 	cmd.Stdout = &out
 	cmd.Stderr = &discardWriter{}
@@ -111,7 +143,11 @@ func Inspect(ctx context.Context, _ string, content []byte) (Metadata, error) {
 	// claimed file length. The streaming accumulator retains one bounded line.
 	if m.Kind == "audio" && duration <= 0 && finite(audioTimeBase) && audioTimeBase > 0 {
 		var ticks packetDurationWriter
-		packets := byteProbeCommand(bounded, content, "-select_streams", "a:0", "-show_entries", "packet=duration", "-of", "csv=p=0", "pipe:0")
+		reader, err = mediaProbeReader(bounded, content, size)
+		if err != nil {
+			return m, err
+		}
+		packets := byteProbeCommand(bounded, reader, "-select_streams", "a:0", "-show_entries", "packet=duration", "-of", "csv=p=0", "pipe:0")
 		packets.Stdout, packets.Stderr = &ticks, &discardWriter{}
 		if err := packets.Run(); err != nil {
 			if bounded.Err() != nil {
@@ -158,10 +194,32 @@ func Inspect(ctx context.Context, _ string, content []byte) (Metadata, error) {
 	return m, nil
 }
 
-func byteProbeCommand(ctx context.Context, content []byte, arguments ...string) *exec.Cmd {
+type probeContextReader struct {
+	ctx    context.Context
+	source io.Reader
+}
+
+func (r probeContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.source.Read(p)
+}
+
+func mediaProbeReader(ctx context.Context, content io.ReadSeeker, size int64) (io.Reader, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := content.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.LimitReader(probeContextReader{ctx, content}, size), nil
+}
+
+func byteProbeCommand(ctx context.Context, content io.Reader, arguments ...string) *exec.Cmd {
 	args := []string{"-v", "error", "-max_alloc", "67108864", "-protocol_whitelist", "pipe", "-enable_drefs", "0", "-use_absolute_path", "0", "-probesize", "8388608", "-analyzeduration", "5000000"}
 	cmd := exec.CommandContext(ctx, "ffprobe", append(args, arguments...)...)
-	cmd.Stdin = bytes.NewReader(content)
+	cmd.Stdin = content
 	return cmd
 }
 

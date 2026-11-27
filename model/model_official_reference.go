@@ -118,8 +118,12 @@ func ValidateOfficialReferenceRow(kind string, row ModelOfficialReferenceRow) er
 	if err != nil || date.Format("2006-01-02") != ref.CheckedAt || ref.CheckedAt > today {
 		return errors.New("Official reference checked date must be a valid date no later than today")
 	}
-	source, err := url.Parse(ref.SourceURL)
-	if err != nil || len(ref.SourceURL) > 2048 || !validReferenceText(ref.SourceURL, 2048, true) || strings.TrimSpace(ref.SourceURL) != ref.SourceURL || source.Scheme != "https" || source.Hostname() == "" || source.User != nil || (source.Port() != "" && source.Port() != "443") {
+	return validateOfficialReferenceSourceURL(ref.SourceURL)
+}
+
+func validateOfficialReferenceSourceURL(sourceURL string) error {
+	source, err := url.Parse(sourceURL)
+	if err != nil || len(sourceURL) > 2048 || !validReferenceText(sourceURL, 2048, true) || strings.TrimSpace(sourceURL) != sourceURL || source.Scheme != "https" || source.Hostname() == "" || source.User != nil || (source.Port() != "" && source.Port() != "443") {
 		return errors.New("Official reference source must be a public HTTPS URL without credentials")
 	}
 	host := strings.ToLower(strings.TrimSuffix(source.Hostname(), "."))

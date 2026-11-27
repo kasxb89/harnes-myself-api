@@ -3,12 +3,19 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -184,6 +191,255 @@ type countedMediaAssetReader struct{ reads atomic.Int32 }
 func (r *countedMediaAssetReader) Read([]byte) (int, error) {
 	r.reads.Add(1)
 	return 0, io.EOF
+}
+
+type mediaAssetPaddingReader struct{}
+
+func (mediaAssetPaddingReader) Read(p []byte) (int, error) {
+	if len(p) > 1<<20 {
+		return 0, errors.New("synthetic source rejects a whole-file allocation")
+	}
+	clear(p)
+	return len(p), nil
+}
+
+func TestMediaGenerationUploadCapAndStreamingOriginalAsset(t *testing.T) {
+	db, actor, content, root := mediaAssetResourceFixture(t)
+	const modelID = "ycapi-minimax-h3-image"
+	const size = (50 << 20) + 1
+	newSource := func() io.Reader {
+		return io.MultiReader(bytes.NewReader(content), io.LimitReader(mediaAssetPaddingReader{}, int64(size-len(content))))
+	}
+	t.Setenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES", "")
+	require.NoError(t, os.Unsetenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES"))
+	cap, err := MediaGenerationMaxUploadBytes()
+	require.NoError(t, err)
+	assert.Equal(t, DefaultMediaGenerationMaxUploadBytes, cap)
+	clientID := uuid.NewString()
+	_, err = StoreMediaGenerationAsset(t.Context(), db, actor, modelID, clientID, newSource())
+	require.Error(t, err, "a larger native model limit cannot raise the default global cap")
+	incoming, err := filepath.Glob(filepath.Join(root, ".incoming-*"))
+	require.NoError(t, err)
+	assert.Empty(t, incoming)
+
+	t.Setenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES", strconv.Itoa(64<<20))
+	asset, err := StoreMediaGenerationAsset(t.Context(), db, actor, modelID, clientID, newSource())
+	require.NoError(t, err)
+	assert.EqualValues(t, size, asset.Bytes)
+	hash := sha256.New()
+	_, err = io.Copy(hash, newSource())
+	require.NoError(t, err)
+	assert.Equal(t, hex.EncodeToString(hash.Sum(nil)), asset.SHA256)
+	bindings, err := ReadMediaGenerationAssets(t.Context(), db, actor, modelID, map[string][]string{"images": {asset.ID}})
+	require.NoError(t, err)
+	assert.Equal(t, asset.ID, bindings["images"][0].ID)
+	original, err := FindMediaGenerationAsset(t.Context(), db, actor, modelID, clientID)
+	require.NoError(t, err)
+	assert.Equal(t, asset.ID, original.ID, "the original UUID remains the upload recovery key")
+	file, err := openMediaNativeAsset(t.Context(), filepath.Join(root, asset.ObjectKey), *asset)
+	require.NoError(t, err)
+	defer file.Close()
+	reader, writer := io.Pipe()
+	multipartWriter := multipart.NewWriter(writer)
+	done := make(chan error, 1)
+	go func() {
+		err := writeMediaNativeAsset(t.Context(), multipartWriter, file, *asset)
+		_ = writer.CloseWithError(err)
+		done <- err
+		close(done)
+	}()
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close(); <-done })
+	multipartReader := multipart.NewReader(reader, multipartWriter.Boundary())
+	part, err := multipartReader.NextPart()
+	require.NoError(t, err)
+	assert.Equal(t, "file", part.FormName())
+	hash.Reset()
+	count, err := io.Copy(hash, part)
+	require.NoError(t, err)
+	assert.Equal(t, asset.Bytes, count)
+	assert.Equal(t, asset.SHA256, hex.EncodeToString(hash.Sum(nil)))
+	part, err = multipartReader.NextPart()
+	require.NoError(t, err)
+	assert.Equal(t, "purpose", part.FormName())
+	purpose, err := io.ReadAll(part)
+	require.NoError(t, err)
+	assert.Equal(t, "generation", string(purpose))
+	_, err = multipartReader.NextPart()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, <-done)
+
+	t.Setenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES", strconv.Itoa(50<<20))
+	_, err = ReadMediaGenerationAssets(t.Context(), db, actor, modelID, map[string][]string{"images": {asset.ID}})
+	require.Error(t, err, "new quote inputs honor the current global cap")
+	_, err = openMediaNativeAsset(t.Context(), filepath.Join(root, asset.ObjectKey), *asset)
+	require.Error(t, err)
+	original, err = FindMediaGenerationAsset(t.Context(), db, actor, modelID, clientID)
+	require.NoError(t, err, "lowering the upload cap does not erase an original upload receipt")
+	assert.Equal(t, asset.ID, original.ID)
+}
+
+func TestMediaGenerationUploadCapRejectsInvalidConfigAndNativeMIMELimits(t *testing.T) {
+	for _, value := range []string{"", "0", "-1", "1.5", "1073741825", "not-a-number"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES", value)
+			_, err := MediaGenerationMaxUploadBytes()
+			require.ErrorIs(t, err, ErrMediaGenerationUploadConfig)
+		})
+	}
+	t.Setenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES", strconv.Itoa(1<<30))
+	limit, err := mediaGenerationAssetLimit("ycapi-seedance-2-5", "video", "video/mp4")
+	require.NoError(t, err)
+	assert.EqualValues(t, 200<<20, limit)
+	limit, err = mediaGenerationAssetLimit("ycapi-seedance-2-5", "image", "image/png")
+	require.NoError(t, err)
+	assert.EqualValues(t, 5<<20, limit)
+	_, err = mediaGenerationAssetLimit("ycapi-seedance-2-5", "audio", "audio/mp4")
+	require.Error(t, err, "a native MP3/WAV role does not accept M4A")
+	db, actor, content, root := mediaAssetResourceFixture(t)
+	_, err = StoreMediaGenerationAsset(t.Context(), db, actor, "ycapi-seedance-2-5", uuid.NewString(),
+		io.MultiReader(bytes.NewReader(content), io.LimitReader(mediaAssetPaddingReader{}, 5<<20)))
+	require.Error(t, err, "the real measured image MIME uses the smaller image cap")
+	files, err := os.ReadDir(root)
+	require.NoError(t, err)
+	assert.Empty(t, files)
+	assert.Empty(t, mediaAssetProcessingSlots)
+}
+
+func TestMediaGenerationNativeAssetWriterJoinsAfterInterruptedBody(t *testing.T) {
+	content := bytes.Repeat([]byte("synthetic-original-media"), 4096)
+	sum := sha256.Sum256(content)
+	asset := model.MediaGenerationAsset{Bytes: int64(len(content)), SHA256: hex.EncodeToString(sum[:]), MIMEType: "video/mp4"}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	reader, pipe := io.Pipe()
+	writer := multipart.NewWriter(pipe)
+	done := make(chan error, 1)
+	go func() {
+		err := writeMediaNativeAsset(ctx, writer, bytes.NewReader(content), asset)
+		_ = pipe.CloseWithError(err)
+		done <- err
+		close(done)
+	}()
+	t.Cleanup(func() { _ = reader.Close(); _ = pipe.Close(); <-done })
+	_, err := multipart.NewReader(reader, writer.Boundary()).NextPart()
+	require.NoError(t, err, "the producer has started the actual file part")
+	cancel()
+	_ = reader.CloseWithError(ctx.Err())
+	_ = pipe.CloseWithError(ctx.Err())
+	require.Error(t, <-done)
+}
+
+type mediaAssetUploadTransport func(*http.Request) (*http.Response, error)
+
+func (f mediaAssetUploadTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestMediaGenerationNativeAssetStreamKeepsOriginalUploadFence(t *testing.T) {
+	for _, outcome := range []string{"ready", "lost-ack", "early-response", "cancelled"} {
+		t.Run(outcome, func(t *testing.T) {
+			db, actor, content, _ := mediaAssetResourceFixture(t)
+			require.NoError(t, model.MigrateMediaGenerationUpload(db))
+			asset, err := StoreMediaGenerationAsset(t.Context(), db, actor, "ycapi-gpt-image-2.6-flare", uuid.NewString(), bytes.NewReader(content))
+			require.NoError(t, err)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			posts := 0
+			originalClient := httpClient
+			httpClient = &http.Client{Transport: mediaAssetUploadTransport(func(request *http.Request) (*http.Response, error) {
+				posts++
+				require.Equal(t, "https://ycapi.token6688.com/v1/files", request.URL.String())
+				require.Equal(t, http.MethodPost, request.Method)
+				response := &http.Response{StatusCode: http.StatusCreated, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(fmt.Sprintf(
+					`{"id":"synthetic-file","object":"file","url":"https://assets.token6688.com/sha256/%s.png","content_type":%q,"bytes":%d}`,
+					asset.SHA256, asset.MIMEType, asset.Bytes)))}
+				if outcome == "early-response" {
+					return response, nil
+				}
+				if outcome == "cancelled" {
+					_, values, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+					require.NoError(t, err)
+					_, err = multipart.NewReader(request.Body, values["boundary"]).NextPart()
+					require.NoError(t, err)
+					cancel()
+					return nil, ctx.Err()
+				}
+				body, err := io.ReadAll(request.Body)
+				require.NoError(t, err)
+				require.EqualValues(t, len(body), request.ContentLength)
+				_, values, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+				require.NoError(t, err)
+				parts := multipart.NewReader(bytes.NewReader(body), values["boundary"])
+				part, err := parts.NextPart()
+				require.NoError(t, err)
+				require.Equal(t, "file", part.FormName())
+				actual, err := io.ReadAll(part)
+				require.NoError(t, err)
+				require.Equal(t, content, actual)
+				part, err = parts.NextPart()
+				require.NoError(t, err)
+				require.Equal(t, "purpose", part.FormName())
+				actual, err = io.ReadAll(part)
+				require.NoError(t, err)
+				require.Equal(t, "generation", string(actual))
+				_, err = parts.NextPart()
+				require.ErrorIs(t, err, io.EOF)
+				if outcome == "lost-ack" {
+					_ = response.Body.Close()
+					return nil, errors.New("synthetic acknowledgement lost")
+				}
+				return response, nil
+			})}
+			t.Cleanup(func() { httpClient = originalClient })
+			route := MediaNativeRoute{BaseURL: "https://ycapi.token6688.com", Credential: "synthetic-only", CredentialDigest: "synthetic-digest", ConfigHash: "synthetic-config"}
+			client, err := mediaNativeHTTPClient(route)
+			require.NoError(t, err)
+			_, fakeTransport := client.Transport.(mediaAssetUploadTransport)
+			require.True(t, fakeTransport, "this test must not acquire a network transport")
+			url, err := resolveMediaNativeAsset(ctx, db, route, *asset)
+			var receipt model.MediaGenerationUpload
+			require.NoError(t, db.Where("asset_id = ?", asset.ID).Take(&receipt).Error)
+			if outcome == "ready" {
+				require.NoError(t, err)
+				require.Equal(t, "ready", receipt.State)
+				require.NotEmpty(t, url)
+			} else {
+				require.Error(t, err)
+				require.Equal(t, "unknown", receipt.State)
+			}
+			_, again := resolveMediaNativeAsset(t.Context(), db, route, *asset)
+			if outcome == "ready" {
+				require.NoError(t, again)
+			} else {
+				require.Error(t, again)
+			}
+			assert.Equal(t, 1, posts, "the original sending/unknown fence never sends a second upload")
+			var count int64
+			require.NoError(t, db.Model(&model.MediaGenerationUpload{}).Count(&count).Error)
+			assert.EqualValues(t, 1, count)
+		})
+	}
+}
+
+func TestCleanupExpiredMediaGenerationAssetsIgnoresNewUploadLimit(t *testing.T) {
+	for _, limit := range []string{"1", "invalid"} {
+		t.Run(limit, func(t *testing.T) {
+			db, actor, content, root := mediaAssetResourceFixture(t)
+			asset, err := StoreMediaGenerationAsset(t.Context(), db, actor, "ycapi-gpt-image-2.6-flare", uuid.NewString(), bytes.NewReader(content))
+			require.NoError(t, err)
+			require.NoError(t, db.Model(asset).Update("expires_at", 1).Error)
+			t.Setenv("MEDIA_GENERATION_MAX_UPLOAD_BYTES", limit)
+			count, err := CleanupExpiredMediaGenerationAssets(t.Context(), db, 1)
+			require.NoError(t, err)
+			assert.Equal(t, 1, count)
+			_, err = os.Stat(filepath.Join(root, asset.ObjectKey))
+			require.ErrorIs(t, err, os.ErrNotExist)
+			var receipt model.MediaGenerationAsset
+			require.NoError(t, db.First(&receipt, "id = ?", asset.ID).Error)
+			assert.Equal(t, "expired", receipt.State)
+			assert.Equal(t, asset.SHA256, receipt.SHA256)
+		})
+	}
 }
 
 func TestMediaGenerationAssetProcessingWaitsBeforeReadingAndHonorsContext(t *testing.T) {

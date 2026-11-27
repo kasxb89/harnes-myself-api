@@ -35,6 +35,19 @@ func TestInspectFeedsOnlyActualBytesToPipeAndDisablesExternalReferences(t *testi
 	assert.True(t, strings.HasSuffix(string(args), "pipe:0\n"))
 	assert.NotContains(t, string(args), path)
 	assert.NotContains(t, string(args), "file,pipe")
+	require.NoError(t, os.WriteFile(path, content, 0600))
+	file, err := os.Open(path)
+	require.NoError(t, err)
+	defer file.Close()
+	_, err = InspectFile(t.Context(), file, int64(len(content)))
+	require.NoError(t, err)
+	actual, err = os.ReadFile(input)
+	require.NoError(t, err)
+	assert.Equal(t, content, actual)
+	args, err = os.ReadFile(arguments)
+	require.NoError(t, err)
+	assert.Contains(t, string(args), "-protocol_whitelist\npipe\n")
+	assert.NotContains(t, string(args), path)
 }
 
 func TestInspectRejectsExternalPlaylistAndCanceledContext(t *testing.T) {

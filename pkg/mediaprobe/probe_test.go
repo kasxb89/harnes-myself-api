@@ -30,6 +30,18 @@ func TestInspectActualPNGAndTruncatedPayload(t *testing.T) {
 	require.Error(t, err)
 	_, err = Inspect(t.Context(), p, []byte("<svg onload=evil>"))
 	require.Error(t, err)
+	file, err := os.OpenFile(p, os.O_RDWR, 0600)
+	require.NoError(t, err)
+	defer file.Close()
+	_, err = InspectFile(t.Context(), file, int64(b.Len()-1))
+	require.Error(t, err)
+	require.NoError(t, file.Truncate(MaxBytes+1))
+	_, err = InspectFile(t.Context(), file, MaxBytes)
+	require.Error(t, err)
+	metadata, err = InspectFile(t.Context(), file, MaxBytes+1)
+	require.NoError(t, err, "a private large file is decoded without a whole-file byte slice")
+	require.Equal(t, "image/png", metadata.MIMEType)
+	require.Equal(t, 24, metadata.Width)
 }
 func TestInspectActualMP4AndWAVWithoutClientMeasurements(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {

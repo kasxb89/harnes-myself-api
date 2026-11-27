@@ -9528,6 +9528,10 @@
     "Models, usage and requests, in one place.": "Модели, расход и запросы в одном месте.",
     "System reduced motion is enabled": "В системе включено уменьшение движения",
     "Workspace effects": "Эффекты рабочего пространства",
-    "Data notes": "О данных"
+    "Data notes": "О данных",
+    "Select a supported media retail policy": "Выберите поддерживаемую политику цен на медиа",
+    "A disabled media retail policy cannot retain an exception": "Отключённая политика цен на медиа не может содержать исключения",
+    "Bind the media retail policy to the current price, route, qualification, and reviewed evidence": "Привяжите политику цен на медиа к текущей цене, каналу, проверке возможностей и рассмотренным доказательствам",
+    "Media retail exceptions require distinct exact specifications and a same-model official total": "Исключения цен на медиа требуют отдельных точных спецификаций и официальной итоговой цены той же модели"
   }
 }

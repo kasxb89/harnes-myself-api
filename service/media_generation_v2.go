@@ -37,11 +37,12 @@ type MediaGenerationRequest struct {
 }
 
 type MediaGenerationFrozen struct {
-	Request      MediaGenerationRequest `json:"request"`
-	Parameters   map[string]any         `json:"parameters"`
-	Facts        map[string]any         `json:"facts"`
-	CostCNY      string                 `json:"cost_cny"`
-	DryRunSHA256 string                 `json:"dry_run_sha256"`
+	Request            MediaGenerationRequest `json:"request"`
+	Parameters         map[string]any         `json:"parameters"`
+	Facts              map[string]any         `json:"facts"`
+	CostCNY            string                 `json:"cost_cny"`
+	DryRunSHA256       string                 `json:"dry_run_sha256"`
+	RetailPolicySHA256 string                 `json:"retail_policy_sha256,omitempty"`
 }
 
 type MediaGenerationQuoteReply struct {
@@ -689,12 +690,14 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if err != nil {
 		return nil, err
 	}
-	// Do not silently sell a new expensive input combination at a stale short
-	// output tariff. Existing ordinary endpoints keep their configured prices.
-	if retail.LessThan(cost) {
-		return nil, errors.New("model_price_unavailable")
+	policySHA, err := validateMediaGenerationRetailCost(record.Definition, contract, normalized, facts, metadata, expr, cost, retail, ratio)
+	if err != nil {
+		return nil, err
 	}
-	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA}
+	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA, RetailPolicySHA256: policySHA}
+	if policySHA != "" {
+		pricingVersion = MediaGenerationDigest([]any{pricingVersion, policySHA})
+	}
 	rawFacts, _ := common.Marshal(frozen)
 	rawParams, _ := common.Marshal(normalized)
 	candidate := &model.MediaGenerationQuote{QuoteID: "mgq_" + uuid.NewString(), UserID: a.UserID, TokenID: a.TokenID, OwnerDigest: a.OwnerDigest, ClientOpID: request.ClientOperationID, RequestSHA256: requestSHA, MaterialSHA256: materialSHA, Model: request.Model, Kind: contract.Kind, ChannelID: route.ChannelID, UsingGroup: usingGroup, CredentialDigest: route.CredentialDigest, ChannelConfigHash: route.ConfigHash, ModelConfigVersion: version, PricingVersion: pricingVersion, PluginKey: "ycapi", PluginVersion: plugin.Meta.Version, PluginSourceHash: plugin.SourceHash, SupplierLane: native.LaneID, NativeParamsJSON: model.LongText(rawParams), UsageFactsJSON: model.LongText(rawFacts), CostCNY: cost.String(), RetailCNY: retail.String(), ReserveQuota: int64(quota), ExpiresAt: time.Now().Add(2 * time.Minute).Unix()}
@@ -749,7 +752,7 @@ func mediaGenerationNativeCost(response map[string]any, expectedLane string) (de
 	return cost, nil
 }
 func mediaGenerationRetail(expr string, facts map[string]any, ratio float64) (int, decimal.Decimal, string, error) {
-	if ratio < 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) || common.QuotaPerUnit <= 0 || operation_setting.USDExchangeRate <= 0 {
+	if ratio < 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) || common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || operation_setting.USDExchangeRate <= 0 || math.IsNaN(operation_setting.USDExchangeRate) || math.IsInf(operation_setting.USDExchangeRate, 0) {
 		return 0, decimal.Zero, "", errors.New("invalid price conversion")
 	}
 	snap := &billingexpr.BillingSnapshot{ExprString: expr, ExprHash: billingexpr.ExprHashString(expr), GroupRatio: ratio, QuotaPerUnit: common.QuotaPerUnit, TaskUsageBilling: true, BillingTime: time.Now().Unix()}
@@ -760,6 +763,99 @@ func mediaGenerationRetail(expr string, facts map[string]any, ratio float64) (in
 	retail := decimal.NewFromInt(int64(result.ActualQuotaAfterGroup)).Div(decimal.NewFromFloat(common.QuotaPerUnit)).Mul(decimal.NewFromFloat(operation_setting.USDExchangeRate))
 	return result.ActualQuotaAfterGroup, retail, MediaGenerationDigest([]any{expr, ratio, common.QuotaPerUnit, operation_setting.USDExchangeRate}), nil
 }
+
+// MediaGenerationRetailSpecificationSHA binds audited price evidence to every
+// native selection, service-derived quantity and ordered probed measurements,
+// without content, asset URLs, file identities or credentials.
+func MediaGenerationRetailSpecificationSHA(contract ycapi.MediaContract, params, facts map[string]any, metadata map[string]ycapi.MediaAssetMetadata) string {
+	fields, err := ycapi.AssetFields(contract)
+	if err != nil {
+		return ""
+	}
+	assets := map[string]bool{}
+	measurements := map[string][]map[string]any{}
+	for _, field := range fields {
+		assets[field.Name] = true
+		value, present := params[field.Name]
+		if !present {
+			continue
+		}
+		var refs []string
+		switch value := value.(type) {
+		case string:
+			refs = []string{value}
+		case []string:
+			refs = value
+		case []any:
+			for _, item := range value {
+				ref, ok := item.(string)
+				if !ok {
+					return ""
+				}
+				refs = append(refs, ref)
+			}
+		default:
+			return ""
+		}
+		for _, ref := range refs {
+			meta, ok := metadata[ref]
+			if !ok || meta.Kind != field.MediaKind || meta.MIMEType == "" || meta.Width < 0 || meta.Height < 0 || meta.DurationSeconds < 0 || math.IsNaN(meta.DurationSeconds) || math.IsInf(meta.DurationSeconds, 0) || meta.FPS < 0 || math.IsNaN(meta.FPS) || math.IsInf(meta.FPS, 0) || meta.Kind != "audio" && (meta.Width == 0 || meta.Height == 0) || meta.Kind != "image" && meta.DurationSeconds == 0 || meta.Kind == "video" && meta.FPS == 0 {
+				return ""
+			}
+			measurements[field.Name] = append(measurements[field.Name], map[string]any{"kind": meta.Kind, "mime_type": meta.MIMEType, "width": meta.Width, "height": meta.Height, "duration_seconds": meta.DurationSeconds, "fps": meta.FPS})
+		}
+	}
+	selection := map[string]any{}
+	for name, value := range params {
+		if name == "prompt" || name == "negative_prompt" || assets[name] {
+			continue
+		}
+		field, known := contract.Parameters[name]
+		// An opaque extra string has no reviewed price vocabulary. Do not hash
+		// possible content/credentials or silently treat it as a wildcard.
+		if !known || field.Type == "string" && value != "" {
+			return ""
+		}
+		selection[name] = value
+	}
+	return MediaGenerationDigest([]any{contract.ID, selection, facts, measurements})
+}
+
+func validateMediaGenerationRetailCost(def model.ModelConfiguration, contract ycapi.MediaContract, params, facts map[string]any, metadata map[string]ycapi.MediaAssetMetadata, expr string, cost, retail decimal.Decimal, ratio float64) (string, error) {
+	if !retail.LessThan(cost) {
+		return "", nil
+	}
+	// Discounted loss, an unknown combination, and ordinary unreviewed tariffs
+	// remain blocked. This policy never calculates or replaces a retail price.
+	if ratio < 1 || def.MediaExecution == nil || model.ValidateModelMediaExecutionConfiguration(def) != nil {
+		return "", errors.New("model_price_unavailable")
+	}
+	policy := def.MediaExecution.RetailPolicy
+	if policy == nil || policy.Policy != "official_cap" || policy.ExpressionSHA256 != billingexpr.ExprHashString(expr) || policy.ContractSHA256 != mediaGenerationContractSHA(contract) {
+		return "", errors.New("model_price_unavailable")
+	}
+	specification := MediaGenerationRetailSpecificationSHA(contract, params, facts, metadata)
+	for _, rule := range policy.Rules {
+		if rule.SpecificationSHA256 != specification {
+			continue
+		}
+		official, err := decimal.NewFromString(rule.OfficialTotalCNY)
+		if err != nil || !cost.GreaterThan(official) {
+			break
+		}
+		baseQuota, _, _, err := mediaGenerationRetail(expr, facts, 1)
+		if err != nil {
+			break
+		}
+		capQuota, clamp := common.QuotaFromDecimalChecked(official.Div(decimal.NewFromFloat(operation_setting.USDExchangeRate)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		if clamp == nil && capQuota > 0 && baseQuota == capQuota {
+			return MediaGenerationDigest(policy), nil
+		}
+		break
+	}
+	return "", errors.New("model_price_unavailable")
+}
+
 func mediaGenerationUsage(contract ycapi.MediaContract, params map[string]any, assets map[string]ycapi.MediaAssetMetadata, intent ycapi.MediaRuntimeIntent) map[string]any {
 	facts := map[string]any{"input_video_seconds": float64(0), "input_audio_seconds": float64(0), "input_image_count": float64(0), "intent": string(intent), "resolution": "", "quality": "", "mode": "", "aspect_ratio": "", "spec": "media-v2", "generate_audio": false, "draft": false}
 	fields, _ := ycapi.AssetFields(contract)

@@ -36,6 +36,8 @@ func mediaV2Success(c *gin.Context, data any) {
 func mediaV2Error(c *gin.Context, err error) {
 	status, code, message := http.StatusUnprocessableEntity, "invalid_parameters", "所选参数或参考素材不可用，请保留原任务后调整。"
 	switch {
+	case errors.Is(err, service.ErrMediaGenerationUploadConfig):
+		status, code, message = 503, "upload_unavailable", "当前规格暂不可用，请保留素材并选择其他规格。"
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		status, code, message = 404, "operation_unknown", "未查到该操作的本地回执；请勿据此重复生成。"
 	case errors.Is(err, model.ErrMediaGenerationQuoteConflict):
@@ -77,16 +79,26 @@ func decodeMediaV2(c *gin.Context, v any) error {
 }
 
 func MediaGenerationModels(c *gin.Context) {
+	maxUploadBytes, err := service.MediaGenerationMaxUploadBytes()
+	if err != nil {
+		mediaV2Error(c, err)
+		return
+	}
 	models, err := service.MediaGenerationModels(c)
 	if err != nil {
 		mediaV2Error(c, err)
 		return
 	}
-	mediaV2Success(c, gin.H{"models": models, "capabilities": gin.H{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true}})
+	mediaV2Success(c, gin.H{"models": models, "capabilities": gin.H{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "max_upload_bytes": maxUploadBytes}})
 }
 
 func UploadMediaGenerationAsset(c *gin.Context) {
 	a, err := service.MediaGenerationActorFromContext(c)
+	if err != nil {
+		mediaV2Error(c, err)
+		return
+	}
+	maxUploadBytes, err := service.MediaGenerationMaxUploadBytes()
 	if err != nil {
 		mediaV2Error(c, err)
 		return
@@ -103,7 +115,7 @@ func UploadMediaGenerationAsset(c *gin.Context) {
 	defer cancel()
 	c.Request = c.Request.WithContext(ctx)
 	// A request context alone does not unblock a slow multipart body read.
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 51<<20)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadBytes+(1<<20))
 	body := c.Request.Body
 	stopClosingBody := context.AfterFunc(ctx, func() { _ = body.Close() })
 	defer stopClosingBody()
@@ -117,6 +129,10 @@ func UploadMediaGenerationAsset(c *gin.Context) {
 		return
 	}
 	name, clientID := c.PostForm("model"), c.PostForm("client_asset_id")
+	if c.Request.MultipartForm.File["file"][0].Size > maxUploadBytes {
+		mediaV2Error(c, errors.New("invalid upload"))
+		return
+	}
 	if err = selectMediaV2Channel(c, name, nil); err != nil {
 		mediaV2Error(c, err)
 		return

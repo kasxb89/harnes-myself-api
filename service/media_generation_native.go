@@ -110,24 +110,21 @@ func resolveMediaNativeAsset(ctx context.Context, db *gorm.DB, route MediaNative
 	if err != nil {
 		return "", err
 	}
-	content, err := osReadMediaAsset(path, a)
+	file, err := openMediaNativeAsset(ctx, path, a)
 	if err != nil {
 		return "", err
 	}
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	header := textproto.MIMEHeader{}
-	header.Set("Content-Disposition", `form-data; name="file"; filename="reference`+mediaNativeExtension(a.MIMEType)+`"`)
-	header.Set("Content-Type", a.MIMEType)
-	part, err := writer.CreatePart(header)
+	defer file.Close()
+	// Measure only the multipart framing; source bytes remain on the private
+	// file and are copied through a pipe under the original upload fence.
+	var framing bytes.Buffer
+	framingWriter := multipart.NewWriter(&framing)
+	_, err = framingWriter.CreatePart(mediaNativeAssetHeader(a.MIMEType))
 	if err == nil {
-		_, err = part.Write(content)
+		err = framingWriter.WriteField("purpose", "generation")
 	}
 	if err == nil {
-		err = writer.WriteField("purpose", "generation")
-	}
-	if err == nil {
-		err = writer.Close()
+		err = framingWriter.Close()
 	}
 	if err != nil {
 		return "", err
@@ -136,17 +133,49 @@ func resolveMediaNativeAsset(ctx context.Context, db *gorm.DB, route MediaNative
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(route.BaseURL, "/")+"/v1/files", &body)
+	reader, pipe := io.Pipe()
+	writer := multipart.NewWriter(pipe)
+	if err = writer.SetBoundary(framingWriter.Boundary()); err != nil {
+		_ = reader.Close()
+		_ = pipe.Close()
+		return "", err
+	}
+	done := make(chan error, 1)
+	go func() {
+		err := writeMediaNativeAsset(ctx, writer, file, a)
+		_ = pipe.CloseWithError(err)
+		done <- err
+	}()
+	joined := false
+	stopClosing := context.AfterFunc(ctx, func() {
+		_ = reader.CloseWithError(ctx.Err())
+		_ = pipe.CloseWithError(ctx.Err())
+	})
+	defer func() {
+		stopClosing()
+		_ = reader.Close()
+		_ = pipe.Close()
+		if !joined {
+			<-done
+		}
+	}()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(route.BaseURL, "/")+"/v1/files", reader)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+route.Credential)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.ContentLength = a.Bytes + int64(framing.Len())
 	resp, err := client.Do(req)
-	if err != nil {
+	_ = reader.Close()
+	producerErr := <-done
+	joined = true
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+	if err != nil || producerErr != nil {
 		return "", errors.New("asset upload outcome unknown")
 	}
-	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
 	if err != nil || len(raw) > 64<<10 || resp.StatusCode != http.StatusCreated {
 		return "", errors.New("asset upload unavailable")
@@ -168,18 +197,54 @@ func resolveMediaNativeAsset(ctx context.Context, db *gorm.DB, route MediaNative
 	state = "ready"
 	return native.URL, nil
 }
-func osReadMediaAsset(path string, a model.MediaGenerationAsset) ([]byte, error) {
+func openMediaNativeAsset(ctx context.Context, path string, a model.MediaGenerationAsset) (*os.File, error) {
+	limit, err := mediaGenerationAssetLimit(a.Model, a.Kind, a.MIMEType)
+	if err != nil {
+		return nil, err
+	}
+	if a.Bytes <= 0 || a.Bytes > limit {
+		return nil, errors.New("asset_not_ready")
+	}
+	info, err := verifyMediaGenerationAssetFile(ctx, path, a)
+	if err != nil {
+		return nil, err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, (50<<20)+1))
-	sum := sha256.Sum256(b)
-	if err != nil || int64(len(b)) != a.Bytes || hex.EncodeToString(sum[:]) != a.SHA256 {
+	current, err := f.Stat()
+	if err != nil || !os.SameFile(info, current) || current.Size() != info.Size() || current.ModTime() != info.ModTime() {
+		_ = f.Close()
 		return nil, errors.New("asset_not_ready")
 	}
-	return b, nil
+	return f, nil
+}
+
+func mediaNativeAssetHeader(mime string) textproto.MIMEHeader {
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", `form-data; name="file"; filename="reference`+mediaNativeExtension(mime)+`"`)
+	header.Set("Content-Type", mime)
+	return header
+}
+
+func writeMediaNativeAsset(ctx context.Context, writer *multipart.Writer, file io.Reader, asset model.MediaGenerationAsset) error {
+	part, err := writer.CreatePart(mediaNativeAssetHeader(asset.MIMEType))
+	if err != nil {
+		return err
+	}
+	hash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(part, hash), io.LimitReader(mediaAssetContextReader{ctx, file}, asset.Bytes+1))
+	if err != nil {
+		return err
+	}
+	if size != asset.Bytes || hex.EncodeToString(hash.Sum(nil)) != asset.SHA256 {
+		return errors.New("asset_not_ready")
+	}
+	if err = writer.WriteField("purpose", "generation"); err != nil {
+		return err
+	}
+	return writer.Close()
 }
 func mediaNativeExtension(m string) string {
 	return map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif", "video/mp4": ".mp4", "video/webm": ".webm", "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/mp4": ".m4a"}[m]

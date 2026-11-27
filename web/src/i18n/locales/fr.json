@@ -9528,6 +9528,10 @@
     "Models, usage and requests, in one place.": "Modèles, utilisation et requêtes, au même endroit.",
     "System reduced motion is enabled": "La réduction des animations du système est activée",
     "Workspace effects": "Animations de l’espace de travail",
-    "Data notes": "Notes sur les données"
+    "Data notes": "Notes sur les données",
+    "Select a supported media retail policy": "Sélectionnez une politique de prix média prise en charge",
+    "A disabled media retail policy cannot retain an exception": "Une politique de prix média désactivée ne peut conserver aucune exception",
+    "Bind the media retail policy to the current price, route, qualification, and reviewed evidence": "Associez la politique de prix média au tarif, au canal, à la qualification et aux justificatifs examinés actuels",
+    "Media retail exceptions require distinct exact specifications and a same-model official total": "Les exceptions de prix média exigent des spécifications exactes distinctes et un montant officiel total pour le même modèle"
   }
 }

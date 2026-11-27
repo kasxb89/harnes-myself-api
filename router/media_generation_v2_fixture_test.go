@@ -11,6 +11,7 @@ import (
 	"image/gif"
 	"image/png"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -33,12 +35,99 @@ import (
 	"github.com/QuantumNous/new-api/plugins"
 	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+// Only test databases receive these bindings. The digest identifies the local
+// contract projection, not a paid supplier qualification or production lane.
+func publishSyntheticNativeMediaContracts(t *testing.T, contracts []ycapi.MediaContract) []string {
+	t.Helper()
+	names := make([]string, 0, len(contracts))
+	for _, contract := range contracts {
+		names = append(names, contract.ID)
+	}
+	base := "https://ycapi.token6688.com"
+	channel := model.Channel{Id: 981, Type: constant.ChannelTypeTaskPlugin, Key: "synthetic-v2-provider-" + uuid.NewString(), Name: "本地多模态合成验证渠道", Models: strings.Join(names, ","), Group: "default", Status: common.ChannelStatusEnabled, BaseURL: &base}
+	channel.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "ycapi"})
+	channel.SetOtherSettings(kitdto.ChannelOtherSettings{DisableTaskPollingSleep: true})
+	require.NoError(t, channel.Insert())
+	model.InitChannelCache()
+	for _, contract := range contracts {
+		snapshot, err := model.GetModelConfigurationSnapshot(contract.ID)
+		require.NoError(t, err)
+		require.Len(t, snapshot.Entries, 1)
+		entry := snapshot.Entries[0]
+		definition := entry.Definition
+		definition.Kind, definition.Enabled = contract.Kind, contract.Available
+		definition.DisplayName = contract.Name
+		definition.Source = "local synthetic contract projection; NOT paid supplier qualification"
+		definition.Parameters = nil
+		definition.Routes = []model.ModelConfigurationRoute{{ChannelID: channel.Id, Group: "default", UpstreamModel: contract.ID, Enabled: contract.Available}}
+		qualifiedIntents := slices.Clone(ycapi.MediaContractIntents(contract))
+		if contract.NativeID == "grok-imagine-video" {
+			// Its only transform enum is explicitly unavailable and it declares
+			// no video source role. Do not manufacture an executable extend.
+			qualifiedIntents = slices.DeleteFunc(qualifiedIntents, func(intent string) bool { return intent == "transform" })
+		}
+		if contract.Available && len(qualifiedIntents) > 0 {
+			definition.MediaExecution = &model.ModelMediaExecutionConfiguration{SchemaVersion: 1,
+				LaneID: contract.NativeID + "@fixture:only", Intents: qualifiedIntents,
+				QualificationSHA256: service.MediaGenerationDigest(map[string]any{"scope": "yc-native-media-19e03d29", "model": contract.ID, "kind": "synthetic-contract-only", "contract": contract}),
+				ContractSHA256:      service.MediaGenerationDigest(contract), CheckedAt: "2026-11-27"}
+		} else {
+			definition.Enabled, definition.MediaExecution = false, nil
+		}
+		quantity := "image_count"
+		if contract.Kind == "video" {
+			quantity = "seconds"
+		}
+		definition.Pricing = model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": fmt.Sprintf(`tier("synthetic", u("%s") * (0.2 / %g))`, quantity, operation_setting.USDExchangeRate)}
+		require.NoError(t, model.SaveModelConfigurationDraft(snapshot.Revision, entry.BaseVersion, definition), contract.ID)
+	}
+	if len(names) > 0 {
+		snapshot, err := model.GetModelConfigurationSnapshot(names[0])
+		require.NoError(t, err)
+		require.NoError(t, model.PublishModelConfigurations(snapshot.Revision, names, ""))
+	}
+	model.RefreshPricing()
+	return names
+}
+
+func isolateNativeMediaFixtureOptions(t *testing.T) {
+	t.Helper()
+	common.OptionMapRWMutex.Lock()
+	previous := maps.Clone(common.OptionMap)
+	delete(common.OptionMap, model.ModelConfigurationKey)
+	common.OptionMapRWMutex.Unlock()
+	billing := config.GlobalConfig.Get("billing_setting")
+	previousBilling, err := config.ConfigToMap(billing)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, config.UpdateConfigFromMap(billing, previousBilling))
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previous
+		common.OptionMapRWMutex.Unlock()
+	})
+}
+
+func isolateNativeMediaFixtureTables(t *testing.T, f *h3RouterFixture) {
+	t.Helper()
+	// newH3RouterFixture recreates core tables. External dialects reuse their
+	// explicitly disposable test database, so their V2 receipts must belong to
+	// the same fresh test namespace rather than a preceding subtest's UUIDs.
+	dsn := os.Getenv("TEST_H3_SQL_DSN")
+	require.True(t, dsn == "" || dsn == "local" || strings.Contains(dsn, "test_h3_") || strings.Contains(dsn, "/h3_admission"), "only the guarded disposable H3 test database may be reset")
+	require.Same(t, model.DB, f.db)
+	require.NoError(t, f.db.Migrator().DropTable(&model.MediaGenerationUpload{}, &model.MediaGenerationAsset{}, &model.MediaGenerationQuote{}))
+	require.NoError(t, model.MigrateMediaGenerationQuote(f.db))
+	require.NoError(t, model.MigrateMediaGenerationAsset(f.db))
+	require.NoError(t, model.MigrateMediaGenerationUpload(f.db))
+}
 
 // This opt-in server is a NEW synthetic scope. Its normal production router,
 // authentication, database ledger and artifacts run unchanged. The only vendor
@@ -56,10 +145,9 @@ func TestMediaGenerationV2LocalFixtureServer(t *testing.T) {
 	require.NoError(t, err, "never replay this launch; use a new authorized scope")
 	fence.Close()
 	f := newH3RouterFixture(t, 1)
+	isolateNativeMediaFixtureOptions(t)
+	isolateNativeMediaFixtureTables(t, f)
 	t.Setenv("MEDIA_ASSET_STORAGE_DIR", filepath.Join(root, "private-assets"))
-	require.NoError(t, model.MigrateMediaGenerationQuote(f.db))
-	require.NoError(t, model.MigrateMediaGenerationAsset(f.db))
-	require.NoError(t, model.MigrateMediaGenerationUpload(f.db))
 	require.NoError(t, f.db.AutoMigrate(&model.UserSession{}, &model.UserAccessToken{}, &model.AuthFlow{}))
 	common.SessionSecret = "synthetic-media-session-" + uuid.NewString()
 	common.CryptoSecret = "synthetic-media-artifact-" + uuid.NewString()
@@ -68,38 +156,19 @@ func TestMediaGenerationV2LocalFixtureServer(t *testing.T) {
 	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
 	require.NoError(t, err)
 	defer jsplugin.DefaultRegistry.Unregister("ycapi")
-	names := []string{"ycapi-gpt-image-2.6-flare", "ycapi-seedance-2-5"}
-	base := "https://ycapi.token6688.com"
-	ch := model.Channel{Id: 981, Type: constant.ChannelTypeTaskPlugin, Key: "synthetic-v2-provider-" + uuid.NewString(), Name: "本地多模态联调渠道", Models: strings.Join(names, ","), Group: "default", Status: common.ChannelStatusEnabled, BaseURL: &base}
-	ch.SetSetting(kitdto.ChannelSettings{TaskPluginKey: "ycapi"})
-	ch.SetOtherSettings(kitdto.ChannelOtherSettings{DisableTaskPollingSleep: true})
-	require.NoError(t, ch.Insert())
-	model.InitChannelCache()
-	for _, name := range names {
-		contract, ok := ycapi.LookupMediaContract(name)
-		require.True(t, ok)
-		snapshot, e := model.GetModelConfigurationSnapshot(name)
-		require.NoError(t, e)
-		entry := snapshot.Entries[0]
-		def := entry.Definition
-		def.Kind = contract.Kind
-		def.Enabled = true
-		def.DisplayName = contract.Name
-		def.Source = "local isolated simulator; not paid supplier qualification"
-		def.Parameters = nil
-		def.Routes = []model.ModelConfigurationRoute{{ChannelID: 981, Group: "default", UpstreamModel: name, Enabled: true}}
-		def.MediaExecution = &model.ModelMediaExecutionConfiguration{SchemaVersion: 1, LaneID: contract.NativeID + "@fixture:only", Intents: ycapi.MediaContractIntents(contract), QualificationSHA256: strings.Repeat("a", 64), ContractSHA256: service.MediaGenerationDigest(contract), CheckedAt: time.Now().Format("2006-01-02")}
-		quantity := "image_count"
-		if contract.Kind == "video" {
-			quantity = "seconds"
-		}
-		def.Pricing = model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": fmt.Sprintf(`tier("synthetic",u("%s")*(0.2/%g))`, quantity, operation_setting.USDExchangeRate)}
-		require.NoError(t, model.SaveModelConfigurationDraft(snapshot.Revision, entry.BaseVersion, def))
-		snapshot, e = model.GetModelConfigurationSnapshot(name)
-		require.NoError(t, e)
-		require.NoError(t, model.PublishModelConfigurations(snapshot.Revision, []string{name}, ""))
+	contracts, err := ycapi.MediaContracts()
+	require.NoError(t, err)
+	allNative := os.Getenv("MEDIA_V2_FIXTURE_CATALOG") == "all-native-73"
+	if !allNative {
+		contracts = slices.DeleteFunc(contracts, func(contract ycapi.MediaContract) bool {
+			return contract.ID != "ycapi-gpt-image-2.6-flare" && contract.ID != "ycapi-seedance-2-5"
+		})
 	}
-	model.RefreshPricing()
+	names := publishSyntheticNativeMediaContracts(t, contracts)
+	if allNative {
+		catalog, matrix := nativeMediaFixtureProjection(t, f, contracts)
+		writeNativeMediaProjection(t, filepath.Join(root, "native-static"), catalog, matrix)
+	}
 	fetch := system_setting.GetFetchSetting()
 	fetch.EnableSSRFProtection = false // local simulator assets only; transport still denies every unknown target
 	var pngBytes, gifBytes bytes.Buffer

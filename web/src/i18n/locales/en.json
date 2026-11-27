@@ -9528,6 +9528,10 @@
     "Models, usage and requests, in one place.": "Models, usage and requests, in one place.",
     "System reduced motion is enabled": "System reduced motion is enabled",
     "Workspace effects": "Workspace effects",
-    "Data notes": "Data notes"
+    "Data notes": "Data notes",
+    "Select a supported media retail policy": "Select a supported media retail policy",
+    "A disabled media retail policy cannot retain an exception": "A disabled media retail policy cannot retain an exception",
+    "Bind the media retail policy to the current price, route, qualification, and reviewed evidence": "Bind the media retail policy to the current price, route, qualification, and reviewed evidence",
+    "Media retail exceptions require distinct exact specifications and a same-model official total": "Media retail exceptions require distinct exact specifications and a same-model official total"
   }
 }

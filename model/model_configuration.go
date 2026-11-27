@@ -634,6 +634,11 @@ func SaveModelConfigurationDraft(revision, baseVersion string, def ModelConfigur
 			binding.Intents = slices.Clone(binding.Intents)
 			def.MediaExecution = &binding
 		}
+		// Old dashboards may preserve the execution block without knowing its
+		// optional policy. Only an explicit disabled policy revokes an exception.
+		if def.MediaExecution != nil && def.MediaExecution.RetailPolicy == nil && previous.MediaExecution != nil && def.Kind == previous.Kind {
+			def.MediaExecution.RetailPolicy = previous.MediaExecution.RetailPolicy
+		}
 		if def.Kind == "text" && def.DefaultOutputTokens == nil && previous.DefaultOutputTokens != nil {
 			value := *previous.DefaultOutputTokens
 			if def.MaxOutputTokens != nil {

@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +29,60 @@ type MediaGenerationActor struct {
 }
 
 var mediaAssetProcessingSlots = make(chan struct{}, 2)
+
+const DefaultMediaGenerationMaxUploadBytes int64 = 50 << 20
+
+var ErrMediaGenerationUploadConfig = errors.New("media upload configuration unavailable")
+
+// MediaGenerationMaxUploadBytes is the deployed single-file limit. Missing
+// configuration retains 50 MiB; explicit values must be positive and at most
+// the currently supported 1 GiB. Invalid configuration blocks new uploads.
+func MediaGenerationMaxUploadBytes() (int64, error) {
+	raw, present := os.LookupEnv("MEDIA_GENERATION_MAX_UPLOAD_BYTES")
+	if !present {
+		return DefaultMediaGenerationMaxUploadBytes, nil
+	}
+	limit, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || limit <= 0 || limit > model.MaxMediaGenerationAssetBytes {
+		return 0, ErrMediaGenerationUploadConfig
+	}
+	return limit, nil
+}
+
+// An upload has no role field. It must fit at least one native role; binding
+// subsequently enforces the exact role's smaller byte and format limits.
+func mediaGenerationAssetLimit(modelID, kind, mime string) (int64, error) {
+	limit, err := MediaGenerationMaxUploadBytes()
+	if err != nil {
+		return 0, err
+	}
+	contract, ok := ycapi.LookupMediaContract(modelID)
+	if !ok {
+		return 0, errors.New("model_not_available")
+	}
+	fields, err := ycapi.AssetFields(contract)
+	if err != nil {
+		return 0, err
+	}
+	var maximum int64
+	for _, field := range fields {
+		if kind != "" && field.MediaKind != kind || mime != "" && len(field.MIMETypes) > 0 && !slices.Contains(field.MIMETypes, mime) {
+			continue
+		}
+		if field.Maximum != nil && *field.Maximum == 0 {
+			continue
+		}
+		allowed := limit
+		if native := contract.Parameters[field.Name].MaxBytes; native != nil {
+			allowed = min(allowed, *native)
+		}
+		maximum = max(maximum, allowed)
+	}
+	if maximum <= 0 {
+		return 0, mediaprobe.ErrUnsupported
+	}
+	return maximum, nil
+}
 
 func beginMediaAssetProcessing(ctx context.Context) (context.Context, func(), error) {
 	bounded, cancel := context.WithTimeout(ctx, time.Minute)
@@ -94,8 +150,9 @@ func mediaGenerationAssetPath(key string) (string, error) {
 // StoreMediaGenerationAsset performs no provider call or generation. The ready
 // receipt is published only after the exact private file is synced and probed.
 func StoreMediaGenerationAsset(ctx context.Context, db *gorm.DB, a MediaGenerationActor, modelID, clientID string, source io.Reader) (*model.MediaGenerationAsset, error) {
-	if _, ok := ycapi.LookupMediaContract(modelID); !ok {
-		return nil, errors.New("model_not_available")
+	limit, err := mediaGenerationAssetLimit(modelID, "", "")
+	if err != nil {
+		return nil, err
 	}
 	if _, err := model.MediaGenerationAssetOperationKey(a.UserID, a.TokenID, a.OwnerDigest, modelID, clientID); err != nil {
 		return nil, err
@@ -123,31 +180,32 @@ func StoreMediaGenerationAsset(ctx context.Context, db *gorm.DB, a MediaGenerati
 	path := file.Name()
 	defer os.Remove(path)
 	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(mediaAssetContextReader{ctx, source}, mediaprobe.MaxBytes+1))
+	hash := sha256.New()
+	size, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(mediaAssetContextReader{ctx, source}, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) == 0 || len(data) > mediaprobe.MaxBytes {
+	if size == 0 || size > limit {
 		return nil, mediaprobe.ErrUnsupported
-	}
-	if _, err = file.Write(data); err != nil {
-		return nil, err
 	}
 	if err = file.Sync(); err != nil {
 		return nil, err
 	}
-	if err = file.Close(); err != nil {
+	meta, err := mediaprobe.InspectFile(ctx, file, limit)
+	if err != nil {
 		return nil, err
 	}
-	meta, err := mediaprobe.Inspect(ctx, path, data)
-	if err != nil {
+	limit, err = mediaGenerationAssetLimit(modelID, meta.Kind, meta.MIMEType)
+	if err != nil || size > limit {
+		return nil, mediaprobe.ErrUnsupported
+	}
+	if err = file.Close(); err != nil {
 		return nil, err
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(data)
-	hash := hex.EncodeToString(sum[:])
+	digest := hex.EncodeToString(hash.Sum(nil))
 	key := "asset-" + uuid.NewString()
 	target, err := mediaGenerationAssetPath(key)
 	if err != nil {
@@ -156,7 +214,7 @@ func StoreMediaGenerationAsset(ctx context.Context, db *gorm.DB, a MediaGenerati
 	if err = os.Rename(path, target); err != nil {
 		return nil, err
 	}
-	v := model.MediaGenerationAsset{ClientAssetID: clientID, UserID: a.UserID, TokenID: a.TokenID, OwnerDigest: a.OwnerDigest, Model: modelID, State: "ready", Kind: meta.Kind, MIMEType: meta.MIMEType, Bytes: int64(len(data)), SHA256: hash, Width: meta.Width, Height: meta.Height, DurationSeconds: meta.DurationSeconds, FPS: meta.FPS, Format: meta.Format, ObjectKey: key}
+	v := model.MediaGenerationAsset{ClientAssetID: clientID, UserID: a.UserID, TokenID: a.TokenID, OwnerDigest: a.OwnerDigest, Model: modelID, State: "ready", Kind: meta.Kind, MIMEType: meta.MIMEType, Bytes: size, SHA256: digest, Width: meta.Width, Height: meta.Height, DurationSeconds: meta.DurationSeconds, FPS: meta.FPS, Format: meta.Format, ObjectKey: key}
 	actual, err := model.InsertMediaGenerationAsset(db.WithContext(ctx), v)
 	// A lost database acknowledgement may follow a committed insert. Keep its
 	// bytes unless a returned receipt proves this is a different duplicate file.
@@ -183,6 +241,11 @@ func FindMediaGenerationAsset(ctx context.Context, db *gorm.DB, a MediaGeneratio
 }
 
 func ReadMediaGenerationAssets(ctx context.Context, db *gorm.DB, a MediaGenerationActor, modelID string, bindings map[string][]string) (map[string][]model.MediaGenerationAsset, error) {
+	if len(bindings) > 0 {
+		if _, err := MediaGenerationMaxUploadBytes(); err != nil {
+			return nil, err
+		}
+	}
 	ctx, release, err := beginMediaAssetProcessing(ctx)
 	if err != nil {
 		return nil, err
@@ -224,6 +287,17 @@ func ReadMediaGenerationAssets(ctx context.Context, db *gorm.DB, a MediaGenerati
 			if v.State != "ready" || v.ExpiresAt <= time.Now().Unix() || v.Kind != declaration.MediaKind {
 				return nil, errors.New("asset_binding_mismatch")
 			}
+			if native := fields.Parameters[field].MaxBytes; native != nil && v.Bytes > *native ||
+				len(declaration.MIMETypes) > 0 && !slices.Contains(declaration.MIMETypes, v.MIMEType) {
+				return nil, errors.New("asset_binding_mismatch")
+			}
+			limit, err := mediaGenerationAssetLimit(modelID, v.Kind, v.MIMEType)
+			if err != nil {
+				return nil, err
+			}
+			if v.Bytes > limit {
+				return nil, errors.New("asset_binding_mismatch")
+			}
 			// Verify the stored bytes again before they become priced vendor input.
 			path, e := mediaGenerationAssetPath(v.ObjectKey)
 			if e != nil {
@@ -243,7 +317,7 @@ func verifyMediaGenerationAssetFile(ctx context.Context, path string, asset mode
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || asset.Bytes <= 0 || asset.Bytes > mediaprobe.MaxBytes || info.Size() != asset.Bytes {
+	if !info.Mode().IsRegular() || asset.Bytes <= 0 || asset.Bytes > model.MaxMediaGenerationAssetBytes || info.Size() != asset.Bytes {
 		return nil, errors.New("media asset bytes are unconfirmed")
 	}
 	file, err := os.Open(path)
@@ -256,7 +330,7 @@ func verifyMediaGenerationAssetFile(ctx context.Context, path string, asset mode
 		return nil, errors.New("media asset file changed")
 	}
 	hash := sha256.New()
-	n, err := io.Copy(hash, io.LimitReader(mediaAssetContextReader{ctx, file}, mediaprobe.MaxBytes+1))
+	n, err := io.Copy(hash, io.LimitReader(mediaAssetContextReader{ctx, file}, asset.Bytes+1))
 	if err != nil {
 		return nil, err
 	}

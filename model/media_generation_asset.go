@@ -39,6 +39,10 @@ type MediaGenerationAsset struct {
 var ErrMediaGenerationAssetConflict = errors.New("media asset upload conflicts with its original bytes")
 var mediaAssetUUID = regexp.MustCompile(`^[A-Za-z0-9_.:-]{16,128}$`)
 
+// MaxMediaGenerationAssetBytes bounds stored receipts independently of a
+// deployment's possibly lower limit for new uploads and generation inputs.
+const MaxMediaGenerationAssetBytes int64 = 1 << 30
+
 func MigrateMediaGenerationAsset(db *gorm.DB) error {
 	if db == nil {
 		return ErrMediaGenerationQuoteUnavailable
@@ -58,7 +62,7 @@ func MediaGenerationAssetOperationKey(userID, tokenID int, ownerDigest, modelID,
 // concurrent same upload returns its original receipt; different bytes conflict.
 func InsertMediaGenerationAsset(db *gorm.DB, v MediaGenerationAsset) (*MediaGenerationAsset, error) {
 	key, err := MediaGenerationAssetOperationKey(v.UserID, v.TokenID, v.OwnerDigest, v.Model, v.ClientAssetID)
-	if err != nil || !mediaGenerationQuoteDigest.MatchString(v.SHA256) || v.Bytes <= 0 || v.Bytes > 50<<20 || v.ObjectKey == "" || v.State != "ready" || (v.Kind != "image" && v.Kind != "video" && v.Kind != "audio") {
+	if err != nil || !mediaGenerationQuoteDigest.MatchString(v.SHA256) || v.Bytes <= 0 || v.Bytes > MaxMediaGenerationAssetBytes || v.ObjectKey == "" || v.State != "ready" || (v.Kind != "image" && v.Kind != "video" && v.Kind != "audio") {
 		return nil, ErrMediaGenerationQuoteInvalid
 	}
 	v.OperationKey = key
