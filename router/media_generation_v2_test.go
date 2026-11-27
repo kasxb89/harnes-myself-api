@@ -40,6 +40,195 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestMediaGenerationV2MaterialConditionsProjectionAndQuoteGate(t *testing.T) {
+	f := newH3RouterFixture(t, 0)
+	isolateNativeMediaFixtureOptions(t)
+	isolateNativeMediaFixtureTables(t, f)
+	t.Setenv("MEDIA_ASSET_STORAGE_DIR", t.TempDir())
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+	contracts := []ycapi.MediaContract{}
+	for _, name := range []string{"magi-2-special", "minimax-h3", "wan-3-0", "wan-3-0-special"} {
+		contract, ok := ycapi.LookupMediaContract(name)
+		require.True(t, ok)
+		contracts = append(contracts, contract)
+	}
+	publishSyntheticNativeMediaContracts(t, contracts)
+	var vendorUploads, estimates, dryRuns, generationPosts atomic.Int64
+	client, oldTransport := service.GetHttpClient(), service.GetHttpClient().Transport
+	client.Transport = imageUploadRoundTripper(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, "ycapi.token6688.com", r.URL.Host, "supplier calls are local fake transport only")
+		var body []byte
+		status := http.StatusOK
+		switch r.URL.Path {
+		case "/v1/files":
+			vendorUploads.Add(1)
+			require.NoError(t, r.ParseMultipartForm(2<<20))
+			file, header, e := r.FormFile("file")
+			require.NoError(t, e)
+			data, e := io.ReadAll(file)
+			require.NoError(t, e)
+			require.NoError(t, file.Close())
+			body, err = common.Marshal(map[string]any{"id": "synthetic-material", "object": "file", "url": fmt.Sprintf("https://assets.token6688.com/sha256/%x", sha256.Sum256(data)), "content_type": header.Header.Get("Content-Type"), "bytes": len(data)})
+			require.NoError(t, err)
+			status = http.StatusCreated
+		case "/v1/pricing-estimate", "/api/v1/model-runtime/dry-run":
+			var request map[string]any
+			require.NoError(t, common.DecodeJson(r.Body, &request))
+			if r.URL.Path == "/v1/pricing-estimate" {
+				estimates.Add(1)
+				body, err = common.Marshal(map[string]any{"effective_total_rmb": 0.02, "billing_mode": "fixed_amount", "param_adjustments": []any{}, "channels": []any{map[string]any{"lane": request["pinned_lane_id"], "is_delivery_head": true}}})
+			} else {
+				dryRuns.Add(1)
+				body, err = common.Marshal(map[string]any{"object": "model_runtime.dry_run", "would_call_vendor": false, "pinned_lane": request["lane_id"], "modality": "video", "wire": map[string]any{"channel_id": request["lane_id"], "method": "POST", "body": request["params"]}})
+			}
+			require.NoError(t, err)
+		default:
+			generationPosts.Add(1)
+			return nil, fmt.Errorf("material-condition fixture forbids generation/query %s", r.URL.Path)
+		}
+		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: r}, nil
+	})
+	t.Cleanup(func() { client.Transport = oldTransport })
+	catalog := f.request(t, http.MethodGet, "/v1/media-v2/models", "", "h3routermember")
+	require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+	var catalogBody map[string]any
+	require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &catalogBody))
+	payload := catalogBody["data"].(map[string]any)
+	require.Equal(t, true, payload["capabilities"].(map[string]any)["material_conditions_v1"])
+	projected := map[string]map[string]any{}
+	for _, row := range payload["models"].([]any) {
+		item := row.(map[string]any)
+		projected[item["id"].(string)] = item
+	}
+	require.Len(t, projected, 4)
+	for _, contract := range contracts {
+		conditions := ycapi.MediaContractMaterialConditions(contract)
+		if conditions == nil {
+			assert.NotContains(t, projected[contract.ID], "conditions", "audio-only special model must not acquire the regular-model restriction")
+		} else {
+			raw, e := common.Marshal(conditions)
+			require.NoError(t, e)
+			var conditionMap map[string]any
+			require.NoError(t, common.Unmarshal(raw, &conditionMap))
+			assert.Equal(t, conditionMap, projected[contract.ID]["conditions"])
+		}
+		properties := projected[contract.ID]["parameters_schema"].(map[string]any)["properties"].(map[string]any)
+		for name, field := range contract.Parameters {
+			assert.Equal(t, field.Native, properties[name].(map[string]any)["x-ycapi-contract"], "reviewed host conditions cannot rewrite raw native metadata")
+		}
+	}
+	var imageBytes bytes.Buffer
+	require.NoError(t, png.Encode(&imageBytes, image.NewNRGBA(image.Rect(0, 0, 512, 512))))
+	videoPath, audioPath := filepath.Join(t.TempDir(), "source.mp4"), filepath.Join(t.TempDir(), "source.wav")
+	require.NoError(t, exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=512x512:r=24:d=2", "-c:v", "mpeg4", "-y", videoPath).Run())
+	require.NoError(t, exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "pcm_s16le", "-y", audioPath).Run())
+	videoBytes, err := os.ReadFile(videoPath)
+	require.NoError(t, err)
+	audioBytes, err := os.ReadFile(audioPath)
+	require.NoError(t, err)
+	actor := service.MediaGenerationActor{UserID: 792, TokenID: 792, OwnerDigest: common.GenerateHMAC("media-generation-owner:h3routermember")}
+	assets := map[string]map[string][]string{}
+	assetEvidence := []map[string]any{}
+	for _, contract := range contracts {
+		assets[contract.ID] = map[string][]string{}
+		for _, sample := range []struct {
+			field string
+			bytes []byte
+		}{
+			{"images", imageBytes.Bytes()}, {"images", imageBytes.Bytes()}, {"videos", videoBytes}, {"audios", audioBytes},
+		} {
+			asset, e := service.StoreMediaGenerationAsset(t.Context(), f.db, actor, contract.ID, uuid.NewString(), bytes.NewReader(sample.bytes))
+			require.NoError(t, e)
+			assets[contract.ID][sample.field] = append(assets[contract.ID][sample.field], asset.ID)
+			assetEvidence = append(assetEvidence, map[string]any{"id": asset.ID, "model": contract.ID, "field": sample.field, "sha256": fmt.Sprintf("%x", sha256.Sum256(sample.bytes)), "bytes": len(sample.bytes), "asset": asset})
+		}
+	}
+	walletBefore, tokenBefore := f.balance(t)
+	rows := []map[string]any{}
+	for _, tc := range []struct {
+		name, model, mode      string
+		images, videos, audios int
+		allow                  bool
+	}{
+		{"single image reference rejects", "magi-2-special", "reference", 1, 0, 0, false},
+		{"single image with video still rejects", "magi-2-special", "reference", 1, 1, 0, false},
+		{"two images reference allowed", "magi-2-special", "reference", 2, 0, 0, true},
+		{"zero images with video allowed", "magi-2-special", "reference", 0, 1, 0, true},
+		{"zero images with audio allowed", "magi-2-special", "reference", 0, 0, 1, true},
+		{"explicit first frame allowed", "magi-2-special", "first-frame", 1, 0, 0, true},
+		{"no reference material rejects original intent", "magi-2-special", "reference", 0, 0, 0, false},
+		{"H3 audio alone rejects", "minimax-h3", "reference", 0, 0, 1, false},
+		{"H3 audio with image allowed", "minimax-h3", "reference", 1, 0, 1, true},
+		{"H3 audio with video allowed", "minimax-h3", "reference", 0, 1, 1, true},
+		{"H3 without audio allowed", "minimax-h3", "reference", 0, 1, 0, true},
+		{"Wan regular audio alone rejects", "wan-3-0", "reference", 0, 0, 1, false},
+		{"Wan regular audio with image allowed", "wan-3-0", "reference", 1, 0, 1, true},
+		{"Wan regular audio with video allowed", "wan-3-0", "reference", 0, 1, 1, true},
+		{"Wan special audio alone allowed", "wan-3-0-special", "reference", 0, 0, 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := "ycapi-" + tc.model
+			bindings := map[string][]string{}
+			for field, count := range map[string]int{"images": tc.images, "videos": tc.videos, "audios": tc.audios} {
+				if count > 0 {
+					bindings[field] = assets[id][field][:count]
+				}
+			}
+			intent := ycapi.MediaIntentReference
+			if tc.mode == "first-frame" {
+				intent = ycapi.MediaIntentFrames
+			}
+			request := service.MediaGenerationRequest{ClientOperationID: uuid.NewString(), Model: id, ModelVersion: projected[id]["model_version"].(string), Intent: intent, Parameters: map[string]any{"prompt": "Keep the original source intent", "mode": tc.mode, "duration": "5"}, Assets: bindings}
+			body, e := common.Marshal(request)
+			require.NoError(t, e)
+			before := []int64{vendorUploads.Load(), estimates.Load(), dryRuns.Load(), generationPosts.Load()}
+			response := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(body), "h3routermember")
+			if tc.allow {
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				assert.Equal(t, before[1]+1, estimates.Load())
+				assert.Equal(t, before[2]+1, dryRuns.Load())
+				var quote map[string]any
+				require.NoError(t, common.Unmarshal(response.Body.Bytes(), &quote))
+				assert.Equal(t, tc.mode, quote["data"].(map[string]any)["parameters"].(map[string]any)["mode"])
+			} else {
+				require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+				require.Contains(t, response.Body.String(), `"code":"invalid_parameters"`)
+				assert.Equal(t, before, []int64{vendorUploads.Load(), estimates.Load(), dryRuns.Load(), generationPosts.Load()}, "rejected material conditions cannot upload, quote, validate or generate with the supplier")
+			}
+			after, e := common.Marshal(request)
+			require.NoError(t, e)
+			assert.Equal(t, body, after, "original role selection and UUID stay intact")
+			rows = append(rows, map[string]any{"name": tc.name, "request": request, "expected_allowed": tc.allow, "actual_http_status": response.Code, "supplier_before": before, "supplier_after": []int64{vendorUploads.Load(), estimates.Load(), dryRuns.Load(), generationPosts.Load()}})
+		})
+	}
+	for _, table := range []any{&model.Task{}, &model.WalletFundingRequest{}, &model.WalletFundingEvent{}} {
+		var count int64
+		require.NoError(t, f.db.Model(table).Count(&count).Error)
+		assert.Zero(t, count)
+	}
+	walletAfter, tokenAfter := f.balance(t)
+	assert.Equal(t, walletBefore, walletAfter)
+	assert.Equal(t, tokenBefore, tokenAfter)
+	assert.Zero(t, generationPosts.Load())
+	if root := os.Getenv("YC_MATERIAL_CONDITION_FIXTURE_OUTPUT"); root != "" && !t.Failed() {
+		require.True(t, filepath.IsAbs(root))
+		require.NoError(t, os.MkdirAll(root, 0700))
+		matrix, e := common.Marshal(map[string]any{"schema": 1, "request_id": "feb5f858-21cc-48ae-bbc4-4d4ba1608916", "synthetic_only": true, "source_binding": os.Getenv("YC_MATERIAL_CONDITION_SOURCE_BINDING"), "paid_qualification": false, "cases": rows, "assets": assetEvidence, "supplier_generation_posts": generationPosts.Load(), "tasks": 0, "wallet_effects": 0})
+		require.NoError(t, e)
+		for name, data := range map[string][]byte{"catalog.json": catalog.Body.Bytes(), "cases.json": matrix} {
+			file, e := os.OpenFile(filepath.Join(root, name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			require.NoError(t, e)
+			_, e = file.Write(data)
+			require.NoError(t, e)
+			require.NoError(t, file.Close())
+		}
+	}
+}
+
 func TestMediaGenerationV2CapturedOldContractReceiptAfterRefresh(t *testing.T) {
 	f := newH3RouterFixture(t, 0)
 	isolateNativeMediaFixtureOptions(t)

@@ -147,7 +147,11 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 		if len(intents) == 0 {
 			continue
 		}
-		models = append(models, map[string]any{"id": id, "display_name": mediaGenerationDisplayName(record.Definition.DisplayName, contract, fields, intents), "kind": contract.Kind, "description": strings.Join(contract.Capabilities, " · "), "enabled": true, "model_version": versions[id], "parameters_schema": schema, "asset_fields": fields, "intents": intents, "pricing": map[string]any{"display": "按所选规格显示费用", "quote_required": true}})
+		entry := map[string]any{"id": id, "display_name": mediaGenerationDisplayName(record.Definition.DisplayName, contract, fields, intents), "kind": contract.Kind, "description": strings.Join(contract.Capabilities, " · "), "enabled": true, "model_version": versions[id], "parameters_schema": schema, "asset_fields": fields, "intents": intents, "pricing": map[string]any{"display": "按所选规格显示费用", "quote_required": true}}
+		if conditions := ycapi.MediaContractMaterialConditions(contract); conditions != nil {
+			entry["conditions"] = conditions
+		}
+		models = append(models, entry)
 	}
 	slices.SortFunc(models, func(a, b map[string]any) int { return strings.Compare(a["id"].(string), b["id"].(string)) })
 	return models, nil

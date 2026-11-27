@@ -89,7 +89,7 @@ func MediaGenerationModels(c *gin.Context) {
 		mediaV2Error(c, err)
 		return
 	}
-	mediaV2Success(c, gin.H{"models": models, "capabilities": gin.H{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "max_upload_bytes": maxUploadBytes}})
+	mediaV2Success(c, gin.H{"models": models, "capabilities": gin.H{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "material_conditions_v1": true, "max_upload_bytes": maxUploadBytes}})
 }
 
 func UploadMediaGenerationAsset(c *gin.Context) {

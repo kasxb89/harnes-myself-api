@@ -293,6 +293,9 @@ func TestMediaContractFreshReplicaMaterialAndConditionalBoundaries(t *testing.T)
 		{"H3 long first frame forbidden", "minimax-h3", map[string]any{"prompt": "A long shot", "mode": "first-frame", "duration": "16", "images": images[:1]}, MediaIntentFrames, "duration", nil},
 		{"H3 long first last forbidden", "minimax-h3", map[string]any{"prompt": "A long shot", "mode": "first-last", "duration": "30", "images": images[:2]}, MediaIntentFrames, "duration", nil},
 		{"H3 original short first last remains legal", "minimax-h3", map[string]any{"prompt": "A shot", "mode": "first-last", "duration": "15", "images": images[:2]}, MediaIntentFrames, "", nil},
+		{"H3 audio only needs a visual reference", "minimax-h3", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1]}, MediaIntentReference, "Reference audio requires", nil},
+		{"H3 audio with image remains reference", "minimax-h3", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1], "images": images[:1]}, MediaIntentReference, "", nil},
+		{"H3 audio with video remains reference", "minimax-h3", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1], "videos": videos[:1]}, MediaIntentReference, "", nil},
 		{"Hailuo empty option condition never means all modes", "minimax-hailuo-2-3", map[string]any{"prompt": "A shot", "mode": "text-to-video", "resolution": "1080p"}, MediaIntentText, "resolution", nil},
 		{"Hailuo remaining 768p is legal", "minimax-hailuo-2-3", map[string]any{"prompt": "A shot", "mode": "text-to-video", "resolution": "768p"}, MediaIntentText, "", nil},
 		{"Omni 1.1 actual new default", "omni-flash-1-1", map[string]any{"prompt": "A shot", "mode": "text-to-video"}, MediaIntentText, "", map[string]any{"resolution": "1080p"}},
@@ -308,6 +311,10 @@ func TestMediaContractFreshReplicaMaterialAndConditionalBoundaries(t *testing.T)
 		{"Seedance 2.5 special 480p reference", "seedance-2-5-special", map[string]any{"prompt": "A shot", "mode": "reference", "resolution": "480p", "images": images[:1]}, MediaIntentReference, "", nil},
 		{"Seedance 2.5 special 480p first frame forbidden", "seedance-2-5-special", map[string]any{"prompt": "A shot", "mode": "first-frame", "resolution": "480p", "images": images[:1]}, MediaIntentFrames, "resolution", nil},
 		{"Wan new audio and square aspect", "wan-3-0-special", map[string]any{"prompt": "A shot", "mode": "reference", "duration": "25", "aspect_ratio": "1:1", "images": images[:1], "videos": videos[:1], "audios": audios[:5]}, MediaIntentReference, "", nil},
+		{"Wan regular audio only needs a visual reference", "wan-3-0", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1]}, MediaIntentReference, "Reference audio requires", nil},
+		{"Wan regular audio with image remains reference", "wan-3-0", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1], "images": images[:1]}, MediaIntentReference, "", nil},
+		{"Wan regular audio with video remains reference", "wan-3-0", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1], "videos": videos[:1]}, MediaIntentReference, "", nil},
+		{"Wan special explicitly permits audio only", "wan-3-0-special", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1]}, MediaIntentReference, "", nil},
 		{"Wan audio cap is five", "wan-3-0-special", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios}, MediaIntentReference, "too many source", nil},
 		{"Wan audio forbidden for first frame", "wan-3-0-special", map[string]any{"prompt": "A shot", "mode": "first-frame", "images": images[:1], "audios": audios[:1]}, MediaIntentFrames, "too many source", nil},
 		{"Magi explicit text", "magi-2", map[string]any{"prompt": "A shot", "mode": "text-to-video", "duration": "30"}, MediaIntentText, "", nil},
@@ -391,6 +398,59 @@ func TestMediaRuntimeReferenceModeCannotBecomeTextIntent(t *testing.T) {
 			assert.Equal(t, mode, wire.Params["mode"])
 		}
 	})
+}
+
+func TestMediaMaterialConditionsPublishedPolicyValidation(t *testing.T) {
+	contract, ok := LookupMediaContract("magi-2-special")
+	require.True(t, ok)
+	condition := MediaContractMaterialConditions(contract)
+	require.NotNil(t, condition)
+	before, err := common.Marshal(contract)
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name      string
+		condition *MediaMaterialConditions
+		params    map[string]any
+		counts    map[string]int
+		failure   string
+	}{
+		{"published exact-one rejection", condition, map[string]any{"mode": "reference"}, map[string]int{"images": 1}, "single source image"},
+		{"absent image count is zero not invented min two", condition, map[string]any{"mode": "reference"}, map[string]int{"videos": 1}, ""},
+		{"different explicit operation does not activate rule", condition, map[string]any{"mode": "first-frame"}, map[string]int{"images": 1}, ""},
+		{"unsupported policy version", &MediaMaterialConditions{SchemaVersion: 2, Rules: condition.Rules}, map[string]any{}, nil, "version"},
+		{"both alternative constraints are unavailable", &MediaMaterialConditions{SchemaVersion: 1, Rules: []MediaMaterialRule{{ID: "bad", AssetField: "images", DisallowedCounts: []int{1}, RequiresAnyAssets: []string{"videos"}, Message: "invalid"}}}, nil, nil, "unavailable"},
+		{"negative count predicate is unavailable", &MediaMaterialConditions{SchemaVersion: 1, Rules: []MediaMaterialRule{{ID: "bad", AssetField: "images", DisallowedCounts: []int{-1}, Message: "invalid"}}}, nil, nil, "unavailable"},
+		{"when keys all match before a rule applies", &MediaMaterialConditions{SchemaVersion: 1, Rules: []MediaMaterialRule{{ID: "and", When: map[string][]any{"mode": {"reference"}, "quality": {"high"}}, AssetField: "images", DisallowedCounts: []int{1}, Message: "blocked"}}}, map[string]any{"mode": "reference", "quality": "standard"}, map[string]int{"images": 1}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, e := common.Marshal(tc.params)
+			require.NoError(t, e)
+			err := validateMediaMaterialConditions(tc.condition, tc.params, tc.counts)
+			if tc.failure == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.failure)
+			}
+			after, e := common.Marshal(tc.params)
+			require.NoError(t, e)
+			assert.Equal(t, raw, after)
+		})
+	}
+	condition.Rules[0].DisallowedCounts[0] = 99
+	assert.Equal(t, []int{1}, MediaContractMaterialConditions(contract).Rules[0].DisallowedCounts, "callers cannot mutate later catalog or validation rules")
+	after, err := common.Marshal(contract)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "host conditions stay outside the native contract/hash")
+	for _, name := range []string{"minimax-h3", "wan-3-0"} {
+		c, ok := LookupMediaContract(name)
+		require.True(t, ok)
+		rule := MediaContractMaterialConditions(c)
+		require.ErrorContains(t, validateMediaMaterialConditions(rule, map[string]any{"mode": "reference"}, map[string]int{"audios": 1}), "source image or video")
+		require.NoError(t, validateMediaMaterialConditions(rule, map[string]any{"mode": "reference"}, map[string]int{"images": 1}), "no audio leaves dependency inactive")
+	}
+	unaffected, ok := LookupMediaContract("wan-3-0-special")
+	require.True(t, ok)
+	assert.Nil(t, MediaContractMaterialConditions(unaffected))
 }
 
 func TestMediaRuntimeVideoBatchNeedsSeparateMeterQualification(t *testing.T) {
