@@ -37,7 +37,7 @@ function mediaBooleanFact(params, name) {
 }
 function legacyMediaFacts(model, params, facts) {
   const images = Array.isArray(params.images) ? params.images.length : 0;
-  return { ...facts, input_video_seconds: 0, input_audio_seconds: 0, input_image_count: images,
+  return { ...facts, ...(model.kind === "video" ? { output_count: 1, total_output_seconds: Number(facts.seconds) } : {}), input_video_seconds: 0, input_audio_seconds: 0, input_image_count: images,
     generate_audio: mediaBooleanFact(params, "generate_audio"), draft: mediaBooleanFact(params, "draft"),
     intent: images ? "reference" : "text", resolution: params.resolution || (typeof params.size === "string" && !params.size.includes(":") ? params.size : ""),
     quality: params.quality || "", mode: params.mode || "", aspect_ratio: params.aspect_ratio || (typeof params.size === "string" && params.size.includes(":") ? params.size : "") };
@@ -58,6 +58,10 @@ const schema = (model) => {
         zh: model.kind === "video" ? "视频生成单价" : "图片生成单价",
       },
     },
+    ...(model.kind === "video" ? {
+      output_count: { type: "number", unit: "count", unitLabel: { en: "video", zh: "条" }, description: { en: "Video generation unit price", zh: "视频生成单价" } },
+      total_output_seconds: { type: "number", unit: "second", description: { en: "Batch video generation unit price", zh: "批量视频生成单价" } },
+    } : {}),
     input_video_seconds: { type: "number", unit: "second", description: { en: "Reference video unit price", zh: "参考视频单价" } },
     input_audio_seconds: { type: "number", unit: "second", description: { en: "Reference audio unit price", zh: "参考音频单价" } },
     input_image_count: { type: "number", unit: "count", description: { en: "Reference image unit price", zh: "参考图片单价" } },
@@ -136,17 +140,38 @@ function mediaV2(ctx, requireTaskIdentity = false) {
     throw new Error("Host media task identity mismatch");
   const quantity = contract.kind === "video" ? "seconds" : "image_count";
   const profile = schema(MODELS.find((model) => model.id === contract.id) || contract);
-  if (Object.keys(frozen.usageFacts).length !== Object.keys(profile).length ||
-      Object.keys(frozen.usageFacts).some((key) => !Object.prototype.hasOwnProperty.call(profile, key)))
+  // Historical quoted facts predate aggregate meters; zero preserves their
+  // original expression instead of retroactively multiplying legacy seconds.
+  const facts = { ...frozen.usageFacts };
+  if (contract.kind === "video") for (const key of ["output_count", "total_output_seconds"]) if (facts[key] === undefined) facts[key] = 0;
+  if (Object.keys(facts).length !== Object.keys(profile).length ||
+      Object.keys(facts).some((key) => !Object.prototype.hasOwnProperty.call(profile, key)))
     throw new Error("Invalid Host media usage facts");
   for (const key of Object.keys(profile)) {
-    const value = frozen.usageFacts[key], field = profile[key];
+    const value = facts[key], field = profile[key];
     if (field.enum ? !field.enum.includes(value) : field.type === "boolean" ? typeof value !== "boolean" : typeof value !== "number" || !Number.isFinite(value) || value < 0 ||
         value > (field.unit === "count" ? 128 : 3600) || field.unit === "count" && !Number.isInteger(value))
       throw new Error("Invalid Host media usage facts");
   }
-  if (frozen.usageFacts[quantity] <= 0) throw new Error("Invalid Host media usage facts");
-  return { contract, request, facts: { ...frozen.usageFacts } };
+  const batch = frozen.batch === undefined ? null : mediaBatch(frozen.batch);
+  const count = request.params.count === undefined ? 1 : request.params.count;
+  if (contract.kind === "video" && count !== 1 && !batch) throw new Error("Native video batch is not qualified");
+  if (batch && (contract.kind !== "video" || count !== batch.requested_output_count || facts.output_count !== count ||
+      facts.total_output_seconds !== batch.total_output_seconds)) throw new Error("Invalid Host media batch facts");
+  if (facts[quantity] <= 0 && !(batch && batch.meter === "output_count")) throw new Error("Invalid Host media usage facts");
+  return { contract, request, facts, batch };
+}
+
+function mediaBatch(value) {
+  const b = object(value);
+  if (!b || b.schema_version !== 1 || !Number.isInteger(b.requested_output_count) || b.requested_output_count < 1 || b.requested_output_count > 50 ||
+      b.expected_main_output_count !== b.requested_output_count || !["output_count", "total_output_seconds"].includes(b.meter) ||
+      typeof b.output_duration_seconds !== "number" || !Number.isFinite(b.output_duration_seconds) || b.output_duration_seconds < 0 ||
+      b.total_output_seconds !== b.output_duration_seconds * b.requested_output_count || b.total_output_seconds > 3600 ||
+      b.meter === "total_output_seconds" && b.total_output_seconds <= 0 || b.admission_unit !== "native_operation" || b.admission_weight !== 1 ||
+      b.partial_policy !== "retain_reservation_until_complete" || typeof b.policy_revision !== "string" || !/^[a-f0-9]{64}$/.test(b.policy_revision))
+    throw new Error("Invalid Host native batch contract");
+  return { ...b };
 }
 
 function normalize(source, model) {
@@ -360,7 +385,7 @@ function mediaArtifacts(body, kind, outputFormat) {
   });
 }
 
-function mediaSnapshot(body, contract, expectedId, outputFormat) {
+function mediaSnapshot(body, contract, expectedId, outputFormat, batch) {
   if (!object(body)) throw new Error("Invalid upstream media task response");
   const result = object(body.result) || {};
   const id = body.task_id || body.id || result.task_id;
@@ -374,7 +399,80 @@ function mediaSnapshot(body, contract, expectedId, outputFormat) {
     throw new Error("Upstream task model mismatch");
   const artifacts = mediaArtifacts(body, contract.kind, outputFormat);
   const status = typeof body.status === "string" ? body.status.toLowerCase() : "unknown";
-  return { id, kind: contract.kind, status, is_final: body.is_final === true, artifacts, outputs: artifacts.map((entry) => entry.url) };
+  const data = { id, kind: contract.kind, status, is_final: body.is_final === true, artifacts, outputs: artifacts.map((entry) => entry.url) };
+  if (batch) {
+    const entries = mediaOutputList(body, contract.kind);
+    const identities = new Map(), urls = new Map(), providerIndices = new Map(), groupIndices = new Map();
+    let received = 0;
+    for (let i = 0; i < artifacts.length; i++) {
+      const artifact = artifacts[i], entry = object(entries[i]) || {};
+      if (entry.role !== undefined && entry.output_role !== undefined && entry.role !== entry.output_role)
+        throw new Error("Conflicting upstream batch artifact roles");
+      const explicit = entry.role === undefined ? entry.output_role : entry.role;
+      const declaredType = entry.type || entry.kind || entry.modality;
+      const declaredMIME = entry.mime_type || entry.mimeType || entry.content_type;
+      if (!declaredType && !declaredMIME) { artifact.type = "file"; artifact.mimeType = "application/octet-stream"; }
+      const typedVideo = artifact.type === "video" && (declaredType === "video" || typeof declaredMIME === "string" && declaredMIME.toLowerCase().startsWith("video/"));
+      const role = explicit === undefined ? typedVideo ? "main" : artifact.type === "image" ? "preview" : "auxiliary" : explicit;
+      if (!["main", "preview", "auxiliary", "layer", "aux"].includes(role)) throw new Error("Invalid upstream batch artifact role");
+      artifact.role = ["layer", "aux"].includes(role) ? "auxiliary" : role;
+      if (artifact.role !== "main" || !typedVideo) { if (artifact.role === "main") artifact.role = "auxiliary"; continue; }
+      // A signed alias of the same URL, or multiple encodings of one explicit
+      // logical result, must never make a partial batch look complete.
+      const urlKey = artifact.url.split(/[?#]/)[0];
+      if (entry.output_id !== undefined && (typeof entry.output_id !== "string" || !entry.output_id || entry.output_id !== entry.output_id.trim() || entry.output_id.length > 256 ||
+          Array.from(entry.output_id).some((ch) => ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127)))
+        throw new Error("Invalid upstream batch main output identity");
+      const identity = typeof entry.output_id === "string" && entry.output_id && entry.output_id.length <= 256 ? entry.output_id : urlKey;
+      const byIdentity = identities.get(identity), byURL = urls.get(urlKey);
+      if (byIdentity !== undefined && byURL !== undefined && byIdentity !== byURL)
+        throw new Error("Ambiguous upstream batch output identity");
+      let index = byIdentity === undefined ? byURL : byIdentity;
+      if (index === undefined) index = received++;
+      else artifact.role = "duplicate";
+      // Record both aliases even on a duplicate, so A/x, B/x, B/y remains
+      // one logical output rather than counting the final alias a second time.
+      identities.set(identity, index);
+      urls.set(urlKey, index);
+      if (entry.output_index !== undefined) {
+        const declaredIndex = entry.output_index;
+        if (!Number.isInteger(declaredIndex) || declaredIndex < 0 || declaredIndex >= batch.expected_main_output_count ||
+            providerIndices.has(declaredIndex) && providerIndices.get(declaredIndex) !== index ||
+            groupIndices.has(index) && groupIndices.get(index) !== declaredIndex)
+          throw new Error("Ambiguous upstream batch output index");
+        providerIndices.set(declaredIndex, index);
+        groupIndices.set(index, declaredIndex);
+      }
+      artifact.output_id = "main-" + (index + 1);
+      artifact.output_index = index;
+    }
+    for (let i = 0; i < artifacts.length; i++) {
+      const artifact = artifacts[i], entry = object(entries[i]) || {};
+      if (artifact.role === "main" || artifact.role === "duplicate") continue;
+      const declaredIndex = entry.output_index;
+      if (declaredIndex !== undefined && (!Number.isInteger(declaredIndex) || declaredIndex < 0 || declaredIndex >= batch.expected_main_output_count))
+        throw new Error("Invalid upstream batch auxiliary output index");
+      const byIndex = providerIndices.get(declaredIndex);
+      if (declaredIndex !== undefined && byIndex === undefined)
+        throw new Error("Unknown upstream batch auxiliary output index");
+      if (entry.parent_output_id !== undefined && (typeof entry.parent_output_id !== "string" || !entry.parent_output_id || !identities.has(entry.parent_output_id)))
+        throw new Error("Unknown upstream batch auxiliary parent identity");
+      // A preview's own output_id is not its parent. Only an explicit
+      // parent reference from the reviewed output contract can link by ID.
+      const byIdentity = typeof entry.parent_output_id === "string" ? identities.get(entry.parent_output_id) : undefined;
+      if (byIndex !== undefined && byIdentity !== undefined && byIndex !== byIdentity)
+        throw new Error("Ambiguous upstream batch auxiliary output identity");
+      const index = byIdentity === undefined ? byIndex : byIdentity;
+      if (index !== undefined) { artifact.output_id = "main-" + (index + 1); artifact.output_index = index; }
+    }
+    const complete = data.is_final && status === "completed";
+    const contradictoryFailure = data.is_final && ["failed", "cancelled", "canceled"].includes(status) && received > 0;
+    const completeness = received > batch.expected_main_output_count ? "mismatch" : complete ? received === batch.expected_main_output_count ? "complete" : "partial"
+      : contradictoryFailure ? received === batch.expected_main_output_count ? "mismatch" : "partial" : "pending";
+    data.batch = { received_main_output_count: received, completeness,
+      ...(completeness === "partial" ? { failure_reason: "main_outputs_missing" } : completeness === "mismatch" ? { failure_reason: "main_outputs_mismatch" } : {}) };
+  }
+  return data;
 }
 
 function mediaState(ctx) {
@@ -383,10 +481,15 @@ function mediaState(ctx) {
   const contract = MEDIA_CONTRACTS.find((model) => model.id === state.gatewayModel);
   if (!contract || contract.kind !== state.kind || contract.native_id !== state.nativeModel ||
       ctx.model !== undefined && ctx.model !== contract.id) throw new Error("Invalid retained media task identity");
+  if (state.batch !== undefined) mediaBatch(state.batch);
   return { state, contract };
 }
 
 function mediaTaskResult(data) {
+  if (data.batch && data.is_final && ["partial", "mismatch"].includes(data.batch.completeness))
+    // This is a recognized partial receipt, not a parser failure. Persist the
+    // original URLs/counters without completing or settling its reservation.
+    return { status: "IN_PROGRESS", progress: "0%", reason: "Upstream native batch main outputs are incomplete" };
   if (!data.is_final && ["pending", "queued", "processing", "running", "needs_review"].includes(data.status))
     return { status: "IN_PROGRESS", progress: "0%" };
   if (data.is_final && data.status === "completed" && !data.artifacts.length) return { status: "UNKNOWN", reason: "Upstream media artifacts are unavailable" };
@@ -435,9 +538,9 @@ export function parseSubmitResponse(ctx, response) {
   const v2 = mediaV2(ctx, true);
   if (v2) {
     const outputFormat = v2.request.params.output_format || v2.request.params.format || "";
-    const data = mediaSnapshot(response.body, v2.contract, undefined, outputFormat);
+    const data = mediaSnapshot(response.body, v2.contract, undefined, outputFormat, v2.batch);
     return { taskId: data.id, taskData: data, state: { mediaGenerationV2: true, gatewayModel: v2.contract.id,
-      nativeModel: v2.contract.native_id, kind: v2.contract.kind, outputFormat, facts: v2.facts, snapshot: data } };
+      nativeModel: v2.contract.native_id, kind: v2.contract.kind, outputFormat, facts: v2.facts, ...(v2.batch ? { batch: v2.batch } : {}), snapshot: data } };
   }
   const model = modelFor(ctx);
   const data = snapshot(response.body, model);
@@ -473,7 +576,7 @@ export function buildQueryRequest(ctx) {
 export function parseTaskResult(ctx, body) {
   const retained = mediaState(ctx);
   if (retained) {
-    const data = mediaSnapshot(body, retained.contract, ctx.taskId, retained.state.outputFormat);
+    const data = mediaSnapshot(body, retained.contract, ctx.taskId, retained.state.outputFormat, retained.state.batch);
     return { ...mediaTaskResult(data), state: { ...retained.state, snapshot: data } };
   }
   const data = snapshot(body, modelFor(ctx), ctx.taskId);

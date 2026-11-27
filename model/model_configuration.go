@@ -639,6 +639,9 @@ func SaveModelConfigurationDraft(revision, baseVersion string, def ModelConfigur
 		if def.MediaExecution != nil && def.MediaExecution.RetailPolicy == nil && previous.MediaExecution != nil && def.Kind == previous.Kind {
 			def.MediaExecution.RetailPolicy = previous.MediaExecution.RetailPolicy
 		}
+		if def.MediaExecution != nil && def.MediaExecution.BatchPolicy == nil && previous.MediaExecution != nil && def.Kind == previous.Kind {
+			def.MediaExecution.BatchPolicy = previous.MediaExecution.BatchPolicy
+		}
 		if def.Kind == "text" && def.DefaultOutputTokens == nil && previous.DefaultOutputTokens != nil {
 			value := *previous.DefaultOutputTokens
 			if def.MaxOutputTokens != nil {

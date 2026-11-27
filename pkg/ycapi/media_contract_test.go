@@ -2,8 +2,10 @@ package ycapi
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
@@ -451,6 +453,273 @@ func TestMediaMaterialConditionsPublishedPolicyValidation(t *testing.T) {
 	unaffected, ok := LookupMediaContract("wan-3-0-special")
 	require.True(t, ok)
 	assert.Nil(t, MediaContractMaterialConditions(unaffected))
+}
+
+func TestMediaMJReviewedVersionAndTextConditionsBeforeQuoteAndRuntime(t *testing.T) {
+	contract, ok := LookupMediaContract("mj_imagine")
+	require.True(t, ok)
+	nativeBefore, err := common.Marshal(contract)
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name   string
+		fields map[string]any
+		field  string
+	}{
+		{"default version is not invented", map[string]any{"bot_type": "NIJI_JOURNEY"}, ""},
+		{"explicit account default remains empty", map[string]any{"bot_type": "NIJI_JOURNEY", "version": ""}, ""},
+		{"niji6 valid", map[string]any{"bot_type": "NIJI_JOURNEY", "version": "6"}, ""},
+		{"niji7 quality has no effect but is not invalid", map[string]any{"bot_type": "NIJI_JOURNEY", "version": "7", "quality": "2"}, ""},
+		{"MJ8.2 remains available", map[string]any{"bot_type": "MID_JOURNEY", "version": "8.2"}, ""},
+		{"MJ5.1 remains available", map[string]any{"bot_type": "MID_JOURNEY", "version": "5.1"}, ""},
+		{"unmodified advanced whitespace", map[string]any{"extra": " \t--sameseed  --fast\n--turbo\r--relax "}, ""},
+		{"optional advanced empty", map[string]any{"extra": ""}, ""},
+		{"natural negative prose", map[string]any{"negative_prompt": "black-and-white, watermarks, letters--numbers"}, ""},
+		{"hyphens embedded in prose", map[string]any{"prompt": "A black-and-white bird with letters--numbers"}, ""},
+		{"prompt independent alias", map[string]any{"prompt": "A bird --v 7"}, "prompt"},
+		{"prompt repeated jobs alias", map[string]any{"prompt": "A bird --r 2"}, "prompt"},
+		{"negative starts parameter", map[string]any{"negative_prompt": "--ar 16:9"}, "negative_prompt"},
+		{"negative comma boundary", map[string]any{"negative_prompt": "文字,--video"}, "negative_prompt"},
+		{"negative Unicode whitespace boundary", map[string]any{"negative_prompt": "文字\u3000--video"}, "negative_prompt"},
+		{"repeat equals cannot bypass", map[string]any{"extra": "--repeat=2"}, "extra"},
+		{"triple dash cannot bypass", map[string]any{"extra": "---repeat 2"}, "extra"},
+		{"uppercase cannot bypass", map[string]any{"extra": "--REPEAT 2"}, "extra"},
+		{"quoted flags not supported", map[string]any{"extra": "\"--repeat 2\""}, "extra"},
+		{"single dash not supported", map[string]any{"extra": "-sameseed"}, "extra"},
+		{"arguments not supported", map[string]any{"extra": "--sameseed 2"}, "extra"},
+		{"unreviewed flags not supported", map[string]any{"extra": "--new-native-mode"}, "extra"},
+		{"duplicate flags not supported", map[string]any{"extra": "--sameseed --sameseed"}, "extra"},
+		{"Unicode advanced separator not supported", map[string]any{"extra": "--fast\u00a0--sameseed"}, "extra"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]any{"prompt": "A bird"}
+			for k, v := range tc.fields {
+				params[k] = v
+			}
+			before, err := common.Marshal(params)
+			require.NoError(t, err)
+			normalized, quoteErr := ValidateMediaContractParams(contract.ID, params, nil)
+			// Raw cached, not-yet-accepted parameters must encounter the same
+			// guard even when the fresh quote path was not called this time.
+			wire, runtimeErr := BuildMediaRuntimeRequest(contract.ID, params, "mj@synthetic-only", "task-synthetic-mj-conditions", MediaIntentText)
+			if tc.field == "" {
+				require.NoError(t, quoteErr)
+				require.NoError(t, runtimeErr)
+				for field, original := range tc.fields {
+					assert.Equal(t, original, normalized[field])
+					assert.Equal(t, original, wire.Params[field])
+				}
+				if _, supplied := params["version"]; !supplied {
+					assert.NotContains(t, normalized, "version")
+					assert.NotContains(t, wire.Params, "version")
+				}
+			} else {
+				require.ErrorContains(t, quoteErr, "parameter "+tc.field)
+				require.ErrorContains(t, runtimeErr, "parameter "+tc.field)
+			}
+			after, err := common.Marshal(params)
+			require.NoError(t, err)
+			assert.Equal(t, before, after, "new rules never rewrite the original frozen parameters")
+		})
+	}
+	for _, version := range []string{"8.2", "8.1", "6.1", "5.2", "5.1"} {
+		params := map[string]any{"prompt": "A bird", "bot_type": "NIJI_JOURNEY", "version": version}
+		_, err := ValidateMediaContractParams(contract.ID, params, nil)
+		require.ErrorContains(t, err, "version", version)
+		_, err = BuildMediaRuntimeRequest(contract.ID, params, "mj@synthetic-only", "task-synthetic-version", MediaIntentText)
+		require.ErrorContains(t, err, "version", version)
+	}
+	policy := MediaContractParameterConditions(contract)
+	for _, name := range policy.Rules[1].TextFlags.ForbiddenNames {
+		_, err := ValidateMediaContractParams(contract.ID, map[string]any{"prompt": "A bird", "extra": "--" + name + " 2"}, nil)
+		require.ErrorContains(t, err, "extra", name)
+	}
+	for alias := range policy.Rules[1].TextFlags.ReservedAliases {
+		_, err := ValidateMediaContractParams(contract.ID, map[string]any{"prompt": "A bird", "extra": "--" + alias + " 1"}, nil)
+		require.ErrorContains(t, err, "extra", alias)
+	}
+	nativeAfter, err := common.Marshal(contract)
+	require.NoError(t, err)
+	assert.Equal(t, nativeBefore, nativeAfter, "reviewed conditions never change native schema or qualification hash")
+}
+
+func TestMediaParameterConditionsPublishedSchemaFailsClosed(t *testing.T) {
+	contract, ok := LookupMediaContract("mj_imagine")
+	require.True(t, ok)
+	policy := MediaContractParameterConditions(contract)
+	require.Equal(t, 2, policy.SchemaVersion)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*MediaParameterConditions)
+	}{
+		{"unknown version", func(p *MediaParameterConditions) { p.SchemaVersion = 3 }},
+		{"empty document", func(p *MediaParameterConditions) { p.Rules = nil }},
+		{"duplicate identity", func(p *MediaParameterConditions) { p.Rules[1].ID = p.Rules[0].ID }},
+		{"unknown inactive profile", func(p *MediaParameterConditions) {
+			p.Rules[1].When = map[string][]any{"bot_type": {"NOT_ACTIVE"}}
+			p.Rules[1].TextFlags.Profile = "future-v99"
+		}},
+		{"both constraint alternatives", func(p *MediaParameterConditions) {
+			p.Rules[0].TextFlags = &MediaTextFlagPolicy{Profile: "text-no-native-parameter-token-v1"}
+		}},
+		{"null predicate", func(p *MediaParameterConditions) { p.Rules[0].When["bot_type"] = []any{nil} }},
+		{"compound predicate", func(p *MediaParameterConditions) { p.Rules[0].When["bot_type"] = []any{map[string]any{"x": "y"}} }},
+		{"malformed field name", func(p *MediaParameterConditions) { p.Rules[0].Parameter = "version;exec" }},
+		{"message exceeds UTF8 byte bound", func(p *MediaParameterConditions) { p.Rules[0].Message = strings.Repeat("a", 1025) }},
+		{"message contains invalid UTF8", func(p *MediaParameterConditions) { p.Rules[0].Message = string([]byte{0xff}) }},
+		{"text profile with unrecognized options", func(p *MediaParameterConditions) { p.Rules[2].TextFlags.AllowedNames = []string{"x"} }},
+		{"ambiguous allowed forbidden flag", func(p *MediaParameterConditions) {
+			p.Rules[1].TextFlags.AllowedNames = append(p.Rules[1].TextFlags.AllowedNames, "repeat")
+		}},
+		{"unsafe alias", func(p *MediaParameterConditions) {
+			p.Rules[1].TextFlags.ReservedAliases["quoted alias"] = "aspect_ratio"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fresh := MediaContractParameterConditions(contract)
+			tc.mutate(fresh)
+			require.ErrorContains(t, validateMediaParameterConditions(fresh, map[string]any{"bot_type": "MID_JOURNEY", "prompt": "A bird"}), "conditions")
+		})
+	}
+	policy.Rules[0].DisallowedValues[0] = "changed"
+	policy.Rules[1].TextFlags.ReservedAliases["ar"] = "changed"
+	fresh := MediaContractParameterConditions(contract)
+	assert.Equal(t, "8.2", fresh.Rules[0].DisallowedValues[0])
+	assert.Equal(t, "aspect_ratio", fresh.Rules[1].TextFlags.ReservedAliases["ar"])
+	assert.Nil(t, MediaContractMaterialConditions(contract), "MJ parameter conditions are separate from material v1")
+	for _, id := range []string{"magi-2-special", "minimax-h3", "wan-3-0", "gpt-image-2-c"} {
+		c, ok := LookupMediaContract(id)
+		require.True(t, ok)
+		assert.Nil(t, MediaContractParameterConditions(c), "unaffected models do not gain parameter conditions")
+	}
+	for _, params := range []map[string]any{{}, {"version": ""}, {"version": "6.1"}, {"bot_type": "NIJI_JOURNEY"}} {
+		require.NoError(t, ValidateMediaParameterConditions(contract, params), "missing predicate/target is not an invented default")
+	}
+	require.ErrorContains(t, ValidateMediaParameterConditions(contract, map[string]any{"bot_type": "NIJI_JOURNEY", "version": nil}), "null")
+	booleanRule := &MediaParameterConditions{SchemaVersion: 2, Rules: []MediaParameterRule{{ID: "typed", When: map[string][]any{"flag": {true}}, Parameter: "number", DisallowedValues: []any{float64(2)}, Message: "blocked"}}}
+	require.NoError(t, validateMediaParameterConditions(booleanRule, map[string]any{"flag": "true", "number": float64(2)}), "no string/boolean coercion")
+	require.NoError(t, validateMediaParameterConditions(booleanRule, map[string]any{"flag": true, "number": "2"}), "no numeric/string coercion")
+	require.ErrorContains(t, validateMediaParameterConditions(booleanRule, map[string]any{"flag": true, "number": float64(2)}), "blocked")
+}
+
+func TestMediaParameterConditionsWireBoundaryFixtures(t *testing.T) {
+	contract, ok := LookupMediaContract("mj_imagine")
+	require.True(t, ok)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*MediaParameterConditions)
+		valid  bool
+	}{
+		{"factory", func(p *MediaParameterConditions) {}, true},
+		{"message-1024-ASCII-bytes", func(p *MediaParameterConditions) { p.Rules[0].Message = strings.Repeat("a", 1024) }, true},
+		{"message-1024-UTF8-bytes", func(p *MediaParameterConditions) { p.Rules[0].Message = strings.Repeat("字", 341) + "a" }, true},
+		{"message-1025-bytes", func(p *MediaParameterConditions) { p.Rules[0].Message = strings.Repeat("字", 341) + "ab" }, false},
+		{"message-empty", func(p *MediaParameterConditions) { p.Rules[0].Message = "" }, false},
+		{"unknown-version", func(p *MediaParameterConditions) { p.SchemaVersion = 9 }, false},
+		{"inactive-unknown-profile", func(p *MediaParameterConditions) {
+			p.Rules[1].When = map[string][]any{"bot_type": {"NOT_ACTIVE"}}
+			p.Rules[1].TextFlags.Profile = "future-v1"
+		}, false},
+		{"rule-ID-hyphen-valid", func(p *MediaParameterConditions) { p.Rules[0].ID = "rule-with_1" }, true},
+		{"field-hyphen-invalid", func(p *MediaParameterConditions) { p.Rules[0].Parameter = "not-a-field" }, false},
+		{"name-leading-digit-invalid", func(p *MediaParameterConditions) { p.Rules[0].Parameter = "1field" }, false},
+		{"name-uppercase-invalid", func(p *MediaParameterConditions) { p.Rules[0].Parameter = "Version" }, false},
+		{"name-Unicode-invalid", func(p *MediaParameterConditions) { p.Rules[0].Parameter = "版本" }, false},
+		{"name-64-byte-valid", func(p *MediaParameterConditions) { p.Rules[0].Parameter = strings.Repeat("a", 64) }, true},
+		{"name-65-byte-invalid", func(p *MediaParameterConditions) { p.Rules[0].Parameter = strings.Repeat("a", 65) }, false},
+		{"advanced-optional-options-absent", func(p *MediaParameterConditions) {
+			p.Rules[1].TextFlags.ForbiddenNames = nil
+			p.Rules[1].TextFlags.ReservedAliases = nil
+		}, true},
+		{"advanced-required-allowlist-missing", func(p *MediaParameterConditions) { p.Rules[1].TextFlags.AllowedNames = nil }, false},
+		{"advanced-required-double-dash-false", func(p *MediaParameterConditions) { p.Rules[1].TextFlags.RequireDoubleDash = false }, false},
+		{"text-profile-options-must-be-empty", func(p *MediaParameterConditions) { p.Rules[2].TextFlags.RequireDoubleDash = true }, false},
+		{"bool-literal-valid", func(p *MediaParameterConditions) { p.Rules[0].DisallowedValues = []any{true} }, true},
+		{"null-literal-invalid", func(p *MediaParameterConditions) { p.Rules[0].DisallowedValues = []any{nil} }, false},
+		{"compound-literal-invalid", func(p *MediaParameterConditions) { p.Rules[0].DisallowedValues = []any{[]any{"x"}} }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := MediaContractParameterConditions(contract)
+			tc.mutate(policy)
+			params := map[string]any{"bot_type": "MID_JOURNEY", "prompt": "A bird"}
+			err := validateMediaParameterConditions(policy, params)
+			if tc.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "conditions")
+			}
+			// A focused synthetic exporter consumes these Go-produced rows;
+			// tests do not write files, run services, or issue model requests.
+			row := map[string]any{"name": tc.name, "conditions": policy, "params": params, "valid": err == nil}
+			if err != nil {
+				row["error"] = err.Error()
+			}
+			data, marshalErr := common.Marshal(row)
+			require.NoError(t, marshalErr)
+			t.Logf("MJ_PARAMETER_POLICY_FIXTURE %s", data)
+		})
+	}
+	for _, value := range []any{math.NaN(), math.Inf(1), math.Inf(-1), int(1)} {
+		policy := MediaContractParameterConditions(contract)
+		policy.Rules[0].DisallowedValues = []any{value}
+		require.ErrorContains(t, validateMediaParameterConditions(policy, nil), "conditions", "non-JSON/nonfinite Go literals must not enter the policy")
+	}
+	whiteSpace := []rune{'\u0009', '\u000a', '\u000b', '\u000c', '\u000d', '\u0020', '\u0085', '\u00a0', '\u1680', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006', '\u2007', '\u2008', '\u2009', '\u200a', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000'}
+	logLexer := func(name, text string, valid bool) {
+		policy := MediaTextFlagPolicy{Profile: "text-no-native-parameter-token-v1"}
+		actual := mediaTextFlagsValid(policy, text)
+		require.Equal(t, valid, actual, name)
+		data, err := common.Marshal(map[string]any{"name": name, "text_flags": policy, "text": text, "valid": actual})
+		require.NoError(t, err)
+		t.Logf("MJ_PARAMETER_LEXER_FIXTURE %s", data)
+	}
+	for _, r := range whiteSpace {
+		require.True(t, unicode.IsSpace(r), "reviewed fixed White_Space set includes U+%04X", r)
+		text := "letters" + string(r) + "--r 2"
+		logLexer(fmt.Sprintf("Unicode-White-Space-U+%04X", r), text, false)
+	}
+	for _, text := range []string{"letters\ufeff--r 2", "letters\u200b--r 2", "https://assets.invalid/path--token", "letters--numbers", "(quoted)--r 2"} {
+		logLexer("literal-unreviewed-boundary-"+text, text, true)
+	}
+	logLexer("comma-before-native-parameter", "watermarks,--ar 16:9", false)
+	require.False(t, unicode.IsSpace('\ufeff'))
+	require.False(t, unicode.IsSpace('\u200b'))
+}
+
+func TestMediaRuntimeTransformOnlyContractWithNativeReferenceMode(t *testing.T) {
+	contract, ok := LookupMediaContract("veo-4-omni-v2v")
+	require.True(t, ok)
+	assert.Equal(t, []string{"transform"}, MediaContractIntents(contract))
+	nativeBefore, err := common.Marshal(contract)
+	require.NoError(t, err)
+	params := map[string]any{"aspect_ratio": "16:9", "count": float64(1), "mode": "reference", "prompt": "A small blue cube rests on a plain table in soft light.", "videos": []string{"asset:original-source-video"}}
+	original, err := common.Marshal(params)
+	require.NoError(t, err)
+	video := MediaAssetMetadata{Kind: "video", Bytes: 1024, Width: 720, Height: 720, DurationSeconds: 2, FPS: 24, MIMEType: "video/mp4", Format: "mp4"}
+	normalized, err := ValidateMediaContractParams(contract.ID, params, map[string]MediaAssetMetadata{"asset:original-source-video": video})
+	require.NoError(t, err)
+	wire, err := BuildMediaRuntimeRequest(contract.ID, normalized, "veo@synthetic-only", "task-synthetic-original-video", MediaIntentTransform)
+	require.NoError(t, err)
+	assert.Equal(t, "reference", wire.Params["mode"], "reviewed intent does not rewrite supplier-native parameters")
+	assert.Equal(t, []string{"asset:original-source-video"}, wire.Params["videos"])
+	assert.Equal(t, "task-synthetic-original-video", wire.ClientRequestID)
+	for _, intent := range []MediaRuntimeIntent{MediaIntentText, MediaIntentReference, MediaIntentFrames} {
+		_, err := BuildMediaRuntimeRequest(contract.ID, normalized, "veo@synthetic-only", "task-synthetic-original-video", intent)
+		require.ErrorContains(t, err, "intent", string(intent))
+	}
+	withoutMaterial := map[string]any{"mode": "reference", "prompt": "Keep the original video intent"}
+	_, err = BuildMediaRuntimeRequest(contract.ID, withoutMaterial, "veo@synthetic-only", "task-synthetic-no-source", MediaIntentTransform)
+	require.Error(t, err, "transform-only declaration does not authorize missing source material")
+	after, err := common.Marshal(params)
+	require.NoError(t, err)
+	assert.Equal(t, original, after)
+	nativeAfter, err := common.Marshal(contract)
+	require.NoError(t, err)
+	assert.Equal(t, nativeBefore, nativeAfter)
+	// A regular reference card still cannot claim a transform intent.
+	ref, err := ValidateMediaContractParams("wan-3-0-special", map[string]any{"mode": "reference", "prompt": "A shot", "images": []string{"asset:reference"}}, map[string]MediaAssetMetadata{"asset:reference": {Kind: "image", Bytes: 1024, Width: 1024, Height: 1024, MIMEType: "image/png"}})
+	require.NoError(t, err)
+	_, err = BuildMediaRuntimeRequest("wan-3-0-special", ref, "wan@synthetic-only", "task-synthetic-no-intent-expansion", MediaIntentTransform)
+	require.ErrorContains(t, err, "reference intent")
 }
 
 func TestMediaRuntimeVideoBatchNeedsSeparateMeterQualification(t *testing.T) {

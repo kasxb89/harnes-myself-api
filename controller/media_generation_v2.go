@@ -36,6 +36,8 @@ func mediaV2Success(c *gin.Context, data any) {
 func mediaV2Error(c *gin.Context, err error) {
 	status, code, message := http.StatusUnprocessableEntity, "invalid_parameters", "所选参数或参考素材不可用，请保留原任务后调整。"
 	switch {
+	case errors.Is(err, service.ErrMediaBatchClientUnsupported):
+		status, code, message = 422, "media_batch_client_unsupported", "当前客户端不支持完整接收多产物，请更新客户端后重新确认，未发送生成请求。"
 	case errors.Is(err, service.ErrMediaGenerationUploadConfig):
 		status, code, message = 503, "upload_unavailable", "当前规格暂不可用，请保留素材并选择其他规格。"
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -89,7 +91,7 @@ func MediaGenerationModels(c *gin.Context) {
 		mediaV2Error(c, err)
 		return
 	}
-	mediaV2Success(c, gin.H{"models": models, "capabilities": gin.H{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "material_conditions_v1": true, "max_upload_bytes": maxUploadBytes}})
+	mediaV2Success(c, gin.H{"models": models, "capabilities": gin.H{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "material_conditions_v1": true, "parameter_conditions_v1": true, "native_video_batch_v1": true, "max_upload_bytes": maxUploadBytes}})
 }
 
 func UploadMediaGenerationAsset(c *gin.Context) {
@@ -222,7 +224,7 @@ func writeMediaV2Quote(c *gin.Context, q *model.MediaGenerationQuote) {
 			mediaV2Error(c, e)
 			return
 		}
-		projection, e := projectMediaV2Task(task, q.Kind)
+		projection, e := projectMediaV2Task(task, q)
 		if e != nil {
 			mediaV2Error(c, e)
 			return
@@ -396,7 +398,7 @@ func GetMediaGenerationOperation(c *gin.Context) {
 			mediaV2Error(c, e)
 			return
 		}
-		p, e := projectMediaV2Task(t, q.Kind)
+		p, e := projectMediaV2Task(t, q)
 		if e != nil {
 			mediaV2Error(c, e)
 			return
@@ -435,7 +437,7 @@ func GetMediaGenerationTask(c *gin.Context) {
 		mediaV2Error(c, err)
 		return
 	}
-	p, err := projectMediaV2Task(t, q.Kind)
+	p, err := projectMediaV2Task(t, &q)
 	if err != nil {
 		mediaV2Error(c, err)
 		return
@@ -455,14 +457,19 @@ func writeMediaV2Task(c *gin.Context, q *model.MediaGenerationQuote, replayed bo
 		mediaV2Error(c, err)
 		return
 	}
-	p, err := projectMediaV2Task(t, q.Kind)
+	p, err := projectMediaV2Task(t, q)
 	if err != nil {
 		mediaV2Error(c, err)
 		return
 	}
 	mediaV2Success(c, gin.H{"task": p, "replayed": replayed})
 }
-func projectMediaV2Task(t *model.Task, kind string) (map[string]any, error) {
+func projectMediaV2Task(t *model.Task, q *model.MediaGenerationQuote) (map[string]any, error) {
+	kind := q.Kind
+	batch, groups, err := service.MediaGenerationBatchTaskProjection(t, q)
+	if err != nil {
+		return nil, err
+	}
 	status := "pending"
 	final := false
 	switch t.Status {
@@ -488,13 +495,23 @@ func projectMediaV2Task(t *model.Task, kind string) (map[string]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			artifacts = append(artifacts, map[string]any{"key": item.Key, "type": item.Type, "mime_type": item.MimeType, "order": i, "content_url": u})
+			artifact := map[string]any{"key": item.Key, "type": item.Type, "mime_type": item.MimeType, "order": i, "content_url": u}
+			for key, value := range groups[item.Key] {
+				artifact[key] = value
+			}
+			artifacts = append(artifacts, artifact)
 		}
 		if len(items) == 0 {
 			return nil, errors.New("artifact_not_ready")
 		}
 	}
 	p := map[string]any{"id": t.TaskID, "model": t.Properties.OriginModelName, "kind": kind, "status": status, "is_final": final, "artifacts": artifacts, "created_at": t.CreatedAt, "updated_at": t.UpdatedAt}
+	if batch != nil {
+		p["batch"] = batch
+		if batch["completeness"] == "partial" || batch["completeness"] == "mismatch" || status == "succeeded" && batch["completeness"] != "complete" {
+			p["status"], p["is_final"] = "unknown", false
+		}
+	}
 	if n, err := strconv.ParseFloat(strings.TrimSuffix(t.Progress, "%"), 64); err == nil && n >= 0 && n <= 100 {
 		p["progress"] = n
 	}

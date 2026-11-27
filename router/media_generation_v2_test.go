@@ -229,6 +229,230 @@ func TestMediaGenerationV2MaterialConditionsProjectionAndQuoteGate(t *testing.T)
 	}
 }
 
+func TestMediaGenerationV2MJReviewedConditionsAdmissionAndReceiptFirst(t *testing.T) {
+	f := newH3RouterFixture(t, 0)
+	isolateNativeMediaFixtureOptions(t)
+	isolateNativeMediaFixtureTables(t, f)
+	t.Setenv("MEDIA_ASSET_STORAGE_DIR", t.TempDir())
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+	contract, ok := ycapi.LookupMediaContract("mj_imagine")
+	require.True(t, ok)
+	publishSyntheticNativeMediaContracts(t, []ycapi.MediaContract{contract})
+	var uploads, estimates, dryRuns, forbidden atomic.Int64
+	client, previous := service.GetHttpClient(), service.GetHttpClient().Transport
+	client.Transport = imageUploadRoundTripper(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, "ycapi.token6688.com", r.URL.Host, "this fixture has no external transport")
+		var request map[string]any
+		require.NoError(t, common.DecodeJson(r.Body, &request))
+		var payload map[string]any
+		switch r.URL.Path {
+		case "/v1/pricing-estimate":
+			estimates.Add(1)
+			payload = map[string]any{"effective_total_rmb": 0.02, "billing_mode": "fixed_amount", "param_adjustments": []any{}, "channels": []any{map[string]any{"lane": request["pinned_lane_id"], "is_delivery_head": true}}}
+		case "/api/v1/model-runtime/dry-run":
+			dryRuns.Add(1)
+			payload = map[string]any{"object": "model_runtime.dry_run", "would_call_vendor": false, "pinned_lane": request["lane_id"], "modality": "image", "wire": map[string]any{"channel_id": request["lane_id"], "method": "POST", "body": request["params"]}}
+		default:
+			if r.URL.Path == "/v1/files" {
+				uploads.Add(1)
+			}
+			forbidden.Add(1)
+			return nil, fmt.Errorf("MJ admission fixture forbids supplier path %s", r.URL.Path)
+		}
+		body, e := common.Marshal(payload)
+		require.NoError(t, e)
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(body)), Request: r}, nil
+	})
+	t.Cleanup(func() { client.Transport = previous })
+	counters := func() []int64 { return []int64{uploads.Load(), estimates.Load(), dryRuns.Load(), forbidden.Load()} }
+	catalog := f.request(t, http.MethodGet, "/v1/media-v2/models", "", "h3routermember")
+	require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+	var published struct {
+		Data struct {
+			Models       []map[string]any `json:"models"`
+			Capabilities map[string]any   `json:"capabilities"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &published))
+	require.Len(t, published.Data.Models, 1)
+	require.Equal(t, true, published.Data.Capabilities["parameter_conditions_v1"])
+	visible := published.Data.Models[0]
+	conditionBytes, err := common.Marshal(ycapi.MediaContractParameterConditions(contract))
+	require.NoError(t, err)
+	var conditions map[string]any
+	require.NoError(t, common.Unmarshal(conditionBytes, &conditions))
+	assert.Equal(t, conditions, visible["parameter_conditions"])
+	assert.NotContains(t, visible, "conditions", "new parameter policy does not replace material v1")
+	version := visible["model_version"].(string)
+	actor := service.MediaGenerationActor{UserID: 792, TokenID: 792, OwnerDigest: common.GenerateHMAC("media-generation-owner:h3routermember")}
+	var pngBytes bytes.Buffer
+	require.NoError(t, png.Encode(&pngBytes, image.NewNRGBA(image.Rect(0, 0, 512, 512))))
+	images := []string{}
+	for range 2 {
+		asset, e := service.StoreMediaGenerationAsset(t.Context(), f.db, actor, contract.ID, uuid.NewString(), bytes.NewReader(pngBytes.Bytes()))
+		require.NoError(t, e)
+		images = append(images, asset.ID)
+	}
+	walletBefore, tokenBefore := f.balance(t)
+	evidence := []map[string]any{}
+	for _, tc := range []struct {
+		name   string
+		fields map[string]any
+	}{
+		{"niji5.1", map[string]any{"bot_type": "NIJI_JOURNEY", "version": "5.1"}},
+		{"repeat-alias", map[string]any{"extra": "--r 2"}},
+		{"negative-native-token", map[string]any{"negative_prompt": "文字, --video"}},
+	} {
+		t.Run("fresh-"+tc.name, func(t *testing.T) {
+			params := map[string]any{"prompt": "An original blue bird", "mode": "multi-reference"}
+			for field, value := range tc.fields {
+				params[field] = value
+			}
+			request := service.MediaGenerationRequest{ClientOperationID: uuid.NewString(), Model: contract.ID, ModelVersion: version, Intent: ycapi.MediaIntentReference, Parameters: params, Assets: map[string][]string{"images": images}}
+			body, e := common.Marshal(request)
+			require.NoError(t, e)
+			before := counters()
+			response := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(body), "h3routermember")
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			require.Contains(t, response.Body.String(), `"code":"invalid_parameters"`)
+			assert.Equal(t, before, counters(), "invalid selections cannot upload ready references, quote, dry-run or invoke")
+			evidence = append(evidence, map[string]any{"phase": "fresh", "name": tc.name, "client_operation_id": request.ClientOperationID, "original_body_sha256": fmt.Sprintf("%x", sha256.Sum256(body)), "request_sha256": service.MediaGenerationRequestDigest(request), "http_status": response.Code, "supplier_before": before, "supplier_after": counters()})
+		})
+	}
+	valid := service.MediaGenerationRequest{ClientOperationID: uuid.NewString(), Model: contract.ID, ModelVersion: version, Intent: ycapi.MediaIntentText, Parameters: map[string]any{"prompt": "An original blue bird", "bot_type": "NIJI_JOURNEY", "version": "7", "quality": "2", "extra": " --sameseed --fast "}, Assets: map[string][]string{}}
+	validBody, err := common.Marshal(valid)
+	require.NoError(t, err)
+	response := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(validBody), "h3routermember")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.EqualValues(t, []int64{0, 1, 1, 0}, counters())
+	var template model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("client_op_id = ?", valid.ClientOperationID).Take(&template).Error)
+	var frozen service.MediaGenerationFrozen
+	require.NoError(t, common.UnmarshalJsonStr(string(template.UsageFactsJSON), &frozen))
+	assert.Equal(t, valid.Parameters["extra"], frozen.Parameters["extra"], "accepted advanced text is never stripped by the gateway")
+	// This is an explicit synthetic prior-guard layout, not an old-binary
+	// execution claim. It retains a real current route/plugin binding while
+	// freezing one original illegal body/native selection consistently.
+	original := valid
+	original.ClientOperationID = uuid.NewString()
+	original.Parameters = map[string]any{"prompt": "An original blue bird", "bot_type": "NIJI_JOURNEY", "version": "5.1", "quality": "2"}
+	originalBody, err := common.Marshal(original)
+	require.NoError(t, err)
+	frozen.Request = original
+	// Resolve the version's independent native defaults without the new
+	// engine/version predicate, then restore the original engine. This avoids
+	// carrying Niji7-only defaults into a synthetic prior v5.1 snapshot.
+	frozen.Parameters, err = ycapi.ValidateMediaContractParams(contract.ID, map[string]any{"prompt": original.Parameters["prompt"], "bot_type": "MID_JOURNEY", "version": "5.1", "quality": "2"}, nil)
+	require.NoError(t, err)
+	frozen.Parameters["bot_type"] = original.Parameters["bot_type"]
+	frozen.DryRunSHA256 = service.MediaGenerationDigest(map[string]any{"synthetic_prior_guard_layout": true, "params": frozen.Parameters})
+	nativeBytes, err := common.Marshal(frozen.Parameters)
+	require.NoError(t, err)
+	frozenBytes, err := common.Marshal(frozen)
+	require.NoError(t, err)
+	prior := template
+	prior.QuoteID, prior.OperationKey = "", ""
+	prior.ClientOpID, prior.RequestSHA256 = original.ClientOperationID, service.MediaGenerationRequestDigest(original)
+	prior.NativeParamsJSON, prior.UsageFactsJSON = model.LongText(nativeBytes), model.LongText(frozenBytes)
+	prior.ExpiresAt = time.Now().Add(time.Hour).Unix()
+	prior.TaskDBID, prior.TaskID, prior.BoundAt, prior.CreatedAt, prior.UpdatedAt = 0, "", 0, 0, 0
+	store := model.MediaGenerationQuoteStore{DB: f.db}
+	stored, err := store.SaveQuote(t.Context(), &prior)
+	require.NoError(t, err)
+	require.Equal(t, template.PluginSourceHash, stored.PluginSourceHash)
+	require.Equal(t, template.ChannelConfigHash, stored.ChannelConfigHash)
+	require.Equal(t, original.ClientOperationID, stored.ClientOpID)
+	beforePrior := *stored
+	beforeCalls := counters()
+	for _, route := range []string{"cached-quote", "unaccepted-submit"} {
+		body, path := originalBody, "/v1/media-v2/quotes"
+		if route == "unaccepted-submit" {
+			path = "/v1/media-v2/tasks"
+			body, err = common.Marshal(map[string]any{"quote_id": stored.QuoteID, "client_operation_id": original.ClientOperationID, "request_sha256": stored.RequestSHA256})
+			require.NoError(t, err)
+		}
+		rejected := f.request(t, http.MethodPost, path, string(body), "h3routermember")
+		require.Equal(t, http.StatusUnprocessableEntity, rejected.Code, rejected.Body.String())
+		require.Contains(t, rejected.Body.String(), `"code":"invalid_parameters"`)
+		assert.Equal(t, beforeCalls, counters())
+		evidence = append(evidence, map[string]any{"phase": route, "client_operation_id": original.ClientOperationID, "quote_id": stored.QuoteID, "original_body_sha256": fmt.Sprintf("%x", sha256.Sum256(originalBody)), "request_sha256": stored.RequestSHA256, "native_params_sha256": service.MediaGenerationDigest(frozen.Parameters), "http_status": rejected.Code, "supplier_before": beforeCalls, "supplier_after": counters()})
+	}
+	var afterRejected model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", stored.QuoteID).Take(&afterRejected).Error)
+	assert.Equal(t, beforePrior, afterRejected)
+	for _, table := range []any{&model.Task{}, &model.WalletFundingRequest{}, &model.WalletFundingEvent{}} {
+		var count int64
+		require.NoError(t, f.db.Model(table).Count(&count).Error)
+		assert.Zero(t, count, "rejected cached/unaccepted selections must not start ledger or task admission")
+	}
+	walletAfterRejection, tokenAfterRejection := f.balance(t)
+	assert.Equal(t, walletBefore, walletAfterRejection)
+	assert.Equal(t, tokenBefore, tokenAfterRejection)
+	// Model an already accepted original operation with the normal quote-store
+	// bind and synthetic wallet transaction. No provider invocation is made.
+	fundingID := "synthetic-mj-accepted-" + uuid.NewString()
+	require.NoError(t, model.PrepareWalletFundingRequest(actor.UserID, fundingID, "relay", contract.ID, stored.ChannelID))
+	task := model.Task{TaskID: "synthetic-mj-task-" + uuid.NewString(), Platform: "ycapi", UserId: actor.UserID, Group: "default", ChannelId: stored.ChannelID, Quota: int(stored.ReserveQuota), Status: model.TaskStatusInProgress, Progress: "25%", CreatedAt: time.Now().Unix(), UpdatedAt: time.Now().Unix(), Properties: model.Properties{OriginModelName: contract.ID, UpstreamModelName: contract.NativeID}, PrivateData: model.TaskPrivateData{UpstreamTaskID: "synthetic-mj-already-accepted", BillingSource: "wallet", FundingRequestId: fundingID, TokenId: actor.TokenID, Execution: &model.TaskExecutionSnapshot{ModelConfigVersion: version, RequestID: fundingID, RequestPath: "/v1/media-v2/tasks"}}}
+	require.NoError(t, f.db.Transaction(func(tx *gorm.DB) error {
+		if e := tx.Create(&task).Error; e != nil {
+			return e
+		}
+		if e := store.BindQuoteToTaskTx(t.Context(), tx, service.MediaGenerationBinding(stored), task.ID, task.TaskID); e != nil {
+			return e
+		}
+		_, e := model.ApplyWalletFundingTargetWithTx(tx, actor.UserID, fundingID, "relay", int(stored.ReserveQuota), true)
+		return e
+	}))
+	var acceptedBefore model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", stored.QuoteID).Take(&acceptedBefore).Error)
+	taskBefore := f.task(t, task.TaskID)
+	var fundingBefore []model.WalletFundingRequest
+	var eventsBefore []model.WalletFundingEvent
+	require.NoError(t, f.db.Order("id").Find(&fundingBefore).Error)
+	require.NoError(t, f.db.Order("id").Find(&eventsBefore).Error)
+	require.Len(t, fundingBefore, 1)
+	require.Len(t, eventsBefore, 1)
+	acceptedWallet, acceptedToken := f.balance(t)
+	submitBody, err := common.Marshal(map[string]any{"quote_id": stored.QuoteID, "client_operation_id": original.ClientOperationID, "request_sha256": stored.RequestSHA256})
+	require.NoError(t, err)
+	for _, read := range []struct{ method, path, body string }{
+		{http.MethodGet, "/v1/media-v2/operations/" + original.ClientOperationID, ""},
+		{http.MethodGet, "/v1/media-v2/tasks/" + task.TaskID, ""},
+		{http.MethodPost, "/v1/media-v2/quotes", string(originalBody)},
+		{http.MethodPost, "/v1/media-v2/tasks", string(submitBody)},
+	} {
+		recovered := f.request(t, read.method, read.path, read.body, "h3routermember")
+		require.Equal(t, http.StatusOK, recovered.Code, recovered.Body.String())
+		if read.path == "/v1/media-v2/tasks" {
+			require.Contains(t, recovered.Body.String(), `"replayed":true`)
+		}
+		evidence = append(evidence, map[string]any{"phase": "accepted-receipt-first", "method": read.method, "path": read.path, "client_operation_id": original.ClientOperationID, "quote_id": stored.QuoteID, "task_id": task.TaskID, "request_sha256": stored.RequestSHA256, "http_status": recovered.Code, "supplier_before": beforeCalls, "supplier_after": counters()})
+	}
+	var acceptedAfter model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", stored.QuoteID).Take(&acceptedAfter).Error)
+	assert.Equal(t, acceptedBefore, acceptedAfter)
+	assert.Equal(t, taskBefore, f.task(t, task.TaskID))
+	var fundingAfter []model.WalletFundingRequest
+	var eventsAfter []model.WalletFundingEvent
+	require.NoError(t, f.db.Order("id").Find(&fundingAfter).Error)
+	require.NoError(t, f.db.Order("id").Find(&eventsAfter).Error)
+	assert.Equal(t, fundingBefore, fundingAfter)
+	assert.Equal(t, eventsBefore, eventsAfter)
+	afterWallet, afterToken := f.balance(t)
+	assert.Equal(t, acceptedWallet, afterWallet)
+	assert.Equal(t, acceptedToken, afterToken)
+	assert.Equal(t, beforeCalls, counters())
+	for _, row := range evidence {
+		data, e := common.Marshal(row)
+		require.NoError(t, e)
+		t.Logf("MJ_HTTP_ADMISSION_FIXTURE %s", data)
+	}
+}
+
 func TestMediaGenerationV2CapturedOldContractReceiptAfterRefresh(t *testing.T) {
 	f := newH3RouterFixture(t, 0)
 	isolateNativeMediaFixtureOptions(t)
@@ -785,8 +1009,35 @@ func TestMediaGenerationV2RejectedOriginalOperationsNeverChargeOrMultiplyTasks(t
 		t.Run(condition, func(t *testing.T) { testMediaGenerationV2RouterReferenceReceipt(t, "image", condition) })
 	}
 }
+func TestMediaGenerationV2QualifiedNativeBatchAccountingAndCompleteness(t *testing.T) {
+	for _, meter := range []string{"count", "seconds", "unmetered"} {
+		t.Run(meter, func(t *testing.T) { testMediaGenerationV2RouterReferenceReceipt(t, "video", "batch-"+meter) })
+	}
+}
+
 func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition string) {
+	batch := strings.HasPrefix(condition, "batch-")
+	rejected := condition == "capacity" || condition == "balance"
+	var batchPoll atomic.Int64
+	var batchPartial, batchUnknown, batchContradictory, batchExcess, batchMaxQuote, batchLegacySingleQuote map[string]any
+	var invalidOutputReceipts []map[string]any
+	outputSeconds := float64(5)
+	if condition == "batch-unmetered" {
+		outputSeconds = 0
+	}
 	f := newH3RouterFixture(t, 1)
+	nativeRequest := func(t *testing.T, method, path, body, credential string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer sk-"+credential)
+		if batch {
+			req.Header.Set(service.MediaGenerationBatchClientVersionHeader, "1")
+		}
+		response := httptest.NewRecorder()
+		f.engine.ServeHTTP(response, req)
+		return response
+	}
 	isolateNativeMediaFixtureTables(t, f)
 	common.OptionMapRWMutex.Lock()
 	previousPublished, hadPublished := common.OptionMap[model.ModelConfigurationKey]
@@ -835,7 +1086,49 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	if kind == "video" {
 		quantity = "seconds"
 	}
+	if batch {
+		quantity = "output_count"
+		if condition == "batch-seconds" {
+			quantity = "total_output_seconds"
+		}
+	}
 	definition.Pricing = model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": fmt.Sprintf(`tier("synthetic", u("%s") * (0.2 / %g))`, quantity, operation_setting.USDExchangeRate)}
+	if batch {
+		definition.MediaExecution.BatchPolicy = &model.ModelMediaBatchPolicy{SchemaVersion: 1, Policy: "qualified_native_batch", MaxCount: 3, Meter: quantity, Modes: []string{"first-frame"}, AdmissionUnit: "native_operation", DurationBasis: "requested_uniform", OutputContract: "ordered_unique_video_payloads_v1", ExpressionSHA256: billingexpr.ExprHashString(definition.Pricing["billing_setting.billing_expr"].(string)), LaneID: definition.MediaExecution.LaneID, ContractSHA256: definition.MediaExecution.ContractSHA256, QualificationSHA256: definition.MediaExecution.QualificationSHA256, EvidenceSHA256: strings.Repeat("b", 64), CheckedAt: "2026-11-27"}
+	}
+	if batch && condition == "batch-unmetered" {
+		definition.MediaExecution.BatchPolicy.DurationBasis = "unmetered"
+	}
+	if batch && condition == "batch-count" {
+		for _, tc := range []struct {
+			name   string
+			change func(*model.ModelMediaBatchPolicy)
+		}{
+			{"unreviewed capacity unit", func(p *model.ModelMediaBatchPolicy) { p.AdmissionUnit = "per_output" }},
+			{"wrong lane", func(p *model.ModelMediaBatchPolicy) { p.LaneID = "another-lane" }},
+			{"wrong native contract", func(p *model.ModelMediaBatchPolicy) { p.ContractSHA256 = strings.Repeat("c", 64) }},
+			{"wrong price binding", func(p *model.ModelMediaBatchPolicy) { p.ExpressionSHA256 = strings.Repeat("d", 64) }},
+			{"unbounded count", func(p *model.ModelMediaBatchPolicy) { p.MaxCount = 51 }},
+			{"unknown duration basis", func(p *model.ModelMediaBatchPolicy) { p.DurationBasis = "source_guess" }},
+			{"unreviewed mode", func(p *model.ModelMediaBatchPolicy) { p.Modes = []string{"unknown"} }},
+			{"missing capacity and output evidence", func(p *model.ModelMediaBatchPolicy) { p.EvidenceSHA256 = "" }},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				bad := definition
+				execution := *definition.MediaExecution
+				policy := *execution.BatchPolicy
+				tc.change(&policy)
+				execution.BatchPolicy = &policy
+				bad.MediaExecution = &execution
+				require.Error(t, model.ValidateModelMediaExecutionConfiguration(bad))
+			})
+		}
+		disabled := definition
+		execution := *definition.MediaExecution
+		execution.BatchPolicy = &model.ModelMediaBatchPolicy{SchemaVersion: 1, Policy: "disabled"}
+		disabled.MediaExecution = &execution
+		require.NoError(t, model.ValidateModelMediaExecutionConfiguration(disabled), "explicit disabled policy revokes without inheriting qualification")
+	}
 	require.NoError(t, model.SaveModelConfigurationDraft(snapshot.Revision, entry.BaseVersion, definition))
 	snapshot, err = model.GetModelConfigurationSnapshot(name)
 	require.NoError(t, err)
@@ -848,6 +1141,16 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	legacySave, err = model.GetModelConfigurationSnapshot(name)
 	require.NoError(t, err)
 	require.Equal(t, definition.MediaExecution, legacySave.Entries[0].Draft.Definition.MediaExecution, "older dashboard omission cannot delist native execution")
+	if batch {
+		older := legacySave.Entries[0].Draft.Definition
+		execution := *older.MediaExecution
+		execution.BatchPolicy = nil
+		older.MediaExecution = &execution
+		require.NoError(t, model.SaveModelConfigurationDraft(legacySave.Revision, legacySave.Entries[0].BaseVersion, older))
+		inherited, e := model.GetModelConfigurationSnapshot(name)
+		require.NoError(t, e)
+		require.Equal(t, definition.MediaExecution.BatchPolicy, inherited.Entries[0].Draft.Definition.MediaExecution.BatchPolicy, "old dashboard optional-policy omission retains reviewed batch policy")
+	}
 	model.RefreshPricing()
 	var posts, uploads, quotes atomic.Int64
 	client := service.GetHttpClient()
@@ -873,6 +1176,9 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 		require.NoError(t, e)
 		mediaBytes["/clip.mp4"] = data
 		mimeTypes["/clip.mp4"] = "video/mp4"
+		mediaBytes["/second.mp4"], mimeTypes["/second.mp4"] = data, "video/mp4"
+		mediaBytes["/third.mp4"], mimeTypes["/third.mp4"] = data, "video/mp4"
+		mediaBytes["/extra.mp4"], mimeTypes["/extra.mp4"] = data, "video/mp4"
 	}
 	var referenceSHA string
 	var envelopes []map[string]any
@@ -932,6 +1238,11 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 			require.Contains(t, fmt.Sprint(params["images"]), referenceSHA)
 			body = fmt.Sprintf(`{"task_id":"v2_original_provider_task","status":"pending","is_final":false,"model":{"public_model":%q}}`, contract.UpstreamPublicID)
 		case "/v1/tasks/v2_original_provider_task":
+			if batch && batchPoll.Load() < 0 {
+				status = http.StatusServiceUnavailable
+				body = `{"error":{"code":"synthetic_temporarily_unknown"}}`
+				break
+			}
 			outputs := []map[string]any{}
 			if kind == "image" {
 				for _, path := range []string{"/main.png", "/motion.gif", "/layer.svg"} {
@@ -939,20 +1250,81 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 				}
 			} else {
 				outputs = append(outputs, map[string]any{"url": "https://cdn.media-fixture/clip.mp4", "type": "video", "mime_type": "video/mp4"})
+				if batch {
+					outputs[0]["output_id"], outputs[0]["output_index"] = "A", 1
+					outputs = append(outputs, map[string]any{"url": "https://cdn.media-fixture/clip.mp4?signed=another", "type": "video", "mime_type": "video/mp4", "output_id": "B"}, map[string]any{"url": "https://cdn.media-fixture/second.mp4", "type": "video", "mime_type": "video/mp4", "output_id": "B"}, map[string]any{"url": "https://cdn.media-fixture/main.png", "type": "image", "mime_type": "image/png", "role": "preview", "output_index": 1}, map[string]any{"url": "https://cdn.media-fixture/layer.svg", "type": "file", "mime_type": "image/svg+xml", "role": "layer"}, map[string]any{"url": "https://cdn.media-fixture/main.png?untyped=1"})
+					if batchPoll.Load() > 1 {
+						outputs = append(outputs, map[string]any{"url": "https://cdn.media-fixture/third.mp4", "type": "video", "mime_type": "video/mp4", "output_id": "C", "output_index": 0})
+					}
+					if batchPoll.Load() == 3 {
+						outputs = append(outputs, map[string]any{"url": "https://cdn.media-fixture/extra.mp4", "type": "video", "mime_type": "video/mp4", "output_id": "D"})
+					}
+					if batchPoll.Load() == 4 {
+						outputs = append(outputs, map[string]any{"url": "https://cdn.media-fixture/clip.mp4", "type": "video", "mime_type": "video/mp4", "output_id": "A", "output_index": 0})
+					}
+					if batchPoll.Load() == 5 {
+						outputs[0]["output_index"] = 2
+					}
+					if batchPoll.Load() == 6 {
+						outputs[3]["output_index"] = 2
+					}
+					if batchPoll.Load() == 7 {
+						outputs[3]["parent_output_id"] = "C"
+					}
+					if batchPoll.Load() == 8 {
+						outputs[3]["parent_output_id"] = "missing"
+					}
+					if batchPoll.Load() == 9 {
+						outputs[3]["parent_output_id"] = 123
+					}
+					if batchPoll.Load() == 10 {
+						outputs[0]["output_id"] = 42
+					}
+					if batchPoll.Load() == 11 {
+						outputs[0]["output_id"] = ""
+					}
+					if batchPoll.Load() == 12 {
+						outputs[0]["output_id"] = strings.Repeat("x", 257)
+					}
+					if batchPoll.Load() == 13 {
+						outputs[0]["role"] = 0
+					}
+					if batchPoll.Load() == 14 {
+						outputs[0]["role"], outputs[0]["output_role"] = "main", "preview"
+					}
+				}
 			}
-			raw, _ := common.Marshal(map[string]any{"task_id": "v2_original_provider_task", "status": "completed", "is_final": true, "model": map[string]any{"public_model": contract.UpstreamPublicID}, "data": outputs})
+			providerStatus := "completed"
+			if batch && batchPoll.Load() == 1 {
+				providerStatus = "failed"
+			}
+			raw, _ := common.Marshal(map[string]any{"task_id": "v2_original_provider_task", "status": providerStatus, "is_final": true, "model": map[string]any{"public_model": contract.UpstreamPublicID}, "data": outputs})
 			body = string(raw)
 		default:
 			return nil, fmt.Errorf("fixture denies unexpected outbound %s %s", r.Method, r.URL.Path)
 		}
 		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
 	})
-	catalog := f.request(t, "GET", "/v1/media-v2/models", "", "h3routermember")
+	if batch {
+		unackedCatalog := f.request(t, "GET", "/v1/media-v2/models", "", "h3routermember")
+		require.Equal(t, 200, unackedCatalog.Code, unackedCatalog.Body.String())
+		var decoded map[string]any
+		require.NoError(t, common.Unmarshal(unackedCatalog.Body.Bytes(), &decoded))
+		legacy := decoded["data"].(map[string]any)["models"].([]any)[0].(map[string]any)
+		require.NotContains(t, legacy, "quantity", "old client must not see an executable native batch contract")
+		require.EqualValues(t, 1, legacy["parameters_schema"].(map[string]any)["properties"].(map[string]any)["count"].(map[string]any)["maximum"])
+	}
+	catalog := nativeRequest(t, "GET", "/v1/media-v2/models", "", "h3routermember")
 	require.Equal(t, 200, catalog.Code, catalog.Body.String())
 	var result map[string]any
 	require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &result))
 	models := result["data"].(map[string]any)["models"].([]any)
 	require.Len(t, models, 1)
+	if batch {
+		projected := models[0].(map[string]any)
+		require.EqualValues(t, 3, projected["parameters_schema"].(map[string]any)["properties"].(map[string]any)["count"].(map[string]any)["maximum"])
+		require.Equal(t, "native_operation", projected["quantity"].(map[string]any)["admission_unit"])
+	}
 	version := models[0].(map[string]any)["model_version"]
 	var picture bytes.Buffer
 	require.NoError(t, png.Encode(&picture, image.NewNRGBA(image.Rect(0, 0, 512, 512))))
@@ -981,20 +1353,96 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 		request["intent"] = "frames"
 		request["parameters"] = map[string]any{"mode": "first-frame", "duration": "5", "prompt": "保留参考画面，镜头缓慢向前移动"}
 	}
+	if batch {
+		request["parameters"].(map[string]any)["count"] = float64(2)
+		unackedBody, e := common.Marshal(request)
+		require.NoError(t, e)
+		unackedQuote := f.request(t, "POST", "/v1/media-v2/quotes", string(unackedBody), "h3routermember")
+		require.Equal(t, 422, unackedQuote.Code, unackedQuote.Body.String())
+		require.Contains(t, unackedQuote.Body.String(), "media_batch_client_unsupported")
+		require.Zero(t, uploads.Load())
+		require.Zero(t, quotes.Load())
+		require.Zero(t, posts.Load())
+		for _, invalid := range []any{float64(0), float64(4), float64(1.5), "2", nil} {
+			bad := map[string]any{}
+			for key, value := range request {
+				bad[key] = value
+			}
+			params := map[string]any{}
+			for key, value := range request["parameters"].(map[string]any) {
+				params[key] = value
+			}
+			params["count"] = invalid
+			bad["parameters"], bad["client_operation_id"] = params, uuid.NewString()
+			wire, e := common.Marshal(bad)
+			require.NoError(t, e)
+			denied := nativeRequest(t, "POST", "/v1/media-v2/quotes", string(wire), "h3routermember")
+			require.Equal(t, http.StatusUnprocessableEntity, denied.Code, denied.Body.String())
+		}
+		require.Zero(t, quotes.Load(), "invalid batch quantity rejected before provider quote")
+		require.Zero(t, uploads.Load(), "invalid batch quantity rejected before provider material upload")
+		legacySingle := map[string]any{}
+		for key, value := range request {
+			legacySingle[key] = value
+		}
+		legacyParams := map[string]any{}
+		for key, value := range request["parameters"].(map[string]any) {
+			legacyParams[key] = value
+		}
+		legacyParams["count"] = float64(1)
+		legacySingle["parameters"], legacySingle["client_operation_id"] = legacyParams, uuid.NewString()
+		rawSingle, e := common.Marshal(legacySingle)
+		require.NoError(t, e)
+		legacyQuote := f.request(t, "POST", "/v1/media-v2/quotes", string(rawSingle), "h3routermember")
+		require.Equal(t, 200, legacyQuote.Code, legacyQuote.Body.String())
+		require.NoError(t, common.Unmarshal(legacyQuote.Body.Bytes(), &batchLegacySingleQuote))
+		require.NotContains(t, batchLegacySingleQuote["data"].(map[string]any), "batch", "unacknowledged count1 keeps its legacy delivery contract")
+		maxRequest := map[string]any{}
+		for key, value := range request {
+			maxRequest[key] = value
+		}
+		maxParams := map[string]any{}
+		for key, value := range request["parameters"].(map[string]any) {
+			maxParams[key] = value
+		}
+		maxParams["count"], maxRequest["client_operation_id"] = float64(3), uuid.NewString()
+		maxRequest["parameters"] = maxParams
+		raw, e := common.Marshal(maxRequest)
+		require.NoError(t, e)
+		maxQuote := nativeRequest(t, "POST", "/v1/media-v2/quotes", string(raw), "h3routermember")
+		require.Equal(t, 200, maxQuote.Code, maxQuote.Body.String())
+		require.NoError(t, common.Unmarshal(maxQuote.Body.Bytes(), &batchMaxQuote))
+		maxBatch := batchMaxQuote["data"].(map[string]any)["batch"].(map[string]any)
+		require.EqualValues(t, 3, maxBatch["requested_output_count"])
+		require.EqualValues(t, outputSeconds*3, maxBatch["total_output_seconds"])
+		require.Zero(t, posts.Load(), "quoting qualified max does not generate additional work")
+	}
 	encoded, _ := common.Marshal(request)
-	quote := f.request(t, "POST", "/v1/media-v2/quotes", string(encoded), "h3routermember")
+	quote := nativeRequest(t, "POST", "/v1/media-v2/quotes", string(encoded), "h3routermember")
 	require.Equal(t, 200, quote.Code, quote.Body.String())
 	require.NoError(t, common.Unmarshal(quote.Body.Bytes(), &result))
 	q := result["data"].(map[string]any)
 	if kind == "image" {
 		require.Equal(t, "0.2000054", q["retail_cny"])
-	} else {
+	} else if !batch {
 		require.Equal(t, "0.9999978", q["retail_cny"], "the quote includes exact existing quota rounding")
+	} else {
+		frozen := q["batch"].(map[string]any)
+		require.EqualValues(t, 2, frozen["requested_output_count"])
+		require.EqualValues(t, outputSeconds*2, frozen["total_output_seconds"])
+		require.Equal(t, quantity, frozen["meter"])
+		var stored model.MediaGenerationQuote
+		require.NoError(t, f.db.Where("quote_id = ?", q["quote_id"]).Take(&stored).Error)
+		var facts service.MediaGenerationFrozen
+		require.NoError(t, common.UnmarshalJsonStr(string(stored.UsageFactsJSON), &facts))
+		require.EqualValues(t, 5, facts.Facts["seconds"], "legacy one-video seconds must remain immutable")
+		require.EqualValues(t, 2, facts.Facts["output_count"])
+		require.EqualValues(t, outputSeconds*2, facts.Facts["total_output_seconds"])
 	}
 	require.NotContains(t, q, "cost_cny")
 	require.NotContains(t, q, "lane_id")
 	require.NotContains(t, q, "credits")
-	recovery := f.request(t, "GET", "/v1/media-v2/operations/646b0609-72ba-4682-bc61-7c02a160b14c", "", "h3routermember")
+	recovery := nativeRequest(t, "GET", "/v1/media-v2/operations/646b0609-72ba-4682-bc61-7c02a160b14c", "", "h3routermember")
 	require.Equal(t, 200, recovery.Code, recovery.Body.String())
 	require.Contains(t, recovery.Body.String(), q["quote_id"])
 	require.Contains(t, recovery.Body.String(), "retail_cny")
@@ -1016,7 +1464,7 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 		require.NotEqual(t, version, request["model_version"])
 		refreshedBody, e := common.Marshal(request)
 		require.NoError(t, e)
-		refreshed := f.request(t, "POST", "/v1/media-v2/quotes", string(refreshedBody), "h3routermember")
+		refreshed := nativeRequest(t, "POST", "/v1/media-v2/quotes", string(refreshedBody), "h3routermember")
 		require.Equal(t, 200, refreshed.Code, refreshed.Body.String())
 		require.NoError(t, common.Unmarshal(refreshed.Body.Bytes(), &result))
 		q = result["data"].(map[string]any)
@@ -1026,14 +1474,24 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	}
 	submit := map[string]any{"quote_id": q["quote_id"], "client_operation_id": request["client_operation_id"], "request_sha256": q["request_sha256"]}
 	wire, _ := common.Marshal(submit)
-	first := f.request(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
+	walletBeforeSubmit, tokenBeforeSubmit := mediaGenerationMemberBalance(t, f)
+	if batch {
+		rejectedClient := f.request(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
+		require.Equal(t, 422, rejectedClient.Code, rejectedClient.Body.String())
+		require.Contains(t, rejectedClient.Body.String(), "media_batch_client_unsupported")
+		a, b := mediaGenerationMemberBalance(t, f)
+		require.Equal(t, walletBeforeSubmit, a)
+		require.Equal(t, tokenBeforeSubmit, b)
+		require.Zero(t, posts.Load(), "unacknowledged caller must be rejected before billing or supplier invoke")
+	}
+	first := nativeRequest(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
 	require.Equal(t, 200, first.Code, first.Body.String())
 	require.NoError(t, common.Unmarshal(first.Body.Bytes(), &result))
 	task := result["data"].(map[string]any)["task"].(map[string]any)
 	require.NotEmpty(t, task["id"])
 	require.Equal(t, task["id"], envelopes[0]["client_request_id"])
 	expectedRows := int64(1)
-	if condition != "" {
+	if rejected {
 		if condition == "capacity" {
 			policy, e := model.GetMediaConcurrencyPolicy(t.Context())
 			require.NoError(t, e)
@@ -1051,13 +1509,13 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 		}
 		rejectedRequest["client_operation_id"] = "b80e9581-79df-49b7-9faa-40c3d93415f6"
 		payload, _ := common.Marshal(rejectedRequest)
-		quoteReply := f.request(t, "POST", "/v1/media-v2/quotes", string(payload), "h3routermember")
+		quoteReply := nativeRequest(t, "POST", "/v1/media-v2/quotes", string(payload), "h3routermember")
 		require.Equal(t, 200, quoteReply.Code, quoteReply.Body.String())
 		var decoded map[string]any
 		require.NoError(t, common.Unmarshal(quoteReply.Body.Bytes(), &decoded))
 		failedQuote := decoded["data"].(map[string]any)
 		submitPayload, _ := common.Marshal(map[string]any{"quote_id": failedQuote["quote_id"], "client_operation_id": rejectedRequest["client_operation_id"], "request_sha256": failedQuote["request_sha256"]})
-		refused := f.request(t, "POST", "/v1/media-v2/tasks", string(submitPayload), "h3routermember")
+		refused := nativeRequest(t, "POST", "/v1/media-v2/tasks", string(submitPayload), "h3routermember")
 		require.Equal(t, 200, refused.Code, refused.Body.String())
 		require.NoError(t, common.Unmarshal(refused.Body.Bytes(), &decoded))
 		refusedTask := decoded["data"].(map[string]any)["task"].(map[string]any)
@@ -1069,7 +1527,7 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 			expectedCode = "insufficient_quota"
 		}
 		require.Equal(t, expectedCode, refusedTask["failure"].(map[string]any)["code"])
-		refusedAgain := f.request(t, "POST", "/v1/media-v2/tasks", string(submitPayload), "h3routermember")
+		refusedAgain := nativeRequest(t, "POST", "/v1/media-v2/tasks", string(submitPayload), "h3routermember")
 		require.Equal(t, 200, refusedAgain.Code, refusedAgain.Body.String())
 		require.Contains(t, refusedAgain.Body.String(), refusedTask["id"])
 		require.Contains(t, refusedAgain.Body.String(), `"replayed":true`)
@@ -1082,7 +1540,7 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 		require.EqualValues(t, 1, consumeCount, "only the first successful synthetic request is charged")
 		expectedRows = 2
 	}
-	acceptedOperation := f.request(t, "GET", "/v1/media-v2/operations/646b0609-72ba-4682-bc61-7c02a160b14c", "", "h3routermember")
+	acceptedOperation := nativeRequest(t, "GET", "/v1/media-v2/operations/646b0609-72ba-4682-bc61-7c02a160b14c", "", "h3routermember")
 	require.Equal(t, 200, acceptedOperation.Code, acceptedOperation.Body.String())
 	var acceptedEnvelope map[string]any
 	require.NoError(t, common.Unmarshal(acceptedOperation.Body.Bytes(), &acceptedEnvelope))
@@ -1090,14 +1548,90 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	require.Equal(t, acceptedData["task"], acceptedData["quote"].(map[string]any)["task"], "accepted nested quote must carry the identical original task")
 	// Receipt-first survives expired quote, disabled model/route and local files.
 	require.NoError(t, f.db.Model(&model.MediaGenerationQuote{}).Where("client_op_id = ?", request["client_operation_id"]).Update("expires_at", 1).Error)
-	again := f.request(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
+	again := nativeRequest(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
 	require.Equal(t, 200, again.Code, again.Body.String())
 	require.Contains(t, again.Body.String(), `"replayed":true`)
 	require.Contains(t, again.Body.String(), task["id"])
-	denied := f.request(t, "GET", "/v1/media-v2/operations/646b0609-72ba-4682-bc61-7c02a160b14c", "", "h3routeradmin")
+	if batch {
+		original := f.request(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
+		require.Equal(t, 200, original.Code, original.Body.String())
+		require.Contains(t, original.Body.String(), `"replayed":true`)
+		require.Contains(t, original.Body.String(), task["id"])
+		require.EqualValues(t, 1, posts.Load(), "accepted original receipt is resolved before caller feature gate")
+	}
+	denied := nativeRequest(t, "GET", "/v1/media-v2/operations/646b0609-72ba-4682-bc61-7c02a160b14c", "", "h3routeradmin")
 	require.Equal(t, 404, denied.Code, denied.Body.String())
+	if batch {
+		beforePartial := f.task(t, task["id"].(string))
+		require.Positive(t, beforePartial.Quota)
+		var quoted model.MediaGenerationQuote
+		require.NoError(t, f.db.Where("quote_id = ?", q["quote_id"]).Take(&quoted).Error)
+		require.EqualValues(t, quoted.ReserveQuota, beforePartial.Quota)
+		walletReserved, tokenReserved := mediaGenerationMemberBalance(t, f)
+		require.EqualValues(t, beforePartial.Quota, walletBeforeSubmit-walletReserved)
+		require.EqualValues(t, beforePartial.Quota, tokenBeforeSubmit-tokenReserved)
+		batchPoll.Store(-1)
+		service.RunTaskPollingOnce(context.Background(), nil)
+		unknown := nativeRequest(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
+		require.Equal(t, 200, unknown.Code, unknown.Body.String())
+		require.Contains(t, unknown.Body.String(), `"status":"unknown"`)
+		require.NoError(t, common.Unmarshal(unknown.Body.Bytes(), &batchUnknown))
+		require.Equal(t, beforePartial.Quota, f.task(t, task["id"].(string)).Quota)
+		batchPoll.Store(0)
+		service.RunTaskPollingOnce(context.Background(), nil)
+		partial := nativeRequest(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
+		require.Equal(t, 200, partial.Code, partial.Body.String())
+		require.NoError(t, common.Unmarshal(partial.Body.Bytes(), &batchPartial))
+		partialTask := batchPartial["data"].(map[string]any)["task"].(map[string]any)
+		require.Equal(t, "unknown", partialTask["status"], partial.Body.String())
+		require.Equal(t, false, partialTask["is_final"])
+		require.Equal(t, "partial", partialTask["batch"].(map[string]any)["completeness"])
+		require.EqualValues(t, 1, partialTask["batch"].(map[string]any)["received_main_output_count"], "duplicate alias, preview and layer cannot satisfy the missing second video")
+		require.Empty(t, partialTask["artifacts"], "partial original URLs are retained but bytes are not exposed as complete")
+		retained := f.task(t, task["id"].(string))
+		require.Equal(t, beforePartial.Quota, retained.Quota, "incomplete output must retain reservation without fake settlement")
+		require.Contains(t, string(retained.PrivateData.PluginState), "main_outputs_missing")
+		a, b := mediaGenerationMemberBalance(t, f)
+		require.Equal(t, walletReserved, a)
+		require.Equal(t, tokenReserved, b)
+		repeat := nativeRequest(t, "POST", "/v1/media-v2/tasks", string(wire), "h3routermember")
+		require.Equal(t, 200, repeat.Code, repeat.Body.String())
+		require.Contains(t, repeat.Body.String(), `"replayed":true`)
+		require.EqualValues(t, 1, posts.Load(), "unknown original receipt never resubmits vendor work")
+		batchPoll.Store(1)
+		service.RunTaskPollingOnce(context.Background(), nil)
+		failedWithOutput := nativeRequest(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
+		require.Equal(t, 200, failedWithOutput.Code, failedWithOutput.Body.String())
+		require.Contains(t, failedWithOutput.Body.String(), `"status":"unknown"`, "provider failure plus existing main output is contradictory, not an automatic full refund")
+		require.NoError(t, common.Unmarshal(failedWithOutput.Body.Bytes(), &batchContradictory))
+		still := f.task(t, task["id"].(string))
+		require.Equal(t, beforePartial.Quota, still.Quota)
+		a, b = mediaGenerationMemberBalance(t, f)
+		require.Equal(t, walletReserved, a)
+		require.Equal(t, tokenReserved, b)
+		batchPoll.Store(3)
+		service.RunTaskPollingOnce(context.Background(), nil)
+		extra := nativeRequest(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
+		require.Equal(t, 200, extra.Code, extra.Body.String())
+		require.Contains(t, extra.Body.String(), `"completeness":"mismatch"`)
+		require.Contains(t, extra.Body.String(), `"status":"unknown"`)
+		require.NoError(t, common.Unmarshal(extra.Body.Bytes(), &batchExcess))
+		require.Equal(t, beforePartial.Quota, f.task(t, task["id"].(string)).Quota)
+		for _, phase := range []int64{4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14} {
+			batchPoll.Store(phase)
+			service.RunTaskPollingOnce(context.Background(), nil)
+			receipt := nativeRequest(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
+			require.Equal(t, 200, receipt.Code, receipt.Body.String())
+			require.Contains(t, receipt.Body.String(), `"status":"unknown"`, "ambiguous/out-of-range upstream output index cannot falsely complete")
+			var decoded map[string]any
+			require.NoError(t, common.Unmarshal(receipt.Body.Bytes(), &decoded))
+			invalidOutputReceipts = append(invalidOutputReceipts, map[string]any{"phase": phase, "receipt": decoded})
+			require.Equal(t, beforePartial.Quota, f.task(t, task["id"].(string)).Quota)
+		}
+		batchPoll.Store(2)
+	}
 	service.RunTaskPollingOnce(context.Background(), nil)
-	statusReply := f.request(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
+	statusReply := nativeRequest(t, "GET", "/v1/media-v2/tasks/"+task["id"].(string), "", "h3routermember")
 	require.Equal(t, 200, statusReply.Code, statusReply.Body.String())
 	require.NoError(t, common.Unmarshal(statusReply.Body.Bytes(), &result))
 	completed := result["data"].(map[string]any)["task"].(map[string]any)
@@ -1107,15 +1641,32 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	if kind == "video" {
 		expectedCount = 1
 	}
+	if batch {
+		expectedCount = 7
+		complete := completed["batch"].(map[string]any)
+		require.Equal(t, "complete", complete["completeness"])
+		require.EqualValues(t, 2, complete["received_main_output_count"])
+		require.Equal(t, "main", artifacts[0].(map[string]any)["role"])
+		require.Equal(t, "duplicate", artifacts[1].(map[string]any)["role"])
+		require.Equal(t, "duplicate", artifacts[2].(map[string]any)["role"])
+		require.Equal(t, "preview", artifacts[3].(map[string]any)["role"])
+		require.Equal(t, "main-1", artifacts[3].(map[string]any)["output_id"], "provider index1 points to canonicalfirst main A, not encountered second main B")
+		require.EqualValues(t, 0, artifacts[3].(map[string]any)["output_index"])
+		require.Equal(t, "auxiliary", artifacts[4].(map[string]any)["role"])
+		require.Equal(t, "auxiliary", artifacts[5].(map[string]any)["role"])
+		require.Equal(t, "file", artifacts[5].(map[string]any)["type"], "untyped carrier must never be inferred as a fulfilled video output")
+		require.Equal(t, "main", artifacts[6].(map[string]any)["role"])
+		require.Equal(t, "main-2", artifacts[6].(map[string]any)["output_id"])
+	}
 	require.Len(t, artifacts, expectedCount)
 	for _, raw := range artifacts {
 		artifact := raw.(map[string]any)
 		key := artifact["key"].(string)
 		endpoint := "/v1/tasks/" + task["id"].(string) + "/artifacts/" + key + "/content"
-		download := f.request(t, "GET", endpoint, "", "h3routermember")
+		download := nativeRequest(t, "GET", endpoint, "", "h3routermember")
 		require.Equal(t, 200, download.Code, download.Body.String())
 		require.NotEmpty(t, download.Body.Bytes())
-		head := f.request(t, "HEAD", endpoint, "", "h3routermember")
+		head := nativeRequest(t, "HEAD", endpoint, "", "h3routermember")
 		require.Equal(t, 200, head.Code, head.Body.String())
 		require.Zero(t, head.Body.Len())
 		rr := httptest.NewRequest("GET", endpoint, nil)
@@ -1133,8 +1684,11 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	if condition == "" {
 		expectedQuotes++
 	}
-	if condition != "" {
+	if rejected {
 		expectedQuotes = 2
+	}
+	if batch {
+		expectedQuotes = 3
 	}
 	require.EqualValues(t, expectedQuotes, quotes.Load())
 	var count int64
@@ -1143,4 +1697,39 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	var admissions int64
 	require.NoError(t, f.db.Model(&model.MediaAdmission{}).Where("channel_id = ?", ch.Id).Count(&admissions).Error)
 	require.EqualValues(t, expectedRows, admissions)
+	if batch {
+		row := f.task(t, task["id"].(string))
+		walletAfter, tokenAfter := mediaGenerationMemberBalance(t, f)
+		require.EqualValues(t, row.Quota, walletBeforeSubmit-walletAfter)
+		require.EqualValues(t, row.Quota, tokenBeforeSubmit-tokenAfter)
+		var funding []model.WalletFundingRequest
+		require.NoError(t, f.db.Where("user_id = ?", 792).Find(&funding).Error)
+		require.Len(t, funding, 1, "one aggregate batch has one funding identity")
+		require.EqualValues(t, row.Quota, funding[0].Quota)
+		var logs []model.Log
+		require.NoError(t, f.logDB.Where("user_id = ? AND type = ?", 792, model.LogTypeConsume).Find(&logs).Error)
+		require.Len(t, logs, 1)
+		require.Equal(t, row.Quota, logs[0].Quota)
+		var frozen service.MediaGenerationFrozen
+		var frozenQuote model.MediaGenerationQuote
+		require.NoError(t, f.db.Where("quote_id = ?", q["quote_id"]).Take(&frozenQuote).Error)
+		require.NoError(t, common.UnmarshalJsonStr(string(frozenQuote.UsageFactsJSON), &frozen))
+		require.Equal(t, frozen.Facts, row.PrivateData.BillingContext.TieredSnapshot.UsageFacts)
+		if dir := os.Getenv("YC_COMPLETION_BATCH_FIXTURE_OUTPUT"); dir != "" {
+			require.NoError(t, os.MkdirAll(dir, 0700))
+			proof := map[string]any{"schema_version": 1, "synthetic_only": true, "real_supplier_qualified": false, "meter": quantity, "catalog": models, "quote": q, "partial": batchPartial, "transport_unknown": batchUnknown, "contradictory_failed_with_outputs": batchContradictory, "excess_outputs": batchExcess, "maximum_quote": batchMaxQuote, "legacy_single_quote": batchLegacySingleQuote, "invalid_output_receipts": invalidOutputReceipts, "complete": result, "requested_count": 2, "invoke_posts": posts.Load(), "task_rows": count, "admissions": admissions, "funding_requests": len(funding), "consume_rows": len(logs), "quota": row.Quota, "wallet_delta": walletBeforeSubmit - walletAfter, "token_delta": tokenBeforeSubmit - tokenAfter, "facts": frozen.Facts, "all_artifacts_downloaded": true, "partial_downloads_supported": false}
+			raw, e := common.Marshal(proof)
+			require.NoError(t, e)
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "native-batch-"+condition+".json"), raw, 0600))
+		}
+	}
+}
+
+func mediaGenerationMemberBalance(t *testing.T, f *h3RouterFixture) (int, int) {
+	t.Helper()
+	var user model.User
+	var token model.Token
+	require.NoError(t, f.db.First(&user, 792).Error)
+	require.NoError(t, f.db.First(&token, 792).Error)
+	return user.Quota, token.RemainQuota
 }

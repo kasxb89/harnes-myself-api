@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -30,13 +31,36 @@ func AttachMediaGenerationQuote(c *gin.Context, q *model.MediaGenerationQuote) e
 	if common.UnmarshalJsonStr(string(q.UsageFactsJSON), &frozen) != nil || frozen.Request.Model != q.Model || MediaGenerationRequestDigest(frozen.Request) != q.RequestSHA256 {
 		return errors.New("quote unavailable")
 	}
+	if frozen.Batch != nil && !MediaGenerationBatchClientSupported(c) {
+		return ErrMediaBatchClientUnsupported
+	}
 	route, err := MediaGenerationRouteFromContext(c)
 	if err != nil || route.ChannelID != q.ChannelID || route.ConfigHash != q.ChannelConfigHash || route.CredentialDigest != q.CredentialDigest {
 		return errors.New("quote_changed")
 	}
-	record, _, err := mediaGenerationRecord(q.Model)
+	record, contract, err := mediaGenerationRecord(q.Model)
 	if err != nil || model.ModelExecutionConfigurationVersion(q.Model, record) != q.ModelConfigVersion {
 		return errors.New("model_version_changed")
+	}
+	if err := ycapi.ValidateMediaParameterConditions(contract, frozen.Parameters); err != nil {
+		return err
+	}
+	expression, priced := billing_setting.ResolveTaskBillingExpr("ycapi", q.Model, q.Model)
+	if !priced {
+		return errors.New("model_price_unavailable")
+	}
+	batch, err := mediaGenerationBatchUsage(record.Definition, contract, frozen.Parameters, frozen.Facts, expression)
+	if err != nil {
+		return err
+	}
+	if frozen.Batch == nil && batch != nil {
+		if batch.RequestedOutputCount != 1 {
+			return errors.New("quote_changed")
+		}
+		batch = nil // original count1 quote stays legacy even under a newer client
+	}
+	if MediaGenerationDigest(batch) != MediaGenerationDigest(frozen.Batch) {
+		return errors.New("quote_changed")
 	}
 	plugin, ok := jsplugin.DefaultRegistry.Get(q.PluginKey)
 	if !ok || plugin.Meta.Version != q.PluginVersion || plugin.SourceHash != q.PluginSourceHash {
@@ -66,11 +90,22 @@ func MediaGenerationPluginContext(c *gin.Context, info *relaycommon.RelayInfo) (
 	if common.UnmarshalJsonStr(string(private.Quote.NativeParamsJSON), &params) != nil {
 		return nil, errors.New("invalid media quote parameters")
 	}
-	native, err := ycapi.BuildMediaRuntimeRequest(private.Quote.Model, params, private.Quote.SupplierLane, info.PublicTaskID, private.Frozen.Request.Intent)
+	maximum := 1
+	if private.Frozen.Batch != nil {
+		if !validMediaGenerationBatch(private.Frozen.Batch) {
+			return nil, errors.New("invalid media batch context")
+		}
+		maximum = private.Frozen.Batch.RequestedOutputCount
+	}
+	native, err := ycapi.BuildMediaRuntimeRequest(private.Quote.Model, params, private.Quote.SupplierLane, info.PublicTaskID, private.Frozen.Request.Intent, maximum)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"nativeRequest": native, "usageFacts": private.Frozen.Facts, "kind": private.Quote.Kind, "retailCny": private.Quote.RetailCNY}, nil
+	result := map[string]any{"nativeRequest": native, "usageFacts": private.Frozen.Facts, "kind": private.Quote.Kind, "retailCny": private.Quote.RetailCNY}
+	if private.Frozen.Batch != nil {
+		result["batch"] = private.Frozen.Batch
+	}
+	return result, nil
 }
 func ValidateMediaGenerationQuotedPrice(c *gin.Context, info *relaycommon.RelayInfo) error {
 	raw, ok := c.Get(mediaGenerationPrivateContextKey)

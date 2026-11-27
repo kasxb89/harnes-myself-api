@@ -132,6 +132,9 @@ func validateMediaContractParams(id string, params map[string]any, assets map[st
 	if err := validateMediaPrompt(contract, out); err != nil {
 		return nil, err
 	}
+	if err := ValidateMediaParameterConditions(contract, out); err != nil {
+		return nil, err
+	}
 	if err := validateMediaRelationships(contract, out, counts, durations, verifyAssets); err != nil {
 		return nil, err
 	}

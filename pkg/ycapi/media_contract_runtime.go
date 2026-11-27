@@ -1,6 +1,7 @@
 package ycapi
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"unicode"
@@ -152,7 +153,7 @@ func mediaAssetKind(contract MediaContract, name string) (string, bool) {
 
 // ValidateMediaRuntimeQuantity separates public native quantity support from
 // the gateway's qualified meter. Video batch settlement is not qualified yet.
-func ValidateMediaRuntimeQuantity(contract MediaContract, params map[string]any) error {
+func ValidateMediaRuntimeQuantity(contract MediaContract, params map[string]any, qualifiedMaximum ...int) error {
 	if contract.Kind != "video" {
 		return nil
 	}
@@ -162,8 +163,16 @@ func ValidateMediaRuntimeQuantity(contract MediaContract, params map[string]any)
 	}
 	// Normal request JSON numbers are decoded as float64. Strings, booleans,
 	// null and every quantity other than one must fail before asset uploads.
-	if count, ok := value.(float64); !ok || count != 1 {
-		return mediaInvalid("count", "video batch billing is not qualified; exactly one output is required")
+	maximum := 1
+	if len(qualifiedMaximum) == 1 && qualifiedMaximum[0] >= 1 && qualifiedMaximum[0] <= 50 {
+		maximum = qualifiedMaximum[0]
+	}
+	field, declared := contract.Parameters["count"]
+	if !declared || field.Maximum == nil || float64(maximum) > *field.Maximum {
+		return mediaInvalid("count", "video batch billing is not qualified")
+	}
+	if count, ok := value.(float64); !ok || count < 1 || count > float64(maximum) || count != math.Trunc(count) {
+		return mediaInvalid("count", "quantity exceeds the qualified native video batch range")
 	}
 	return nil
 }
@@ -173,7 +182,7 @@ func ValidateMediaRuntimeQuantity(contract MediaContract, params map[string]any)
 // asset metadata. This builder repeats logical checks and enforces intent and
 // native shapes; it cannot replace source-byte/duration verification. It keeps
 // every reference in submitted order and never invents or rewrites mode/frames.
-func BuildMediaRuntimeRequest(modelID string, normalizedParams map[string]any, laneID, publicTaskID string, intent MediaRuntimeIntent) (MediaRuntimeRequest, error) {
+func BuildMediaRuntimeRequest(modelID string, normalizedParams map[string]any, laneID, publicTaskID string, intent MediaRuntimeIntent, qualifiedMaximum ...int) (MediaRuntimeRequest, error) {
 	invalid := MediaRuntimeRequest{}
 	contract, ok := LookupMediaContract(modelID)
 	if !ok {
@@ -193,7 +202,7 @@ func BuildMediaRuntimeRequest(modelID string, normalizedParams map[string]any, l
 	if err != nil {
 		return invalid, err
 	}
-	if err := ValidateMediaRuntimeQuantity(contract, params); err != nil {
+	if err := ValidateMediaRuntimeQuantity(contract, params, qualifiedMaximum...); err != nil {
 		return invalid, err
 	}
 	fields, err := AssetFields(contract)
@@ -229,9 +238,14 @@ func BuildMediaRuntimeRequest(modelID string, normalizedParams map[string]any, l
 	mode := mediaString(params["mode"])
 	frames := slices.Contains([]string{"first-frame", "first-last", "keyframes"}, mode) ||
 		contract.NativeID == "flux-3-video" && mode == "reference" || contract.NativeID == "grok-imagine-1.5-special"
+	// Some source-processing cards name their native mode reference, while
+	// their reviewed operation vocabulary is transform-only. The operation
+	// contract takes precedence over that supplier spelling; it never grants
+	// reference/text intent or changes the original native mode/materials.
+	transformOnly := slices.Equal(MediaContractIntents(contract), []string{"transform"})
 	transform := slices.Contains([]string{"edit", "extend", "layer-decompose", "avatar", "lip-sync"}, mode) ||
-		slices.Contains([]string{"aliyun-image-superres", "aliyun-video-superres", "video-desubtitle", "face-repaint", "kling-v3-motion-control", "veo-4-omni-v2v"}, contract.NativeID)
-	if slices.Contains([]string{"reference", "multi-reference"}, mode) && !frames && intent != MediaIntentReference {
+		transformOnly
+	if slices.Contains([]string{"reference", "multi-reference"}, mode) && !frames && !transformOnly && intent != MediaIntentReference {
 		return invalid, mediaInvalid("intent", "reference intent must match the declared native reference operation")
 	}
 	if intent == MediaIntentFrames && (!frames || counts["images"] == 0) || frames && intent != MediaIntentFrames {

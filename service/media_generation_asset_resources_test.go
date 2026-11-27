@@ -24,6 +24,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
@@ -165,10 +166,32 @@ func TestMediaGenerationVersionIsSeparateFromContentAndConfiguredDefaults(t *tes
 	var controls map[string]any
 	require.NoError(t, common.UnmarshalJsonStr(`{"properties":{"count":{"type":"integer","minimum":1,"maximum":2,"default":2}}}`, &controls))
 	parameters := map[string]any{"mode": "text-to-image", "prompt": "A blue square"}
-	result, _, err := prepareMediaNativeParameters(t.Context(), nil, MediaNativeRoute{}, request.Model, parameters, controls, nil, ycapi.MediaIntentText)
+	result, _, err := prepareMediaNativeParameters(t.Context(), nil, MediaNativeRoute{}, request.Model, parameters, model.ModelConfiguration{Parameters: controls}, nil, ycapi.MediaIntentText, "", false)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, result["count"])
 	assert.NotContains(t, parameters, "count", "published defaults do not rewrite the caller's original body")
+	t.Run("effective batch defaults are checked before resolving any supplier asset", func(t *testing.T) {
+		contract, ok := ycapi.LookupMediaContract("ycapi-seedance-2-5")
+		require.True(t, ok)
+		expression := `tier("batch",u("output_count")*0.01)`
+		definition := model.ModelConfiguration{ModelName: contract.ID, Kind: "video", Pricing: model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": expression}}
+		definition.MediaExecution = &model.ModelMediaExecutionConfiguration{SchemaVersion: 1, LaneID: "synthetic:batch-defaults", Intents: []string{"text", "frames"}, QualificationSHA256: strings.Repeat("a", 64), ContractSHA256: MediaGenerationDigest(contract), CheckedAt: "2026-11-27"}
+		definition.MediaExecution.BatchPolicy = &model.ModelMediaBatchPolicy{SchemaVersion: 1, Policy: "qualified_native_batch", MaxCount: 3, Meter: "output_count", Modes: []string{"first-frame"}, AdmissionUnit: "native_operation", DurationBasis: "requested_uniform", OutputContract: "ordered_unique_video_payloads_v1", ExpressionSHA256: billingexpr.ExprHashString(expression), LaneID: definition.MediaExecution.LaneID, ContractSHA256: definition.MediaExecution.ContractSHA256, QualificationSHA256: definition.MediaExecution.QualificationSHA256, EvidenceSHA256: strings.Repeat("b", 64), CheckedAt: "2026-11-27"}
+		require.NoError(t, common.UnmarshalJsonStr(`{"properties":{"count":{"type":"integer","minimum":1,"maximum":3,"default":2},"mode":{"type":"string","default":"first-frame"}}}`, &definition.Parameters))
+		bindings := map[string][]model.MediaGenerationAsset{"images": {{ID: "ma2_pre_admission_only", Kind: "image", Bytes: 1000, Width: 512, Height: 512, MIMEType: "image/png", Format: "png"}}}
+		original := map[string]any{"prompt": "Preserve this reference"}
+		require.NoError(t, validateMediaGenerationBatchRequest(definition, contract, original, expression), "raw omitted fields cannot decide the effective defaults")
+		// A nil DB/route intentionally makes any premature asset resolution fail:
+		// these typed rejection errors must precede all supplier preparation I/O.
+		_, _, err := prepareMediaNativeParameters(t.Context(), nil, MediaNativeRoute{}, contract.ID, original, definition, bindings, ycapi.MediaIntentFrames, expression, false)
+		require.ErrorIs(t, err, ErrMediaBatchClientUnsupported)
+		assert.NotContains(t, original, "count")
+		assert.NotContains(t, original, "mode")
+		definition.MediaExecution.BatchPolicy.Modes = []string{"text-to-video"}
+		require.NoError(t, model.ValidateModelMediaExecutionConfiguration(definition))
+		_, _, err = prepareMediaNativeParameters(t.Context(), nil, MediaNativeRoute{}, contract.ID, original, definition, bindings, ycapi.MediaIntentFrames, expression, true)
+		require.EqualError(t, err, "invalid_parameters", "unreviewed effective mode must fail before any supplier asset lookup")
+	})
 }
 
 func mediaAssetResourceFixture(t *testing.T) (*gorm.DB, MediaGenerationActor, []byte, string) {

@@ -254,11 +254,13 @@ func validMediaNativeAssetURL(raw string) bool {
 	return err == nil && len(raw) <= 2048 && u.Scheme == "https" && u.Host == "assets.token6688.com" && u.User == nil && u.RawQuery == "" && !u.ForceQuery && u.Fragment == "" && u.RawPath == "" && strings.HasPrefix(u.Path, "/sha256/") && !strings.Contains(u.Path, "..") && !strings.ContainsAny(raw, "\\\r\n\t ")
 }
 
-func prepareMediaNativeParameters(ctx context.Context, db *gorm.DB, route MediaNativeRoute, modelID string, parameters, controls map[string]any, bindings map[string][]model.MediaGenerationAsset, intent ycapi.MediaRuntimeIntent) (map[string]any, map[string]ycapi.MediaAssetMetadata, error) {
+func prepareMediaNativeParameters(ctx context.Context, db *gorm.DB, route MediaNativeRoute, modelID string, parameters map[string]any, definition model.ModelConfiguration, bindings map[string][]model.MediaGenerationAsset, intent ycapi.MediaRuntimeIntent, expression string, batchClient bool) (map[string]any, map[string]ycapi.MediaAssetMetadata, error) {
 	contract, ok := ycapi.LookupMediaContract(modelID)
 	if !ok {
 		return nil, nil, errors.New("model_not_available")
 	}
+	controls := definition.Parameters
+	maximum := mediaGenerationBatchMaximum(definition, contract, expression)
 	fields, err := ycapi.AssetFields(contract)
 	if err != nil {
 		return nil, nil, err
@@ -267,7 +269,7 @@ func prepareMediaNativeParameters(ctx context.Context, db *gorm.DB, route MediaN
 	for key, value := range parameters {
 		normalized[key] = value
 	}
-	configuredSchema, err := mediaGenerationConfiguredSchema(contract, controls)
+	configuredSchema, err := mediaGenerationConfiguredSchema(contract, controls, maximum)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -318,7 +320,13 @@ func prepareMediaNativeParameters(ctx context.Context, db *gorm.DB, route MediaN
 	if err = validateMediaGenerationControls(contract, controls, validated); err != nil {
 		return nil, nil, err
 	}
-	if _, err = ycapi.BuildMediaRuntimeRequest(modelID, validated, "local-validation-only", "local-validation-only", intent); err != nil {
+	if err = validateMediaGenerationBatchRequest(definition, contract, validated, expression); err != nil {
+		return nil, nil, err
+	}
+	if count, _ := validated["count"].(float64); contract.Kind == "video" && count > 1 && !batchClient {
+		return nil, nil, ErrMediaBatchClientUnsupported
+	}
+	if _, err = ycapi.BuildMediaRuntimeRequest(modelID, validated, "local-validation-only", "local-validation-only", intent, maximum); err != nil {
 		return nil, nil, err
 	}
 	actualMetadata := map[string]ycapi.MediaAssetMetadata{}

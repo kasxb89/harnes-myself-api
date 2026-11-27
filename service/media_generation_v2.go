@@ -43,6 +43,7 @@ type MediaGenerationFrozen struct {
 	CostCNY            string                 `json:"cost_cny"`
 	DryRunSHA256       string                 `json:"dry_run_sha256"`
 	RetailPolicySHA256 string                 `json:"retail_policy_sha256,omitempty"`
+	Batch              *MediaGenerationBatch  `json:"batch,omitempty"`
 }
 
 type MediaGenerationQuoteReply struct {
@@ -57,6 +58,7 @@ type MediaGenerationQuoteReply struct {
 	RetailCNY         string                   `json:"retail_cny"`
 	ExpiresAt         int64                    `json:"expires_at"`
 	OperationState    string                   `json:"operation_state"`
+	Batch             *MediaGenerationBatch    `json:"batch,omitempty"`
 }
 
 func MediaGenerationDigest(v any) string {
@@ -116,7 +118,7 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 		}
 		expression, priced := billing_setting.ResolveTaskBillingExpr("ycapi", id, id)
 		usageSchema, _ := plugin.Meta.UsageForModels(id)
-		if !priced || !billing_setting.TaskExprCompatible(expression, usageSchema) {
+		if !priced || !billing_setting.TaskExprCompatible(expression, usageSchema) || !mediaGenerationBatchPriceConfigured(record.Definition, contract, expression) {
 			continue
 		}
 		if common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
@@ -135,7 +137,12 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 		if !allowed {
 			continue
 		}
-		schema, e := mediaGenerationConfiguredSchema(contract, record.Definition.Parameters)
+		maximum := mediaGenerationBatchMaximum(record.Definition, contract, expression)
+		batchClient := MediaGenerationBatchClientSupported(c)
+		if !batchClient {
+			maximum = 1
+		}
+		schema, e := mediaGenerationConfiguredSchema(contract, record.Definition.Parameters, maximum)
 		if e != nil {
 			continue
 		}
@@ -150,6 +157,14 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 		entry := map[string]any{"id": id, "display_name": mediaGenerationDisplayName(record.Definition.DisplayName, contract, fields, intents), "kind": contract.Kind, "description": strings.Join(contract.Capabilities, " · "), "enabled": true, "model_version": versions[id], "parameters_schema": schema, "asset_fields": fields, "intents": intents, "pricing": map[string]any{"display": "按所选规格显示费用", "quote_required": true}}
 		if conditions := ycapi.MediaContractMaterialConditions(contract); conditions != nil {
 			entry["conditions"] = conditions
+		}
+		if conditions := ycapi.MediaContractParameterConditions(contract); conditions != nil {
+			entry["parameter_conditions"] = conditions
+		}
+		if batchClient {
+			if quantity := mediaGenerationQuantity(record.Definition, contract, expression); quantity != nil {
+				entry["quantity"] = quantity
+			}
 		}
 		models = append(models, entry)
 	}
@@ -308,16 +323,23 @@ func validateMediaGenerationControls(contract ycapi.MediaContract, controls, par
 	return model.ModelParameterValues(controls, values)
 }
 
-func mediaGenerationConfiguredSchema(contract ycapi.MediaContract, controls map[string]any) (map[string]any, error) {
+func mediaGenerationConfiguredSchema(contract ycapi.MediaContract, controls map[string]any, qualifiedMaximum ...int) (map[string]any, error) {
 	schema, ok := ycapi.MediaContractSchema(contract.ID)
 	if !ok {
 		return nil, errors.New("model_not_available")
 	}
-	// Native declarations retain the supplier's batch range. Executable video
-	// controls stay single-item until the billing facts meter a video batch.
+	// Only a separately qualified billing/output/capacity policy may widen the
+	// executable range. The supplier's declaration alone never grants execution.
 	if contract.Kind == "video" {
 		if count, exists := schema["properties"].(map[string]any)["count"].(map[string]any); exists {
-			count["maximum"] = float64(1)
+			maximum := 1
+			if len(qualifiedMaximum) == 1 && qualifiedMaximum[0] > 1 && qualifiedMaximum[0] <= 50 {
+				maximum = qualifiedMaximum[0]
+			}
+			if native, ok := count["maximum"].(float64); ok {
+				maximum = min(maximum, int(native))
+			}
+			count["maximum"] = float64(maximum)
 		}
 	}
 	if controls == nil {
@@ -577,7 +599,7 @@ func MediaGenerationQuoteProjection(q *model.MediaGenerationQuote) (MediaGenerat
 			return MediaGenerationQuoteReply{}, fieldErr
 		}
 	}
-	return MediaGenerationQuoteReply{q.QuoteID, q.ClientOpID, q.RequestSHA256, q.Model, q.ModelConfigVersion, frozen.Request.Intent, publicParams, frozen.Request.Assets, q.RetailCNY, q.ExpiresAt, state}, nil
+	return MediaGenerationQuoteReply{QuoteID: q.QuoteID, ClientOperationID: q.ClientOpID, RequestSHA256: q.RequestSHA256, Model: q.Model, ModelVersion: q.ModelConfigVersion, Intent: frozen.Request.Intent, Parameters: publicParams, Assets: frozen.Request.Assets, RetailCNY: q.RetailCNY, ExpiresAt: q.ExpiresAt, OperationState: state, Batch: frozen.Batch}, nil
 }
 
 func MediaGenerationRouteFromContext(c *gin.Context) (MediaNativeRoute, error) {
@@ -632,16 +654,40 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if !slices.Contains(record.Definition.MediaExecution.Intents, string(request.Intent)) {
 		return nil, errors.New("invalid_parameters")
 	}
+	expr, priced := billing_setting.ResolveTaskBillingExpr("ycapi", request.Model, request.Model)
+	if !priced {
+		return nil, errors.New("model_price_unavailable")
+	}
 	// Receipt-first recovery above remains independent of today's qualification.
-	// Reject an unmetered batch before even uploading its materials to a vendor.
-	if err = ycapi.ValidateMediaRuntimeQuantity(contract, request.Parameters); err != nil {
+	// New rules also guard cached quotes that have never been accepted.
+	if err = ycapi.ValidateMediaParameterConditions(contract, request.Parameters); err != nil {
 		return nil, err
+	}
+	if err = validateMediaGenerationBatchRequest(record.Definition, contract, request.Parameters, expr); err != nil {
+		return nil, err
+	}
+	batchClient := MediaGenerationBatchClientSupported(c)
+	if count, _ := request.Parameters["count"].(float64); contract.Kind == "video" && count > 1 && !batchClient {
+		return nil, ErrMediaBatchClientUnsupported
 	}
 	route, err := MediaGenerationRouteFromContext(c)
 	if err != nil {
 		return nil, err
 	}
 	if old != nil && old.ExpiresAt > time.Now().Unix() && old.ModelConfigVersion == version && old.ChannelConfigHash == route.ConfigHash && old.CredentialDigest == route.CredentialDigest {
+		var retained MediaGenerationFrozen
+		if common.UnmarshalJsonStr(string(old.UsageFactsJSON), &retained) != nil {
+			return nil, errors.New("quote unavailable")
+		}
+		if err = ycapi.ValidateMediaParameterConditions(contract, retained.Parameters); err != nil {
+			return nil, err
+		}
+		if err = validateMediaGenerationBatchRequest(record.Definition, contract, retained.Parameters, expr); err != nil {
+			return nil, err
+		}
+		if retained.Batch != nil && !batchClient {
+			return nil, ErrMediaBatchClientUnsupported
+		}
 		return old, nil
 	}
 	bindings, err := ReadMediaGenerationAssets(c.Request.Context(), model.DB, a, request.Model, request.Assets)
@@ -649,11 +695,12 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 		return nil, err
 	}
 	materialSHA := MediaGenerationDigest(bindings)
-	normalized, metadata, err := prepareMediaNativeParameters(c.Request.Context(), model.DB, route, request.Model, request.Parameters, record.Definition.Parameters, bindings, request.Intent)
+	maximum := mediaGenerationBatchMaximum(record.Definition, contract, expr)
+	normalized, metadata, err := prepareMediaNativeParameters(c.Request.Context(), model.DB, route, request.Model, request.Parameters, record.Definition, bindings, request.Intent, expr, batchClient)
 	if err != nil {
 		return nil, err
 	}
-	native, err := ycapi.BuildMediaRuntimeRequest(request.Model, normalized, record.Definition.MediaExecution.LaneID, "quote-not-a-generation", request.Intent)
+	native, err := ycapi.BuildMediaRuntimeRequest(request.Model, normalized, record.Definition.MediaExecution.LaneID, "quote-not-a-generation", request.Intent, maximum)
 	if err != nil {
 		return nil, err
 	}
@@ -692,13 +739,21 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if !ok || plugin.Meta.Version != "1.0.4" {
 		return nil, errors.New("media runtime unavailable")
 	}
-	expr, ok := billing_setting.ResolveTaskBillingExpr("ycapi", request.Model, request.Model)
-	if !ok {
-		return nil, errors.New("model_price_unavailable")
-	}
 	schema, _ := plugin.Meta.UsageForModels(request.Model)
 	if !billing_setting.TaskExprCompatible(expr, schema) {
 		return nil, errors.New("model_price_unavailable")
+	}
+	batch, err := mediaGenerationBatchUsage(record.Definition, contract, normalized, facts, expr)
+	if err != nil {
+		return nil, err
+	}
+	if batch != nil && !batchClient {
+		// Single-output callers keep their legacy delivery projection. Any
+		// normalized multi-output request was already rejected before uploads.
+		if batch.RequestedOutputCount > 1 {
+			return nil, ErrMediaBatchClientUnsupported
+		}
+		batch = nil
 	}
 	usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	ratio := GetUserGroupRatio(common.GetContextKeyString(c, constant.ContextKeyUserGroup), usingGroup)
@@ -710,7 +765,7 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if err != nil {
 		return nil, err
 	}
-	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA, RetailPolicySHA256: policySHA}
+	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA, RetailPolicySHA256: policySHA, Batch: batch}
 	if policySHA != "" {
 		pricingVersion = MediaGenerationDigest([]any{pricingVersion, policySHA})
 	}
