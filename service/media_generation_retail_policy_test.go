@@ -210,3 +210,109 @@ func TestMediaGenerationRetailPolicyEvidenceValidationAndPrivateSpecification(t 
 		}
 	})
 }
+
+func TestMediaGenerationRetailPolicyPreservesExactLegacySingleVideoEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		allow  bool
+		modify func(*model.ModelConfiguration, map[string]any, map[string]any, map[string]ycapi.MediaAssetMetadata, *string)
+	}{
+		{name: "host aggregate defaults retain the original single video rule", allow: true},
+		{name: "current exact specification remains valid", allow: true, modify: func(d *model.ModelConfiguration, p, f map[string]any, m map[string]ycapi.MediaAssetMetadata, _ *string) {
+			c, _ := ycapi.LookupMediaContract(d.ModelName)
+			d.MediaExecution.RetailPolicy.Rules[0].SpecificationSHA256 = MediaGenerationRetailSpecificationSHA(c, p, f, m)
+		}},
+		{name: "an explicit disabled batch policy remains single", allow: true, modify: func(d *model.ModelConfiguration, _, _ map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			d.MediaExecution.BatchPolicy = &model.ModelMediaBatchPolicy{SchemaVersion: 1, Policy: "disabled"}
+		}},
+		{name: "changed resolution cannot borrow old evidence", modify: func(_ *model.ModelConfiguration, p, _ map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			p["resolution"] = "720p"
+		}},
+		{name: "changed measured image cannot borrow old evidence", modify: func(_ *model.ModelConfiguration, _, _ map[string]any, m map[string]ycapi.MediaAssetMetadata, _ *string) {
+			image := m["asset:synthetic-image"]
+			image.Width = 1024
+			m["asset:synthetic-image"] = image
+		}},
+		{name: "changed reference quantity stays bound", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			f["input_image_count"] = float64(2)
+		}},
+		{name: "all other facts remain bound", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			f["generate_audio"] = true
+		}},
+		{name: "unknown facts are not stripped", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			f["new_unreviewed_fact"] = true
+		}},
+		{name: "output count two cannot inherit a single rule", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			f["output_count"] = float64(2)
+		}},
+		{name: "native count two cannot inherit a single rule", modify: func(_ *model.ModelConfiguration, p, _ map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			p["count"] = float64(2)
+		}},
+		{name: "a known aggregate duration is not the host zero default", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			f["total_output_seconds"] = float64(5)
+		}},
+		{name: "missing only one aggregate fact is not the host pair", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			delete(f, "output_count")
+		}},
+		{name: "strings are not host numeric defaults", modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			f["output_count"] = "1"
+		}},
+		{name: "legacy facts without either new key still match directly", allow: true, modify: func(_ *model.ModelConfiguration, _, f map[string]any, _ map[string]ycapi.MediaAssetMetadata, _ *string) {
+			delete(f, "output_count")
+			delete(f, "total_output_seconds")
+		}},
+		{name: "the new aggregate seconds meter cannot inherit old evidence", modify: func(d *model.ModelConfiguration, _, _ map[string]any, _ map[string]ycapi.MediaAssetMetadata, e *string) {
+			*e += ` + u("total_output_seconds") * 0.01`
+			d.Pricing["billing_setting.billing_expr"] = *e
+			d.MediaExecution.RetailPolicy.ExpressionSHA256 = billingexpr.ExprHashString(*e)
+		}},
+		{name: "a new meter cannot inherit the old facts", modify: func(d *model.ModelConfiguration, _, _ map[string]any, _ map[string]ycapi.MediaAssetMetadata, e *string) {
+			*e = fmt.Sprintf(`tier("reviewed", u("output_count") * (0.2 / %g))`, operation_setting.USDExchangeRate)
+			d.Pricing["billing_setting.billing_expr"] = *e
+			d.MediaExecution.RetailPolicy.ExpressionSHA256 = billingexpr.ExprHashString(*e)
+		}},
+		{name: "an active qualified batch cannot inherit the old facts", modify: func(d *model.ModelConfiguration, _, _ map[string]any, _ map[string]ycapi.MediaAssetMetadata, e *string) {
+			*e = fmt.Sprintf(`tier("reviewed", u("output_count") * (0.2 / %g))`, operation_setting.USDExchangeRate)
+			d.Pricing["billing_setting.billing_expr"] = *e
+			d.MediaExecution.RetailPolicy.ExpressionSHA256 = billingexpr.ExprHashString(*e)
+			v := d.MediaExecution
+			v.BatchPolicy = &model.ModelMediaBatchPolicy{SchemaVersion: 1, Policy: "qualified_native_batch", MaxCount: 2, Meter: "output_count", Modes: []string{"first-frame"}, AdmissionUnit: "native_operation", DurationBasis: "unmetered", OutputContract: "ordered_unique_video_payloads_v1", ExpressionSHA256: billingexpr.ExprHashString(*e), LaneID: v.LaneID, ContractSHA256: v.ContractSHA256, QualificationSHA256: v.QualificationSHA256, EvidenceSHA256: strings.Repeat("c", 64), CheckedAt: "2026-11-27"}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			contract, ok := ycapi.LookupMediaContract("ycapi-seedance-2-5")
+			require.True(t, ok)
+			metadata := map[string]ycapi.MediaAssetMetadata{"asset:synthetic-image": {Kind: "image", MIMEType: "image/png", Width: 512, Height: 512, Bytes: 1234}}
+			params, err := ycapi.ValidateMediaContractParams(contract.ID, map[string]any{"mode": "first-frame", "prompt": "Synthetic blue cup", "duration": "5", "images": []string{"asset:synthetic-image"}}, metadata)
+			require.NoError(t, err)
+			legacyFacts := mediaGenerationUsage(contract, params, metadata, ycapi.MediaIntentFrames)
+			require.NotContains(t, legacyFacts, "output_count")
+			require.NotContains(t, legacyFacts, "total_output_seconds")
+			expr := fmt.Sprintf(`tier("reviewed", u("seconds") * (0.04 / %g))`, operation_setting.USDExchangeRate)
+			execution := &model.ModelMediaExecutionConfiguration{SchemaVersion: 1, LaneID: contract.NativeID + "@synthetic:legacy", Intents: []string{"frames"}, QualificationSHA256: strings.Repeat("a", 64), ContractSHA256: MediaGenerationDigest(contract), CheckedAt: "2026-11-27"}
+			oldSHA := MediaGenerationRetailSpecificationSHA(contract, params, legacyFacts, metadata)
+			require.NotEmpty(t, oldSHA)
+			execution.RetailPolicy = &model.ModelMediaRetailPolicy{SchemaVersion: 1, Policy: "official_cap", ExpressionSHA256: billingexpr.ExprHashString(expr), LaneID: execution.LaneID, ContractSHA256: execution.ContractSHA256, QualificationSHA256: execution.QualificationSHA256, EvidenceSHA256: strings.Repeat("b", 64), CheckedAt: "2026-11-27", Rules: []model.ModelMediaRetailPolicyRule{{SpecificationSHA256: oldSHA, OfficialTotalCNY: "0.2", OfficialModel: contract.NativeID, SourceURL: "https://example.com/synthetic-official-prices"}}}
+			def := model.ModelConfiguration{ModelName: contract.ID, Kind: "video", MediaExecution: execution, Pricing: model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": expr}}
+			facts := maps.Clone(legacyFacts)
+			facts["output_count"], facts["total_output_seconds"] = float64(1), float64(0)
+			require.NotEqual(t, oldSHA, MediaGenerationRetailSpecificationSHA(contract, params, facts, metadata), "public specification hashing keeps all current facts")
+			if tc.modify != nil {
+				tc.modify(&def, params, facts, metadata, &expr)
+			}
+			require.NoError(t, model.ValidateModelMediaExecutionConfiguration(def), "negative cases must have otherwise valid evidence/configuration")
+			before := MediaGenerationDigest([]any{def, params, facts, metadata})
+			_, retail, _, err := mediaGenerationRetail(expr, facts, 1)
+			require.NoError(t, err)
+			proof, err := validateMediaGenerationRetailCost(def, contract, params, facts, metadata, expr, decimal.RequireFromString("0.3"), retail, 1)
+			if tc.allow {
+				require.NoError(t, err)
+				assert.Equal(t, MediaGenerationDigest(def.MediaExecution.RetailPolicy), proof)
+			} else {
+				require.EqualError(t, err, "model_price_unavailable")
+				assert.Empty(t, proof)
+			}
+			assert.Equal(t, before, MediaGenerationDigest([]any{def, params, facts, metadata}), "admission cannot rewrite old rules, prices, facts or measured assets")
+		})
+	}
+}

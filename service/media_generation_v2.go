@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"reflect"
 	"slices"
@@ -906,8 +907,21 @@ func validateMediaGenerationRetailCost(def model.ModelConfiguration, contract yc
 		return "", errors.New("model_price_unavailable")
 	}
 	specification := MediaGenerationRetailSpecificationSHA(contract, params, facts, metadata)
+	// The original official-cap evidence predates the two opt-in aggregate
+	// facts. Preserve that exact single-video specification without changing the
+	// public hash, old rules, prices, or any other measured input. New meters and
+	// qualified batches must always use their complete current specification.
+	legacySpecification := ""
+	keys := billingexpr.UsedUsageKeys(expr)
+	batch := def.MediaExecution.BatchPolicy
+	if contract.Kind == "video" && (batch == nil || batch.Policy == "disabled") && !keys["output_count"] && !keys["total_output_seconds"] && facts["output_count"] == float64(1) && facts["total_output_seconds"] == float64(0) && ycapi.ValidateMediaRuntimeQuantity(contract, params) == nil {
+		legacyFacts := maps.Clone(facts)
+		delete(legacyFacts, "output_count")
+		delete(legacyFacts, "total_output_seconds")
+		legacySpecification = MediaGenerationRetailSpecificationSHA(contract, params, legacyFacts, metadata)
+	}
 	for _, rule := range policy.Rules {
-		if rule.SpecificationSHA256 != specification {
+		if rule.SpecificationSHA256 != specification && (legacySpecification == "" || rule.SpecificationSHA256 != legacySpecification) {
 			continue
 		}
 		official, err := decimal.NewFromString(rule.OfficialTotalCNY)
