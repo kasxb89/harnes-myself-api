@@ -342,6 +342,23 @@ function outputs(body, kind) {
   return [];
 }
 
+// Pre-policy legacy tasks retained one valid URL. Their saved receipts must
+// keep that parser and artifact identity even after the active plugin changes.
+// New submissions and native V2 continue through their strict full-output paths.
+function legacyFirstOutput(body, kind) {
+  const result = object(body.result) || {};
+  for (const list of [body.outputs, result.outputs, result[kind + "s"], body[kind + "s"], body.output_urls, body.result_urls]) {
+    if (!Array.isArray(list)) continue;
+    const urls = list.map((v) => publicURL(typeof v === "string" ? v : (object(v) || {}).url || v.output_url || v.result_url)).filter(Boolean);
+    if (urls.length) return urls.slice(0, 1);
+  }
+  for (const value of [body.output_url, body.result_url, result.output_url, result.result_url, body.audio_url, result.audio_url]) {
+    const url = publicURL(value);
+    if (url) return [url];
+  }
+  return [];
+}
+
 function mediaOutputList(body, kind) {
   const result = object(body.result) || {};
   // data[] is the documented complete ordered carrier. Scalar aliases point
@@ -496,7 +513,7 @@ function mediaTaskResult(data) {
   return taskResult(data);
 }
 
-function snapshot(body, model, expectedId) {
+function snapshot(body, model, expectedId, legacyOutputPolicy = false) {
   if (!object(body)) throw new Error("Invalid upstream task response");
   const id = body.task_id || body.id;
   if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(id) || (expectedId && id !== expectedId))
@@ -506,7 +523,8 @@ function snapshot(body, model, expectedId) {
   if (modelMetadata && (typeof responseModel !== "string" || !responseModel)) throw new Error("Invalid upstream task model");
   if (responseModel && responseModel !== model.upstream && responseModel !== model.id) throw new Error("Upstream task model mismatch");
   const status = typeof body.status === "string" ? body.status.toLowerCase() : "unknown";
-  const data = { id, kind: model.kind, status, is_final: body.is_final === true, outputs: outputs(body, model.kind) };
+  const data = { id, kind: model.kind, status, is_final: body.is_final === true,
+    outputs: legacyOutputPolicy ? legacyFirstOutput(body, model.kind) : outputs(body, model.kind) };
   const error = object(body.error) || {};
   const code = typeof error.code === "string" ? error.code.toLowerCase() : "";
   if (["insufficient_balance", "insufficient_quota", "quota_exceeded"].includes(code)) data.failureReason = "Upstream account balance is insufficient";
@@ -547,7 +565,7 @@ export function parseSubmitResponse(ctx, response) {
   const normalized = normalize(ctx.requestBody, model);
   if (model.kind === "audio") data.format = normalized.params.response_format;
   const result = taskResult(data);
-  const state = { facts: normalized.facts, kind: model.kind, snapshot: data };
+  const state = { facts: normalized.facts, kind: model.kind, legacy_outputs_policy_version: 2, snapshot: data };
   if (model.kind === "audio") state.format = normalized.params.response_format;
   // Images must preserve a durable artifact. Audio must run the completion
   // usage hook, including when invoke already returned a ready asset; the
@@ -579,11 +597,14 @@ export function parseTaskResult(ctx, body) {
     const data = mediaSnapshot(body, retained.contract, ctx.taskId, retained.state.outputFormat, retained.state.batch);
     return { ...mediaTaskResult(data), state: { ...retained.state, snapshot: data } };
   }
-  const data = snapshot(body, modelFor(ctx), ctx.taskId);
+  const state = object(ctx.state) || {};
+  if (state.legacy_outputs_policy_version !== undefined && state.legacy_outputs_policy_version !== 2)
+    throw new Error("Invalid retained legacy output policy");
+  const data = snapshot(body, modelFor(ctx), ctx.taskId, state.legacy_outputs_policy_version === undefined);
   if (data.kind === "audio" && ctx.state) data.format = ctx.state.format;
   // The host owns task.data and stores the raw poll response. Normalized safe
   // output coordinates belong in durable plugin state, not an ignored field.
-  return { ...taskResult(data), state: { ...(object(ctx.state) || {}), snapshot: data } };
+  return { ...taskResult(data), state: { ...state, snapshot: data } };
 }
 export function extractUsageOnComplete(ctx, _result, body) {
   if (mediaState(ctx)) return {};
@@ -662,7 +683,10 @@ export const protocols = {
       return decode(ctx, "video");
     },
     render: function (_ctx, task) {
-      return { url: task.data && outputs(task.data, "video")[0] };
+      // API v1 TaskView has raw data but no private state or producer version.
+      // This single-URL cached projection keeps its historical semantics;
+      // accepted new work was already validated by the strict driver hooks.
+      return { url: task.data && legacyFirstOutput(task.data, "video")[0] };
     },
   },
 };

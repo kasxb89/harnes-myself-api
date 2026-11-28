@@ -22,6 +22,227 @@ func newYCAPIMediaV2Plugin(t *testing.T) *jsplugin.LoadedPlugin {
 	return plugin
 }
 
+func TestYCAPILegacyAcceptedOutputsKeepFrozenFactsAndOriginalAlias(t *testing.T) {
+	plugin := newYCAPIMediaV2Plugin(t)
+	for _, kind := range []string{"image", "video"} {
+		modelID := "ycapi-flux-kontext"
+		if kind == "video" {
+			modelID = "ycapi-grok-imagine-video"
+		}
+		for _, shape := range []string{"valid", "mixed invalid", "more than 64"} {
+			t.Run(kind+"/"+shape, func(t *testing.T) {
+				firstURL := "https://cdn.invalid/original." + map[string]string{"image": "png", "video": "mp4"}[kind]
+				outputs := []any{firstURL}
+				switch shape {
+				case "mixed invalid":
+					outputs = []any{"not-an-https-url", firstURL, "also-invalid"}
+				case "more than 64":
+					for index := 1; index < 65; index++ {
+						outputs = append(outputs, fmt.Sprintf("https://cdn.invalid/extra-%d", index))
+					}
+				}
+				facts := map[string]any{"spec": "frozen-historical-offer-no-longer-listed"}
+				if kind == "image" {
+					facts["image_count"] = 1
+				} else {
+					facts["seconds"] = 15
+				}
+				// This is the persisted 1.0.3 state shape. There is deliberately
+				// no requestBody to normalize, nor a made-up query producerVersion.
+				state := map[string]any{"facts": facts, "kind": kind, "snapshot": map[string]any{
+					"id": "original-native-task", "kind": kind, "status": "pending", "is_final": false, "outputs": []any{},
+				}}
+				queryCtx := map[string]any{"model": modelID, "upstreamModel": modelID,
+					"taskId": "original-native-task", "publicTaskId": "task_original",
+					"state": state, "baseUrl": "https://ycapi.invalid", "apiKey": "synthetic-key"}
+				query := codebloomHook(t, plugin, "buildQueryRequest", queryCtx)
+				assert.Equal(t, "GET", query["method"])
+				path := "/api/v1/model-runtime/tasks/original-native-task"
+				if kind == "video" {
+					path = "/v1/tasks/original-native-task"
+				}
+				assert.Equal(t, "https://ycapi.invalid"+path, query["url"])
+				final := codebloomHook(t, plugin, "parseTaskResult", queryCtx, map[string]any{
+					"task_id": "original-native-task", "status": "completed", "is_final": true, "outputs": outputs,
+				})
+				assert.Equal(t, "SUCCESS", final["status"])
+				finalState := codebloomObject(t, final["state"])
+				assert.Equal(t, codebloomObject(t, facts), codebloomObject(t, finalState["facts"]))
+				assert.NotContains(t, finalState, "legacy_outputs_policy_version", "polling must not reclassify an old accepted task")
+				assert.Equal(t, []any{firstURL}, codebloomObject(t, finalState["snapshot"])["outputs"])
+				usage := codebloomHook(t, plugin, "extractUsageOnComplete", queryCtx, final, map[string]any{})
+				assert.Empty(t, usage, "the original frozen image/video billing facts remain authoritative")
+				value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{
+					"status": "SUCCESS", "producerVersion": "1.0.3", "state": finalState,
+				})
+				require.NoError(t, err)
+				artifacts := value.([]any)
+				require.Len(t, artifacts, 1)
+				assert.Equal(t, kind, codebloomObject(t, artifacts[0])["key"])
+				content := codebloomHook(t, plugin, "buildContentRequest", map[string]any{
+					"state": finalState, "producerVersion": "1.0.3", "artifactKey": kind,
+					"clientRequest": map[string]any{"method": "HEAD"},
+				})
+				assert.Equal(t, firstURL, content["url"])
+				assert.Equal(t, "HEAD", content["method"])
+				assert.Equal(t, true, content["credentialless"])
+			})
+		}
+	}
+}
+
+func TestYCAPINewLegacyOutputsPolicyRetainsAllAndRejectsMalformedSets(t *testing.T) {
+	plugin := newYCAPIMediaV2Plugin(t)
+	submitCtx := map[string]any{"model": "ycapi-flux-kontext", "upstreamModel": "ycapi-flux-kontext", "publicTaskId": "task_new_legacy",
+		"requestBody": map[string]any{"model": "ycapi-flux-kontext", "prompt": "A synthetic scene", "quality": "max", "size": "1:1", "n": 1}}
+	parsed := codebloomHook(t, plugin, "parseSubmitResponse", submitCtx, map[string]any{"body": map[string]any{
+		"task_id": "new-legacy-native", "status": "pending",
+	}})
+	state := codebloomObject(t, parsed["state"])
+	assert.EqualValues(t, 2, state["legacy_outputs_policy_version"])
+	queryCtx := map[string]any{"model": "ycapi-flux-kontext", "upstreamModel": "ycapi-flux-kontext", "taskId": "new-legacy-native", "state": state}
+	urls := []any{"https://cdn.invalid/first.png", "https://cdn.invalid/second.png"}
+	final := codebloomHook(t, plugin, "parseTaskResult", queryCtx, map[string]any{
+		"task_id": "new-legacy-native", "status": "completed", "is_final": true, "outputs": urls,
+	})
+	finalState := codebloomObject(t, final["state"])
+	assert.EqualValues(t, 2, finalState["legacy_outputs_policy_version"])
+	assert.Equal(t, urls, codebloomObject(t, finalState["snapshot"])["outputs"])
+	value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{"status": "SUCCESS", "producerVersion": "1.0.4", "state": finalState})
+	require.NoError(t, err)
+	artifacts := value.([]any)
+	require.Len(t, artifacts, 2)
+	assert.Equal(t, "image-1", codebloomObject(t, artifacts[0])["key"])
+	assert.Equal(t, "image-2", codebloomObject(t, artifacts[1])["key"])
+	content := codebloomHook(t, plugin, "buildContentRequest", map[string]any{
+		"state": finalState, "artifactKey": "image-2", "clientRequest": map[string]any{"method": "HEAD"},
+	})
+	assert.Equal(t, urls[1], content["url"])
+	oversized := make([]any, 65)
+	for index := range oversized {
+		oversized[index] = fmt.Sprintf("https://cdn.invalid/output-%d.png", index)
+	}
+	for _, test := range []struct {
+		name    string
+		outputs []any
+	}{
+		{"mixed invalid", []any{urls[0], "not-an-https-url"}},
+		{"more than 64", oversized},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := map[string]any{"task_id": "new-legacy-native", "status": "completed", "is_final": true, "outputs": test.outputs}
+			_, err := plugin.Engine.Call(t.Context(), "parseSubmitResponse", submitCtx, map[string]any{"body": body})
+			require.Error(t, err, "new submission parsing must retain strict output validation")
+			_, err = plugin.Engine.Call(t.Context(), "parseTaskResult", queryCtx, body)
+			require.Error(t, err, "new accepted tasks must not fall back to old output parsing")
+		})
+	}
+	invalidState := map[string]any{"legacy_outputs_policy_version": 3, "kind": "image"}
+	_, err = plugin.Engine.Call(t.Context(), "parseTaskResult", map[string]any{
+		"model": "ycapi-flux-kontext", "upstreamModel": "ycapi-flux-kontext", "taskId": "new-legacy-native", "state": invalidState,
+	}, map[string]any{"task_id": "new-legacy-native", "status": "completed", "is_final": true, "outputs": urls})
+	require.Error(t, err, "an unknown retained output policy must fail closed")
+}
+
+func TestYCAPICachedVideoRendererUsesReal502TaskViewWithoutProducerFields(t *testing.T) {
+	plugin := newYCAPIMediaV2Plugin(t)
+	firstURL := "https://cdn.invalid/original.mp4"
+	oversized := []any{firstURL}
+	for index := 1; index < 65; index++ {
+		oversized = append(oversized, fmt.Sprintf("https://cdn.invalid/extra-%d.mp4", index))
+	}
+	for _, outputs := range [][]any{{firstURL}, {"not-an-https-url", firstURL}, oversized} {
+		// ConvertToOpenAIVideo on 502 provides this renderer context and a
+		// public TaskView with raw data, not plugin state or producerVersion.
+		value, err := plugin.Engine.CallPath(t.Context(), "protocols", []string{"openai_video", "render"},
+			map[string]any{"protocol": "openai_video", "operation": "retrieve"},
+			map[string]any{"task_id": "task_original", "status": "SUCCESS", "data": map[string]any{"outputs": outputs}})
+		require.NoError(t, err)
+		assert.Equal(t, firstURL, codebloomObject(t, value)["url"])
+	}
+}
+
+func TestYCAPICachedUnmarkedMultipleArtifactsKeepTheirIndexedKeys(t *testing.T) {
+	plugin := newYCAPIMediaV2Plugin(t)
+	for _, kind := range []string{"image", "video"} {
+		t.Run(kind, func(t *testing.T) {
+			urls := []any{"https://cdn.invalid/one", "https://cdn.invalid/two"}
+			state := map[string]any{"kind": kind, "snapshot": map[string]any{"kind": kind, "outputs": urls}}
+			value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": state, "producerVersion": ""})
+			require.NoError(t, err)
+			artifacts := value.([]any)
+			require.Len(t, artifacts, 2, "cached multi-output QA history must not be truncated during projection")
+			assert.Equal(t, kind+"-1", codebloomObject(t, artifacts[0])["key"])
+			assert.Equal(t, kind+"-2", codebloomObject(t, artifacts[1])["key"])
+			content := codebloomHook(t, plugin, "buildContentRequest", map[string]any{
+				"state": state, "artifactKey": kind + "-2", "clientRequest": map[string]any{"method": "HEAD"},
+			})
+			assert.Equal(t, urls[1], content["url"])
+		})
+	}
+}
+
+func TestYCAPIMediaV2OutputGuardsCannotFallBackToLegacyCompatibility(t *testing.T) {
+	plugin := newYCAPIMediaV2Plugin(t)
+	parsed := codebloomHook(t, plugin, "parseSubmitResponse", ycapiV2FixtureContext(), map[string]any{"body": map[string]any{
+		"task_id": "native-v2-task", "status": "pending",
+	}})
+	queryCtx := map[string]any{"model": "ycapi-gpt-image-2.6-flare", "taskId": "native-v2-task", "state": parsed["state"]}
+	oversized := make([]any, 65)
+	for index := range oversized {
+		oversized[index] = map[string]any{"url": fmt.Sprintf("https://cdn.invalid/%d.png", index), "type": "image"}
+	}
+	for _, outputs := range [][]any{
+		{map[string]any{"url": "https://cdn.invalid/valid.png", "type": "image"}, map[string]any{"url": "not-an-https-url", "type": "image"}},
+		oversized,
+	} {
+		_, err := plugin.Engine.Call(t.Context(), "parseTaskResult", queryCtx, map[string]any{
+			"task_id": "native-v2-task", "status": "completed", "is_final": true, "data": outputs,
+		})
+		require.Error(t, err)
+	}
+}
+
+func TestYCAPIMediaV2BatchKeepsOriginalRolesKeysAndRetainedPolicy(t *testing.T) {
+	plugin := newYCAPIMediaV2Plugin(t)
+	batch := map[string]any{"schema_version": 1, "requested_output_count": 2, "expected_main_output_count": 2,
+		"meter": "output_count", "output_duration_seconds": 5, "total_output_seconds": 10,
+		"admission_unit": "native_operation", "admission_weight": 1,
+		"partial_policy": "retain_reservation_until_complete", "policy_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	state := map[string]any{"mediaGenerationV2": true, "gatewayModel": "ycapi-kling-v4", "nativeModel": "kling-v4", "kind": "video",
+		"batch": batch, "snapshot": map[string]any{"id": "native-batch-task"}}
+	final := codebloomHook(t, plugin, "parseTaskResult", map[string]any{"model": "ycapi-kling-v4", "taskId": "native-batch-task", "state": state}, map[string]any{
+		"task_id": "native-batch-task", "status": "completed", "is_final": true,
+		"data": []any{
+			map[string]any{"url": "https://cdn.invalid/one.mp4", "type": "video", "output_id": "vendor-one", "output_index": 0},
+			map[string]any{"url": "https://cdn.invalid/two.mp4", "type": "video", "output_id": "vendor-two", "output_index": 1},
+		},
+	})
+	assert.Equal(t, "SUCCESS", final["status"])
+	finalState := codebloomObject(t, final["state"])
+	assert.Equal(t, codebloomObject(t, batch), codebloomObject(t, finalState["batch"]))
+	snapshot := codebloomObject(t, finalState["snapshot"])
+	assert.Equal(t, "complete", codebloomObject(t, snapshot["batch"])["completeness"])
+	retained := snapshot["artifacts"].([]any)
+	require.Len(t, retained, 2)
+	for index, expected := range []string{"video-1", "video-2"} {
+		artifact := codebloomObject(t, retained[index])
+		assert.Equal(t, expected, artifact["key"])
+		assert.Equal(t, "main", artifact["role"])
+		assert.Equal(t, fmt.Sprintf("main-%d", index+1), artifact["output_id"])
+	}
+	value, err := plugin.Engine.Call(t.Context(), "listArtifacts", map[string]any{"status": "SUCCESS", "state": finalState})
+	require.NoError(t, err)
+	artifacts := value.([]any)
+	require.Len(t, artifacts, 2)
+	assert.Equal(t, "video-1", codebloomObject(t, artifacts[0])["key"])
+	assert.Equal(t, "video-2", codebloomObject(t, artifacts[1])["key"])
+	content := codebloomHook(t, plugin, "buildContentRequest", map[string]any{
+		"state": finalState, "artifactKey": "video-2", "clientRequest": map[string]any{"method": "HEAD"},
+	})
+	assert.Equal(t, "https://cdn.invalid/two.mp4", content["url"])
+}
+
 func ycapiV2FixtureContext() map[string]any {
 	return map[string]any{"model": "ycapi-gpt-image-2.6-flare", "upstreamModel": "gpt-image-2.6-flare", "publicTaskId": "task_gateway_v2",
 		"baseUrl": "https://ycapi.invalid", "apiKey": "synthetic-vendor-secret", "requestBody": map[string]any{"prompt": "untrusted body is not the native envelope"},
@@ -33,7 +254,7 @@ func ycapiV2FixtureContext() map[string]any {
 func TestYCAPIMediaV2PrivateEnvelopeAndUsageBinding(t *testing.T) {
 	plugin := newYCAPIMediaV2Plugin(t)
 	assert.Equal(t, "1.0.4", plugin.Meta.Version)
-	assert.Len(t, plugin.Meta.Models, 76, "73 media contracts union the unchanged three legacy audio cards")
+	assert.Len(t, plugin.Meta.Models, 78, "75 media contracts union the unchanged three legacy audio cards")
 	usageSchema, _ := plugin.Meta.UsageForModel("ycapi-gpt-image-2.6-flare")
 	assert.Equal(t, "boolean", usageSchema["generate_audio"].Type)
 	assert.Equal(t, "boolean", usageSchema["draft"].Type)
@@ -90,7 +311,11 @@ func TestYCAPIMediaV2VideoOmitsImageOperationAndFreezesReferenceQuantities(t *te
 	private["usageFacts"] = facts
 	wire := codebloomHook(t, plugin, "buildSubmitRequest", ctx)
 	assert.NotContains(t, codebloomObject(t, wire["body"]), "operation")
-	assert.Equal(t, codebloomObject(t, facts), codebloomHook(t, plugin, "extractUsage", ctx))
+	expectedFacts := codebloomObject(t, facts)
+	expectedFacts["output_count"], expectedFacts["total_output_seconds"] = float64(0), float64(0)
+	assert.Equal(t, expectedFacts, codebloomHook(t, plugin, "extractUsage", ctx))
+	assert.NotContains(t, facts, "output_count", "historical captured facts remain unchanged")
+	assert.NotContains(t, facts, "total_output_seconds")
 	request := codebloomObject(t, private["nativeRequest"])
 	request["operation"] = "generate"
 	private["nativeRequest"] = request
@@ -111,7 +336,11 @@ func TestYCAPIMediaV2BooleanFactsStayTypedAndHostErrorsCannotFallBack(t *testing
 	private["usageFacts"] = facts
 	wire := codebloomHook(t, plugin, "buildSubmitRequest", ctx)
 	assert.Equal(t, true, codebloomObject(t, codebloomObject(t, wire["body"])["params"])["draft"])
-	assert.Equal(t, codebloomObject(t, facts), codebloomHook(t, plugin, "extractUsage", ctx))
+	expectedFacts := codebloomObject(t, facts)
+	expectedFacts["output_count"], expectedFacts["total_output_seconds"] = float64(0), float64(0)
+	assert.Equal(t, expectedFacts, codebloomHook(t, plugin, "extractUsage", ctx))
+	assert.NotContains(t, facts, "output_count", "historical captured facts remain unchanged")
+	assert.NotContains(t, facts, "total_output_seconds")
 	for _, key := range []string{"generate_audio", "draft"} {
 		original := facts[key]
 		for _, invalid := range []any{"true", "false", 0, 1, nil} {
