@@ -19,13 +19,20 @@ import (
 var mediaGenerationThirtyReviewData []byte
 
 func MediaGenerationCatalogCapabilities(maxUploadBytes int64) map[string]any {
-	return map[string]any{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "material_conditions_v1": true, "parameter_conditions_v1": true, "native_video_batch_v1": true, "exact_specification_pricing_v1": true, "explicit_requote_v1": true, "max_upload_bytes": maxUploadBytes}
+	return map[string]any{"media_generation_v2": true, "quote_required": true, "durable_operation_receipt": true, "all_artifacts": true, "same_operation_configuration_requote": true, "material_conditions_v1": true, "parameter_conditions_v1": true, "native_video_batch_v1": true, "exact_specification_pricing_v1": true, "explicit_requote_v1": true, "selection_constraints_v1": true, "max_upload_bytes": maxUploadBytes}
 }
 
 func mediaGenerationCatalogEntry(def model.ModelConfiguration, contract ycapi.MediaContract, version string, schema map[string]any, fields, intents []map[string]any, pricing map[string]any) map[string]any {
+	flat, selection, err := mediaGenerationCatalogSelection(schema)
+	if err != nil {
+		return nil
+	}
 	publicPrice := map[string]any{"display": "按所选规格显示费用", "quote_required": true}
 	maps.Copy(publicPrice, pricing)
-	entry := map[string]any{"id": def.ModelName, "display_name": mediaGenerationDisplayName(def.DisplayName, contract, fields, intents), "kind": contract.Kind, "description": strings.Join(contract.Capabilities, " · "), "enabled": true, "model_version": version, "parameters_schema": schema, "asset_fields": fields, "intents": intents, "pricing": publicPrice}
+	entry := map[string]any{"id": def.ModelName, "display_name": mediaGenerationDisplayName(def.DisplayName, contract, fields, intents), "kind": contract.Kind, "description": strings.Join(contract.Capabilities, " · "), "enabled": true, "model_version": version, "parameters_schema": flat, "asset_fields": fields, "intents": intents, "pricing": publicPrice}
+	if selection != nil {
+		entry["selection_constraints"] = selection
+	}
 	if conditions := ycapi.MediaContractMaterialConditions(contract); conditions != nil {
 		entry["conditions"] = conditions
 	}

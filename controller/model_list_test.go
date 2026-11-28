@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,7 +12,9 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/pkg/ycapi"
+	"github.com/QuantumNous/new-api/plugins"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -367,6 +370,174 @@ func TestMediaV2OnlyCatalogClassificationPreservesLegacyModels(t *testing.T) {
 	}
 	for _, name := range []string{"ys-gpt-image-2", "qq-gpt-image-2", "gpt-image-2", "MiniMax-H3", "ycapi-not-a-declared-model", "ycapi-deepseek-flash"} {
 		assert.False(t, mediaV2OnlyCatalogModel(name, record), name)
+	}
+}
+
+func TestPricingNativePreferenceIsAdditiveToLegacyVideoContract(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	withSelfUseModeDisabled(t)
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+
+	// Select a genuinely shared legacy/native video contract with the original
+	// five- and ten-second choices, rather than special-casing an upstream ID.
+	legacyModels, err := ycapi.Models()
+	require.NoError(t, err)
+	var legacy ycapi.Model
+	var contract ycapi.MediaContract
+	for _, candidate := range legacyModels {
+		if candidate.Kind != "video" {
+			continue
+		}
+		durations := map[any]bool{}
+		for _, offer := range candidate.Offers {
+			durations[offer.Params["duration"]] = true
+		}
+		current, known := ycapi.LookupMediaContract(candidate.ID)
+		if known && current.Available && durations["5"] && durations["10"] {
+			legacy, contract = candidate, current
+			break
+		}
+	}
+	require.NotEmpty(t, legacy.ID)
+	withTieredBillingConfig(t, map[string]string{legacy.ID: "tiered_expr"}, map[string]string{legacy.ID: `tier("synthetic", u("seconds") * 0.1)`})
+	withModelListFixtureTariffs(t, legacy.ID, "zz-preserved-legacy")
+	channel := model.Channel{Id: 3, Type: constant.ChannelTypeTaskPlugin, Status: common.ChannelStatusEnabled, Name: "Synthetic native preference", Key: "synthetic-only-no-network", Models: legacy.ID, Group: "default"}
+	channel.SetSetting(dto.ChannelSettings{TaskPluginKey: "ycapi"})
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: legacy.ID, ChannelId: 3, Enabled: true},
+		{Group: "default", Model: "zz-preserved-legacy", ChannelId: 1, Enabled: true},
+	}).Error)
+	model.InitChannelCache()
+	model.InvalidatePricingCache()
+
+	common.OptionMapRWMutex.Lock()
+	previousOptions := maps.Clone(common.OptionMap)
+	if common.OptionMap == nil {
+		common.OptionMap = map[string]string{}
+	}
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap = previousOptions
+		common.OptionMapRWMutex.Unlock()
+		model.InvalidatePricingCache()
+	})
+	definition := model.ModelConfiguration{ModelName: legacy.ID, Kind: "video", DisplayName: legacy.Name, Enabled: true,
+		Routes:  []model.ModelConfigurationRoute{{ChannelID: channel.Id, Group: "default", UpstreamModel: legacy.ID, Enabled: true}},
+		Pricing: model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": `tier("synthetic", u("seconds") * 0.1)`}}
+	var baseline map[string]any
+	outputs := map[string]any{}
+	for _, stage := range []string{"legacy", "qualified", "unqualified"} {
+		if stage == "qualified" {
+			definition.MediaExecution = &model.ModelMediaExecutionConfiguration{SchemaVersion: 1, LaneID: "synthetic-local-only", Intents: []string{"text"}, QualificationSHA256: strings.Repeat("a", 64), ContractSHA256: service.MediaGenerationDigest(contract), CheckedAt: "2026-11-28"}
+		} else if stage == "unqualified" {
+			definition.MediaExecution.QualificationSHA256 = ""
+		}
+		document := model.ModelConfigurationDocument{SchemaVersion: 1, Published: map[string]model.PublishedModelConfiguration{legacy.ID: {Version: "synthetic-only", Definition: definition}}, Drafts: map[string]model.ModelConfigurationDraft{}, History: []model.ModelConfigurationHistory{}}
+		encoded, e := common.Marshal(document)
+		require.NoError(t, e)
+		common.OptionMapRWMutex.Lock()
+		common.OptionMap[model.ModelConfigurationKey] = string(encoded)
+		common.OptionMapRWMutex.Unlock()
+		cachedBefore, e := common.Marshal(model.GetPricing())
+		require.NoError(t, e)
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/api/pricing", nil)
+		GetPricing(ctx)
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		var envelope struct {
+			Success bool             `json:"success"`
+			Data    []map[string]any `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &envelope))
+		require.True(t, envelope.Success)
+		byName := map[string]map[string]any{}
+		for _, row := range envelope.Data {
+			byName[row["model_name"].(string)] = row
+		}
+		require.Contains(t, byName, legacy.ID, stage)
+		require.Contains(t, byName, "zz-preserved-legacy", stage)
+		assert.NotContains(t, byName["zz-preserved-legacy"], "media_runtime")
+		row := byName[legacy.ID]
+		if stage == "qualified" {
+			assert.Equal(t, map[string]any{"schema_version": float64(1), "preferred": "media-v2"}, row["media_runtime"])
+		} else {
+			assert.NotContains(t, row, "media_runtime", stage)
+		}
+		outputs[stage] = envelope
+		if stage == "qualified" {
+			nativeRecorder := httptest.NewRecorder()
+			nativeContext, _ := gin.CreateTestContext(nativeRecorder)
+			nativeContext.Request = httptest.NewRequest(http.MethodGet, "/v1/media-v2/models", nil)
+			common.SetContextKey(nativeContext, constant.ContextKeyUsingGroup, "default")
+			common.SetContextKey(nativeContext, constant.ContextKeyUserGroup, "default")
+			MediaGenerationModels(nativeContext)
+			require.Equal(t, http.StatusOK, nativeRecorder.Code, nativeRecorder.Body.String())
+			var nativeEnvelope map[string]any
+			require.NoError(t, common.Unmarshal(nativeRecorder.Body.Bytes(), &nativeEnvelope))
+			outputs["native_qualified"] = nativeEnvelope
+			nativeModels := nativeEnvelope["data"].(map[string]any)["models"].([]any)
+			require.Len(t, nativeModels, 1)
+			assert.Equal(t, legacy.ID, nativeModels[0].(map[string]any)["id"])
+			records, e := model.CurrentPublishedModelConfigurations()
+			require.NoError(t, e)
+			versions := model.ModelExecutionConfigurationVersions(records)
+			for _, boundary := range []string{"disabled", "unqualified", "unpriced", "group_disabled"} {
+				t.Run(boundary, func(t *testing.T) {
+					changed := maps.Clone(records)
+					current := changed[legacy.ID]
+					groups := []string{"default"}
+					switch boundary {
+					case "disabled":
+						current.Definition.Enabled = false
+					case "unqualified":
+						binding := *current.Definition.MediaExecution
+						binding.QualificationSHA256 = ""
+						current.Definition.MediaExecution = &binding
+					case "unpriced":
+						withTieredBillingConfig(t, map[string]string{legacy.ID: "tiered_expr"}, map[string]string{})
+					case "group_disabled":
+						groups = []string{"unavailable"}
+					}
+					changed[legacy.ID] = current
+					eligible, e := service.MediaGenerationPreferredLegacyModels(nativeContext, changed, groups, versions)
+					require.NoError(t, e)
+					assert.False(t, eligible[legacy.ID], "an advisory marker cannot turn an unavailable native route into a new-work choice")
+				})
+			}
+		}
+		comparison := maps.Clone(row)
+		delete(comparison, "model_config_version")
+		delete(comparison, "media_runtime")
+		if stage == "legacy" {
+			baseline = comparison
+			seconds := map[float64]bool{}
+			for _, raw := range comparison["retail_price_rows"].([]any) {
+				seconds[raw.(map[string]any)["params"].(map[string]any)["seconds"].(float64)] = true
+			}
+			assert.Equal(t, map[float64]bool{5: true, 10: true}, seconds, "the original five- and ten-second legacy offers remain available")
+		} else {
+			assert.Equal(t, baseline, comparison, "marker cannot change legacy parameters, prices, units or routing fields")
+		}
+		cachedAfter, e := common.Marshal(model.GetPricing())
+		require.NoError(t, e)
+		assert.JSONEq(t, string(cachedBefore), string(cachedAfter), "projection cannot mutate cached legacy pricing")
+	}
+	if output := os.Getenv("TEST_NATIVE_PREFERENCE_PRICING_OUTPUT"); output != "" {
+		encoded, e := common.Marshal(map[string]any{"synthetic": true, "model": legacy.ID, "responses": outputs})
+		require.NoError(t, e)
+		file, e := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		require.NoError(t, e)
+		_, e = file.Write(encoded)
+		require.NoError(t, e)
+		require.NoError(t, file.Close())
 	}
 }
 

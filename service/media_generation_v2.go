@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/ycapi"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -104,20 +105,66 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	versions := model.ModelExecutionConfigurationVersions(records)
-	plugin, pluginReady := jsplugin.DefaultRegistry.Get("ycapi")
-	if !pluginReady || plugin.Meta.Version != "1.0.4" {
-		return []map[string]any{}, nil
-	}
-	models := []map[string]any{}
 	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
 	groups := []string{group}
 	if group == "auto" {
 		groups = GetRequestAutoGroups(c, common.GetContextKeyString(c, constant.ContextKeyUserGroup))
 	}
+	return mediaGenerationModelsForRecords(c, records, groups, group)
+}
+
+// This advisory legacy marker is derived from the same qualified native
+// projection as the authenticated catalog. It grants no new execution rights.
+func MediaGenerationPreferredLegacyModels(c *gin.Context, records map[string]model.PublishedModelConfiguration, groups []string, versions map[string]string) (map[string]bool, error) {
+	entries, err := mediaGenerationModelsForRecords(c, records, groups, "auto", versions)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		result[entry["id"].(string)] = true
+	}
+	return result, nil
+}
+
+func mediaGenerationModelsForRecords(c *gin.Context, records map[string]model.PublishedModelConfiguration, groups []string, group string, capturedVersions ...map[string]string) ([]map[string]any, error) {
+	if len(records) == 0 {
+		return []map[string]any{}, nil
+	}
+	plugin, pluginReady := jsplugin.DefaultRegistry.Get("ycapi")
+	if !pluginReady || plugin.Meta.Version != "1.0.4" {
+		return []map[string]any{}, nil
+	}
+	// A single request-local read replaces one Count per candidate route when
+	// the optional in-memory channel cache is disabled. No credentials are read.
+	routeEnabled := model.IsChannelEnabledForGroupModel
+	if !common.MemoryCacheEnabled {
+		abilities, err := model.GetAllEnableAbilityWithChannels()
+		if err != nil {
+			return nil, err
+		}
+		type routeKey struct {
+			group, model string
+			channel      int
+		}
+		enabled := make(map[routeKey]bool, len(abilities))
+		for _, a := range abilities {
+			enabled[routeKey{a.Group, a.Model, a.ChannelId}] = true
+		}
+		routeEnabled = func(g, name string, channel int) bool {
+			return enabled[routeKey{g, name, channel}] || enabled[routeKey{g, ratio_setting.RoutingMatchModelName(name), channel}]
+		}
+	}
+	var versions map[string]string
+	if len(capturedVersions) == 1 {
+		versions = capturedVersions[0]
+	} else {
+		versions = model.ModelExecutionConfigurationVersions(records)
+	}
+	models := []map[string]any{}
 	for id, record := range records {
 		contract, e := validateMediaGenerationRecord(id, record, true)
-		if e != nil {
+		if e != nil || versions[id] == "" {
 			continue
 		}
 		expression, priced := billing_setting.ResolveTaskBillingExpr("ycapi", id, id)
@@ -133,7 +180,7 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 		}
 		allowed := false
 		for _, r := range record.Definition.Routes {
-			if r.Enabled && slices.Contains(groups, r.Group) && model.IsChannelEnabledForGroupModel(r.Group, id, r.ChannelID) {
+			if r.Enabled && slices.Contains(groups, r.Group) && routeEnabled(r.Group, id, r.ChannelID) {
 				allowed = true
 				break
 			}
@@ -165,6 +212,9 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 			}
 		}
 		entry := mediaGenerationCatalogEntry(record.Definition, contract, versions[id], schema, fields, intents, publicPricing)
+		if entry == nil {
+			continue
+		}
 		if batchClient {
 			if quantity := mediaGenerationQuantity(record.Definition, contract, expression); quantity != nil {
 				entry["quantity"] = quantity

@@ -28,6 +28,13 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 	}
 	result := make([]any, 0, len(rows))
 	versions := model.ModelExecutionConfigurationVersions(records)
+	var nativePreferred map[string]bool
+	if idKey == "model_name" {
+		// This is advice for new clients, not a change to legacy admission or
+		// tariffs. If its current native eligibility cannot be established, keep
+		// the original legacy projection and omit the advice.
+		nativePreferred, _ = service.MediaGenerationPreferredLegacyModels(c, records, groups, versions)
+	}
 	names := make([]string, 0, len(records))
 	for name := range records {
 		names = append(names, name)
@@ -124,6 +131,9 @@ func projectUnifiedModelCatalog(c *gin.Context, rows []any, idKey string, groups
 			return nil, "", errors.New("Model configuration routing snapshot is unavailable")
 		}
 		row["model_config_version"] = versions[name]
+		if nativePreferred[name] {
+			row["media_runtime"] = map[string]any{"schema_version": 1, "preferred": "media-v2"}
+		}
 		visible[name] = versions[name]
 		result = append(result, row)
 	}
