@@ -37,14 +37,17 @@ type MediaGenerationRequest struct {
 	Assets            map[string][]string      `json:"assets"`
 }
 
+const MediaGenerationRequoteHeader = "X-Yunshu-Media-Requote"
+
 type MediaGenerationFrozen struct {
-	Request            MediaGenerationRequest `json:"request"`
-	Parameters         map[string]any         `json:"parameters"`
-	Facts              map[string]any         `json:"facts"`
-	CostCNY            string                 `json:"cost_cny"`
-	DryRunSHA256       string                 `json:"dry_run_sha256"`
-	RetailPolicySHA256 string                 `json:"retail_policy_sha256,omitempty"`
-	Batch              *MediaGenerationBatch  `json:"batch,omitempty"`
+	Request                   MediaGenerationRequest `json:"request"`
+	Parameters                map[string]any         `json:"parameters"`
+	Facts                     map[string]any         `json:"facts"`
+	CostCNY                   string                 `json:"cost_cny"`
+	DryRunSHA256              string                 `json:"dry_run_sha256"`
+	RetailPolicySHA256        string                 `json:"retail_policy_sha256,omitempty"`
+	NativeSpecificationSHA256 string                 `json:"native_specification_sha256,omitempty"`
+	Batch                     *MediaGenerationBatch  `json:"batch,omitempty"`
 }
 
 type MediaGenerationQuoteReply struct {
@@ -155,13 +158,13 @@ func MediaGenerationModels(c *gin.Context) ([]map[string]any, error) {
 		if len(intents) == 0 {
 			continue
 		}
-		entry := map[string]any{"id": id, "display_name": mediaGenerationDisplayName(record.Definition.DisplayName, contract, fields, intents), "kind": contract.Kind, "description": strings.Join(contract.Capabilities, " · "), "enabled": true, "model_version": versions[id], "parameters_schema": schema, "asset_fields": fields, "intents": intents, "pricing": map[string]any{"display": "按所选规格显示费用", "quote_required": true}}
-		if conditions := ycapi.MediaContractMaterialConditions(contract); conditions != nil {
-			entry["conditions"] = conditions
+		var publicPricing map[string]any
+		if group != "auto" {
+			if pricing, pricingErr := mediaGenerationSpecificationPricing(record.Definition, contract, expression, GetUserGroupRatio(common.GetContextKeyString(c, constant.ContextKeyUserGroup), group)); pricingErr == nil && pricing != nil {
+				publicPricing = pricing
+			}
 		}
-		if conditions := ycapi.MediaContractParameterConditions(contract); conditions != nil {
-			entry["parameter_conditions"] = conditions
-		}
+		entry := mediaGenerationCatalogEntry(record.Definition, contract, versions[id], schema, fields, intents, publicPricing)
 		if batchClient {
 			if quantity := mediaGenerationQuantity(record.Definition, contract, expression); quantity != nil {
 				entry["quantity"] = quantity
@@ -657,6 +660,9 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if request.ModelVersion != version {
 		return nil, errors.New("model_version_changed")
 	}
+	if err = validateMediaGenerationReviewedSpecification(record.Definition, contract, request.Parameters, request.Assets); err != nil {
+		return nil, err
+	}
 	if !slices.Contains(record.Definition.MediaExecution.Intents, string(request.Intent)) {
 		return nil, errors.New("invalid_parameters")
 	}
@@ -680,10 +686,17 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if err != nil {
 		return nil, err
 	}
-	if old != nil && old.ExpiresAt > time.Now().Unix() && old.ModelConfigVersion == version && old.ChannelConfigHash == route.ConfigHash && old.CredentialDigest == route.CredentialDigest {
+	explicitRequote := c.GetHeader(MediaGenerationRequoteHeader) == "1"
+	if old != nil && !explicitRequote && old.ExpiresAt > time.Now().Unix() && old.ModelConfigVersion == version && old.ChannelConfigHash == route.ConfigHash && old.CredentialDigest == route.CredentialDigest {
 		var retained MediaGenerationFrozen
 		if common.UnmarshalJsonStr(string(old.UsageFactsJSON), &retained) != nil {
 			return nil, errors.New("quote unavailable")
+		}
+		if err = validateMediaGenerationFrozenSemantics(old, contract, retained); err != nil {
+			return nil, err
+		}
+		if err = validateMediaGenerationReviewedSpecification(record.Definition, contract, retained.Parameters, retained.Request.Assets); err != nil {
+			return nil, err
 		}
 		if err = ycapi.ValidateMediaParameterConditions(contract, retained.Parameters); err != nil {
 			return nil, err
@@ -731,6 +744,9 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if err != nil {
 		return nil, err
 	}
+	if err = validateMediaGenerationQuoteSemantics(contract, native.Params, estimate); err != nil {
+		return nil, err
+	}
 	cost, err := mediaGenerationNativeCost(estimate, native.LaneID)
 	if err != nil {
 		return nil, err
@@ -771,7 +787,7 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	if err != nil {
 		return nil, err
 	}
-	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA, RetailPolicySHA256: policySHA, Batch: batch}
+	frozen := MediaGenerationFrozen{Request: request, Parameters: normalized, Facts: facts, CostCNY: cost.String(), DryRunSHA256: dryRunSHA, RetailPolicySHA256: policySHA, NativeSpecificationSHA256: mediaGenerationNativeSpecificationSHA(contract, native.LaneID, normalized, facts, cost.String()), Batch: batch}
 	if policySHA != "" {
 		pricingVersion = MediaGenerationDigest([]any{pricingVersion, policySHA})
 	}
@@ -785,17 +801,219 @@ func QuoteMediaGeneration(c *gin.Context, request MediaGenerationRequest) (*mode
 	}
 	store := model.MediaGenerationQuoteStore{DB: model.DB}
 	if old != nil {
-		return store.RenewUnboundQuote(c.Request.Context(), MediaGenerationBinding(old), old.ExpiresAt, candidate)
+		return store.RenewUnboundQuote(c.Request.Context(), MediaGenerationBinding(old), old.ExpiresAt, candidate, explicitRequote)
 	}
 	return store.SaveQuote(c.Request.Context(), candidate)
+}
+
+// The quote must describe the same native selection that was sent. A supplier
+// may return HTTP 200 for a different supported duration or material selection;
+// that is a rejected quote, never permission to adjust the user's operation.
+func validateMediaGenerationQuoteSemantics(contract ycapi.MediaContract, params, response map[string]any) error {
+	if data, ok := response["data"].(map[string]any); ok {
+		response = data
+	}
+	if raw, exists := response["param_adjustments"]; exists && raw != nil {
+		adjustments, ok := raw.([]any)
+		if !ok {
+			return errors.New("native parameters changed")
+		}
+		for _, raw := range adjustments {
+			adjustment, ok := raw.(map[string]any)
+			if !ok {
+				return errors.New("native parameters changed")
+			}
+			name, ok := adjustment["param"].(string)
+			field, declared := mediaGenerationSemanticField(contract, name)
+			expected, sent := params[name]
+			applied, appliedKnown := adjustment["applied"]
+			if !ok || !declared || !sent || !appliedKnown || !mediaGenerationSemanticParameterEqual(name, field, expected, applied) {
+				return errors.New("native parameters changed")
+			}
+			if requested, known := adjustment["requested"]; known && requested != nil && !mediaGenerationSemanticParameterEqual(name, field, expected, requested) {
+				return errors.New("native parameters changed")
+			}
+		}
+	}
+	if contract.Kind == "video" {
+		for _, key := range []string{"duration", "seconds"} {
+			requested, present := params[key]
+			if !present {
+				continue
+			}
+			expected, err := mediaGenerationSemanticNumber(requested)
+			basis, _ := response["price_basis"].(map[string]any)
+			actual, actualErr := mediaGenerationSemanticNumber(basis["output_duration_sec"])
+			if err != nil || !expected.IsPositive() || actualErr != nil || !actual.Equal(expected) {
+				return errors.New("native parameters changed")
+			}
+			break
+		}
+	}
+	for _, name := range []string{"params", "normalized_params", "effective_params", "resolved_params"} {
+		raw, present := response[name]
+		if !present || raw == nil {
+			continue
+		}
+		resolved, ok := raw.(map[string]any)
+		if !ok {
+			return errors.New("native parameters changed")
+		}
+		for name, applied := range resolved {
+			field, declared := mediaGenerationSemanticField(contract, name)
+			expected, sent := params[name]
+			if !declared || !sent || !mediaGenerationSemanticParameterEqual(name, field, expected, applied) {
+				return errors.New("native parameters changed")
+			}
+		}
+	}
+	return nil
+}
+
+func mediaGenerationSemanticNumber(value any) (decimal.Decimal, error) {
+	switch value.(type) {
+	case string, float64, float32, int, int64, int32, uint, uint64, uint32:
+		return decimal.NewFromString(fmt.Sprint(value))
+	default:
+		return decimal.Zero, errors.New("invalid native numeric parameter")
+	}
+}
+
+func mediaGenerationSemanticField(contract ycapi.MediaContract, name string) (ycapi.MediaParameter, bool) {
+	if field, declared := contract.Parameters[name]; declared {
+		return field, true
+	}
+	// Generic prompt is declared by the shared projection for generative cards,
+	// although it is not repeated in every supplier param_schema object.
+	if name == "prompt" {
+		if schema, ok := ycapi.MediaContractSchema(contract.ID); ok {
+			if field, ok := schema["properties"].(map[string]any)[name].(map[string]any); ok && field["type"] == "string" {
+				return ycapi.MediaParameter{Type: "string"}, true
+			}
+		}
+	}
+	return ycapi.MediaParameter{}, false
+}
+
+// This proof is created only after the native estimate's semantic check. It
+// binds the reviewed request and price evidence without migrating old quotes.
+func mediaGenerationNativeSpecificationSHA(contract ycapi.MediaContract, lane string, params, facts map[string]any, cost string) string {
+	return MediaGenerationDigest([]any{"native-quote-semantics-v1", mediaGenerationContractSHA(contract), lane, params, facts, cost})
+}
+
+// Numeric enum strings and JSON numbers may represent the same declared value.
+// Strings such as mode/quality and ordered material arrays have no guessed
+// aliases, case folding, truncation or reordering rule.
+func mediaGenerationSemanticParameterEqual(name string, field ycapi.MediaParameter, expected, actual any) bool {
+	if field.Type == "int" {
+		a, aErr := mediaGenerationSemanticNumber(expected)
+		b, bErr := mediaGenerationSemanticNumber(actual)
+		return aErr == nil && bErr == nil && a.Equal(a.Truncate(0)) && b.Equal(b.Truncate(0)) && a.Equal(b)
+	}
+	if field.Type == "enum" && (name == "duration" || name == "seconds" || name == "count" || name == "n") {
+		for _, declared := range field.Enum {
+			if literal, literalErr := mediaGenerationSemanticNumber(declared); literalErr == nil {
+				a, aErr := mediaGenerationSemanticNumber(expected)
+				b, bErr := mediaGenerationSemanticNumber(actual)
+				if aErr == nil && literal.Equal(a) {
+					return bErr == nil && a.Equal(b)
+				}
+			}
+		}
+	}
+	return MediaGenerationDigest(expected) == MediaGenerationDigest(actual)
+}
+
+// Rechecking an unaccepted quote never asks the provider to reconstruct it.
+// The original caller's explicit fields and opaque material counts must still
+// describe the frozen native request and the original duration usage fact.
+func validateMediaGenerationFrozenSemantics(quote *model.MediaGenerationQuote, contract ycapi.MediaContract, frozen MediaGenerationFrozen) error {
+	if frozen.Request.Model != quote.Model || MediaGenerationRequestDigest(frozen.Request) != quote.RequestSHA256 {
+		return errors.New("quote unavailable")
+	}
+	if frozen.CostCNY != quote.CostCNY || frozen.NativeSpecificationSHA256 == "" || frozen.NativeSpecificationSHA256 != mediaGenerationNativeSpecificationSHA(contract, quote.SupplierLane, frozen.Parameters, frozen.Facts, frozen.CostCNY) {
+		return errors.New("quote_changed")
+	}
+	for name, expected := range frozen.Request.Parameters {
+		field, declared := mediaGenerationSemanticField(contract, name)
+		actual, present := frozen.Parameters[name]
+		if !declared || !present || !mediaGenerationSemanticParameterEqual(name, field, expected, actual) {
+			return errors.New("native parameters changed")
+		}
+	}
+	fields, err := ycapi.AssetFields(contract)
+	if err != nil {
+		return err
+	}
+	known := map[string]bool{}
+	for _, field := range fields {
+		known[field.Name] = true
+		expected := len(frozen.Request.Assets[field.Name])
+		actual := 0
+		if value, present := frozen.Parameters[field.Name]; present {
+			switch value := value.(type) {
+			case string:
+				if value != "" {
+					actual = 1
+				}
+			case []any:
+				actual = len(value)
+			case []string:
+				actual = len(value)
+			default:
+				return errors.New("native parameters changed")
+			}
+		}
+		if actual != expected {
+			return errors.New("native parameters changed")
+		}
+	}
+	for name, refs := range frozen.Request.Assets {
+		if !known[name] && len(refs) > 0 {
+			return errors.New("native parameters changed")
+		}
+	}
+	if contract.Kind == "video" {
+		for _, key := range []string{"duration", "seconds"} {
+			requested, present := frozen.Parameters[key]
+			if !present {
+				continue
+			}
+			expected, err := mediaGenerationSemanticNumber(requested)
+			actual, actualErr := mediaGenerationSemanticNumber(frozen.Facts["seconds"])
+			if err != nil || !expected.IsPositive() || actualErr != nil || !actual.Equal(expected) {
+				return errors.New("native parameters changed")
+			}
+			break
+		}
+	}
+	maximum := 1
+	if frozen.Batch != nil {
+		if !validMediaGenerationBatch(frozen.Batch) {
+			return errors.New("quote_changed")
+		}
+		maximum = frozen.Batch.RequestedOutputCount
+	}
+	// The native builder owns scalar-versus-array material shapes. Compare its
+	// pure projection, not the internal opaque-asset representation directly.
+	native, err := ycapi.BuildMediaRuntimeRequest(quote.Model, frozen.Parameters, quote.SupplierLane, "frozen-quote-verification", frozen.Request.Intent, maximum)
+	if err != nil {
+		return err
+	}
+	var retainedParams map[string]any
+	if common.UnmarshalJsonStr(string(quote.NativeParamsJSON), &retainedParams) != nil {
+		return errors.New("native parameters changed")
+	}
+	retainedNative, err := ycapi.BuildMediaRuntimeRequest(quote.Model, retainedParams, quote.SupplierLane, "frozen-quote-verification", frozen.Request.Intent, maximum)
+	if err != nil || MediaGenerationDigest(retainedNative.Params) != MediaGenerationDigest(native.Params) {
+		return errors.New("native parameters changed")
+	}
+	return nil
 }
 
 func mediaGenerationNativeCost(response map[string]any, expectedLane string) (decimal.Decimal, error) {
 	if data, ok := response["data"].(map[string]any); ok {
 		response = data
-	}
-	if adjustments, ok := response["param_adjustments"].([]any); ok && len(adjustments) > 0 {
-		return decimal.Zero, errors.New("native parameters changed")
 	}
 	if mode, _ := response["billing_mode"].(string); mode != "fixed_amount" {
 		return decimal.Zero, errors.New("unsupported variable native meter")

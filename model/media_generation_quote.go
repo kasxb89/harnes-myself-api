@@ -213,14 +213,17 @@ func (store MediaGenerationQuoteStore) SaveQuote(ctx context.Context, quote *Med
 // a changed model/channel/credential fingerprint. Request/material identity
 // cannot change. The original quote ID, expiry and fingerprints form the CAS;
 // accepted receipts take precedence over a stale quote ID or expiry.
-func (store MediaGenerationQuoteStore) RenewUnboundQuote(ctx context.Context, binding MediaGenerationQuoteBinding, expectedExpiresAt int64, replacement *MediaGenerationQuote) (*MediaGenerationQuote, error) {
+// A single explicit true also permits replacing a live, unchanged fingerprint
+// after a caller deliberately requests a fresh quote; omission/false stays gated.
+func (store MediaGenerationQuoteStore) RenewUnboundQuote(ctx context.Context, binding MediaGenerationQuoteBinding, expectedExpiresAt int64, replacement *MediaGenerationQuote, explicitRequote ...bool) (*MediaGenerationQuote, error) {
 	if store.DB == nil {
 		return nil, ErrMediaGenerationQuoteUnavailable
 	}
 	binding, err := mediaGenerationQuoteBinding(binding, true)
-	if err != nil || replacement == nil {
+	if err != nil || replacement == nil || len(explicitRequote) > 1 {
 		return nil, ErrMediaGenerationQuoteInvalid
 	}
+	allowLiveRequote := len(explicitRequote) == 1 && explicitRequote[0]
 	var renewed MediaGenerationQuote
 	err = store.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Take the SQLite writer lock before reading; on MySQL/PG this also
@@ -251,7 +254,7 @@ func (store MediaGenerationQuoteStore) RenewUnboundQuote(ctx context.Context, bi
 		candidate := *replacement
 		candidate.OperationKey = binding.OperationKey
 		configurationChanged := candidate.ModelConfigVersion != original.ModelConfigVersion || candidate.ChannelConfigHash != original.ChannelConfigHash || candidate.CredentialDigest != original.CredentialDigest
-		if original.ExpiresAt > now && !configurationChanged {
+		if original.ExpiresAt > now && !configurationChanged && !allowLiveRequote {
 			return ErrMediaGenerationQuoteConflict
 		}
 		if candidate.UserID != original.UserID || candidate.TokenID != original.TokenID || candidate.OwnerDigest != original.OwnerDigest ||

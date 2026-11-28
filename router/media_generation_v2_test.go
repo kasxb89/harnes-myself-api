@@ -80,7 +80,7 @@ func TestMediaGenerationV2MaterialConditionsProjectionAndQuoteGate(t *testing.T)
 			require.NoError(t, common.DecodeJson(r.Body, &request))
 			if r.URL.Path == "/v1/pricing-estimate" {
 				estimates.Add(1)
-				body, err = common.Marshal(map[string]any{"effective_total_rmb": 0.02, "billing_mode": "fixed_amount", "param_adjustments": []any{}, "channels": []any{map[string]any{"lane": request["pinned_lane_id"], "is_delivery_head": true}}})
+				body, err = common.Marshal(map[string]any{"effective_total_rmb": 0.02, "billing_mode": "fixed_amount", "price_basis": map[string]any{"output_duration_sec": request["params"].(map[string]any)["duration"]}, "param_adjustments": []any{}, "channels": []any{map[string]any{"lane": request["pinned_lane_id"], "is_delivery_head": true}}})
 			} else {
 				dryRuns.Add(1)
 				body, err = common.Marshal(map[string]any{"object": "model_runtime.dry_run", "would_call_vendor": false, "pinned_lane": request["lane_id"], "modality": "video", "wire": map[string]any{"channel_id": request["lane_id"], "method": "POST", "body": request["params"]}})
@@ -585,6 +585,14 @@ func TestMediaGenerationV2CapturedOldContractReceiptAfterRefresh(t *testing.T) {
 	originalQuote := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(requestBytes), "h3routermember")
 	require.Equal(t, http.StatusOK, originalQuote.Code, originalQuote.Body.String())
 	require.Contains(t, originalQuote.Body.String(), stored.QuoteID)
+	confirmed := httptest.NewRequest(http.MethodPost, "/v1/media-v2/quotes", bytes.NewReader(requestBytes))
+	confirmed.Header.Set("Content-Type", "application/json")
+	confirmed.Header.Set("Authorization", "Bearer sk-h3routermember")
+	confirmed.Header.Set("X-Yunshu-Media-Requote", "1")
+	confirmedReceipt := httptest.NewRecorder()
+	f.engine.ServeHTTP(confirmedReceipt, confirmed)
+	require.Equal(t, http.StatusOK, confirmedReceipt.Code, confirmedReceipt.Body.String())
+	require.Contains(t, confirmedReceipt.Body.String(), stored.QuoteID, "explicit confirmation cannot reprice or recreate an accepted original UUID")
 	submit, err := common.Marshal(map[string]any{"quote_id": stored.QuoteID, "client_operation_id": capture.Request.ClientOperationID, "request_sha256": capture.RequestSHA})
 	require.NoError(t, err)
 	for range 2 {
@@ -1009,7 +1017,241 @@ func TestMediaGenerationV2ActualRouterQuoteReferenceAndReceiptRecovery(t *testin
 	for _, kind := range []string{"image", "video"} {
 		t.Run(kind, func(t *testing.T) { testMediaGenerationV2RouterReferenceReceipt(t, kind, "") })
 	}
+	t.Run("single native URL image", func(t *testing.T) { testMediaGenerationV2RouterReferenceReceipt(t, "image", "single-url") })
 }
+
+func TestMediaGenerationV2SemanticQuoteDriftNeverBillsOrSends(t *testing.T) {
+	f := newH3RouterFixture(t, 0)
+	isolateNativeMediaFixtureOptions(t)
+	isolateNativeMediaFixtureTables(t, f)
+	source, err := plugins.Source("ycapi")
+	require.NoError(t, err)
+	_, err = jsplugin.DefaultRegistry.Register(source, jsplugin.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister("ycapi") })
+	contract, ok := ycapi.LookupMediaContract("minimax-h3")
+	require.True(t, ok)
+	publishSyntheticNativeMediaContracts(t, []ycapi.MediaContract{contract})
+	current, err := model.GetModelConfigurationSnapshot(contract.ID)
+	require.NoError(t, err)
+	definition := current.Entries[0].Definition
+	definition.MediaExecution.LaneID = "minimax-h3@MTS:default"
+	require.NoError(t, model.SaveModelConfigurationDraft(current.Revision, current.Entries[0].BaseVersion, definition))
+	current, err = model.GetModelConfigurationSnapshot(contract.ID)
+	require.NoError(t, err)
+	require.NoError(t, model.PublishModelConfigurations(current.Revision, []string{contract.ID}, ""))
+	var estimates, dryRuns, vendorIO atomic.Int64
+	variant := "valid"
+	client, previous := service.GetHttpClient(), service.GetHttpClient().Transport
+	client.Transport = imageUploadRoundTripper(func(r *http.Request) (*http.Response, error) {
+		require.Equal(t, "ycapi.token6688.com", r.URL.Host)
+		var request, reply map[string]any
+		require.NoError(t, common.DecodeJson(r.Body, &request))
+		switch r.URL.Path {
+		case "/v1/pricing-estimate":
+			estimates.Add(1)
+			reply = map[string]any{"effective_total_rmb": 0.02, "billing_mode": "fixed_amount", "price_basis": map[string]any{"output_duration_sec": 30}, "channels": []any{map[string]any{"lane": request["pinned_lane_id"], "is_delivery_head": true}}}
+			switch variant {
+			case "reported duration adjustment":
+				reply["price_basis"] = map[string]any{"output_duration_sec": 15}
+				reply["param_adjustments"] = []any{map[string]any{"param": "duration", "requested": 30, "applied": 15, "reason": "nearest_vendor_supported"}}
+			case "silent duration drift":
+				reply["price_basis"] = map[string]any{"output_duration_sec": 15}
+			case "missing duration basis":
+				delete(reply, "price_basis")
+			case "resolution adjustment":
+				reply["param_adjustments"] = []any{map[string]any{"param": "resolution", "requested": "768p", "applied": "1080p"}}
+			case "mode adjustment":
+				reply["param_adjustments"] = []any{map[string]any{"param": "mode", "requested": "text-to-video", "applied": "reference"}}
+			case "count adjustment":
+				reply["param_adjustments"] = []any{map[string]any{"param": "count", "requested": 1, "applied": 2}}
+			case "new reference material":
+				reply["param_adjustments"] = []any{map[string]any{"param": "images", "applied": []any{"https://synthetic.invalid/unrequested-reference"}}}
+			case "malformed adjustments":
+				reply["param_adjustments"] = map[string]any{"duration": 15}
+			case "normalized count drift":
+				reply["normalized_params"] = map[string]any{"count": 2}
+			case "normalized material drift":
+				reply["effective_params"] = map[string]any{"images": []any{"https://synthetic.invalid/unrequested-reference"}}
+			case "unknown alias adjustment":
+				reply["param_adjustments"] = []any{map[string]any{"param": "mode", "applied": "t2v"}}
+			case "cosmetic declared number":
+				reply["param_adjustments"] = []any{map[string]any{"param": "duration", "requested": 30, "applied": "30", "reason": "type_normalization"}, map[string]any{"param": "count", "requested": 1, "applied": "1"}}
+			case "legitimate fifteen seconds":
+				reply["price_basis"] = map[string]any{"output_duration_sec": 15}
+			}
+		case "/api/v1/model-runtime/dry-run":
+			dryRuns.Add(1)
+			reply = map[string]any{"object": "model_runtime.dry_run", "would_call_vendor": false, "pinned_lane": request["lane_id"], "modality": "video", "wire": map[string]any{"channel_id": request["lane_id"], "method": "POST", "body": request["params"]}}
+		default:
+			vendorIO.Add(1)
+			return nil, fmt.Errorf("semantic quote regression forbids supplier generation or upload")
+		}
+		encoded, e := common.Marshal(reply)
+		require.NoError(t, e)
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(bytes.NewReader(encoded)), Request: r}, nil
+	})
+	t.Cleanup(func() { client.Transport = previous })
+	catalog := f.request(t, http.MethodGet, "/v1/media-v2/models", "", "h3routermember")
+	require.Equal(t, http.StatusOK, catalog.Code, catalog.Body.String())
+	var envelope struct {
+		Data struct {
+			Models []struct {
+				ID      string `json:"id"`
+				Version string `json:"model_version"`
+			} `json:"models"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(catalog.Body.Bytes(), &envelope))
+	require.Len(t, envelope.Data.Models, 1)
+	version := envelope.Data.Models[0].Version
+	walletBefore, tokenBefore := f.balance(t)
+	for _, tc := range []struct {
+		name  string
+		allow bool
+	}{
+		{"reported duration adjustment", false}, {"silent duration drift", false}, {"missing duration basis", false},
+		{"resolution adjustment", false}, {"mode adjustment", false}, {"count adjustment", false},
+		{"new reference material", false}, {"malformed adjustments", false}, {"normalized count drift", false},
+		{"normalized material drift", false}, {"unknown alias adjustment", false}, {"cosmetic declared number", true}, {"legitimate fifteen seconds", true}, {"valid", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			variant = tc.name
+			request := service.MediaGenerationRequest{ClientOperationID: uuid.NewString(), Model: contract.ID, ModelVersion: version, Intent: ycapi.MediaIntentText, Parameters: map[string]any{"prompt": "A steady camera across a quiet valley", "mode": "text-to-video", "duration": "30", "resolution": "768p", "aspect_ratio": "16:9", "count": 1}, Assets: map[string][]string{}}
+			if tc.name == "legitimate fifteen seconds" {
+				request.Parameters["duration"] = "15"
+			}
+			body, e := common.Marshal(request)
+			require.NoError(t, e)
+			beforeEstimates, beforeDryRuns := estimates.Load(), dryRuns.Load()
+			response := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(body), "h3routermember")
+			assert.Equal(t, beforeEstimates+1, estimates.Load())
+			if tc.allow {
+				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+				assert.Equal(t, beforeDryRuns+1, dryRuns.Load())
+			} else {
+				require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+				assert.Equal(t, beforeDryRuns, dryRuns.Load(), "a changed quote is rejected before the native dry-run or funding")
+			}
+			assert.Zero(t, vendorIO.Load())
+			after, e := common.Marshal(request)
+			require.NoError(t, e)
+			assert.Equal(t, body, after, "original UUID, intent, parameters and materials stay unchanged")
+		})
+	}
+	variant = "valid"
+	request := service.MediaGenerationRequest{ClientOperationID: uuid.NewString(), Model: contract.ID, ModelVersion: version, Intent: ycapi.MediaIntentText, Parameters: map[string]any{"prompt": "Preserve the original thirty seconds", "mode": "text-to-video", "duration": "30", "resolution": "768p", "aspect_ratio": "16:9", "count": 1}, Assets: map[string][]string{}}
+	body, err := common.Marshal(request)
+	require.NoError(t, err)
+	response := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(body), "h3routermember")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var quoted struct {
+		Data service.MediaGenerationQuoteReply `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &quoted))
+	var stored model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", quoted.Data.QuoteID).Take(&stored).Error)
+	original := stored
+	beforeCacheEstimates, beforeCacheDryRuns := estimates.Load(), dryRuns.Load()
+	cachedValid := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(body), "h3routermember")
+	require.Equal(t, http.StatusOK, cachedValid.Code, cachedValid.Body.String())
+	assert.Equal(t, beforeCacheEstimates, estimates.Load())
+	assert.Equal(t, beforeCacheDryRuns, dryRuns.Load())
+	for _, kind := range []string{"cached missing semantic proof", "cached normalized duration", "cached native body", "cached lost reference"} {
+		t.Run(kind, func(t *testing.T) {
+			var frozen service.MediaGenerationFrozen
+			require.NoError(t, common.UnmarshalJsonStr(string(original.UsageFactsJSON), &frozen))
+			native := map[string]any{}
+			require.NoError(t, common.UnmarshalJsonStr(string(original.NativeParamsJSON), &native))
+			request := frozen.Request
+			switch kind {
+			case "cached missing semantic proof":
+				// The legacy serialized quote has no semantic-proof member.
+			case "cached normalized duration":
+				frozen.Parameters["duration"], frozen.Facts["seconds"] = "15", float64(15)
+				native["duration"] = "15"
+			case "cached native body":
+				native["duration"] = "15"
+			case "cached lost reference":
+				request.Intent = ycapi.MediaIntentReference
+				request.Parameters["mode"] = "reference"
+				request.Assets = map[string][]string{"images": {"ma2_synthetic_original_reference_not_dropped"}}
+				frozen.Request = request
+				frozen.Parameters["mode"], native["mode"] = "reference", "reference"
+			}
+			frozenBytes, e := common.Marshal(frozen)
+			require.NoError(t, e)
+			if kind == "cached missing semantic proof" {
+				var legacy map[string]any
+				require.NoError(t, common.Unmarshal(frozenBytes, &legacy))
+				delete(legacy, "native_specification_sha256")
+				frozenBytes, e = common.Marshal(legacy)
+				require.NoError(t, e)
+			}
+			nativeBytes, e := common.Marshal(native)
+			require.NoError(t, e)
+			requestSHA := service.MediaGenerationRequestDigest(request)
+			require.NoError(t, f.db.Model(&model.MediaGenerationQuote{}).Where("quote_id = ?", original.QuoteID).Updates(map[string]any{"usage_facts_json": string(frozenBytes), "native_params_json": string(nativeBytes), "request_sha256": requestSHA}).Error)
+			beforeEstimates, beforeDryRuns := estimates.Load(), dryRuns.Load()
+			wanted := http.StatusConflict
+			if kind == "cached native body" {
+				wanted = http.StatusUnprocessableEntity
+			}
+			body, e := common.Marshal(request)
+			require.NoError(t, e)
+			cached := f.request(t, http.MethodPost, "/v1/media-v2/quotes", string(body), "h3routermember")
+			require.Equal(t, wanted, cached.Code, cached.Body.String())
+			submit, e := common.Marshal(map[string]any{"quote_id": original.QuoteID, "client_operation_id": original.ClientOpID, "request_sha256": requestSHA})
+			require.NoError(t, e)
+			rejected := f.request(t, http.MethodPost, "/v1/media-v2/tasks", string(submit), "h3routermember")
+			require.Equal(t, wanted, rejected.Code, rejected.Body.String())
+			assert.Equal(t, beforeEstimates, estimates.Load())
+			assert.Equal(t, beforeDryRuns, dryRuns.Load())
+			assert.Zero(t, vendorIO.Load(), "cached rejection must happen before any supplier request")
+		})
+	}
+	var legacy map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(string(original.UsageFactsJSON), &legacy))
+	delete(legacy, "native_specification_sha256")
+	legacyBytes, err := common.Marshal(legacy)
+	require.NoError(t, err)
+	require.NoError(t, f.db.Model(&model.MediaGenerationQuote{}).Where("quote_id = ?", original.QuoteID).Updates(map[string]any{"usage_facts_json": string(legacyBytes), "native_params_json": string(original.NativeParamsJSON), "request_sha256": original.RequestSHA256}).Error)
+	beforeEstimates, beforeDryRuns := estimates.Load(), dryRuns.Load()
+	confirmed := httptest.NewRequest(http.MethodPost, "/v1/media-v2/quotes", bytes.NewReader(body))
+	confirmed.Header.Set("Content-Type", "application/json")
+	confirmed.Header.Set("Authorization", "Bearer sk-h3routermember")
+	confirmed.Header.Set("X-Yunshu-Media-Requote", "1")
+	confirmedResponse := httptest.NewRecorder()
+	f.engine.ServeHTTP(confirmedResponse, confirmed)
+	require.Equal(t, http.StatusOK, confirmedResponse.Code, confirmedResponse.Body.String())
+	var refreshed struct {
+		Data service.MediaGenerationQuoteReply `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(confirmedResponse.Body.Bytes(), &refreshed))
+	assert.Equal(t, original.ClientOpID, refreshed.Data.ClientOperationID)
+	assert.Equal(t, original.RequestSHA256, refreshed.Data.RequestSHA256)
+	assert.NotEqual(t, original.QuoteID, refreshed.Data.QuoteID)
+	assert.Equal(t, beforeEstimates+1, estimates.Load(), "only this explicit action requests one new free estimate")
+	assert.Equal(t, beforeDryRuns+1, dryRuns.Load())
+	var refreshedQuote model.MediaGenerationQuote
+	require.NoError(t, f.db.Where("quote_id = ?", refreshed.Data.QuoteID).Take(&refreshedQuote).Error)
+	var refreshedFrozen map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(string(refreshedQuote.UsageFactsJSON), &refreshedFrozen))
+	assert.Len(t, refreshedFrozen["native_specification_sha256"], 64)
+	assert.Equal(t, original.MaterialSHA256, refreshedQuote.MaterialSHA256)
+	var originalOperationCount int64
+	require.NoError(t, f.db.Model(&model.MediaGenerationQuote{}).Where("operation_key = ?", original.OperationKey).Count(&originalOperationCount).Error)
+	assert.EqualValues(t, 1, originalOperationCount, "confirmation replaces the same unaccepted operation, never adds a second order")
+	for _, table := range []any{&model.Task{}, &model.WalletFundingRequest{}, &model.WalletFundingEvent{}, &model.MediaGenerationUpload{}} {
+		var count int64
+		require.NoError(t, f.db.Model(table).Count(&count).Error)
+		assert.Zero(t, count, "no reservation, billing, generation or upload rows")
+	}
+	walletAfter, tokenAfter := f.balance(t)
+	assert.Equal(t, walletBefore, walletAfter)
+	assert.Equal(t, tokenBefore, tokenAfter)
+}
+
 func TestMediaGenerationV2RejectedOriginalOperationsNeverChargeOrMultiplyTasks(t *testing.T) {
 	for _, condition := range []string{"capacity", "balance"} {
 		t.Run(condition, func(t *testing.T) { testMediaGenerationV2RouterReferenceReceipt(t, "image", condition) })
@@ -1067,6 +1309,10 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	name := "ycapi-gpt-image-2.6-flare"
 	if kind == "video" {
 		name = "ycapi-seedance-2-5"
+	}
+	referenceField := "images"
+	if condition == "single-url" {
+		name, referenceField = "ycapi-aliyun-image-superres", "url"
 	}
 	contract, ok := ycapi.LookupMediaContract(name)
 	require.True(t, ok)
@@ -1219,8 +1465,18 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 			require.NoError(t, common.DecodeJson(r.Body, &request))
 			require.Equal(t, definition.MediaExecution.LaneID, request["pinned_lane_id"])
 			params := request["params"].(map[string]any)
-			require.Len(t, params["images"], 1)
-			body = fmt.Sprintf(`{"effective_total_rmb":0.02,"billing_mode":"fixed_amount","param_adjustments":[],"channels":[{"lane":%q,"is_delivery_head":true}]}`, definition.MediaExecution.LaneID)
+			if condition == "single-url" {
+				require.IsType(t, "", params[referenceField], "the supplier quote receives the native scalar role")
+			} else {
+				require.Len(t, params[referenceField], 1)
+			}
+			estimate := map[string]any{"effective_total_rmb": 0.02, "billing_mode": "fixed_amount", "param_adjustments": []any{}, "channels": []any{map[string]any{"lane": definition.MediaExecution.LaneID, "is_delivery_head": true}}}
+			if kind == "video" {
+				estimate["price_basis"] = map[string]any{"output_duration_sec": params["duration"]}
+			}
+			encoded, e := common.Marshal(estimate)
+			require.NoError(t, e)
+			body = string(encoded)
 		case "/api/v1/model-runtime/dry-run":
 			var request map[string]any
 			require.NoError(t, common.DecodeJson(r.Body, &request))
@@ -1240,8 +1496,12 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 			}
 			require.Equal(t, definition.MediaExecution.LaneID, request["lane_id"])
 			params := request["params"].(map[string]any)
-			require.Len(t, params["images"], 1)
-			require.Contains(t, fmt.Sprint(params["images"]), referenceSHA)
+			if condition == "single-url" {
+				require.IsType(t, "", params[referenceField], "the supplier invoke retains the native scalar role")
+			} else {
+				require.Len(t, params[referenceField], 1)
+			}
+			require.Contains(t, fmt.Sprint(params[referenceField]), referenceSHA)
 			body = fmt.Sprintf(`{"task_id":"v2_original_provider_task","status":"pending","is_final":false,"model":{"public_model":%q}}`, contract.UpstreamPublicID)
 		case "/v1/tasks/v2_original_provider_task":
 			if batch && batchPoll.Load() < 0 {
@@ -1355,6 +1615,9 @@ func testMediaGenerationV2RouterReferenceReceipt(t *testing.T, kind, condition s
 	require.NotContains(t, asset, "owner_digest")
 	require.NotContains(t, asset, "url")
 	request := map[string]any{"client_operation_id": "646b0609-72ba-4682-bc61-7c02a160b14c", "model": name, "model_version": version, "intent": "reference", "parameters": map[string]any{"mode": "image-edit", "prompt": "保留参考图形状，换成蓝色背景"}, "assets": map[string]any{"images": []any{asset["asset_id"]}}}
+	if condition == "single-url" {
+		request["intent"], request["parameters"], request["assets"] = "transform", map[string]any{}, map[string]any{referenceField: []any{asset["asset_id"]}}
+	}
 	if kind == "video" {
 		request["intent"] = "frames"
 		request["parameters"] = map[string]any{"mode": "first-frame", "duration": "5", "prompt": "保留参考画面，镜头缓慢向前移动"}

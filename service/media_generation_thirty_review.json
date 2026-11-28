@@ -1,0 +1,719 @@
+{
+  "schema_version": 1,
+  "request_id": "4d206f8d-3cb6-40ff-95a8-bcab65801e30",
+  "review_only": true,
+  "quote_source_sha256": "0145ba13e09575c70d0d3790288838f21bd9907d0a3fe400038dc87b747c5248",
+  "official_review_sha256": "060dcd80c2fc1349eceedd365f48fd7ebbba77fc3f6d8da7362e6fa302a1f5c3",
+  "rows": [
+    {
+      "id": "q02",
+      "model": "ycapi-seedance-2-5-special",
+      "native_id": "seedance-2-5-special",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5-special@MGIP:default",
+      "contract_sha256": "95de699700500e7c8f8e6db75f50d99e937552bcedbb8c4468a96a41a294111b",
+      "quote_request_sha256": "0282068262bc85281c94c8d26a0394cfc57868e3b3122c3310b8a7023dffe386",
+      "quote_response_sha256": "728ac7da00bca06e9d991c09ba0d1beaa901ee14af8f68690290518c01235391",
+      "cost_total_cny": "8.032499999999999",
+      "billing_unit": "per_call",
+      "official": null,
+      "retail_total_cny": "9.6389999999999988",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "CHANNEL_SPECIAL_SKU_IDENTITY_NOT_PROVED",
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q03",
+      "model": "ycapi-seedance-2-5-promo",
+      "native_id": "seedance-2-5-promo",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5-promo@PS25:default",
+      "contract_sha256": "6ad0e9eafb93d59265bf8a8bb0bfc020b5317952d0fe85a24cda9bcd2939f928",
+      "quote_request_sha256": "7a40b5ba07f424d06156e27ee395a1e83b36877229b65437c5430db3690ebd0e",
+      "quote_response_sha256": "a5bf0678a8143e856cbd36de9d7bab239c44f587e20b0b7d6b3c8b05c5b9d236",
+      "cost_total_cny": "16.926000000000002",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "20.3112000000000024",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "CHANNEL_PROMO_SKU_IDENTITY_NOT_PROVED",
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q04",
+      "model": "ycapi-seedance-2-5-promo",
+      "native_id": "seedance-2-5-promo",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5-promo@PS25:default",
+      "contract_sha256": "6ad0e9eafb93d59265bf8a8bb0bfc020b5317952d0fe85a24cda9bcd2939f928",
+      "quote_request_sha256": "f88d3db079430d656503de9b6fd118978d13bd3a839ebcbca99547ba7d34dee5",
+      "quote_response_sha256": "89fe76a13a5b9c41d8862baa7b78632b0e36b97a06737b71bb9c2e458971aee6",
+      "cost_total_cny": "26.04",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "31.248",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "CHANNEL_PROMO_SKU_IDENTITY_NOT_PROVED",
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q05",
+      "model": "ycapi-seedance-2-5-promo",
+      "native_id": "seedance-2-5-promo",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5-promo@PS25:default",
+      "contract_sha256": "6ad0e9eafb93d59265bf8a8bb0bfc020b5317952d0fe85a24cda9bcd2939f928",
+      "quote_request_sha256": "8f142ef22d0577e1d1294fe759db5014fbf6e73ffa8b50fcbd5f2b407eeb3944",
+      "quote_response_sha256": "38f122e17589a0fbbbde0a567e155809c9ed9c77fc8d391ee2e04cf2e9139390",
+      "cost_total_cny": "35.805",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "42.9660",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "CHANNEL_PROMO_SKU_IDENTITY_NOT_PROVED",
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q06",
+      "model": "ycapi-seedance-2-5-promo",
+      "native_id": "seedance-2-5-promo",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "4k",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5-promo@SSKX:default",
+      "contract_sha256": "6ad0e9eafb93d59265bf8a8bb0bfc020b5317952d0fe85a24cda9bcd2939f928",
+      "quote_request_sha256": "82fb8cf7f32225d0e3bcdf158bb7e8d8a729011ae4f57cfe8514140a363287d7",
+      "quote_response_sha256": "75e11d05ea59b4e662f140eee9269567837edad874d751a28701b6364fa95a27",
+      "cost_total_cny": "52.08",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "62.496",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "CHANNEL_PROMO_SKU_IDENTITY_NOT_PROVED",
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q07",
+      "model": "ycapi-seedance-2-5",
+      "native_id": "seedance-2-5",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5@MCA:default",
+      "contract_sha256": "e3e6d906e89550747e51421ca5ac4eaf8024d205718fe264c7073568543419e0",
+      "quote_request_sha256": "c1045c5581dcb1f3d8b97c753f15e3cec9ecc8c3b7b3a81ddf8fc8e2b94731d9",
+      "quote_response_sha256": "ad955c49db76be7aa92158c3ad2ab7ea6c489dbb1e70b3fd15e1cfdab4f01a1d",
+      "cost_total_cny": "24.01647885",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "28.819774620",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q08",
+      "model": "ycapi-seedance-2-5",
+      "native_id": "seedance-2-5",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5@MCA:default",
+      "contract_sha256": "e3e6d906e89550747e51421ca5ac4eaf8024d205718fe264c7073568543419e0",
+      "quote_request_sha256": "699abc22917f647e5299ba1f4c67e9d583029abeaae8ba5bd6b5262dddf00393",
+      "quote_response_sha256": "14122f026eb89914c2dd842fecde48f918671628f5185415b7e2e33f37986050",
+      "cost_total_cny": "53.99531275577984",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "64.794375306935808",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q09",
+      "model": "ycapi-seedance-2-5",
+      "native_id": "seedance-2-5",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "seedance-2-5@MCA:default",
+      "contract_sha256": "e3e6d906e89550747e51421ca5ac4eaf8024d205718fe264c7073568543419e0",
+      "quote_request_sha256": "ae590d5235563eb9520b137f8bb7c7704aba39637a5dee9c2ec884dae146ef9a",
+      "quote_response_sha256": "442094896470b93d8f6d9828607655a9411ba1b9e25644559e06deecf2a1417c",
+      "cost_total_cny": "133.63841888415018",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "160.366102660980216",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact30_cny",
+      "official_reference_blockers": [
+        "OFFICIAL_TOKEN_METER_EXACT_OUTPUT_GEOMETRY_FPS_USAGE_UNBOUND"
+      ]
+    },
+    {
+      "id": "q10",
+      "model": "ycapi-magi-2",
+      "native_id": "magi-2",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "magi-2@APM:default",
+      "contract_sha256": "d9f50b062e82b0b609c3eea3f899d78a34128a88ed43eb5bc1439c388053312b",
+      "quote_request_sha256": "4dba0e4ba5131303dbf2afe0f8232f5eeac0adc0760bc93ec3515b19766a0151",
+      "quote_response_sha256": "218c3956693919ffc9c4d4aaac046805858222e2543da7be766d36013df97708",
+      "cost_total_cny": "26.989199999999997",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "32.3870399999999964",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "verified_native_usd_rate_but_cny_unbound",
+      "official_reference_blockers": [
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q11",
+      "model": "ycapi-muse-video",
+      "native_id": "muse-video",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "muse-video@ORB:muse-fast",
+      "contract_sha256": "823bc13d25d4a45baed3cc45debfd065600ac7da0d76ac0df0729a88bae93c2c",
+      "quote_request_sha256": "64c232fbea8aa3f06f33f3c6991af3f5ee970566423fa7c12905547681117621",
+      "quote_response_sha256": "fdb94bebf6b326d11fa5031fd392af2ff35945f9a7f4b8b1b3b57be09c87b6e3",
+      "cost_total_cny": "1.0709999999999997",
+      "billing_unit": "per_call",
+      "official": null,
+      "retail_total_cny": "1.28519999999999964",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_exact_model_official_price",
+      "official_reference_blockers": [
+        "NO_EXACT_OFFICIAL_MANUFACTURER_PRICE_VERIFIED_FOR_MU_MUSE_ALIAS"
+      ]
+    },
+    {
+      "id": "q12",
+      "model": "ycapi-kling-v4",
+      "native_id": "kling-v4",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "standard",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "kling-v4@AII:default",
+      "contract_sha256": "697fa0c34ea6c61bfcc67f79be0b42f2c98a0e69bd595fa1fd1c7f458b83e955",
+      "quote_request_sha256": "7bad05cb862679dbcd21f4da612a027dd67aa271423bb861c907868b672981ec",
+      "quote_response_sha256": "c0f042e1118e8996e514a44dd3902ac310f109f6d863d92fc545dd66d04d245b",
+      "cost_total_cny": "21.419999999999998",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "25.7039999999999976",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "verified_native_usd_rate_but_cny_unbound",
+      "official_reference_blockers": [
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q13",
+      "model": "ycapi-kling-v4",
+      "native_id": "kling-v4",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "standard",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "kling-v4@AII:default",
+      "contract_sha256": "697fa0c34ea6c61bfcc67f79be0b42f2c98a0e69bd595fa1fd1c7f458b83e955",
+      "quote_request_sha256": "b5a792a893350c3325289743cdbcffcedbf6413bde48de8afb2ef264b4460c1e",
+      "quote_response_sha256": "1647a5e9951e91e844ba31940163434157a919aacbbf39c03d3dc42e4fc207ea",
+      "cost_total_cny": "31.059",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "37.2708",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "verified_native_usd_rate_but_cny_unbound",
+      "official_reference_blockers": [
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q15",
+      "model": "ycapi-wan-3-0",
+      "native_id": "wan-3-0",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "wan-3-0@XSY:default",
+      "contract_sha256": "2378a7ae43cf5e5a084ee0ee91289c0a4a55457fb25ba6921611d6ed6bbec944",
+      "quote_request_sha256": "833146cfdf0d30bac9add9d00810b0297cbddc019dc56f4cd9f2979314acdfe5",
+      "quote_response_sha256": "c9b15a1c0e7625d3c794d1a4d956be577dd670fa9d370abe1c1709445f6f0197",
+      "cost_total_cny": "8.032499999999999",
+      "billing_unit": "per_second",
+      "official": {
+        "native_model": "wan-3-0",
+        "total_cny": "9.0",
+        "source_url": "https://help.aliyun.com/zh/model-studio/wan3-0-video",
+        "checked_at": "2026-11-28",
+        "evidence_sha256": "21ae659a78b4e92102d8ea15b37f9632e05bd20b12b72c2e7b9e23d3ef67cc4e",
+        "specification_sha256": "c5bb33630cda17a7b5d3f5bad66f3d6469f175269d6c93233e2f2c79a47b56ad"
+      },
+      "retail_total_cny": "9.0",
+      "decision": "official_exact_cny",
+      "official_reference_status": "verified_exact30_cny_reference",
+      "official_reference_blockers": []
+    },
+    {
+      "id": "q16",
+      "model": "ycapi-wan-3-0",
+      "native_id": "wan-3-0",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "wan-3-0@XSY:default",
+      "contract_sha256": "2378a7ae43cf5e5a084ee0ee91289c0a4a55457fb25ba6921611d6ed6bbec944",
+      "quote_request_sha256": "0bb4f2442adaa4680d2512b290581cc101726d96eeb8fc15dec15d71cc451f9d",
+      "quote_response_sha256": "93a73652dc7953af84c370699b0b6b48e6c0a0d51a0fc726729f85acc6d19a82",
+      "cost_total_cny": "16.064999999999998",
+      "billing_unit": "per_second",
+      "official": {
+        "native_model": "wan-3-0",
+        "total_cny": "18.0",
+        "source_url": "https://help.aliyun.com/zh/model-studio/wan3-0-video",
+        "checked_at": "2026-11-28",
+        "evidence_sha256": "21ae659a78b4e92102d8ea15b37f9632e05bd20b12b72c2e7b9e23d3ef67cc4e",
+        "specification_sha256": "c3b94afb605258128c4d1463f9209a4c9dc651c2e0d6dc56540e649b163a5456"
+      },
+      "retail_total_cny": "18.0",
+      "decision": "official_exact_cny",
+      "official_reference_status": "verified_exact30_cny_reference",
+      "official_reference_blockers": []
+    },
+    {
+      "id": "q17",
+      "model": "ycapi-wan-3-0",
+      "native_id": "wan-3-0",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "wan-3-0@XSY:default",
+      "contract_sha256": "2378a7ae43cf5e5a084ee0ee91289c0a4a55457fb25ba6921611d6ed6bbec944",
+      "quote_request_sha256": "da4c3c865350932b00036db795ffeea79b0f031cdbde57f5f7125626683e050d",
+      "quote_response_sha256": "bb787798fee705dc9bfd870e77588c276d81bb4ff58c2e050525edb15b3a4935",
+      "cost_total_cny": "32.129999999999995",
+      "billing_unit": "per_second",
+      "official": {
+        "native_model": "wan-3-0",
+        "total_cny": "36.0",
+        "source_url": "https://help.aliyun.com/zh/model-studio/wan3-0-video",
+        "checked_at": "2026-11-28",
+        "evidence_sha256": "21ae659a78b4e92102d8ea15b37f9632e05bd20b12b72c2e7b9e23d3ef67cc4e",
+        "specification_sha256": "97206c06d61d0e123890db8fdb774908f2cdd6e08e4b4624762f933809e90fe5"
+      },
+      "retail_total_cny": "36.0",
+      "decision": "official_exact_cny",
+      "official_reference_status": "verified_exact30_cny_reference",
+      "official_reference_blockers": []
+    },
+    {
+      "id": "q18",
+      "model": "ycapi-wan-3-0-special",
+      "native_id": "wan-3-0-special",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "wan-3-0-special@PAI:default",
+      "contract_sha256": "d7e63c839e667e22bd0876a0369bc56b9267846bb274e205a21abf921e6c4f9a",
+      "quote_request_sha256": "dc963c3a82cc1fb5b2af5299de42da0cbd76f460dbe148e40c74a49dc1ed857f",
+      "quote_response_sha256": "d0b238c1414ea0f90233297899bc8c4a6bf7ef42193ba039175eb6751bfb0593",
+      "cost_total_cny": "9.103499999999999",
+      "billing_unit": "per_call",
+      "official": null,
+      "retail_total_cny": "10.9241999999999988",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_special_sku_official_identity",
+      "official_reference_blockers": [
+        "CHANNEL_SPECIAL_SKU_IDENTITY_NOT_PROVED"
+      ]
+    },
+    {
+      "id": "q19",
+      "model": "ycapi-wan-3-0-special",
+      "native_id": "wan-3-0-special",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "wan-3-0-special@PAI:default",
+      "contract_sha256": "d7e63c839e667e22bd0876a0369bc56b9267846bb274e205a21abf921e6c4f9a",
+      "quote_request_sha256": "409c9cbc921384db242c1fb485031c56c7340b5028ddb4775ddb6db77a014605",
+      "quote_response_sha256": "d0b238c1414ea0f90233297899bc8c4a6bf7ef42193ba039175eb6751bfb0593",
+      "cost_total_cny": "9.103499999999999",
+      "billing_unit": "per_call",
+      "official": null,
+      "retail_total_cny": "10.9241999999999988",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_special_sku_official_identity",
+      "official_reference_blockers": [
+        "CHANNEL_SPECIAL_SKU_IDENTITY_NOT_PROVED"
+      ]
+    },
+    {
+      "id": "q21",
+      "model": "ycapi-minimax-h3",
+      "native_id": "minimax-h3",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "768p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "minimax-h3@MTS:default",
+      "contract_sha256": "fe99069a89a08c0f619e2029ed80185edc08e4d5bac876ea130c4da4087581af",
+      "quote_request_sha256": "c002214abc0897155d0342824f68e31ad0cf493916958f9ee2e64f73c7d9ede1",
+      "quote_response_sha256": "051ec79098fd90c81b6fe2e47b0d0eb6cd877958c3ec6fe82c1aba08e2c38bc7",
+      "cost_total_cny": "10.327233167999998",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "12.3926798015999976",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_official_same30_spec",
+      "official_reference_blockers": [
+        "OFFICIAL_NATIVE_DURATION_MAX15_NOT30",
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q24",
+      "model": "ycapi-grok-imagine-1.5",
+      "native_id": "grok-imagine-1.5",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "grok-imagine-1.5@APM:default",
+      "contract_sha256": "5fc396694ac770312294fb34b6566926c14e1f92d615377c7523fdbe010e0c25",
+      "quote_request_sha256": "4689e7206861d9f4d959f0728a7b54c810c1d391e701e176d938712f50cb0fca",
+      "quote_response_sha256": "e3b187032cfddee01662bf152c712e1429f05f5e8ca9b13b801bafb884e5bc98",
+      "cost_total_cny": "6.808775399999998",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "8.1705304799999976",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_official_same30_spec",
+      "official_reference_blockers": [
+        "OFFICIAL_GENERATION_GUIDE_DURATION_MAX15_NOT30",
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q25",
+      "model": "ycapi-grok-imagine-1.5",
+      "native_id": "grok-imagine-1.5",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "grok-imagine-1.5@APM:default",
+      "contract_sha256": "5fc396694ac770312294fb34b6566926c14e1f92d615377c7523fdbe010e0c25",
+      "quote_request_sha256": "644b3e6fb2f4a3c837fc2df7ab3e1c5807e0fa7be2691b2f67439c3ea6be20da",
+      "quote_response_sha256": "39303d18712c007b778bf61cffd8b2e265334d9f8300e18c64bd7327a64e0583",
+      "cost_total_cny": "3.6322964999999994",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "4.35875579999999928",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_official_same30_spec",
+      "official_reference_blockers": [
+        "OFFICIAL_GENERATION_GUIDE_DURATION_MAX15_NOT30",
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q26",
+      "model": "ycapi-grok-imagine-video",
+      "native_id": "grok-imagine-video",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "grok-imagine-video@APM:default",
+      "contract_sha256": "ddba058fb58727c9c24f32e0ea2727d869fb46c4821706ea0dbe3dc0b5b4eb57",
+      "quote_request_sha256": "dcbcf88be7180e9eba13705664a261510403360f40eba82daf7f4d342530f76b",
+      "quote_response_sha256": "4541fba2b6f3e7a0ce45c61a529c3ba8bf1b8702b16bb36d241d7bec39691bed",
+      "cost_total_cny": "3.6322965",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "4.35875580",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_official_same30_spec",
+      "official_reference_blockers": [
+        "OFFICIAL_GENERATION_GUIDE_DURATION_MAX15_NOT30",
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    },
+    {
+      "id": "q27",
+      "model": "ycapi-grok-imagine-video",
+      "native_id": "grok-imagine-video",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "720p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1
+      },
+      "lane_id": "grok-imagine-video@APM:default",
+      "contract_sha256": "ddba058fb58727c9c24f32e0ea2727d869fb46c4821706ea0dbe3dc0b5b4eb57",
+      "quote_request_sha256": "86f98070b8ec28348eea1cf05262301a9cccd73556bf81637999d2c6ac743e73",
+      "quote_response_sha256": "724e3644779c8e96112f435da6753f139964197162665f09574c51668641b201",
+      "cost_total_cny": "6.808775399999998",
+      "billing_unit": "per_second",
+      "official": null,
+      "retail_total_cny": "8.1705304799999976",
+      "decision": "actual_yc_cost_times_1_2",
+      "official_reference_status": "unverified_official_same30_spec",
+      "official_reference_blockers": [
+        "OFFICIAL_GENERATION_GUIDE_DURATION_MAX15_NOT30",
+        "OFFICIAL_CNY_FX_UNBOUND"
+      ]
+    }
+  ],
+  "blocked": [
+    {
+      "case_id": "q01",
+      "gateway_id": "ycapi-seedance-2-5-special",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "标准",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1,
+        "prompt": "A calm natural landscape with a slow steady camera move."
+      },
+      "blockers": [
+        {
+          "code": "upstream_quote_rejected",
+          "http_status": 422,
+          "upstream_error": {
+            "code": "unsupported_param_combo",
+            "message": "你锁定的渠道不支持「清晰度：480P 经济」。已锁定渠道时不会自动更换渠道 (换渠道=换价格和出片质量), 请调整这个参数、取消渠道锁定, 或换一条支持它的渠道。(完整请求: 视频比例：横屏 16:9 / 视频时长：30秒（特价一口价） / 生成模式：文生视频 / 版本档位：标准 / 清晰度：480P 经济)",
+            "reason": "graylisted",
+            "transient": true,
+            "type": "unsupported_param_combo"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "q14",
+      "gateway_id": "ycapi-kling-v4",
+      "parameters": {
+        "mode": "text-to-video",
+        "quality": "standard",
+        "resolution": "4k",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1,
+        "prompt": "A calm natural landscape with a slow steady camera move."
+      },
+      "blockers": [
+        {
+          "code": "upstream_quote_rejected",
+          "http_status": 422,
+          "upstream_error": {
+            "code": "unsupported_param_combo",
+            "message": "你锁定的渠道不支持「清晰度：4K 超高清」。已锁定渠道时不会自动更换渠道 (换渠道=换价格和出片质量), 请调整这个参数、取消渠道锁定, 或换一条支持它的渠道。(完整请求: 画面比例：横屏 16:9 / 视频时长：30秒 / 生成模式：文生视频 / 版本档位：标准版 / 清晰度：4K 超高清)",
+            "type": "unsupported_param_combo"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "q20",
+      "gateway_id": "ycapi-minimax-h3",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "480p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1,
+        "prompt": "A calm natural landscape with a slow steady camera move."
+      },
+      "blockers": [
+        {
+          "code": "upstream_quote_rejected",
+          "http_status": 422,
+          "upstream_error": {
+            "code": "unsupported_param_combo",
+            "message": "你锁定的渠道不支持「分辨率：480P 标清」。已锁定渠道时不会自动更换渠道 (换渠道=换价格和出片质量), 请调整这个参数、取消渠道锁定, 或换一条支持它的渠道。(完整请求: 画面比例：16:9 横屏 / 时长：30秒 / 生成模式：文生视频 / 分辨率：480P 标清)",
+            "type": "unsupported_param_combo"
+          }
+        }
+      ]
+    },
+    {
+      "case_id": "q22",
+      "gateway_id": "ycapi-minimax-h3",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "1080p",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1,
+        "prompt": "A calm natural landscape with a slow steady camera move."
+      },
+      "blockers": [
+        {
+          "code": "requested_spec_adjusted",
+          "parameter": "duration",
+          "requested": "30",
+          "applied": 15,
+          "reason": "nearest_vendor_supported"
+        },
+        {
+          "code": "output_duration_not_exact30",
+          "reported_output_duration_sec": 15
+        }
+      ]
+    },
+    {
+      "case_id": "q23",
+      "gateway_id": "ycapi-minimax-h3",
+      "parameters": {
+        "mode": "text-to-video",
+        "resolution": "2k",
+        "aspect_ratio": "16:9",
+        "duration": "30",
+        "count": 1,
+        "prompt": "A calm natural landscape with a slow steady camera move."
+      },
+      "blockers": [
+        {
+          "code": "requested_spec_adjusted",
+          "parameter": "duration",
+          "requested": "30",
+          "applied": 15,
+          "reason": "nearest_vendor_supported"
+        },
+        {
+          "code": "output_duration_not_exact30",
+          "reported_output_duration_sec": 15
+        }
+      ]
+    }
+  ]
+}

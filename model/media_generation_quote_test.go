@@ -468,6 +468,116 @@ func TestMediaGenerationQuoteConcurrentExpiredBindAndRenew(t *testing.T) {
 	assert.Empty(t, current.TaskID)
 }
 
+func TestMediaGenerationQuoteExplicitLiveRequote(t *testing.T) {
+	store := mediaGenerationQuoteTestStore(t)
+	input := mediaGenerationQuoteFixture("operation-explicit-live-requote")
+	original, err := store.SaveQuote(t.Context(), &input)
+	require.NoError(t, err)
+	binding := mediaGenerationQuoteTestBinding(original)
+	replacement := input
+	replacement.QuoteID = "mgq_explicit_live_requote"
+	replacement.CostCNY, replacement.RetailCNY, replacement.ReserveQuota = "2.00", "2.50", 23456
+	for _, tc := range []struct {
+		name  string
+		flags []bool
+		err   error
+	}{
+		{"omitted remains rejected", nil, ErrMediaGenerationQuoteConflict},
+		{"false remains rejected", []bool{false}, ErrMediaGenerationQuoteConflict},
+		{"multiple flags invalid", []bool{true, false}, ErrMediaGenerationQuoteInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := store.RenewUnboundQuote(t.Context(), binding, original.ExpiresAt, &replacement, tc.flags...)
+			require.ErrorIs(t, err, tc.err)
+			unchanged, err := store.GetUnclaimedQuote(t.Context(), binding)
+			require.NoError(t, err)
+			assert.Equal(t, original, unchanged)
+		})
+	}
+	_, err = store.RenewUnboundQuote(t.Context(), binding, original.ExpiresAt+1, &replacement, true)
+	require.ErrorIs(t, err, ErrMediaGenerationQuoteConflict, "explicit requote preserves the original expiry CAS")
+	changed := replacement
+	changed.MaterialSHA256 = strings.Repeat("9", 64)
+	_, err = store.RenewUnboundQuote(t.Context(), binding, original.ExpiresAt, &changed, true)
+	require.ErrorIs(t, err, ErrMediaGenerationQuoteConflict, "explicit requote cannot change original material identity")
+	renewed, err := store.RenewUnboundQuote(t.Context(), binding, original.ExpiresAt, &replacement, true)
+	require.NoError(t, err)
+	assert.Equal(t, original.OperationKey, renewed.OperationKey)
+	assert.Equal(t, original.ClientOpID, renewed.ClientOpID)
+	assert.Equal(t, original.RequestSHA256, renewed.RequestSHA256)
+	assert.Equal(t, original.MaterialSHA256, renewed.MaterialSHA256)
+	assert.Equal(t, original.ModelConfigVersion, renewed.ModelConfigVersion)
+	assert.Equal(t, original.ChannelConfigHash, renewed.ChannelConfigHash)
+	assert.Equal(t, original.CredentialDigest, renewed.CredentialDigest)
+	assert.Equal(t, original.ExpiresAt, renewed.ExpiresAt, "same-fingerprint requote does not require a fabricated expired quote")
+	assert.Equal(t, replacement.QuoteID, renewed.QuoteID)
+	assert.Equal(t, replacement.RetailCNY, renewed.RetailCNY)
+	err = store.DB.Transaction(func(tx *gorm.DB) error {
+		return store.BindQuoteToTaskTx(t.Context(), tx, binding, 800, "task_old_live_quote")
+	})
+	require.ErrorIs(t, err, ErrMediaGenerationQuoteConflict, "the original quote ID can no longer admit a task")
+	newBinding := mediaGenerationQuoteTestBinding(renewed)
+	require.NoError(t, store.DB.Transaction(func(tx *gorm.DB) error {
+		return store.BindQuoteToTaskTx(t.Context(), tx, newBinding, 801, "task_explicit_live_quote")
+	}))
+	replacement.QuoteID = "mgq_forbidden_after_live_accept"
+	_, err = store.RenewUnboundQuote(t.Context(), binding, original.ExpiresAt+1, &replacement, true)
+	require.ErrorIs(t, err, ErrMediaGenerationQuoteReplayed, "accepted receipt precedes stale quote ID, expiry and explicit flag")
+	var replay *MediaGenerationQuoteReplayError
+	require.ErrorAs(t, err, &replay)
+	assert.Equal(t, "task_explicit_live_quote", replay.TaskID)
+	receipt, err := store.FindOperationReceipt(t.Context(), newBinding)
+	require.NoError(t, err)
+	assert.Equal(t, replacement.RetailCNY, receipt.RetailCNY)
+	assert.Equal(t, "task_explicit_live_quote", receipt.TaskID)
+}
+
+func TestMediaGenerationQuoteConcurrentExplicitLiveRequotes(t *testing.T) {
+	store := mediaGenerationQuoteTestStore(t)
+	input := mediaGenerationQuoteFixture("operation-explicit-live-requote-race")
+	original, err := store.SaveQuote(t.Context(), &input)
+	require.NoError(t, err)
+	binding := mediaGenerationQuoteTestBinding(original)
+	start := make(chan struct{})
+	type result struct {
+		quote *MediaGenerationQuote
+		err   error
+	}
+	results := make(chan result, 2)
+	for _, id := range []string{"mgq_explicit_live_winner_a", "mgq_explicit_live_winner_b"} {
+		replacement := input
+		replacement.QuoteID = id
+		go func() {
+			<-start
+			quote, err := store.RenewUnboundQuote(t.Context(), binding, original.ExpiresAt, &replacement, true)
+			results <- result{quote: quote, err: err}
+		}()
+	}
+	close(start)
+	var winner *MediaGenerationQuote
+	winners, conflicts := 0, 0
+	for range 2 {
+		r := <-results
+		if r.err == nil {
+			winners++
+			winner = r.quote
+		} else {
+			require.ErrorIs(t, r.err, ErrMediaGenerationQuoteConflict)
+			conflicts++
+		}
+	}
+	require.Equal(t, 1, winners, "the exact original quote/expiry/config CAS has one replacement winner")
+	assert.Equal(t, 1, conflicts)
+	current, err := store.GetUnclaimedQuote(t.Context(), mediaGenerationQuoteTestBinding(winner))
+	require.NoError(t, err)
+	assert.Equal(t, winner, current)
+	assert.Zero(t, current.TaskDBID)
+	assert.Empty(t, current.TaskID)
+	var count int64
+	require.NoError(t, store.DB.Model(&MediaGenerationQuote{}).Where("operation_key = ?", original.OperationKey).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+}
+
 func TestMediaGenerationQuoteRefreshesLiveConfigurationOnly(t *testing.T) {
 	for _, field := range []string{"model_version", "channel_configuration", "credential"} {
 		t.Run(field, func(t *testing.T) {

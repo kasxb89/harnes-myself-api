@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +19,155 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMediaGenerationReviewPlanPreservesOldScopesAndSplitsLanes(t *testing.T) {
+	contract, ok := ycapi.LookupMediaContract("ycapi-seedance-2-5-promo")
+	require.True(t, ok)
+	baseline := `tier("existing", u("seconds") * 0.01)`
+	var controls map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(`{"properties":{"duration":{"type":"integer","enum":[15,30],"default":15},"mode":{"type":"string","enum":["text-to-video","reference"],"default":"reference"},"resolution":{"type":"string","enum":["720p"]},"aspect_ratio":{"type":"string","enum":["16:9","9:16"]},"count":{"type":"integer","maximum":2,"default":2},"reference_images":{"type":"array","items":{"type":"string"},"maxItems":2}}}`, &controls))
+	def := model.ModelConfiguration{ModelName: contract.ID, Kind: "video", Parameters: controls, Pricing: model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": baseline, "unrelated.price.option": "keep-exact"}, MediaExecution: &model.ModelMediaExecutionConfiguration{SchemaVersion: 1, LaneID: "previous-lane", QualificationSHA256: strings.Repeat("f", 64)}}
+	input := MediaGenerationReviewInput{Existing: def, ExpectedRevision: strings.Repeat("a", 64), BaseVersion: strings.Repeat("b", 64), FXCNYPerUSD: "7.3"}
+	for i, spec := range []struct{ resolution, lane, cost, meter string }{{"720p", "PS25", "26.04", "per_second"}, {"4k", "SSKX", "52.08", "per_second"}} {
+		input.Rows = append(input.Rows, MediaGenerationReviewRow{ID: fmt.Sprintf("synthetic%d", i), Parameters: map[string]any{"duration": "30", "count": 1, "mode": "text-to-video", "resolution": spec.resolution, "quality": "标准", "aspect_ratio": "16:9"}, LaneID: contract.NativeID + "@" + spec.lane + ":default", ContractSHA256: MediaGenerationDigest(contract), QuoteRequestSHA256: MediaGenerationDigest(spec.resolution), QuoteResponseSHA256: strings.Repeat("d", 64), CostTotalCNY: spec.cost, BillingUnit: spec.meter})
+	}
+	before, err := common.Marshal(input)
+	require.NoError(t, err)
+	plan, err := PrepareMediaGenerationReviewPlan(input)
+	require.NoError(t, err)
+	assert.True(t, plan.ReviewOnly)
+	assert.False(t, plan.CanApply)
+	require.Len(t, plan.Candidates, 2, "the 4K quote cannot borrow the PS25 lane qualification")
+	for _, candidate := range plan.Candidates {
+		assert.True(t, candidate.ReviewOnly)
+		assert.True(t, candidate.PendingQualification)
+		assert.False(t, candidate.CanApply)
+		assert.Equal(t, "keep-exact", candidate.Pricing["unrelated.price.option"])
+		global := candidate.Parameters["properties"].(map[string]any)
+		assert.Equal(t, float64(15), global["duration"].(map[string]any)["default"])
+		assert.Equal(t, "reference", global["mode"].(map[string]any)["default"])
+		assert.Equal(t, float64(2), global["count"].(map[string]any)["default"], "branch metadata cannot replace the existing top-level default consumed by preparation")
+		expression := candidate.Pricing["billing_setting.billing_expr"].(string)
+		assert.Contains(t, expression, baseline)
+		assert.NotContains(t, expression, "output_count", "single-output pricing cannot opt into the separately qualified batch meters")
+		for _, old := range []map[string]any{
+			{"duration": "15", "count": 2, "mode": "text-to-video", "resolution": "720p", "aspect_ratio": "9:16"},
+			{"duration": "15", "count": 1, "mode": "reference", "resolution": "720p", "aspect_ratio": "16:9", "images": []any{"original-image"}},
+			{"duration": "30", "count": 1, "mode": "reference", "resolution": "720p", "aspect_ratio": "9:16", "images": []any{"original-image"}},
+		} {
+			require.NoError(t, validateMediaGenerationControls(contract, candidate.Parameters, old), "older independent non30/reference controls remain valid")
+		}
+		row := candidate.Rows[0]
+		requested := maps.Clone(row.Parameters)
+		require.NoError(t, validateMediaGenerationControls(contract, candidate.Parameters, requested))
+		requested["aspect_ratio"] = "9:16"
+		require.Error(t, validateMediaGenerationControls(contract, candidate.Parameters, requested), "unobserved30s ratio cannot pass an old broad branch")
+		requested = maps.Clone(row.Parameters)
+		requested["images"] = []any{"original-image"}
+		require.Error(t, validateMediaGenerationControls(contract, candidate.Parameters, requested), "new30s text price cannot take reference materials")
+		for _, intent := range []string{"text", "reference"} {
+			facts := map[string]any{"seconds": float64(15), "intent": intent, "mode": "reference", "resolution": "720p", "aspect_ratio": "16:9", "quality": "标准", "input_image_count": float64(1), "input_video_seconds": float64(0), "input_audio_seconds": float64(0)}
+			price, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: facts})
+			require.NoError(t, err)
+			assert.InDelta(t, 0.15, price, 1e-12, "the original non30 expression remains the fallback")
+		}
+		facts := map[string]any{"seconds": float64(30), "intent": "text", "mode": "text-to-video", "resolution": row.Parameters["resolution"], "aspect_ratio": "16:9", "quality": "标准", "input_image_count": float64(0), "input_video_seconds": float64(0), "input_audio_seconds": float64(0)}
+		price, _, err := billingexpr.RunExprWithRequest(expression, billingexpr.TokenParams{}, billingexpr.RequestInput{Usage: facts})
+		require.NoError(t, err)
+		assert.InDelta(t, decimal.RequireFromString(row.RetailTotalCNY).Div(decimal.RequireFromString("7.3")).InexactFloat64(), price, 1e-12, "aggregate30 price is charged once, not multiplied by30 again")
+	}
+	after, err := common.Marshal(input)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "preparation never changes the existing definition, qualifiers, prices or original rows")
+	input.Rows[1].QuoteRequestSHA256 = input.Rows[0].QuoteRequestSHA256
+	_, err = PrepareMediaGenerationReviewPlan(input)
+	require.Error(t, err, "one original quote body cannot be reused as proof for a different resolution")
+}
+
+func TestMediaGenerationReviewPlanPricingEvidenceAndMissingBaseline(t *testing.T) {
+	contract, ok := ycapi.LookupMediaContract("ycapi-muse-video")
+	require.True(t, ok)
+	row := MediaGenerationReviewRow{ID: "synthetic-per-work", Parameters: map[string]any{"duration": "30", "count": 1, "mode": "text-to-video", "resolution": "720p", "aspect_ratio": "16:9"}, LaneID: contract.NativeID + "@synthetic:only", ContractSHA256: MediaGenerationDigest(contract), QuoteRequestSHA256: strings.Repeat("c", 64), QuoteResponseSHA256: strings.Repeat("d", 64), CostTotalCNY: "1.071", BillingUnit: "per_call"}
+	input := MediaGenerationReviewInput{Existing: model.ModelConfiguration{ModelName: contract.ID, Kind: "video", Pricing: model.PricingValues{"billing_setting.billing_mode": "tiered_expr", "billing_setting.billing_expr": `tier("old", u("seconds") * 0.1)`}}, ExpectedRevision: strings.Repeat("a", 64), BaseVersion: strings.Repeat("b", 64), FXCNYPerUSD: "7.3", Rows: []MediaGenerationReviewRow{row}}
+	plan, err := PrepareMediaGenerationReviewPlan(input)
+	require.NoError(t, err)
+	assert.Equal(t, "1.2852", plan.Candidates[0].Rows[0].RetailTotalCNY)
+	assert.Equal(t, "1.2852", plan.Candidates[0].Rows[0].UnitPriceCNY)
+	assert.Equal(t, 1, plan.Candidates[0].Rows[0].Quantity, "per-work prices never become per-second multipliers")
+	input.Rows[0].Official = &MediaGenerationReviewOfficial{NativeModel: contract.NativeID, TotalCNY: "0.5", SourceURL: "https://example.com/synthetic-official-tariff", CheckedAt: "2026-11-28", EvidenceSHA256: strings.Repeat("e", 64), SpecificationSHA256: MediaGenerationReviewSpecificationSHA(contract.ID, row.Parameters)}
+	plan, err = PrepareMediaGenerationReviewPlan(input)
+	require.NoError(t, err)
+	assert.Equal(t, "verified_official", plan.Candidates[0].Rows[0].Decision)
+	assert.Equal(t, "0.5", plan.Candidates[0].Rows[0].RetailTotalCNY, "reviewed official below-cost total remains a proposal requiring exact execution evidence")
+	for _, tc := range []struct {
+		name string
+		edit func(*MediaGenerationReviewInput)
+	}{
+		{"missing baseline cannot invent free fallback", func(i *MediaGenerationReviewInput) { i.Existing.Pricing = nil }},
+		{"wrong contract", func(i *MediaGenerationReviewInput) { i.Rows[0].ContractSHA256 = strings.Repeat("f", 64) }},
+		{"missing original quote evidence", func(i *MediaGenerationReviewInput) { i.Rows[0].QuoteResponseSHA256 = "" }},
+		{"wrong native lane", func(i *MediaGenerationReviewInput) { i.Rows[0].LaneID = "another-model@synthetic:only" }},
+		{"15s cannot become30 by multiplication", func(i *MediaGenerationReviewInput) { i.Rows[0].Parameters["duration"] = "15" }},
+		{"reference material not reviewed", func(i *MediaGenerationReviewInput) { i.Rows[0].Parameters["images"] = []string{"original"} }},
+		{"different official model", func(i *MediaGenerationReviewInput) { i.Rows[0].Official.NativeModel = "another-model" }},
+		{"different official specification", func(i *MediaGenerationReviewInput) { i.Rows[0].Official.SpecificationSHA256 = strings.Repeat("f", 64) }},
+		{"undated official price", func(i *MediaGenerationReviewInput) { i.Rows[0].Official.CheckedAt = "" }},
+		{"private official source", func(i *MediaGenerationReviewInput) { i.Rows[0].Official.SourceURL = "https://127.0.0.1/prices" }},
+		{"unknown FX", func(i *MediaGenerationReviewInput) { i.FXCNYPerUSD = "" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := common.Marshal(input)
+			require.NoError(t, err)
+			var invalid MediaGenerationReviewInput
+			require.NoError(t, common.Unmarshal(raw, &invalid))
+			tc.edit(&invalid)
+			_, err = PrepareMediaGenerationReviewPlan(invalid)
+			require.Error(t, err)
+		})
+	}
+}
+
+// Optional source-bound local handoff export. Normal CI still runs the compact
+// behavioral cases above without reading machine-specific external data.
+func TestMediaGenerationReviewPlanActualGoFixtureExport(t *testing.T) {
+	inputPath, outputPath := os.Getenv("YC30_REVIEW_FIXTURE_INPUT"), os.Getenv("YC30_REVIEW_FIXTURE_OUTPUT")
+	if inputPath == "" && outputPath == "" {
+		t.Skip("local review fixture export is opt-in")
+	}
+	require.True(t, filepath.IsAbs(inputPath))
+	require.True(t, filepath.IsAbs(outputPath))
+	raw, err := os.ReadFile(inputPath)
+	require.NoError(t, err)
+	var inputs []MediaGenerationReviewInput
+	require.NoError(t, common.Unmarshal(raw, &inputs))
+	var plans []MediaGenerationReviewPlan
+	rows := 0
+	for _, input := range inputs {
+		contract, ok := ycapi.LookupMediaContract(input.Existing.ModelName)
+		require.True(t, ok)
+		plan, err := PrepareMediaGenerationReviewPlan(input)
+		require.NoError(t, err)
+		for _, candidate := range plan.Candidates {
+			assert.True(t, candidate.ReviewOnly)
+			assert.False(t, candidate.CanApply)
+			assert.True(t, candidate.PendingQualification)
+			for _, row := range candidate.Rows {
+				require.NoError(t, validateMediaGenerationControls(contract, candidate.Parameters, row.Parameters))
+				rows++
+			}
+		}
+		plans = append(plans, plan)
+	}
+	require.Len(t, plans, 11)
+	require.Equal(t, 22, rows)
+	output, err := common.Marshal(map[string]any{"synthetic": true, "fixture_kind": "actual-Go-local-review-plan-not-production-qualification", "models": len(plans), "rows": rows, "plans": plans})
+	require.NoError(t, err)
+	file, err := os.OpenFile(outputPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	require.NoError(t, err)
+	_, err = file.Write(output)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+}
 
 func mediaRetailPolicyFixture(t *testing.T) (model.ModelConfiguration, ycapi.MediaContract, map[string]any, map[string]any, map[string]ycapi.MediaAssetMetadata, string) {
 	t.Helper()

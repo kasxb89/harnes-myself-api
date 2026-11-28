@@ -42,6 +42,12 @@ func AttachMediaGenerationQuote(c *gin.Context, q *model.MediaGenerationQuote) e
 	if err != nil || model.ModelExecutionConfigurationVersion(q.Model, record) != q.ModelConfigVersion {
 		return errors.New("model_version_changed")
 	}
+	if err = validateMediaGenerationFrozenSemantics(q, contract, frozen); err != nil {
+		return err
+	}
+	if err = validateMediaGenerationReviewedSpecification(record.Definition, contract, frozen.Parameters, frozen.Request.Assets); err != nil {
+		return err
+	}
 	if err := ycapi.ValidateMediaParameterConditions(contract, frozen.Parameters); err != nil {
 		return err
 	}
