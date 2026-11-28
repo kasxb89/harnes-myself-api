@@ -142,6 +142,12 @@ func TestMediaGenerationV2MaterialConditionsProjectionAndQuoteGate(t *testing.T)
 			{"images", imageBytes.Bytes()}, {"images", imageBytes.Bytes()}, {"videos", videoBytes}, {"audios", audioBytes},
 		} {
 			asset, e := service.StoreMediaGenerationAsset(t.Context(), f.db, actor, contract.ID, uuid.NewString(), bytes.NewReader(sample.bytes))
+			if _, declared := contract.Parameters[sample.field]; !declared {
+				require.Error(t, e, "a removed media role cannot create a ready upload")
+				require.Nil(t, asset)
+				assets[contract.ID][sample.field] = append(assets[contract.ID][sample.field], "ma2_synthetic_unuploaded_removed_"+sample.field)
+				continue
+			}
 			require.NoError(t, e)
 			assets[contract.ID][sample.field] = append(assets[contract.ID][sample.field], asset.ID)
 			assetEvidence = append(assetEvidence, map[string]any{"id": asset.ID, "model": contract.ID, "field": sample.field, "sha256": fmt.Sprintf("%x", sha256.Sum256(sample.bytes)), "bytes": len(sample.bytes), "asset": asset})
@@ -157,8 +163,8 @@ func TestMediaGenerationV2MaterialConditionsProjectionAndQuoteGate(t *testing.T)
 		{"single image reference rejects", "magi-2-special", "reference", 1, 0, 0, false},
 		{"single image with video still rejects", "magi-2-special", "reference", 1, 1, 0, false},
 		{"two images reference allowed", "magi-2-special", "reference", 2, 0, 0, true},
-		{"zero images with video allowed", "magi-2-special", "reference", 0, 1, 0, true},
-		{"zero images with audio allowed", "magi-2-special", "reference", 0, 0, 1, true},
+		{"removed video role rejected", "magi-2-special", "reference", 0, 1, 0, false},
+		{"removed audio role rejected", "magi-2-special", "reference", 0, 0, 1, false},
 		{"explicit first frame allowed", "magi-2-special", "first-frame", 1, 0, 0, true},
 		{"no reference material rejects original intent", "magi-2-special", "reference", 0, 0, 0, false},
 		{"H3 audio alone rejects", "minimax-h3", "reference", 0, 0, 1, false},
@@ -481,14 +487,14 @@ func TestMediaGenerationV2CapturedOldContractReceiptAfterRefresh(t *testing.T) {
 	currentContract, ok := ycapi.LookupMediaContract(oldContract.ID)
 	require.True(t, ok)
 	require.Equal(t, 3, *oldContract.Parameters["videos"].MaxItems)
-	require.Equal(t, 1, *currentContract.Parameters["videos"].MaxItems)
+	require.Equal(t, 3, *currentContract.Parameters["videos"].MaxItems)
 	require.NotEqual(t, service.MediaGenerationDigest(oldContract), service.MediaGenerationDigest(currentContract))
 	require.Equal(t, capture.RequestSHA, service.MediaGenerationRequestDigest(capture.Request), "the prior request digest is fixed, not rewritten for the new schema")
 	native, err := common.Marshal(capture.NativeParameters)
 	require.NoError(t, err)
 	require.Equal(t, capture.NativeParameterSHA, fmt.Sprintf("%x", sha256.Sum256(native)))
 	_, err = ycapi.ValidateMediaContractParams(currentContract.ID, capture.NativeParameters, nil)
-	require.Error(t, err, "a new request cannot use the captured two-video selection under the refreshed one-video limit")
+	require.ErrorContains(t, err, "verified source asset metadata", "current source support does not bypass trusted upload metadata")
 	require.Error(t, ycapi.ValidateMediaRuntimeQuantity(currentContract, capture.Request.Parameters), "new video batches are not execution qualified")
 	source, err := plugins.Source("ycapi")
 	require.NoError(t, err)

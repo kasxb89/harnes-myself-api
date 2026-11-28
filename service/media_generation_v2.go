@@ -591,6 +591,11 @@ func MediaGenerationQuoteProjection(q *model.MediaGenerationQuote) (MediaGenerat
 	for key, value := range frozen.Parameters {
 		publicParams[key] = value
 	}
+	// An accepted operation retains its original material roles even if a newer
+	// declaration removes them. Only opaque asset IDs belong in the public view.
+	for field := range frozen.Request.Assets {
+		delete(publicParams, field)
+	}
 	if contract, exists := ycapi.LookupMediaContract(q.Model); exists {
 		if fields, fieldErr := ycapi.AssetFields(contract); fieldErr == nil {
 			for _, field := range fields {

@@ -194,6 +194,60 @@ func TestMediaGenerationVersionIsSeparateFromContentAndConfiguredDefaults(t *tes
 	})
 }
 
+func TestMediaGenerationQuoteProjectionKeepsRemovedAssetRolesPrivate(t *testing.T) {
+	request := MediaGenerationRequest{
+		ClientOperationID: "synthetic-original-magi-special-operation",
+		Model:             "ycapi-magi-2-special",
+		ModelVersion:      "original-frozen-model-version",
+		Intent:            ycapi.MediaIntentReference,
+		Parameters:        map[string]any{"mode": "reference", "prompt": "Preserve the original three material roles", "duration": "5"},
+		Assets: map[string][]string{
+			"images": {"ma2_original_image"},
+			"videos": {"ma2_original_video"},
+			"audios": {"ma2_original_audio"},
+		},
+	}
+	parameters := map[string]any{
+		"mode": "reference", "prompt": "Preserve the original three material roles", "duration": "5",
+		"images": []string{"https://synthetic-private.invalid/original-image"},
+		"videos": []string{"https://synthetic-private.invalid/original-video"},
+		"audios": []string{"https://synthetic-private.invalid/original-audio"},
+	}
+	frozen := MediaGenerationFrozen{Request: request, Parameters: parameters, Facts: map[string]any{"seconds": 5}, CostCNY: "0.01", DryRunSHA256: strings.Repeat("a", 64), RetailPolicySHA256: strings.Repeat("b", 64)}
+	rawFrozen, err := common.Marshal(frozen)
+	require.NoError(t, err)
+	rawParameters, err := common.Marshal(parameters)
+	require.NoError(t, err)
+	original := model.MediaGenerationQuote{
+		QuoteID: "mgq_original_magi_special", ClientOpID: request.ClientOperationID,
+		Model: request.Model, Kind: "video", ModelConfigVersion: request.ModelVersion,
+		RequestSHA256: MediaGenerationRequestDigest(request), MaterialSHA256: strings.Repeat("c", 64),
+		UsageFactsJSON: model.LongText(rawFrozen), NativeParamsJSON: model.LongText(rawParameters),
+		CostCNY: "0.01", RetailCNY: "0.02", ReserveQuota: 1370, ExpiresAt: 1,
+	}
+	for _, taskID := range []string{"", "original-accepted-task"} {
+		t.Run("task="+taskID, func(t *testing.T) {
+			quote := original
+			quote.TaskID = taskID
+			before := quote
+			projection, err := MediaGenerationQuoteProjection(&quote)
+			require.NoError(t, err)
+			assert.Equal(t, request.ClientOperationID, projection.ClientOperationID)
+			assert.Equal(t, before.RequestSHA256, projection.RequestSHA256)
+			assert.Equal(t, request.ModelVersion, projection.ModelVersion)
+			assert.Equal(t, request.Assets, projection.Assets, "retain the original opaque IDs, including roles removed from the current contract")
+			assert.Equal(t, request.Parameters, projection.Parameters, "native upload URLs never enter the public parameters")
+			assert.Equal(t, before.RetailCNY, projection.RetailCNY)
+			if taskID == "" {
+				assert.Equal(t, "quoted", projection.OperationState)
+			} else {
+				assert.Equal(t, "accepted", projection.OperationState)
+			}
+			assert.Equal(t, before, quote, "projection cannot rewrite the frozen body, UUID, material binding or financial evidence")
+		})
+	}
+}
+
 func mediaAssetResourceFixture(t *testing.T) (*gorm.DB, MediaGenerationActor, []byte, string) {
 	t.Helper()
 	root := t.TempDir()

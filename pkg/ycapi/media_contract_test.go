@@ -302,7 +302,7 @@ func TestMediaContractFreshReplicaMaterialAndConditionalBoundaries(t *testing.T)
 		{"Hailuo remaining 768p is legal", "minimax-hailuo-2-3", map[string]any{"prompt": "A shot", "mode": "text-to-video", "resolution": "768p"}, MediaIntentText, "", nil},
 		{"Omni 1.1 actual new default", "omni-flash-1-1", map[string]any{"prompt": "A shot", "mode": "text-to-video"}, MediaIntentText, "", map[string]any{"resolution": "1080p"}},
 		{"Omni one reference video", "omni-flash-1-2", map[string]any{"prompt": "Follow the motion", "mode": "reference", "videos": videos[:1]}, MediaIntentReference, "", nil},
-		{"Omni second reference video is rejected", "omni-flash-1-2", map[string]any{"prompt": "Follow the motion", "mode": "reference", "videos": videos[:2]}, MediaIntentReference, "too many source", nil},
+		{"Omni two reference videos are retained", "omni-flash-1-2", map[string]any{"prompt": "Follow the motion", "mode": "reference", "videos": videos[:2]}, MediaIntentReference, "", nil},
 		{"Seedance promo reference 4k remains legal", "seedance-2-0-promo", map[string]any{"prompt": "A shot", "mode": "reference", "resolution": "4k", "images": images[:1]}, MediaIntentReference, "", nil},
 		{"Seedance promo first last cannot use 4k", "seedance-2-0-promo", map[string]any{"prompt": "A shot", "mode": "first-last", "resolution": "4k", "images": images[:2]}, MediaIntentFrames, "resolution", nil},
 		{"Seedance special first last cannot use 480p", "seedance-2-0-special", map[string]any{"prompt": "A shot", "mode": "first-last", "resolution": "480p", "images": images[:2]}, MediaIntentFrames, "resolution", nil},
@@ -326,17 +326,17 @@ func TestMediaContractFreshReplicaMaterialAndConditionalBoundaries(t *testing.T)
 		{"Magi first last needs both images", "magi-2", map[string]any{"prompt": "A shot", "mode": "first-last", "images": images[:1]}, MediaIntentFrames, "source image count", nil},
 		{"Magi combined references thirteen", "magi-2", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:10], "videos": videos[:1], "audios": audios[:2]}, MediaIntentReference, "", nil},
 		{"Magi combined references fourteen rejected", "magi-2", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:10], "videos": videos[:1], "audios": audios[:3]}, MediaIntentReference, "combined source asset count", nil},
-		{"Magi reference videos count is one despite generic max three", "magi-2", map[string]any{"prompt": "A shot", "mode": "reference", "videos": videos[:2]}, MediaIntentReference, "too many source", nil},
+		{"Magi reference videos count is one", "magi-2", map[string]any{"prompt": "A shot", "mode": "reference", "videos": videos[:2]}, MediaIntentReference, "too many source", nil},
 		{"Magi reference audio is an input not audio output", "magi-2", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1]}, MediaIntentReference, "", nil},
 		{"Magi special single image requires explicit first frame", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:1]}, MediaIntentReference, "single source image", nil},
-		{"Magi special single image plus video must not switch intent", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:1], "videos": videos[:1]}, MediaIntentReference, "single source image", nil},
+		{"Magi special removed video role cannot switch intent", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:1], "videos": videos[:1]}, MediaIntentReference, "field is not declared", nil},
 		{"Magi special explicit first frame", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "first-frame", "images": images[:1]}, MediaIntentFrames, "", nil},
 		{"Magi special two images remain reference", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:2]}, MediaIntentReference, "", nil},
-		{"Magi special reference video with zero images", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "videos": videos[:1]}, MediaIntentReference, "", nil},
-		{"Magi special reference audio with zero images", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1]}, MediaIntentReference, "", nil},
-		{"Magi special combined ten", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:8], "videos": videos[:1], "audios": audios[:1]}, MediaIntentReference, "", nil},
-		{"Magi special combined eleven rejected", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:9], "videos": videos[:1], "audios": audios[:1]}, MediaIntentReference, "combined source asset count", nil},
-		{"Magi special second audio rejected", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:2]}, MediaIntentReference, "too many source", nil},
+		{"Magi special removed video is rejected", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "videos": videos[:1]}, MediaIntentReference, "field is not declared", nil},
+		{"Magi special removed audio is rejected", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:1]}, MediaIntentReference, "field is not declared", nil},
+		{"Magi special three reference images", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:3]}, MediaIntentReference, "", nil},
+		{"Magi special fourth image rejected without truncation", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "images": images[:4]}, MediaIntentReference, "too many source", nil},
+		{"Magi special multiple removed audios rejected", "magi-2-special", map[string]any{"prompt": "A shot", "mode": "reference", "audios": audios[:2]}, MediaIntentReference, "field is not declared", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before, err := common.Marshal(tc.params)
@@ -747,5 +747,154 @@ func TestMediaRuntimeVideoBatchNeedsSeparateMeterQualification(t *testing.T) {
 	require.NoError(t, ValidateMediaRuntimeQuantity(contract, map[string]any{}), "omission means the one-output default")
 	for _, value := range []any{"1", true, nil, float64(0), float64(-1), float64(0.5), float64(2)} {
 		require.ErrorContains(t, ValidateMediaRuntimeQuantity(contract, map[string]any{"count": value}), "count")
+	}
+}
+
+func TestMediaContractFreshSixDeclarationDrift(t *testing.T) {
+	assets := map[string]MediaAssetMetadata{}
+	images, videos := []string{}, []string{}
+	for i := range 4 {
+		image, video := fmt.Sprintf("asset:drift-image-%d", i), fmt.Sprintf("asset:drift-video-%d", i)
+		images, videos = append(images, image), append(videos, video)
+		assets[image] = MediaAssetMetadata{Kind: "image", Bytes: 1024, Width: 1024, Height: 1024, MIMEType: "image/png", Format: "png"}
+		assets[video] = MediaAssetMetadata{Kind: "video", Bytes: 2048, Width: 720, Height: 720, DurationSeconds: 2, FPS: 24, MIMEType: "video/mp4", Format: "mp4"}
+	}
+	assets["asset:drift-audio"] = MediaAssetMetadata{Kind: "audio", Bytes: 1024, DurationSeconds: 2, MIMEType: "audio/mpeg", Format: "mp3"}
+	for _, id := range []string{"mj_imagine", "magi-2", "magi-2-special", "veo-4-omni", "omni-flash-1-2", "pixverse-c1"} {
+		contract, ok := LookupMediaContract(id)
+		require.True(t, ok)
+		schema, ok := MediaContractSchema(id)
+		require.True(t, ok)
+		fields, err := AssetFields(contract)
+		require.NoError(t, err)
+		properties := schema["properties"].(map[string]any)
+		switch id {
+		case "mj_imagine":
+			assert.Equal(t, 1980, contract.MaxPromptChars)
+		case "magi-2":
+			assert.Equal(t, 1, *contract.Parameters["videos"].MaxItems)
+		case "magi-2-special":
+			require.Len(t, fields, 1)
+			assert.Equal(t, "images", fields[0].Name)
+			assert.Equal(t, 3, *fields[0].Maximum)
+			assert.NotContains(t, properties, "videos")
+			assert.NotContains(t, properties, "audios")
+			duration := properties["duration"].(map[string]any)
+			assert.Equal(t, "12", duration["default"])
+			assert.Len(t, duration["enum"], 9, "13-25 remain in the native evidence but unavailable choices are omitted")
+			assert.Contains(t, contract.Parameters["duration"].Enum, "25")
+			assert.NotContains(t, contract.Parameters["duration"].Enum, "26")
+		case "veo-4-omni":
+			duration := properties["duration"].(map[string]any)
+			assert.Equal(t, "3", contract.Parameters["duration"].Default, "preserve the unavailable supplier default instead of inventing a replacement")
+			assert.Equal(t, []any{"4", "6", "8", "10"}, duration["enum"])
+			assert.NotContains(t, duration, "default", "an unavailable native default is not offered as an executable choice")
+		case "omni-flash-1-2":
+			assert.Equal(t, 3, *contract.Parameters["videos"].MaxItems)
+			assert.Equal(t, 3, contract.Parameters["videos"].MaxItemsByMode["reference"])
+			assert.Equal(t, 1, contract.Parameters["videos"].MaxItemsByMode["edit"])
+			assert.Equal(t, 1, contract.Parameters["videos"].MaxItemsByMode["extend"])
+		case "pixverse-c1":
+			assert.Equal(t, []any{"3", "5", "6", "8", "9", "12", "15"}, properties["duration"].(map[string]any)["enum"])
+			assert.Equal(t, "3", properties["duration"].(map[string]any)["default"])
+		}
+		data, err := common.Marshal(map[string]any{"model": contract.ID, "synthetic": true, "contract": contract, "schema": schema, "asset_fields": fields, "intents": MediaContractIntents(contract), "material_conditions": MediaContractMaterialConditions(contract), "parameter_conditions": MediaContractParameterConditions(contract), "execution_qualified": false})
+		require.NoError(t, err)
+		t.Logf("YC_SIX_CATALOG_FIXTURE %s", data)
+	}
+	type driftCase struct {
+		name, model                  string
+		params                       map[string]any
+		intent                       MediaRuntimeIntent
+		quoteFailure, runtimeFailure string
+		expected                     map[string]any
+	}
+	cases := []driftCase{
+		{"MJ newly permitted 1025 runes", "mj_imagine", map[string]any{"prompt": strings.Repeat("字", 1025)}, MediaIntentText, "", "", nil},
+		{"MJ exact 1980 Unicode runes", "mj_imagine", map[string]any{"prompt": strings.Repeat("字", 1980)}, MediaIntentText, "", "", nil},
+		{"MJ 1981 Unicode runes rejected", "mj_imagine", map[string]any{"prompt": strings.Repeat("字", 1981)}, MediaIntentText, "prompt", "prompt", nil},
+		{"Magi one reference video retained", "magi-2", map[string]any{"prompt": "Follow this reference", "mode": "reference", "videos": videos[:1]}, MediaIntentReference, "", "", nil},
+		{"Magi second reference video rejected", "magi-2", map[string]any{"prompt": "Follow these references", "mode": "reference", "videos": videos[:2]}, MediaIntentReference, "too many source", "too many source", nil},
+		{"Magi special default is twelve", "magi-2-special", map[string]any{"prompt": "A calm shot", "mode": "text-to-video"}, MediaIntentText, "", "", map[string]any{"duration": "12"}},
+		{"Magi special first frame retained", "magi-2-special", map[string]any{"prompt": "Animate this frame", "mode": "first-frame", "images": images[:1]}, MediaIntentFrames, "", "", nil},
+		{"Magi special reference two images retained", "magi-2-special", map[string]any{"prompt": "Use both references", "mode": "reference", "images": images[:2]}, MediaIntentReference, "", "", nil},
+		{"Magi special reference three images retained", "magi-2-special", map[string]any{"prompt": "Use all three references", "mode": "reference", "images": images[:3]}, MediaIntentReference, "", "", nil},
+		{"Magi special fourth image rejected", "magi-2-special", map[string]any{"prompt": "Use all references", "mode": "reference", "images": images}, MediaIntentReference, "too many source", "too many source", nil},
+		{"Magi special reference single image stays forbidden", "magi-2-special", map[string]any{"prompt": "Keep reference intent", "mode": "reference", "images": images[:1]}, MediaIntentReference, "single source image", "single source image", nil},
+		{"Magi special empty reference cannot fall back to text", "magi-2-special", map[string]any{"prompt": "Keep reference intent", "mode": "reference"}, MediaIntentReference, "", "text fallback is forbidden", nil},
+		{"Magi special removed video rejected", "magi-2-special", map[string]any{"prompt": "Keep original material", "mode": "reference", "videos": videos[:1]}, MediaIntentReference, "field is not declared", "field is not declared", nil},
+		{"Magi special removed audio rejected", "magi-2-special", map[string]any{"prompt": "Keep original material", "mode": "reference", "audios": []string{"asset:drift-audio"}}, MediaIntentReference, "field is not declared", "field is not declared", nil},
+		{"Magi special first frame cannot take two images", "magi-2-special", map[string]any{"prompt": "Animate", "mode": "first-frame", "images": images[:2]}, MediaIntentFrames, "too many source", "too many source", nil},
+		{"Veo unavailable default rejects omission", "veo-4-omni", map[string]any{"prompt": "A calm shot", "mode": "text-to-video"}, MediaIntentText, "duration", "duration", nil},
+		{"Veo explicit frame and duration preserve intent", "veo-4-omni", map[string]any{"prompt": "Animate this frame", "mode": "first-frame", "duration": "4", "images": images[:1]}, MediaIntentFrames, "", "", nil},
+		{"Veo frame cannot be relabeled text", "veo-4-omni", map[string]any{"prompt": "Animate this frame", "mode": "first-frame", "duration": "4", "images": images[:1]}, MediaIntentText, "", "intent", nil},
+		{"Omni three ordered reference videos retained", "omni-flash-1-2", map[string]any{"prompt": "Preserve each motion", "mode": "reference", "videos": videos[:3]}, MediaIntentReference, "", "", nil},
+		{"Omni fourth reference video rejected", "omni-flash-1-2", map[string]any{"prompt": "Preserve each motion", "mode": "reference", "videos": videos}, MediaIntentReference, "too many source", "too many source", nil},
+		{"Omni edit still limited to one source", "omni-flash-1-2", map[string]any{"prompt": "Change the background", "mode": "edit", "videos": videos[:2]}, MediaIntentTransform, "too many source", "too many source", nil},
+		{"Omni extend still limited to one source", "omni-flash-1-2", map[string]any{"prompt": "Continue the motion", "mode": "extend", "videos": videos[:2]}, MediaIntentTransform, "too many source", "too many source", nil},
+		{"Omni reference video cannot become text", "omni-flash-1-2", map[string]any{"prompt": "Preserve the motion", "mode": "reference", "videos": videos[:1]}, MediaIntentText, "", "intent", nil},
+		{"Pixverse default three retains first frame", "pixverse-c1", map[string]any{"prompt": "Animate the frame", "mode": "first-frame", "images": images[:1]}, MediaIntentFrames, "", "", map[string]any{"duration": "3"}},
+		{"Pixverse second frame rejected", "pixverse-c1", map[string]any{"prompt": "Animate the frame", "mode": "first-frame", "images": images[:2]}, MediaIntentFrames, "too many source", "too many source", nil},
+	}
+	for _, duration := range []string{"4", "12", "13", "25", "26"} {
+		failure := ""
+		if duration == "13" || duration == "25" || duration == "26" {
+			failure = "duration"
+		}
+		cases = append(cases, driftCase{"Magi special duration " + duration, "magi-2-special", map[string]any{"prompt": "A calm shot", "mode": "text-to-video", "duration": duration}, MediaIntentText, failure, failure, nil})
+	}
+	for _, duration := range []string{"3", "4", "5", "6", "7", "8", "9", "10"} {
+		failure := ""
+		if duration == "3" || duration == "5" || duration == "7" || duration == "9" {
+			failure = "duration"
+		}
+		cases = append(cases, driftCase{"Veo explicit duration " + duration, "veo-4-omni", map[string]any{"prompt": "A calm shot", "mode": "text-to-video", "duration": duration}, MediaIntentText, failure, failure, nil})
+	}
+	for _, duration := range []string{"3", "5", "6", "8", "9", "12", "15", "4", "7", "16"} {
+		failure := ""
+		if duration == "4" || duration == "7" || duration == "16" {
+			failure = "duration"
+		}
+		cases = append(cases, driftCase{"Pixverse duration " + duration, "pixverse-c1", map[string]any{"prompt": "A calm shot", "mode": "text-to-video", "duration": duration}, MediaIntentText, failure, failure, nil})
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			before, err := common.Marshal(tc.params)
+			require.NoError(t, err)
+			normalized, quoteErr := ValidateMediaContractParams(tc.model, tc.params, assets)
+			wire, runtimeErr := BuildMediaRuntimeRequest(tc.model, tc.params, tc.model+"@synthetic-local-only", "task-drift6-original-uuid", tc.intent)
+			if tc.quoteFailure == "" {
+				require.NoError(t, quoteErr)
+			} else {
+				require.ErrorContains(t, quoteErr, tc.quoteFailure)
+			}
+			if tc.runtimeFailure == "" {
+				require.NoError(t, runtimeErr)
+				for name, expected := range tc.expected {
+					assert.Equal(t, expected, normalized[name])
+					assert.Equal(t, expected, wire.Params[name])
+				}
+				for _, name := range []string{"mode", "duration", "prompt", "images", "videos", "audios"} {
+					if original, supplied := tc.params[name]; supplied {
+						assert.Equal(t, original, wire.Params[name], "native request retains original %s and asset order", name)
+					}
+				}
+			} else {
+				require.ErrorContains(t, runtimeErr, tc.runtimeFailure)
+			}
+			after, err := common.Marshal(tc.params)
+			require.NoError(t, err)
+			assert.Equal(t, before, after, "validation never rewrites the original request or drops source references")
+			row := map[string]any{"name": tc.name, "model": tc.model, "synthetic": true, "params": tc.params, "intent": tc.intent, "asset_metadata": assets, "normalized": normalized, "quote_valid": quoteErr == nil, "runtime_valid": runtimeErr == nil, "runtime_request": wire, "request_bytes_unchanged": string(before) == string(after), "expected_quote_failure": tc.quoteFailure, "expected_runtime_failure": tc.runtimeFailure}
+			if quoteErr != nil {
+				row["quote_error"] = quoteErr.Error()
+			}
+			if runtimeErr != nil {
+				row["runtime_error"] = runtimeErr.Error()
+			}
+			data, err := common.Marshal(row)
+			require.NoError(t, err)
+			t.Logf("YC_SIX_VALIDATION_FIXTURE %s", data)
+		})
 	}
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "checked_at": "2026-11-27T04:39:31.834675+00:00",
-  "source_sha256": "4773ab714964864c114ba8b6005ee6a48a869c809e247dc6c3003c67b56a3d84",
+  "checked_at": "2026-11-28T05:29:32.408043+00:00",
+  "source_sha256": "92bdbedc252fc15ce150039a6eda3b033f5c1cf35c77580cfbb6605c6e4311bc",
   "sources": [
     {
       "url": "https://ycapi.token6688.com/api/v1/public/logical-models?type=image",
@@ -14,6 +14,20 @@
       "bytes": 315643,
       "sha256": "5dfbb9d54b12eda7cc4d03974ef24d9134a9b5d6c583c00a92abc36dc89cb947",
       "checked_at": "2026-11-27T04:39:31.834675+00:00"
+    },
+    {
+      "url": "https://ycapi.token6688.com/api/v1/public/logical-models?type=image",
+      "bytes": 176071,
+      "sha256": "61a27aa9424f06b8fa3619eb43a48e40ed3be342a67d1be20af29fd20cce546c",
+      "checked_at": "2026-11-28T05:29:32.390472+00:00",
+      "server_date": "Sat, 28 Nov 2026 05:29:32 GMT"
+    },
+    {
+      "url": "https://ycapi.token6688.com/api/v1/public/logical-models?type=video",
+      "bytes": 336155,
+      "sha256": "3ac5f707e2cab8a4391705de0a0a6d85ee1d74fa73b6e6a055b09c16defa044c",
+      "checked_at": "2026-11-28T05:29:32.408043+00:00",
+      "server_date": "Sat, 28 Nov 2026 05:29:32 GMT"
     }
   ],
   "models": [
@@ -4505,7 +4519,7 @@
         }
       },
       "frame_reference_exclusive": false,
-      "max_prompt_chars": 1024,
+      "max_prompt_chars": 1980,
       "max_prompt_bytes": 0,
       "masked_edit": false,
       "prompt_syntax": "midjourney"
@@ -11408,7 +11422,7 @@
             "zh": "参考视频"
           },
           "max_combined_items": 13,
-          "max_items": 3,
+          "max_items": 1,
           "max_items_by_mode": {
             "first-frame": 0,
             "first-last": 0,
@@ -11501,24 +11515,6 @@
           "type": "enum",
           "ui_widget": "dropdown"
         },
-        "audios": {
-          "affects_l2": false,
-          "description": "参考音频 (声音 / 音色参考). prompt 用 @音频1 起引用.",
-          "label": {
-            "en": "Reference audio",
-            "zh": "参考音频"
-          },
-          "max_combined_items": 10,
-          "max_items": 1,
-          "max_items_by_mode": {
-            "first-frame": 0,
-            "reference": 1,
-            "text-to-video": 0
-          },
-          "required": false,
-          "type": "upload",
-          "ui_widget": "upload"
-        },
         "count": {
           "affects_l2": false,
           "default": 1,
@@ -11535,8 +11531,8 @@
         },
         "duration": {
           "affects_l2": true,
-          "default": "5",
-          "description": "视频时长 4-30 秒，按条计价，时长不影响价格。实际价格以下单时的估价为准。",
+          "default": "12",
+          "description": "视频时长 4-25 秒，按条计价，时长不影响价格。实际价格以下单时的估价为准。",
           "enum": [
             "4",
             "5",
@@ -11559,12 +11555,7 @@
             "22",
             "23",
             "24",
-            "25",
-            "26",
-            "27",
-            "28",
-            "29",
-            "30"
+            "25"
           ],
           "label": {
             "en": "Duration",
@@ -11577,7 +11568,6 @@
               "value": "4"
             },
             {
-              "is_default": true,
               "label": "5秒",
               "label_en": "5s",
               "value": "5"
@@ -11613,99 +11603,101 @@
               "value": "11"
             },
             {
+              "is_default": true,
               "label": "12秒",
               "label_en": "12s",
               "value": "12"
             },
             {
+              "available": false,
               "label": "13秒",
               "label_en": "13s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "13"
             },
             {
+              "available": false,
               "label": "14秒",
               "label_en": "14s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "14"
             },
             {
+              "available": false,
               "label": "15秒",
               "label_en": "15s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "15"
             },
             {
+              "available": false,
               "label": "16秒",
               "label_en": "16s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "16"
             },
             {
+              "available": false,
               "label": "17秒",
               "label_en": "17s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "17"
             },
             {
+              "available": false,
               "label": "18秒",
               "label_en": "18s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "18"
             },
             {
+              "available": false,
               "label": "19秒",
               "label_en": "19s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "19"
             },
             {
+              "available": false,
               "label": "20秒",
               "label_en": "20s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "20"
             },
             {
+              "available": false,
               "label": "21秒",
               "label_en": "21s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "21"
             },
             {
+              "available": false,
               "label": "22秒",
               "label_en": "22s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "22"
             },
             {
+              "available": false,
               "label": "23秒",
               "label_en": "23s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "23"
             },
             {
+              "available": false,
               "label": "24秒",
               "label_en": "24s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "24"
             },
             {
+              "available": false,
               "label": "25秒",
               "label_en": "25s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "25"
-            },
-            {
-              "label": "26秒",
-              "label_en": "26s",
-              "value": "26"
-            },
-            {
-              "label": "27秒",
-              "label_en": "27s",
-              "value": "27"
-            },
-            {
-              "label": "28秒",
-              "label_en": "28s",
-              "value": "28"
-            },
-            {
-              "label": "29秒",
-              "label_en": "29s",
-              "value": "29"
-            },
-            {
-              "label": "30秒",
-              "label_en": "30s",
-              "value": "30"
             }
           ],
           "required": false,
@@ -11719,11 +11711,10 @@
             "en": "Reference images",
             "zh": "参考图片"
           },
-          "max_combined_items": 10,
-          "max_items": 10,
+          "max_combined_items": 3,
+          "max_items": 3,
           "max_items_by_mode": {
             "first-frame": 1,
-            "reference": 10,
             "text-to-video": 0
           },
           "required": false,
@@ -11791,24 +11782,6 @@
           "required": false,
           "type": "enum",
           "ui_widget": "dropdown"
-        },
-        "videos": {
-          "affects_l2": false,
-          "description": "参考视频 (画面风格 / 动作 / 运镜参考). prompt 用 @视频1 起引用.",
-          "label": {
-            "en": "Reference video",
-            "zh": "参考视频"
-          },
-          "max_combined_items": 10,
-          "max_items": 1,
-          "max_items_by_mode": {
-            "first-frame": 0,
-            "reference": 1,
-            "text-to-video": 0
-          },
-          "required": false,
-          "type": "upload",
-          "ui_widget": "upload"
         }
       },
       "frame_reference_exclusive": false,
@@ -16912,52 +16885,32 @@
               "value": "10"
             },
             {
-              "available_when": {
-                "mode": [
-                  "text-to-video",
-                  "first-frame",
-                  "reference"
-                ]
-              },
+              "available": false,
               "is_default": true,
               "label": "3秒",
               "label_en": "3s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "3"
             },
             {
-              "available_when": {
-                "mode": [
-                  "text-to-video",
-                  "first-frame",
-                  "reference"
-                ]
-              },
+              "available": false,
               "label": "5秒",
               "label_en": "5s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "5"
             },
             {
-              "available_when": {
-                "mode": [
-                  "text-to-video",
-                  "first-frame",
-                  "reference"
-                ]
-              },
+              "available": false,
               "label": "7秒",
               "label_en": "7s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "7"
             },
             {
-              "available_when": {
-                "mode": [
-                  "text-to-video",
-                  "first-frame",
-                  "reference"
-                ]
-              },
+              "available": false,
               "label": "9秒",
               "label_en": "9s",
+              "unavailable_reason": "支持该选项的渠道暂不可用",
               "value": "9"
             }
           ],
@@ -17483,13 +17436,13 @@
           "max_clip_duration_sec_by_mode": {
             "reference": 3
           },
-          "max_items": 1,
+          "max_items": 3,
           "max_items_by_mode": {
             "edit": 1,
             "extend": 1,
             "first-frame": 0,
             "first-last": 0,
-            "reference": 1,
+            "reference": 3,
             "text-to-video": 0
           },
           "max_total_duration_sec": 15,
@@ -20230,11 +20183,16 @@
         },
         "duration": {
           "affects_l2": false,
-          "default": "5",
-          "description": "5 秒或 8 秒（按秒计费）。",
+          "default": "3",
+          "description": "3 到 15 秒（按秒计费）。",
           "enum": [
+            "3",
             "5",
-            "8"
+            "6",
+            "8",
+            "9",
+            "12",
+            "15"
           ],
           "label": {
             "en": "Duration",
@@ -20243,14 +20201,39 @@
           "options": [
             {
               "is_default": true,
+              "label": "3秒",
+              "label_en": "3s",
+              "value": "3"
+            },
+            {
               "label": "5秒",
               "label_en": "5s",
               "value": "5"
             },
             {
+              "label": "6秒",
+              "label_en": "6s",
+              "value": "6"
+            },
+            {
               "label": "8秒",
               "label_en": "8s",
               "value": "8"
+            },
+            {
+              "label": "9秒",
+              "label_en": "9s",
+              "value": "9"
+            },
+            {
+              "label": "12秒",
+              "label_en": "12s",
+              "value": "12"
+            },
+            {
+              "label": "15秒",
+              "label_en": "15s",
+              "value": "15"
             }
           ],
           "required": false,

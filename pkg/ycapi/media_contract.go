@@ -126,10 +126,11 @@ type mediaContractSource struct {
 	CheckedAt string `json:"checked_at"`
 }
 
-// Binds the reviewed declarations to SHA256(image response || video response),
-// preserving the original response bytes in that order. This is source
+// Binds this partial six-model review to SHA256(base fafa snapshot || fresh image
+// response || fresh video response), preserving original bytes in that order.
+// The other 69 declarations retain their prior review; this composite is source
 // evidence, not account availability or a paid-generation qualification.
-const reviewedMediaContractSourceSHA256 = "4773ab714964864c114ba8b6005ee6a48a869c809e247dc6c3003c67b56a3d84"
+const reviewedMediaContractSourceSHA256 = "92bdbedc252fc15ce150039a6eda3b033f5c1cf35c77580cfbb6605c6e4311bc"
 
 var mediaContracts, mediaContractError = loadMediaContracts()
 
@@ -138,7 +139,7 @@ func loadMediaContracts() (mediaContractSnapshot, error) {
 	if err := common.Unmarshal(mediaContractData, &snapshot); err != nil {
 		return snapshot, err
 	}
-	if snapshot.SchemaVersion != 1 || snapshot.CheckedAt == "" || snapshot.SourceSHA256 != reviewedMediaContractSourceSHA256 || len(snapshot.Sources) != 2 || len(snapshot.Models) != 75 {
+	if snapshot.SchemaVersion != 1 || snapshot.CheckedAt == "" || snapshot.SourceSHA256 != reviewedMediaContractSourceSHA256 || len(snapshot.Sources) != 4 || len(snapshot.Models) != 75 {
 		return snapshot, errors.New("invalid YCAPI media contract snapshot")
 	}
 	for _, source := range snapshot.Sources {
